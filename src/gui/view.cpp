@@ -1220,9 +1220,12 @@ int View::addSource(SourceType type, int copyOf) {
         fresh(slotCurveIndex(source, slot));
         fresh(slotAuxIndex(source, slot));
     }
-    // A new Random source swings both ways, as an LFO does; Bipolar, which MIDI shares, starts off.
+    // A new Random source swings both ways, as an LFO does; Bipolar, which MIDI shares, starts off. A new Curve source
+    // swings one way, Unipolar on, where an LFO's starts off.
     if (type == SourceType::Random && copyOf < 0)
         changes.push_back({paramIndex(source, SourceParam::Bipolar), 1.0});
+    if (type == SourceType::Curve && copyOf < 0)
+        changes.push_back({paramIndex(source, SourceParam::Unipolar), 1.0});
     changes.push_back({paramIndex(source, SourceParam::Type), static_cast<double>(type)});
     const auto at = copyOf >= 0 ? std::find(shown.begin(), shown.end(), copyOf) + 1 : shown.end();
     shown.insert(at, source);
@@ -1233,6 +1236,11 @@ int View::addSource(SourceType type, int copyOf) {
     if (wideLfo_ == source)
         wideLfo_ = -1;
     editMany(changes);
+    if (type == SourceType::Curve && copyOf < 0) { // widened, to draw its shape right there, as picking Custom did
+        wideLfo_ = source;
+        if (shapeEditing() >= 0 && !isCurve(shapeEditing()))
+            shapeEditor_ = -1;
+    }
     if (controller_.layout().sourcesCollapsed) {
         controller_.layout().sourcesCollapsed = false;
         controller_.layoutChanged();
@@ -2691,14 +2699,16 @@ std::vector<View::Widget> View::widgets() const {
             }
         }
         if (lfo) {
-            // An LFO's shape list, or a Random card's Unipolar | Bipolar in its place, one of them lit, as the clock
-            // modes are.
+            // An LFO's shape list, or a Random or Curve card's Unipolar | Bipolar in its place, one of them lit, as the
+            // clock modes are: a Random card's sets its Bipolar, a Curve card's its Unipolar (on in the first).
             const bool random = sourceTypeOf(s) == SourceType::Random;
-            if (random) {
+            const bool curve = sourceTypeOf(s) == SourceType::Curve;
+            if (random || curve) {
                 const size_t polarity = list.size();
                 for (int bipolar = 0; bipolar < 2; ++bipolar)
-                    add(Kind::Choice, randomPolaritySwitch(card, bipolar), paramIndex(s, SourceParam::Bipolar), s,
-                        bipolar);
+                    add(Kind::Choice, randomPolaritySwitch(card, bipolar),
+                        paramIndex(s, random ? SourceParam::Bipolar : SourceParam::Unipolar), s,
+                        random ? bipolar : 1 - bipolar);
                 merge(polarity);
             } else {
                 add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
@@ -2715,12 +2725,13 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
             // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
             // One-Shot for it (see setLfoClock()), and stands for them all. Unipolar under the sync switch.
-            // A Random card has neither Unipolar, which its polarity stands for, nor Phase, which it takes none of.
+            // A Random or Curve card has no Unipolar switch, which its polarity stands for, and a Random one no Phase,
+            // which it takes none of.
             const size_t modes = list.size();
             for (int i = 0; i < kLfoModes; ++i)
                 add(Kind::Choice, lfoModeSwitch(card, i), paramIndex(s, SourceParam::Free), s, i);
             merge(modes);
-            if (!random)
+            if (!random && !curve)
                 add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
@@ -2917,8 +2928,8 @@ std::vector<View::Widget> View::widgets() const {
         const Point at = sourceMenuTopLeft();
         add(Kind::SourceMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::SourceMenu, sourceMenu(at), -1, 1);
-        for (int t = 1; t <= kSourceTypes; ++t)
-            add(Kind::SourceMenuItem, sourceMenuItem(at, static_cast<SourceType>(t)), -1, t);
+        for (const SourceType type : kSourceMenuOrder)
+            add(Kind::SourceMenuItem, sourceMenuItem(at, type), -1, static_cast<int>(type));
     }
     if (fxMenuOpen_ && fxWide()) {
         // Opened for the main line (from a + or a wire of the graph, from the row's arrows, its dashed card or ADD
@@ -6474,8 +6485,10 @@ void View::paintSource(Canvas &c, float card, int s) {
         for (int d = 0; d < 6; ++d)
             c.fillCircle({p.center().x - 5.0f + (d / 2) * 5.0f, p.y + 35.0f + (d % 2) * 5.0f}, 1.4f, grip ? kText : kFaint);
         std::string name = sourceName(s);
-        if (sourceTypeOf(s) == SourceType::Random) // "Random" too long for the strip: its short name, by its number
-            name = trf(Str::SourceFoldedRandom, {name.substr(name.find_last_of(' ') + 1)});
+        // "Random" and "Curve" too long for the strip: their short names, by their number.
+        if (sourceTypeOf(s) == SourceType::Random || sourceTypeOf(s) == SourceType::Curve)
+            name = trf(sourceTypeOf(s) == SourceType::Random ? Str::SourceFoldedRandom : Str::SourceFoldedCurve,
+                       {name.substr(name.find_last_of(' ') + 1)});
         paintDownward(c, {p.x, p.y + 104.0f, p.w, p.h - 110.0f}, upperCase(name), sourceOn(s) ? color : kDim);
         return;
     }
@@ -6800,8 +6813,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         else if (clockMode)
             lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? litInk(color) : (hovered ? kText : kDim),
                          switchIconScale());
-        else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's
-            polarityIcon(c, w.rect.center(), false, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
+        else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's; a Curve
+                                                                   // card's choice either one
+            polarityIcon(c, w.rect.center(), w.kind == Kind::Choice && w.b == 0,
+                         on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's: either one, as a MODS row's
             polarityIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else
@@ -7454,6 +7469,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         } else if (type == SourceType::Env) {
             const Point env[] = {{l, b}, {l + 4.0f, t}, {l + 9.0f, t + 6.0f}, {r - 4.0f, t + 6.0f}, {r, b}};
             c.polyline(env, 5, ink, 1.4f);
+        } else if (type == SourceType::Curve) { // its drawn shape, as an LFO's Custom was
+            lfoShapeIcon(c, icon, LfoShape::Custom, ink);
         } else if (type == SourceType::Random) {
             const Point steps[] = {{l, t + 8.0f},  {l + 5.0f, t + 8.0f}, {l + 5.0f, t + 2.0f}, {l + 10.0f, t + 2.0f},
                                    {l + 10.0f, b}, {l + 14.0f, b},        {l + 14.0f, t + 5.0f}, {r, t + 5.0f}};
@@ -8799,8 +8816,8 @@ void View::paintTooltip(Canvas &c) {
         const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot};
         text = tr(tips[std::clamp(hover_->b, 0, kLfoModes - 1)]);
     }
-    else if (sourceFieldOf(param) == SourceParam::Unipolar)
-        text = tr(Str::TipUnipolar);
+    else if (sourceFieldOf(param) == SourceParam::Unipolar) // the LFO's switch, or a Curve card's Unipolar | Bipolar
+        text = tr(hover_->kind == Kind::Choice && hover_->b == 0 ? Str::TipBipolar : Str::TipUnipolar);
     else if (sourceFieldOf(param) == SourceParam::Bipolar) // a Random card's Unipolar | Bipolar
         text = tr(hover_->b == 1 ? Str::TipBipolar : Str::TipUnipolar);
     else if (field == FxParam::DelaySync)
@@ -10055,16 +10072,9 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // the list stays open for another pick
         listMenu_ = -1;
         edit(w.param, w.b); // a drawn curve is edited in the card, or the big editor
-        // Custom widens an LFO's card, to draw the shape right there; another shape takes it back to its size.
-        if (isLfoShape(w.param) && w.b == static_cast<int>(LfoShape::Custom)) {
-            const int lfo = sourceOf(w.param);
-            wideLfo_ = lfo;
-            if (shapeEditing() >= 0 && !isCurve(shapeEditing()) && shapeEditing() != lfo)
-                shapeEditor_ = -1;
-            revealSource(lfo);
-        } else if (isLfoShape(w.param) && sourceOf(w.param) == wideLfo_) {
+        // An LFO holding the retired Custom shape (a state can) goes back to its size as it takes another.
+        if (isLfoShape(w.param) && sourceOf(w.param) == wideLfo_)
             wideLfo_ = -1;
-        }
         break;
     case Kind::PeqTypeButton:
         fxBand_[w.a] = w.b;

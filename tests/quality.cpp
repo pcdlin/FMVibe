@@ -1871,6 +1871,51 @@ void effectsChainChecks() {
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 11 state loads its sources as saved");
     }
     {
+        // Before version 12, an LFO could have the Custom shape: it loads as a Curve source running as it ran, its
+        // fields, points and polarity kept and its Shape back at its default; another LFO as it was. A version 12
+        // state loads as saved.
+        ParamValues p = defaults();
+        auto set = [&p](int place, SourceParam f, double v) { p[paramIndex(place, f)] = v; };
+        for (int place : {0, 1}) {
+            set(place, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+            set(place, SourceParam::Shape, static_cast<double>(LfoShape::Custom));
+            set(place, SourceParam::Unipolar, place == 0 ? 1.0 : 0.0);
+            set(place, SourceParam::Sync, 0.0);
+            set(place, SourceParam::Rate, normFromRate(4.0));
+            set(place, SourceParam::Phase, 0.25);
+            p[shapeCountIndex(place)] = 3.0;
+            p[shapePointIndex(place, 2, PointField::Y)] = 0.6;
+        }
+        set(2, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+        set(2, SourceParam::Shape, static_cast<double>(LfoShape::Triangle));
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues before = load(11), now = load(12);
+        auto at = [&before](int place, SourceParam f) { return before[paramIndex(place, f)]; };
+        bool curves = true;
+        for (int place : {0, 1})
+            curves = curves && at(place, SourceParam::Type) == static_cast<double>(SourceType::Curve) &&
+                     at(place, SourceParam::Shape) == paramTable()[paramIndex(place, SourceParam::Shape)].def &&
+                     at(place, SourceParam::Unipolar) == (place == 0 ? 1.0 : 0.0) &&
+                     at(place, SourceParam::Rate) == normFromRate(4.0) && at(place, SourceParam::Sync) == 0.0 &&
+                     at(place, SourceParam::Phase) == 0.25 && before[shapeCountIndex(place)] == 3.0 &&
+                     before[shapePointIndex(place, 2, PointField::Y)] == 0.6;
+        const bool plain = at(2, SourceParam::Type) == static_cast<double>(SourceType::Lfo) &&
+                           at(2, SourceParam::Shape) == static_cast<double>(LfoShape::Triangle);
+        check(curves && plain, "a state before version 12 loads its Custom LFO as a Curve source running as it ran");
+        check(std::equal(now.begin(), now.end(), p.begin()), "a version 12 state loads its LFOs as saved");
+    }
+    {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.
         auto stale = [&](FilterType first, int firstSlope, FilterType second, int secondSlope) {
@@ -3020,6 +3065,26 @@ int main() {
         check(near(shapeValue(get, 0, 0.0), 0.0) && near(shapeValue(get, 0, 0.5), 0.5) &&
                   near(shapeValue(get, 0, 1.0), 1.0),
               "a freeform LFO ending on a point at the cycle's end stays there, as a one-shot does");
+
+        // A Curve source plays its drawn shape as an LFO with the retired Custom shape did, sample for sample: on an
+        // operator's level, free at 3 Hz, its points a lopsided ramp, unipolar.
+        auto drawn = [](SourceType type) {
+            Engine e(2);
+            lfoOn(e.p, paramIndex(0, OpParam::Out), 0.5, 3.0);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(type);
+            e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Custom);
+            e.p[paramIndex(0, SourceParam::Unipolar)] = 1.0;
+            e.p[shapeCountIndex(0)] = 3.0;
+            e.p[shapePointIndex(0, 1, PointField::X)] = 0.3;
+            e.p[shapePointIndex(0, 1, PointField::Y)] = 0.8;
+            e.p[shapePointIndex(0, 1, PointField::Curve)] = 0.4;
+            e.p[shapePointIndex(0, 2, PointField::X)] = 0.7;
+            e.p[shapePointIndex(0, 2, PointField::Y)] = -0.6;
+            e.noteOn(57);
+            return e.render(24000);
+        };
+        check(drawn(SourceType::Curve) == drawn(SourceType::Lfo),
+              "a Curve source plays its drawn shape as an LFO with the Custom shape did");
     }
 
     // --- An anchored LFO stands where the host's transport puts it, as if it had started at its Phase at the song's

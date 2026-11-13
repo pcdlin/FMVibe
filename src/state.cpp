@@ -57,7 +57,10 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    shape is retired for it. An earlier state's Random source loads as one standing still (unsynced, at 0 Hz, on
 //    its own per voice), taking a value for each note as it did, and its LFO with the Random shape as a Random source
 //    running as the LFO ran (see loadRandomSources()).
-constexpr uint32_t kStateVersion = 11;
+// 12: The Curve source is an LFO of a drawn shape, and the LFO's Custom shape is retired for it. An earlier state's
+//    LFO with the Custom shape loads as a Curve source running as the LFO ran, its points and polarity kept (see
+//    loadCurveSources()).
+constexpr uint32_t kStateVersion = 12;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -494,6 +497,19 @@ void loadRandomSources(ParamValues &values) {
     }
 }
 
+// Before version 12, an LFO could have the Custom shape, drawn from points. It turns into a Curve source running as
+// it did: the same fields and points (its freeform shape is the place's), Unipolar its polarity as before; its Shape
+// goes back to its default.
+void loadCurveSources(ParamValues &values) {
+    const int shapeIndex = paramIndex(0, SourceParam::Shape);
+    for (int s = 0; s < kMaxSources; ++s)
+        if (sourceType(values[paramIndex(s, SourceParam::Type)]) == SourceType::Lfo &&
+            std::lround(values[paramIndex(s, SourceParam::Shape)]) == static_cast<long>(LfoShape::Custom)) {
+            values[paramIndex(s, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+            values[paramIndex(s, SourceParam::Shape)] = paramTable()[shapeIndex].def;
+        }
+}
+
 } // namespace
 
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
@@ -577,6 +593,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     }
     if (header[1] < 11)
         loadRandomSources(loaded);
+    if (header[1] < 12)
+        loadCurveSources(loaded);
     if (header[1] < 9) { // the chain's effects in its order, as the graph's line
         if (!outWired) {
             std::vector<int> chain;

@@ -1668,9 +1668,9 @@ int main(int argc, char **argv) {
         proc.transport = nullptr;
         setParams({{paramIndex(0, SourceParam::Sync), 0.0}});
 
-        // A freeform shape drawn as the same square, at the free 2 Hz rate: up for
-        // the first half of the cycle (muted), down for the second.
-        setParams({{paramIndex(0, SourceParam::Shape), static_cast<double>(LfoShape::Custom)},
+        // A Curve source in its place, its shape drawn as the same square, at the free 2 Hz rate: up for the first half
+        // of the cycle (muted), down for the second. Set by the host, it keeps the LFO's polarity, bipolar.
+        setParams({{paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Curve)},
                    {paramIndex(0, SourceParam::Rate), normFromRate(2.0)},
                    {shapeCountIndex(0), 4.0},
                    {shapePointIndex(0, 0, PointField::Y), 1.0},
@@ -1682,7 +1682,7 @@ int main(int argc, char **argv) {
                    {shapePointIndex(0, 3, PointField::Y), -1.0}});
         const float drawnEarly = levelAt(120.0, 0.1), drawnLate = levelAt(120.0, 0.35);
         std::printf("      drawn square LFO: %.3f at 0.1 s, %.3f at 0.35 s\n", drawnEarly, drawnLate);
-        check(drawnEarly == 0.0f && drawnLate > 0.1f, "a freeform LFO follows its points");
+        check(drawnEarly == 0.0f && drawnLate > 0.1f, "a Curve source follows its points");
 
         // Free: notes don't restart the LFO. After a reset, a note's 0.1 s falls in
         // the muted first half of the shared clock; a later note started so that its

@@ -117,6 +117,7 @@ STR(SourceLfo, "LFO")
 STR(SourceEnvelope, "Envelope")
 STR(SourceRandom, "Random") // a value taken at random as each note starts
 STR(SourceMidi, "MIDI") // a MIDI controller or aftertouch
+STR(SourceCurve, "Curve") // an LFO of a shape drawn from points
 STR(MidiInputCc, "CC") // what a MIDI source follows: a controller
 STR(MidiInputPressure, "Pressure") // or aftertouch
 STR(MidiInputSlide, "Slide") // or a note's slide (MPE's CC 74, CLAP's brightness expression)
@@ -428,7 +429,9 @@ STR(SourceNameLfo, "LFO {1}") // numbered by type in the order the sources show
 STR(SourceNameEnv, "Env {1}")
 STR(SourceNameRandom, "Random {1}")
 STR(SourceNameMidi, "MIDI {1}")
+STR(SourceNameCurve, "Curve {1}")
 STR(SourceFoldedRandom, "RND {1}") // a Random source's name down its folded card, which "Random 3" doesn't fit
+STR(SourceFoldedCurve, "CRV {1}")  // and a Curve source's, which "Curve 3" doesn't
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")

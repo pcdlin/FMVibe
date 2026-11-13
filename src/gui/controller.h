@@ -165,6 +165,7 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
     const Str name = type == SourceType::Env        ? Str::SourceNameEnv
                      : type == SourceType::Random   ? Str::SourceNameRandom
                      : type == SourceType::Midi     ? Str::SourceNameMidi
+                     : type == SourceType::Curve    ? Str::SourceNameCurve
                                                     : Str::SourceNameLfo;
     return trf(name, {std::to_string(number)});
 }

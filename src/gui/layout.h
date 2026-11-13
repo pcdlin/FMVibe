@@ -386,11 +386,17 @@ inline Rect lfoCardButton(float card, int button) {
 constexpr float kSourceShadowGap = 10.0f;
 constexpr float kSourceShadowW = (kCardH - kSourceShadowGap) * 0.5f;
 constexpr int kSourceTypes = static_cast<int>(SourceType::Count) - 1; // without None
+// The types it lists, in its order: the ones that run as LFOs first.
+constexpr SourceType kSourceMenuOrder[] = {SourceType::Lfo, SourceType::Curve, SourceType::Random, SourceType::Env,
+                                           SourceType::Midi};
+static_assert(std::size(kSourceMenuOrder) == static_cast<size_t>(kSourceTypes));
 // That list, its top left given; an entry a type.
 inline Rect sourceMenu(Point at) { return {at.x, at.y, 150.0f, 8.0f + kSourceTypes * 26.0f}; }
 inline Rect sourceMenuItem(Point at, SourceType type) {
     const Rect menu = sourceMenu(at);
-    return {menu.x + 4.0f, menu.y + 4.0f + (static_cast<int>(type) - 1) * 26.0f, menu.w - 8.0f, 24.0f};
+    const auto *order = std::begin(kSourceMenuOrder);
+    const auto row = static_cast<float>(std::find(order, std::end(kSourceMenuOrder), type) - order);
+    return {menu.x + 4.0f, menu.y + 4.0f + row * 26.0f, menu.w - 8.0f, 24.0f};
 }
 // A MIDI card's input (CC, Pressure or Slide), a list button under its title at the left, where an LFO's shape is;
 // its CC and Slew knobs at the right.
@@ -558,13 +564,13 @@ inline Rect lfoShapeButton(float card) {
     return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, kLfoModes - 1).right() - p.x - 16.0f, 22.0f};
 }
 
-// The shapes an LFO's list offers, in its order: every one but the retired Random, which the Random source took over.
-constexpr LfoShape kLfoShapesOffered[] = {LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square,
-                                          LfoShape::Custom};
+// The shapes an LFO's list offers, in its order: every one but the retired Random and Custom, which the Random and
+// Curve sources took over.
+constexpr LfoShape kLfoShapesOffered[] = {LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square};
 constexpr int kLfoShapeItems = static_cast<int>(std::size(kLfoShapesOffered));
 
-// A Random card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over its clock
-// modes as an LFO's.
+// A Random or Curve card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over
+// its clock modes as an LFO's.
 inline Rect randomPolaritySwitch(float card, int bipolar) {
     const Rect list = lfoShapeButton(card);
     return {list.x + bipolar * list.w * 0.5f, list.y, list.w * 0.5f, list.h};

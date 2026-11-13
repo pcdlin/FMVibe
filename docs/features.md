@@ -133,9 +133,14 @@ What the plugin does and how its editor works, in full. Building and installing 
   +18 dB, so a loop that lifts itself past unity (a resonant filter, or shapers feeding back, with a shaper's Mix
   below 100 %) grows loud but never without end. It runs only while something goes in and its output goes
   somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does).
-- **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square or a freeform shape; 0.02–100 Hz,
+- **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw or square; 0.02–100 Hz,
   and at the Rate knob's bottom 0 Hz, where an LFO stands still at its Phase), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
-  operator's envelope has them), and two that follow what a note or the controller brings:
+  operator's envelope has them), Curve sources (LFOs of a drawn shape), and two that follow what a note or the
+  controller brings:
+  - **Curve**: an LFO of a shape drawn from points (see below), with everything an LFO has (Rate or a synced note
+    value, the clock modes, anchoring, Phase) but the shape list. It starts unipolar, where an LFO starts bipolar.
+    It replaces the LFO's Custom shape, which the LFOs no longer offer: a patch saved before (state version 11 and
+    earlier) loads an LFO with that shape as a Curve source running as the LFO ran, its points and polarity kept.
   - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
     in quarter notes, as an LFO does), clock modes and anchoring, and takes a new value every cycle. **Chaos** sets
     how far it may move from the last one: up to a tenth of the range either way at 0 %, so it wanders, rising to
@@ -162,8 +167,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
   whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
   Every source can be either, for all of its modulations, picked from its right-click menu or the switch after its
-  name in the MODS view (see the editor): LFOs, Random sources and the pitch bend start bipolar, and envelopes, macros, the note
-  source, the mod wheel and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of
+  name in the MODS view (see the editor): LFOs, Random sources and the pitch bend start bipolar, and Curve sources, envelopes, macros,
+  the note source, the mod wheel and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of
   it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel, note source, velocity or pitch
   bend about the middle of what it puts out (a macro moves nothing with its knob at 50 %, the pitch bend nothing at
   rest). LFOs and envelopes run
@@ -268,7 +273,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.
-  - **Custom** shapes are drawn from 2 to 64 points, starting as a triangle: up from the bottom to the top at the
+  - A Curve source's shape is drawn from 2 to 64 points, starting as a triangle: up from the bottom to the top at the
     middle of the cycle and down again. Each segment between two points can be bent, from easing in
     to easing out, and the last segment wraps around to the first point, so the cycle loops without a jump. The
     points are saved with the patch (as params of the editor's own, which hosts aren't given: see
@@ -1018,7 +1023,7 @@ one may have changed since it last did.
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
-      an entry under the mouse. The source's lists the sources by category (LFOs, the Random sources among them, Envelopes,
+      an entry under the mouse. The source's lists the sources by category (LFOs, the Random and Curve sources among them, Envelopes,
       Note & MIDI for the MIDI sources, Macros, and Keyboard:
       Note, Velocity, Mod Wheel and Pitch Bend); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
@@ -1072,10 +1077,10 @@ one may have changed since it last did.
     octave) and a random phase, in one undo step. The reset button (a circular arrow) goes back to a
     sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
     edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
-  - **Shape editor**: picking an LFO's Custom shape, a click anywhere on a Custom LFO's display (which shows an
+  - **Shape editor**: adding a Curve source, a click anywhere on a Curve source's display (which shows an
     edit button, a pencil, in its corner), or the expand button in its title row, left of the fold button, widens its card to two card places, the cards after it moving along and the row scrolling to show it
     whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
-    the other views can be turned and switched as the shape changes. The widened card keeps the LFO's own controls where a normal card has them,
+    the other views can be turned and switched as the shape changes. The widened card keeps the source's own controls where a normal card has them,
     with the shape tools and drawing modes where its display was (see below), and the shape's plot beside them,
     264 px across; under the plot, the point under the mouse in numbers (its number, its place in the cycle and its
     level) and the grid's steppers, and over it, as its tooltip, how to edit it. Its title row has, before the
@@ -1094,7 +1099,7 @@ one may have changed since it last did.
     staying first and each segment bent the other way; **Shift left** and **Shift right** move it a column of the
     grid earlier or later, round the cycle (where the new start falls, a point is put on the curve if there is none
     there, splitting its segment without changing its course); **Copy** keeps the shape, and **Paste** puts it into
-    another LFO (faint until a shape is copied; for now LFO shapes only). Under them, **Points | Steps** picks what a
+    another Curve source (faint until a shape is copied; for now Curve sources' shapes only). Under them, **Points | Steps** picks what a
     click on the shape does, in the card and in every big editor below, which has them too (left of its GRID, or in
     a shaper effect's narrower editor in its title row, left of the reset button): with Points, as below; with
     Steps, a click draws a step, as Shift+click does with Points, and Shift+click works with points. **Snap** snaps
@@ -1199,7 +1204,7 @@ one may have changed since it last did.
     Ratio readout's place, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
     handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
     ratio. Switched off, the ratio, Pitch and Detune count again as they were. While the wave is Custom,
-    an edit button (a pencil, the same as a Custom LFO's and a drawn shaper curve's), left of the keyboard, opens
+    an edit button (a pencil, the same as a Curve source's and a drawn shaper curve's), left of the keyboard, opens
     the operator's partial editor (lit while it is open; a second click closes it, as does picking another operator, filter or shaper in the
     inspector). Under the knobs, tabs pick what
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
@@ -1264,19 +1269,20 @@ one may have changed since it last did.
   opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one (which opens a collapsed panel), and beside it how many of the 16 places are taken, as in 4/16 (with every
-  place taken it is dimmed, and a click says so). A Random card is laid out as an LFO's (see below), but has
-  **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way its depths
-  swing, as the polarity in its title's menu does, no Unipolar switch and no Phase knob. A MIDI card has its input's list (CC,
+  place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
+  have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
+  depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
   card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types at the mouse, moved back
-  inside the editor where it would reach past an edge (LFO, Envelope,
-  Random and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
+  inside the editor where it would reach past an edge (LFO, Curve, Random,
+  Envelope and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
   the list. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
-  them along. Sources are numbered by type in the order they show ("LFO 2", "Env 1", "Random 1", "MIDI 1").
+  them along. Sources are numbered by type in the order they show ("LFO 2", "Curve 1", "Env 1", "Random 1",
+  "MIDI 1").
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way. A faint image of it follows the mouse anywhere, over the other panels too, and only its outline shows where it would land; the other cards make room only once the mouse is clear of the card's own place, where the mouse is.
     With Ctrl held as it starts to move, it carries a copy instead, as Duplicate makes one (no targets), which
     stays right after the original while the mouse is over it and lands where it is let go of: one undo step.
@@ -1297,7 +1303,7 @@ one may have changed since it last did.
     while it modulates nothing (and scales no modulation as its aux).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
     to drag it by, the switch and ×, then the name, which unfolds it: its letters down the strip and its number
-    across (a Random source's shortened to RND).
+    across (a Random source's shortened to RND, a Curve source's to CRV).
   - Each source has a colored handle in its card's title row. Drag it onto any knob, wire label
     or matrix cell; a filter's cutoff is the classic target. Held near the left or right end of the modulation
     panel or the effects chain, it scrolls those cards that way, faster nearer the edge, so a knob on a card out of
@@ -1334,8 +1340,9 @@ one may have changed since it last did.
     polarity switch has.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A
-    unipolar LFO's display has its zero line at the bottom. A Custom LFO's
-    display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor).
+    unipolar LFO's display has its zero line at the bottom. A Curve source's
+    display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor);
+    a new one starts widened.
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a matrix cell, centered along its foot, the ranges along its top, right of a mode's glyph; on a wire or OUT label in the
@@ -1668,7 +1675,7 @@ Hosts are given 1,262 of FMVibe's 19,381 parameters: the globals, the operators,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
-bypass, the freeform LFO shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
+bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
 counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
 retired fields. They are
 saved with the project and in presets like the others, the editor's sources modulate them and its history undoes

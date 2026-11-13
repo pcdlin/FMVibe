@@ -150,13 +150,14 @@ enum class ShaperParam {
 // Random and Midi came later. Random is a random LFO: it runs as an LFO does, with the LFO's Rate, Sync, Division,
 // Free, One-Shot and Anchor, and takes a new value each cycle (see RandomChaos and RandomSmooth below); at a Rate of
 // 0 Hz (unsynced) it takes one as each note starts (see lfoHeld()) and holds it. It has no Shape, Phase or Unipolar,
-// but its Bipolar. Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice; pressure,
+// but its Bipolar. Curve, added after them, is an LFO of a drawn shape: it runs as an LFO with the Custom shape does
+// (see lfoShape()), with every LFO field but Shape, its points the place's freeform shape (see ShapeParam). Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice; pressure,
 // a voice's own note's (MIDI polyphonic aftertouch, CLAP's pressure expression, or channel pressure on an MPE member
 // channel) once some came, else the channel's; or slide, a voice's own note's (CLAP's brightness expression, or
 // CC 74 on an MPE member channel), resting in the middle.
 // It follows that through Slew, a time constant (at its least, 1 ms, all but at once). Both are unipolar unless
 // their Bipolar is on, which swings their depths across the set value as a bipolar LFO's (see sourceBipolar()).
-enum class SourceType { None, Lfo, Env, Random, Midi, Count };
+enum class SourceType { None, Lfo, Env, Random, Midi, Curve, Count };
 // What a Midi source follows. Stored in projects by number: only append.
 enum class MidiInput { Cc, Pressure, Slide, Count };
 // After Type and Enabled come kSlots (target, amount) pairs. A slot's target
@@ -291,10 +292,10 @@ constexpr int kBendParamCount = static_cast<int>(BendParam::Count);
 enum class SlotAuxParam { Aux, Amount, Count };
 constexpr int kSlotAuxFields = static_cast<int>(SlotAuxParam::Count);
 
-// Stored in projects by number: only append. Random is retired, the Random source taking its place: the editor no
-// longer offers it, and a state from before version 11 loads an LFO with it as a Random source (see state.cpp). An
-// LFO still holding it (a state can) plays it as a Random source would. A Random source runs as an LFO of this shape
-// (see lfoShape()).
+// Stored in projects by number: only append. Random and Custom are retired, the Random and Curve sources taking their
+// places: the editor no longer offers them, and a state from before version 11 loads an LFO with Random as a Random
+// source, and one from before version 12 an LFO with Custom as a Curve source (see state.cpp). An LFO still holding
+// either (a state can) plays it as that source would. Those sources run as LFOs of these shapes (see lfoShape()).
 enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 // Stored in projects by number: only append.
 // Custom is a wave drawn from partials: see partialLevelIndex(). Alt Sine is a sine at twice the rate for the first
@@ -915,8 +916,11 @@ constexpr int sourceOf(int index) {
 constexpr SourceParam sourceFieldOf(int index) {
     return sourceOf(index) < 0 ? SourceParam::Count : static_cast<SourceParam>((index - kSourceBase) % kSourceParamCount);
 }
-// Whether a source of type `t` runs as an LFO, on an LFO's clock: an LFO, and Random, a random LFO.
-constexpr bool runsLfo(SourceType t) { return t == SourceType::Lfo || t == SourceType::Random; }
+// Whether a source of type `t` runs as an LFO, on an LFO's clock: an LFO, Random, a random LFO, and Curve, one of a
+// drawn shape.
+constexpr bool runsLfo(SourceType t) {
+    return t == SourceType::Lfo || t == SourceType::Random || t == SourceType::Curve;
+}
 // Whether a source of type `t` uses field `f`: every source uses Type, Enabled and its slots.
 constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     if (f < SourceParam::Shape)
@@ -925,9 +929,10 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::EnvBipolar:
         return t == SourceType::Env;
     case SourceParam::Shape:
+        return t == SourceType::Lfo;
     case SourceParam::Unipolar:
     case SourceParam::Phase:
-        return t == SourceType::Lfo;
+        return t == SourceType::Lfo || t == SourceType::Curve;
     case SourceParam::Rate:
     case SourceParam::Sync:
     case SourceParam::Division:
@@ -975,11 +980,15 @@ inline SourceType sourceType(double value) {
     const long t = std::lround(value);
     return static_cast<SourceType>(t < 0 ? 0 : (t >= static_cast<long>(SourceType::Count) ? 0 : t));
 }
-// The shape the source in place `source` runs as an LFO: its Shape, or Random for a Random source.
+// The shape the source in place `source` runs as an LFO: its Shape, Random for a Random source, or Custom (its
+// freeform shape) for a Curve source.
 template <class Get>
 LfoShape lfoShape(const Get &get, int source) {
-    if (sourceType(get(paramIndex(source, SourceParam::Type))) == SourceType::Random)
+    const SourceType type = sourceType(get(paramIndex(source, SourceParam::Type)));
+    if (type == SourceType::Random)
         return LfoShape::Random;
+    if (type == SourceType::Curve)
+        return LfoShape::Custom;
     const long shape = std::lround(get(paramIndex(source, SourceParam::Shape)));
     return static_cast<LfoShape>(std::clamp(shape, 0l, static_cast<long>(LfoShape::Count) - 1));
 }
@@ -1249,7 +1258,8 @@ constexpr Polarity polarityOf(int source, SourceType type) {
            : isWheel(source)          ? Polarity{paramIndex(WheelParam::Bipolar), 1.0}
            : isNote(source)           ? Polarity{paramIndex(NoteParam::Bipolar), 1.0}
            : isMacro(source)          ? Polarity{paramIndex(source - kMaxSources, MacroParam::Bipolar), 1.0}
-           : type == SourceType::Lfo  ? Polarity{paramIndex(source, SourceParam::Unipolar), 0.0}
+           : type == SourceType::Lfo || type == SourceType::Curve
+               ? Polarity{paramIndex(source, SourceParam::Unipolar), 0.0}
            : type == SourceType::Env  ? Polarity{paramIndex(source, SourceParam::EnvBipolar), 1.0}
                                       : Polarity{paramIndex(source, SourceParam::Bipolar), 1.0};
 }
@@ -1695,7 +1705,7 @@ static_assert(numberedInOrder({AmpMic::Dynamic, AmpMic::Condenser, AmpMic::Ribbo
 static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Slide, MidiInput::Count}),
               "MidiInput is stored by number: only append");
 static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Random,
-                               SourceType::Midi, SourceType::Count}),
+                               SourceType::Midi, SourceType::Curve, SourceType::Count}),
               "SourceType is stored by number: only append");
 static_assert(numberedInOrder({SlotAuxParam::Aux, SlotAuxParam::Amount, SlotAuxParam::Count}),
               "SlotAuxParam is stored by number: only append");

@@ -212,7 +212,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     as saved; and a version 9 state's depths on its thresholds loading three quarters as deep, as their range grew
     from 60 dB to 80, a version 10 state's as saved; and a version 10 state's Random source loading as one standing
     still at 0 Hz and its LFO with the retired Random shape as a Random source running as it ran, a version 11
-    state's as saved;
+    state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
+    it ran (its points and polarity kept), a version 12 state's as saved;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -245,8 +246,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
     192 kHz;
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
-    retrigger taking a new one), a freeform LFO's points at one time (a vertical line, its last
-    counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
+    retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
+    counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
+    an LFO with the retired Custom shape did, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
@@ -412,7 +414,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
     following its input; a Random card's Unipolar | Bipolar, where an LFO's shape list is, bipolar to begin
-    with, setting its polarity (read off the rendered pixels), undoably;
+    with, setting its polarity (read off the rendered pixels), undoably; a Curve source added second from the list,
+    unipolar and widened, its Unipolar | Bipolar in the same place setting its Unipolar, undoably, and folded showing
+    CRV and its number (read off the rendered pixels);
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel or Pitch Bend) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -558,14 +562,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
     double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too (the wheel stepping through the counts), the ones a lower count hides kept as they were, the
     edit button (a pencil) by the keyboard switch opening the partial editor and closing it, as another node's tab
-    in the inspector does (read off the rendered pixels), and the full-size LFO shape editor hiding the inspector;
-  - a Custom LFO's card: picking Custom widening it, and so a click on its display (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
-    tools inverting, reversing and shifting the shape (each one undo step) and copying it into another LFO (one card
+    in the inspector does (read off the rendered pixels), and the full-size shape editor hiding the inspector;
+  - a Curve source's card: a click on its display widening it (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
+    tools inverting, reversing and shifting the shape (each one undo step) and copying it into another Curve source (one card
     widened at a time), its title row's expand button widening it as a click on its display does, Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
     full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
     tab, the card staying widened, also while the modulation panel collapses, and the
-    card back to its size by its collapse button or another shape;
-  - an LFO's shape list (going with the LFO undone, offering no Random shape, the wheel stepping past it), a Random
+    card back to its size by its collapse button;
+  - an LFO's shape list (going with the LFO undone, offering no Random or Custom shape, the wheel stepping along it
+    to Square), a Random
     source starting synced and bipolar, its knobs, its dot waiting at the end of a cycle and, at 0 Hz, a line at the value it holds
     (read off the rendered pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
     onto its neighbor's time, and
@@ -858,7 +863,7 @@ breakpoints in `src/` then hit.
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
 | `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
-| `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
+| `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
@@ -954,12 +959,15 @@ itself.
   along. A host can still set the retired type (the Type param's range takes it in): such a slot does nothing, and a
   state keeps it as it is. Likewise the LFO's Random shape (`LfoShape::Random`), which the Random source took over:
   the shape list doesn't offer it, a state from before version 11 loads an LFO with it as a Random source, and an LFO
-  a later state holds with it plays it as a Random source does.
+  a later state holds with it plays it as a Random source does; and the LFO's Custom shape (`LfoShape::Custom`),
+  which the Curve source took over, a state from before version 12 loading an LFO with it as a Curve source.
 - Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
-  Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random or MIDI) that
+  Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random, MIDI or Curve) that
   picks which are used (`sourceFieldUsedBy()`). A Random source is a random LFO: it runs through the LFOs' code with
   the LFO's clock fields, Smooth and Chaos, as an LFO of the retired Random shape (`lfoShape()`), its polarity its own
-  Bipolar. Hosts are given only a place's slot depths and Amounts; its fields go by place
+  Bipolar. A Curve source is an LFO of a drawn shape: it runs as an LFO of the retired Custom shape, with every LFO
+  field but Shape (its polarity the LFO's Unipolar, which the editor turns on for a new one) and its place's freeform
+  shape. Hosts are given only a place's slot depths and Amounts; its fields go by place
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
@@ -988,7 +996,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 11: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 12: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1004,8 +1012,9 @@ itself.
   loads scaled by `kMdRetiredThresholdMinDb / kMdThresholdMinDb`, since their range now reaches down to -80 dB rather
   than -60; before version 11, a Random source, which then took a value for each note, loads unsynced at 0 Hz (the
   LFO fields it now uses otherwise at their defaults), standing still and taking one for each note, and an LFO with
-  the retired Random shape as a Random source running as it ran (`loadRandomSources()`)), followed by the editor
-  layout:
+  the retired Random shape as a Random source running as it ran (`loadRandomSources()`); before version 12, an LFO
+  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`)), followed by the
+  editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
