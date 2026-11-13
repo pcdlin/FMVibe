@@ -530,16 +530,18 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
         }
         break;
     }
-    case FxType::Amp: { // a combo seen from the front: a strip of knobs over a speaker
+    case FxType::Amp: { // a combo seen from the front: its name and knobs along the top, over the grille cloth
         const Rect box{r.x + 0.7f, r.y + 0.7f, r.w - 1.4f, r.h - 1.4f};
         c.strokeRect(box, color, 1.3f, kRadiusMark);
-        const float strip = box.y + 0.3f * box.h;
+        const float strip = box.y + 0.34f * box.h, knobs = (box.y + strip) * 0.5f;
         c.line({box.x, strip}, {box.right(), strip}, color, 1.1f);
-        for (float x : {0.27f, 0.5f, 0.73f})
-            c.fillCircle({box.x + x * box.w, (box.y + strip) * 0.5f}, 0.95f, color);
-        const Point cone{box.center().x, (strip + box.bottom()) * 0.5f};
-        c.strokeCircle(cone, 0.38f * (box.bottom() - strip), color, 1.2f);
-        c.fillCircle(cone, 0.95f, color);
+        c.line({box.x + 0.14f * box.w, knobs}, {box.x + 0.36f * box.w, knobs}, color, 1.4f); // the name
+        for (float x : {0.57f, 0.72f, 0.87f})
+            c.fillCircle({box.x + x * box.w, knobs}, 1.0f, color);
+        for (float t : {0.3f, 0.65f}) { // the cloth
+            const float y = strip + t * (box.bottom() - strip);
+            c.line({box.x + 0.14f * box.w, y}, {box.right() - 0.14f * box.w, y}, color.alpha(0.6f), 1.0f);
+        }
         break;
     }
     case FxType::Utility: { // the stereo field as its display draws it: wide at the top, the bass narrowed to the middle
