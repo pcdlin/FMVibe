@@ -7868,10 +7868,16 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
         uint32_t ring = 0, band = 0;
         for (float dx = -3.0f; dx <= 3.0f; dx += 1.0f) // the source's handle, in its color
             ring = most(ring, renderer.pixel({sourceHandle(0).x + dx, sourceHandle(0).y}));
-        // A depth handle along the display's foot, short of the meter: a saturated pixel there that wasn't before.
+        // A depth handle along the display's foot, centered on it: its saturated pixels, and where their middle is.
         int handlePixels = 0;
-        for (float x = detail::kOpDisplay.right() - 130.0f; x < detail::kOpDisplay.right() - 26.0f; x += 1.0f)
-            handlePixels += saturation(renderer.pixel({x, detail::kOpDisplay.bottom() - 8.0f})) > 60 ? 1 : 0;
+        float handleSum = 0.0f;
+        for (float x = detail::kOpDisplay.x + 30.0f; x < detail::kOpDisplay.right() - 26.0f; x += 1.0f)
+            if (saturation(renderer.pixel({x, detail::kOpDisplay.bottom() - 8.0f})) > 60) {
+                ++handlePixels;
+                handleSum += x;
+            }
+        const float handleAt = handlePixels > 0 ? handleSum / static_cast<float>(handlePixels) : 0.0f;
+        const bool centered = std::abs(handleAt - detail::kOpDisplay.center().x) < 2.0f;
         // The axis runs from the display's foot (0) to its top (1), 10 px in: the band read at 0.33, clear of the
         // diamond where Position plays (0.2) and inside the LFO's reach.
         const float axisX = detail::kOpDisplay.right() - 14.0f;
@@ -7884,11 +7890,12 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
                              std::abs(static_cast<int>(a & 255) - static_cast<int>(b & 255))});
         };
         std::printf("      Position modulated: dropped %d, the source's handle %06X, the meter's band %06X, %d apart, a "
-                    "depth handle %d px\n",
-                    dropped, ring & 0xFFFFFF, band & 0xFFFFFF, apart(ring, band), handlePixels);
-        check(dropped && saturation(ring) > 60 && apart(ring, band) < 40 && handlePixels >= 4,
-              "a source's handle dropped on the TABLE tab's display modulates Position, its depth handle along the "
-              "display's foot and its band on the meter in its color");
+                    "depth handle %d px at x %.1f (the display's middle %.1f)\n",
+                    dropped, ring & 0xFFFFFF, band & 0xFFFFFF, apart(ring, band), handlePixels, handleAt,
+                    detail::kOpDisplay.center().x);
+        check(dropped && saturation(ring) > 60 && apart(ring, band) < 40 && handlePixels >= 4 && centered,
+              "a source's handle dropped on the TABLE tab's display modulates Position, its depth handle centered "
+              "along the display's foot and its band on the meter in its color");
         model.set(slotTargetIndex(2, 0), 0.0);
         model.set(slotAmountIndex(2, 0), 0.0);
         model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::None));

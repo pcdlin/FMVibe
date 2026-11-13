@@ -1250,7 +1250,7 @@ private:
     // An operator's Ratio, whose depth handles drag on its log curve, an octave every 60 px.
     static bool isRatioTarget(int param);
     // A Wavetable operator's Position, a knob drawn as its TABLE tab's display (see paintTableTab()): dragged up and
-    // down, a source dropped anywhere on it, its depth handles along its bottom edge, left of its meter.
+    // down, a source dropped anywhere on it, its depth handles centered along its bottom edge.
     static bool isTableDisplay(const Widget &w);
     static float compactTextX(const Widget &w);
     static float knobRadius(const Widget &w);

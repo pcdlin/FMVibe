@@ -675,7 +675,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     picker opening the table browser, a row picking a table, Done closing it and the steps going through the tables;
     a click on the TABLE tab's display (Position has no knob) setting Position where the mouse is on the meter's
     scale and a drag following it, one undo step each, Shift dragging it finely from where it is, the wheel, a
-    double-click and Ctrl+Click as a knob's, and the lit frame in the stack moving with it, and a source's handle dropped on the display modulating Position, its depth handle along the display's
+    double-click and Ctrl+Click as a knob's, and the lit frame in the stack moving with it, and a source's handle dropped on the display modulating Position, its depth handle centered along the display's
     foot and its band on the meter in the source's color (both read off the rendered pixels); the warp on the TABLE tab, a
     layout left on WARP showing it and asking for no scope, its buttons, Amount and NOTE each an undo step and the
     played frame drawn warped (read off the rendered pixels); a table

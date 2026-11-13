@@ -2972,18 +2972,18 @@ std::vector<View::Widget> View::widgets() const {
             continue;
         }
         // Under a knob, 10 px apart and centered; a header knob's go under its knob, at its left.
-        // The Ratio readout's go along its box's bottom edge; the TABLE tab's display's along its bottom edge too, in
-        // its right part (under the stack's back frames, which rise away from it), short of its meter.
-        constexpr float kTableHandlesW = 92.0f;
+        // The Ratio readout's go along its box's bottom edge; the TABLE tab's display's along its bottom edge too,
+        // centered on it, as many as fit clear of its meter at the right (and as far in from the left).
         const bool tableDisplay = isTableDisplay(list[i]);
+        const float tableHandlesW = r.w - 2.0f * 30.0f;
         const Point base = isRatioDisplay(list[i]) ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
-                           : tableDisplay          ? Point{r.right() - 30.0f - 0.5f * kTableHandlesW, r.bottom() - 8.0f}
+                           : tableDisplay          ? Point{r.center().x, r.bottom() - 8.0f}
                            : list[i].compact       ? Point{r.x + 18.0f, r.y + 37.0f}
                                                    : Point{r.center().x, r.y + r.w - 1.0f};
         // The Ratio readout keeps its handles clear of its box's rounded corners.
         constexpr float kStep = 10.0f;
         const float width = isRatioDisplay(list[i]) ? r.w - 9.0f
-                            : tableDisplay          ? kTableHandlesW
+                            : tableDisplay          ? tableHandlesW
                             : list[i].compact       ? 34.0f
                                                     : r.w;
         const float dot = sizes.dot; // the handles stay inside that width at the user's size
