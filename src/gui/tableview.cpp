@@ -441,19 +441,30 @@ void View::paintTableTab(Canvas &c, Rect r, int op) {
                              : std::clamp(knob + telemetry_.modOffset[pos], 0.0f, 1.0f);
     const Rect stack{r.x + 4.0f, r.y + 6.0f, r.w - 30.0f, r.h - 10.0f};
     paintTableStack(c, stack, *d, 32, played, kAccent);
-    // The depth axis along the right: the knob's value ringed, how far modulation reaches a band, the frame played a
-    // diamond.
+    // The depth axis along the right: the knob's value ringed, each modulation's reach a band in its source's color as
+    // the knob's rings draw it (faint while its source is off or it is bypassed, wider while its depth handle is under
+    // the mouse), the frame played a diamond.
     const Point front{r.right() - 14.0f, r.bottom() - 10.0f}, back{r.right() - 14.0f, r.y + 10.0f};
-    auto along = [&](float v) { return Point{front.x, front.y + (back.y - front.y) * std::clamp(v, 0.0f, 1.0f)}; };
+    auto along = [&](double v) {
+        return Point{front.x, front.y + (back.y - front.y) * static_cast<float>(std::clamp(v, 0.0, 1.0))};
+    };
     c.line(front, back, kBorder, 2.0f);
-    float reach = 0.0f;
-    for (const Assignment &m : assignments())
-        if (m.target == pos && !m.bypassed)
-            reach += std::abs(static_cast<float>(value(slotAmountIndex(m.source, m.slot))));
-    if (reach > 0.0f) {
-        const Point a = along(knob - reach), b = along(knob + reach);
-        c.line(a, b, look.fxTypes[static_cast<int>(FxType::MultiDyn)].alpha(0.7f), 4.0f);
+    const double n = norm(pos);
+    auto band = [&](const Assignment &m, float width, float alpha) {
+        const auto [down, up] = modReach(m);
+        c.line(along(n + down), along(n + up), ringColor(kSourceColors[m.source], kAccent).alpha(alpha), width);
+    };
+    std::vector<Assignment> focus;
+    for (const Assignment &m : assignments()) {
+        if (m.target != pos)
+            continue;
+        if (modFocused(m))
+            focus.push_back(m);
+        else
+            band(m, 3.0f, (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f));
     }
+    for (const Assignment &f : focus)
+        band(f, 5.0f, sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f);
     c.strokeCircle(along(knob), 4.0f, kDim, 1.2f);
     const Point d0 = along(played);
     const Point diamond[] = {{d0.x, d0.y - 5.0f}, {d0.x + 4.0f, d0.y}, {d0.x, d0.y + 5.0f}, {d0.x - 4.0f, d0.y}};

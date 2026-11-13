@@ -7806,6 +7806,48 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "wt-4-position-1.png");
     check(turned > 0.2 && strip() != atStart, "Position's knob turns, and the lit frame in the stack moves with it");
 
+    // Position modulated by LFO 3, whose color is far from the effects': the depth axis's band in the color of the knob's ring (read off the rendered
+    // pixels), each the most saturated pixel along it.
+    {
+        model.set(position, 0.2);
+        model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        model.set(slotTargetIndex(2, 0), slotTargetValue(position));
+        model.set(slotAmountIndex(2, 0), 0.3);
+        view.poll();
+        view.mouseMove({lens.center().x, lens.y + 40.0f}, {});
+        renderer.save(view, dir / "wt-4b-position-modulated.png");
+        auto saturation = [](uint32_t p) {
+            const int r = p >> 16 & 255, g = p >> 8 & 255, b = p & 255;
+            return std::max({r, g, b}) - std::min({r, g, b});
+        };
+        auto most = [&](uint32_t best, uint32_t p) { return saturation(p) > saturation(best) ? p : best; };
+        uint32_t ring = 0, band = 0;
+        const Point knobAt{detail::kTablePosKnob.x, detail::kOpControlsY};
+        for (int k = 0; k < 360; ++k) {
+            const double a = k * std::numbers::pi / 180.0;
+            ring = most(ring, renderer.pixel({knobAt.x + 16.5f * static_cast<float>(std::cos(a)),
+                                              knobAt.y + 16.5f * static_cast<float>(std::sin(a))}));
+        }
+        // The axis runs from the display's foot (0) to its top (1), 10 px in: the band read at 0.33, clear of the
+        // diamond where Position plays (0.2) and inside the LFO's reach.
+        const float axisX = detail::kOpDisplay.right() - 14.0f;
+        const float foot = detail::kOpDisplay.bottom() - 10.0f, top = detail::kOpDisplay.y + 10.0f;
+        for (float dx = -1.0f; dx <= 1.0f; dx += 1.0f)
+            band = most(band, renderer.pixel({axisX + dx, foot + (top - foot) * 0.33f}));
+        auto apart = [](uint32_t a, uint32_t b) {
+            return std::max({std::abs(static_cast<int>(a >> 16 & 255) - static_cast<int>(b >> 16 & 255)),
+                             std::abs(static_cast<int>(a >> 8 & 255) - static_cast<int>(b >> 8 & 255)),
+                             std::abs(static_cast<int>(a & 255) - static_cast<int>(b & 255))});
+        };
+        std::printf("      Position modulated: knob's ring %06X, depth axis's band %06X, %d apart\n", ring & 0xFFFFFF,
+                    band & 0xFFFFFF, apart(ring, band));
+        check(saturation(ring) > 60 && apart(ring, band) < 40,
+              "a modulated Position's band on the TABLE tab's depth axis takes the knob's ring's color");
+        model.set(slotTargetIndex(2, 0), 0.0);
+        model.set(slotAmountIndex(2, 0), 0.0);
+        model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::None));
+    }
+
     // Importing a Serum table: one undo step that sets the table and opens its tab; undone, the factory table again.
     model.set(position, 0.0);
     const std::string said = model.importOperatorData(0, DataKind::Table, tableWav(8), "Saws.wav");

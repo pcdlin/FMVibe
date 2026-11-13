@@ -1331,7 +1331,9 @@ one may have changed since it last did.
     - **TABLE** (a Wavetable operator's, between UNISON and WARP; picking TABLE, or importing a table, opens it): the
       table's frames as a stack seen from a little above and to the side, the first at the front, the frame Position
       plays lit in the accent over them, and Position in % at the top left. Along the right, a depth axis: the knob's
-      value ringed, how far modulation takes it as a band, and the frame the newest voice plays as a diamond (with no
+      value ringed, each modulation's reach as a band in its source's color, as the Position knob's rings draw it (faint
+      while the source is off or the modulation bypassed, wider while its depth handle is under the mouse), and the
+      frame the newest voice plays as a diamond (with no
       note, the knob's value with its modulation). Dragged up and down, the display sets Position, as the
       **Position** knob under it does.
     - **SAMPLE** (a Sample operator's, in WARP's place): the sample's waveform, its name at the top left and its

@@ -672,7 +672,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the lens and a Wavetable's five tabs fitting; TABLE making the operator a Wavetable and opening its tab, WAVE
     bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
     picker opening the table browser, a row picking a table, Done closing it and the steps going through the tables;
-    Position's knob turning and the lit frame in the stack moving with it (read off the rendered pixels); a table
+    Position's knob turning and the lit frame in the stack moving with it, and a modulated Position's band on the
+    depth axis in the color of the knob's ring (both read off the rendered pixels); a table
     imported, undone back to the factory table and redone, its data kept while the history names it; the browser's
     Import file... opening the file dialog;
   - the table browser over a library of made-up folders: a folder's table loading from its row, the preview drawing
