@@ -101,6 +101,10 @@ enum class OpParam {
     Ratio,                          // 0..1 on a log curve, 0.5 to 64 times the note; see ratioFromNorm()
     Pan,                            // -1..1: where what it puts out (to the output, the filters, the shapers) sits;
                                     // what other operators hear of it stays mono
+    Sync,                           // Note Sync, stored by number: 0 off, 1 hard sync to the note (its phase restarts
+                                    // at Phase each cycle of the note's pitch; see OpSync)
+    Warp,                           // one of OpWarp, by number: how its wave's cycle is read (see warpPhase())
+    WarpAmount,                     // -1..1, 0 (every warp's plain wave) to begin with
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -302,6 +306,13 @@ enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 // half of the cycle and silence for the second, like the classic FM chips'; Organ a stack of drawbar harmonics; Vowel
 // a buzz through two formant peaks, an "ah".
 enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise, Custom, AltSine, Organ, Vowel, Count };
+// What an operator's Sync restarts its wave with: nothing, or the note's pitch. Stored by number: only append (an
+// operator to sync to could come after Note).
+enum class OpSync { Off, Note, Count };
+// How an operator reads its wave's cycle (see warpPhase() in warp.h): as it is, bent toward its start or end, squeezed
+// into a share of the cycle about its middle (a square's pulse width), squeezed into a pulse that then rests, in
+// steps, or played several times through and cut off (Sync). Stored by number: only append.
+enum class OpWarp { Off, Bend, Squeeze, Pulse, Steps, Sync, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
@@ -1534,7 +1545,9 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(0, OpParam::RetiredVelocity)) == 108 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Phase)) == 378 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 &&
+                  idOfIndex(paramIndex(0, OpParam::Sync)) == 131 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 && kOpParamCount <= 50,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -1686,6 +1699,10 @@ static_assert(numberedInOrder({OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWa
                                OpWave::HalfSine, OpWave::AbsSine, OpWave::Noise, OpWave::Custom, OpWave::AltSine,
                                OpWave::Organ, OpWave::Vowel, OpWave::Count}),
               "OpWave is stored by number: only append");
+static_assert(numberedInOrder({OpSync::Off, OpSync::Note, OpSync::Count}), "OpSync is stored by number: only append");
+static_assert(numberedInOrder({OpWarp::Off, OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps,
+                               OpWarp::Sync, OpWarp::Count}),
+              "OpWarp is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
                                FilterType::Comb, FilterType::Count}),
               "FilterType is stored by number: only append");
@@ -1842,6 +1859,13 @@ inline double fixedHz(double freqNorm, double mult) { return fixedFreqFromNorm(f
 inline int fixedSwitchOp(int index) {
     for (int op = 0; op < kOps; ++op)
         if (index == paramIndex(op, OpParam::Fixed))
+            return op;
+    return -1;
+}
+// The operator whose `field` the param is, or -1.
+inline int opOfField(int index, OpParam field) {
+    for (int op = 0; op < kOps; ++op)
+        if (index == paramIndex(op, field))
             return op;
     return -1;
 }
@@ -2318,6 +2342,7 @@ enum class ParamKind {
     AmpDistance,  // 0..1 on a log curve, shown in cm or m; see ampDistanceCm()
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
+    OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2361,18 +2386,25 @@ bool isBipolar(ParamKind kind);
 // A stepped param that modulation still drives, a step at a time (its value rounded): an LFO's synced rate.
 constexpr bool modulatedInSteps(int index) { return sourceFieldOf(index) == SourceParam::Division; }
 // Continuous params are the ones LFOs, envelopes and host modulators can drive, and those modulatedInSteps(); not the
-// retired ones (see isRetired()), which do nothing.
-// Not the macros' own knobs: they are read as set.
+// retired ones (see isRetired()), which do nothing. And the macros' knobs (see isMacroKnob()).
 bool isRetired(int index);
 // The wheels' positions, played rather than set: the mod wheel and the pitch bend. Not part of the patch's edits (no
 // undo step), nor a target the editor offers modulation.
 constexpr bool isPlayed(int index) {
     return index == paramIndex(GlobalParam::ModWheel) || index == paramIndex(GlobalParam::PitchBend);
 }
+// A macro's knob (MacroParam::Value), which the other sources can modulate too: the LFOs, envelopes and the rest, the
+// mod wheel and the other macros (as long as no loop forms, see macroReaches()). It is past kModulatedCount: what the
+// sources add to it moves what the macro modulates (see MacroGraph), not a param the voices or the effects read.
+constexpr bool isMacroKnob(int index) {
+    const int macro = macroOf(index);
+    return macro >= 0 && index == paramIndex(macro, MacroParam::Value);
+}
 inline bool isModTarget(int index) {
-    return index >= 0 && index < kMacroBase && !isRetired(index) &&
-           (!isStepped(paramTable()[index].kind) || modulatedInSteps(index)) &&
-           paramTable()[index].kind != ParamKind::ShapePoint;
+    return isMacroKnob(index) ||
+           (index >= 0 && index < kMacroBase && !isRetired(index) &&
+            (!isStepped(paramTable()[index].kind) || modulatedInSteps(index)) &&
+            paramTable()[index].kind != ParamKind::ShapePoint);
 }
 // Value of a slot target param pointing at param `index`, and back (-1 = none or invalid).
 inline double slotTargetValue(int index) { return index < 0 ? 0.0 : idOfIndex(index) + 1.0; }
@@ -2391,18 +2423,161 @@ int slotAux(const Get &get, int source, int slot) {
     return aux == source ? -1 : aux;
 }
 
+// The knobs of the sources that have one, by kMacros + 1: the macros', then the mod wheel's.
+using MacroKnobs = std::array<double, kMacros + 1>;
+constexpr int knobOf(int source) { return isWheel(source) ? kMacros : source - kMaxSources; }
+// Each knob as set, `get(index)` returning a param value.
+template <class Get>
+MacroKnobs macroKnobsSet(const Get &get) {
+    MacroKnobs knobs{};
+    for (int macro = 0; macro < kMacros; ++macro)
+        knobs[macro] = get(paramIndex(macro, MacroParam::Value));
+    knobs[kMacros] = get(paramIndex(GlobalParam::ModWheel));
+    return knobs;
+}
+
+// How the macros' knobs are modulated (see isMacroKnob()): the slots of the macros and the mod wheel on them that
+// aren't bypassed, which every voice shares, and the order the macros are worked out in, each after the macros whose
+// knobs it reads (through those slots or as their auxes). A loop, which the editor doesn't make but a host or a state
+// can, is broken where it closes: the macro read there that comes later in the order is read as set. And the macros a
+// source of each voice moves (an LFO's slot on its knob, say, or a link whose aux runs per voice), on their knobs or
+// through the knob of a macro before them, which each voice works out again for itself (see Synth::renderBlock()).
+struct MacroLink {
+    int source; // a macro (kMaxSources + macro) or the mod wheel
+    int slot;
+    int to; // the macro whose knob it moves
+};
+struct MacroGraph {
+    std::array<int, kMacros> order{};
+    std::array<int, kMacros> rank{}; // each macro's place in the order
+    std::array<MacroLink, (kMacros + 1) * kSlots> links{};
+    int linkCount = 0;
+    uint32_t voiceMoved = 0; // a bit a macro
+};
+template <class Get>
+MacroGraph macroGraph(const Get &get) {
+    MacroGraph g;
+    std::array<uint32_t, kMacros> reads{}; // the macros each macro's knob reads, a bit each
+    for (int source = 0; source < kAllSources; ++source)
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const int target = slotTarget(get(slotTargetIndex(source, slot)));
+            if (!isMacroKnob(target) || get(slotBypassIndex(source, slot)) >= 0.5)
+                continue;
+            const int to = macroOf(target);
+            if (!hasKnob(source)) {
+                g.voiceMoved |= 1u << to;
+                continue;
+            }
+            g.links[g.linkCount++] = {source, slot, to};
+            if (isMacro(source))
+                reads[to] |= 1u << knobOf(source);
+            if (const int aux = slotAux(get, source, slot); aux >= 0 && isMacro(aux))
+                reads[to] |= 1u << knobOf(aux);
+            else if (aux >= 0 && runsPerVoice(aux))
+                g.voiceMoved |= 1u << to;
+        }
+    uint32_t placed = 0;
+    for (int n = 0; n < kMacros; ++n) {
+        int next = -1;
+        for (int m = 0; m < kMacros && next < 0; ++m)
+            if (!(placed >> m & 1u) && (reads[m] & ~placed & ~(1u << m)) == 0)
+                next = m;
+        for (int m = 0; m < kMacros && next < 0; ++m) // a loop: the first macro left goes next
+            if (!(placed >> m & 1u))
+                next = m;
+        g.order[n] = next;
+        g.rank[next] = n;
+        placed |= 1u << next;
+    }
+    for (int n = 0; n < kMacros; ++n) { // a macro reading one a voice moves, before it in the order, moves with it
+        const int m = g.order[n];
+        for (int f = 0; f < kMacros; ++f)
+            if ((reads[m] >> f & 1u) && (g.voiceMoved >> f & 1u) && g.rank[f] < n)
+                g.voiceMoved |= 1u << m;
+    }
+    return g;
+}
+
+// The knobs as modulation takes them: `knobs` comes in as set and goes out with the macros' links added, in the
+// graph's order, each knob in its range (0..1); `extra` (a macro each, or null) adds what a voice's sources add to
+// the macros' knobs. `voiceAux(source)` is what an aux that runs per voice puts out, or below 0 to leave its links
+// out, as for what every voice shares. `onLink(source, slot, offset)` hears what each link adds. `get(index)` returns
+// a param value.
+template <class Get, class VoiceAux, class OnLink>
+void runMacroGraph(const MacroGraph &g, const Get &get, MacroKnobs &knobs, const double *extra,
+                   const VoiceAux &voiceAux, const OnLink &onLink) {
+    const MacroKnobs set = knobs;
+    for (int n = 0; n < kMacros; ++n) {
+        const int m = g.order[n];
+        auto knob = [&](int source) { // as macro `m` reads it: one later in the order, or itself, as set
+            const int k = knobOf(source);
+            return k == kMacros || g.rank[k] < n ? knobs[k] : set[k];
+        };
+        double value = set[m] + (extra ? extra[m] : 0.0);
+        for (int l = 0; l < g.linkCount; ++l) {
+            const MacroLink &link = g.links[l];
+            if (link.to != m)
+                continue;
+            const double amount = get(slotAmountIndex(link.source, link.slot));
+            if (amount == 0.0)
+                continue;
+            double scale = get(slotScaleIndex(link.source, link.slot));
+            if (const int aux = slotAux(get, link.source, link.slot); aux >= 0) {
+                const double out = runsPerVoice(aux) ? voiceAux(aux) : knob(aux);
+                if (out < 0.0)
+                    continue;
+                scale *= out;
+            }
+            const bool bipolar = sourceBipolar(get, link.source);
+            const double offset = slotCurveValue(knob(link.source) - (bipolar ? 0.5 : 0.0),
+                                                 get(slotCurveIndex(link.source, link.slot)), bipolar) *
+                                  amount * scale;
+            onLink(link.source, link.slot, offset);
+            value += offset;
+        }
+        knobs[m] = std::clamp(value, 0.0, 1.0);
+    }
+}
+// The knobs as every voice shares them: as set, with the macros' and the mod wheel's links on them.
+template <class Get>
+MacroKnobs sharedMacroKnobs(const Get &get, const MacroGraph &g) {
+    MacroKnobs knobs = macroKnobsSet(get);
+    runMacroGraph(g, get, knobs, nullptr, [](int) { return -1.0; }, [](int, int, double) {});
+    return knobs;
+}
+
+// Whether macro `from`'s knob reaches macro `to`'s through the macros' slots on one another's knobs, bypassed or not
+// (`from == to` does): a slot of macro `to` on `from`'s knob would close a loop.
+template <class Get>
+bool macroReaches(const Get &get, int from, int to) {
+    uint32_t reached = 1u << from, frontier = reached;
+    while (frontier != 0) {
+        uint32_t next = 0;
+        for (int m = 0; m < kMacros; ++m)
+            if (frontier >> m & 1u)
+                for (int slot = 0; slot < kSlots; ++slot)
+                    if (const int target = slotTarget(get(slotTargetIndex(kMaxSources + m, slot))); isMacroKnob(target))
+                        next |= 1u << macroOf(target);
+        frontier = next & ~reached;
+        reached |= next;
+    }
+    return (reached >> to & 1u) != 0;
+}
+
 // What the macros and the mod wheel add to their targets, the same for every voice and the effects, notes playing or
-// not: calls `add(target, offset, source, slot)` for each slot in use, the offset in plain units. `get(index)` returns a param
-// value. A slot whose aux runs per voice (an LFO, say) is left to the voices, which add it with their aux's value
-// (see Synth::renderBlock()); one scaled by a macro or the mod wheel takes that knob's value here.
+// not: calls `add(target, offset, source, slot)` for each slot in use, the offset in plain units, with the knobs as
+// `knobs` has them (see sharedMacroKnobs()). `get(index)` returns a param value. A slot whose aux runs per voice (an
+// LFO, say) is left to the voices, which add it with their aux's value (see Synth::renderBlock()); one scaled by a
+// macro or the mod wheel takes that knob's value here. The slots on the macros' knobs are the graph's (see
+// runMacroGraph()), not listed here.
 template <class Get, class Add>
-void forEachMacroMod(const Get &get, const Add &add) {
+void forEachMacroMod(const Get &get, const MacroKnobs &knobs, const Add &add) {
     for (int source = kMaxSources; source < kAllSources; ++source) {
         if (!hasKnob(source))
             continue;
         // Bipolar, the knob's middle moves nothing, and its ends half the depth either way.
         const bool bipolar = sourceBipolar(get, source);
-        const double knob = get(stripKnobIndex(source)) - (bipolar ? 0.5 : 0.0);
+        const double knob = knobs[knobOf(source)] - (bipolar ? 0.5 : 0.0);
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(get(slotTargetIndex(source, slot)));
             const double amount = get(slotAmountIndex(source, slot));
@@ -2411,7 +2586,7 @@ void forEachMacroMod(const Get &get, const Add &add) {
             const int aux = slotAux(get, source, slot);
             if (aux >= 0 && runsPerVoice(aux))
                 continue;
-            const double scale = get(slotScaleIndex(source, slot)) * (aux >= 0 ? get(stripKnobIndex(aux)) : 1.0);
+            const double scale = get(slotScaleIndex(source, slot)) * (aux >= 0 ? knobs[knobOf(aux)] : 1.0);
             add(target,
                 slotCurveValue(knob, get(slotCurveIndex(source, slot)), bipolar) * amount * scale *
                     (paramTable()[target].max - paramTable()[target].min),
@@ -2449,6 +2624,7 @@ bool parseParam(int index, const char *text, double *out);
 
 const char *lfoShapeName(LfoShape shape);
 const char *waveName(OpWave wave);
+const char *warpName(OpWarp warp);
 const char *filterTypeName(FilterType type);
 const char *filterTypeShortName(FilterType type);
 const char *divisionName(int division);

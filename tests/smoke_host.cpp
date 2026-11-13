@@ -690,6 +690,10 @@ int main(int argc, char **argv) {
         int filter = 0;     // the filter A goes through
         bool intoLast = false; // that filter is heard only through the last one, filter 2, a 300 Hz low-pass
         double mix = 1.0;      // that filter's Mix
+        bool sync = false;     // A's hard sync to the note
+        double ratio = 1.0;    // A's ratio
+        OpWarp warp = OpWarp::Off; // A's warp, and its amount
+        double warpAmount = 0.0;
     };
     // Plays the patch for ~0.1 s; returns the left channel after a short settle.
     auto play = [&](const Patch &patch) {
@@ -701,6 +705,10 @@ int main(int argc, char **argv) {
             paramEvent(filterModIndex(0, 0), patch.f1ToA),
             paramEvent(matrixIndex(1, 0), patch.bToA),
             paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(patch.wave)),
+            paramEvent(paramIndex(0, OpParam::Sync), patch.sync ? 1.0 : 0.0),
+            paramEvent(paramIndex(0, OpParam::Ratio), normFromRatio(patch.ratio)),
+            paramEvent(paramIndex(0, OpParam::Warp), static_cast<double>(patch.warp)),
+            paramEvent(paramIndex(0, OpParam::WarpAmount), patch.warpAmount),
             paramEvent(paramIndex(0, OpParam::Out), patch.throughFilter ? 0.0 : 1.0),
             paramEvent(paramIndex(patch.filter, FilterParam::Type), static_cast<double>(patch.type)),
             paramEvent(paramIndex(patch.filter, FilterParam::Slope), patch.slope),
@@ -977,6 +985,43 @@ int main(int argc, char **argv) {
     check(std::abs(altSine / (3.0 * 3.141592653589793 / 8.0) - 1.0) < 0.05 && std::abs(organ - 1.0) < 0.05 &&
               vowel < 0.7,
           "Alt Sine, Organ and Vowel have the harmonics they are made of");
+    // Hard sync: a sine at 2.5 times an A4 plays 1100 Hz on its own; synced to the note, its cycles restart with the
+    // A4's, so what sounds is the A4's harmonic series (440, 880, 1320 Hz) and 1100 Hz is gone.
+    {
+        const std::vector<float> free = play({.ratio = 2.5});
+        const std::vector<float> synced = play({.sync = true, .ratio = 2.5});
+        const double freeOff = magnitude(free, 1100.0) / std::max(magnitude(free, 440.0), 1e-9);
+        const double syncedOff = magnitude(synced, 1100.0) / std::max(magnitude(synced, 880.0), 1e-9);
+        const double syncedFundamental = magnitude(synced, 440.0) / std::max(magnitude(synced, 880.0), 1e-9);
+        std::printf("      a sine at x2.5: 1100/440 Hz %.1f free; synced 1100/880 Hz %.4f, 440/880 Hz %.3f\n", freeOff,
+                    syncedOff, syncedFundamental);
+        check(!free.empty() && !synced.empty() && freeOff > 100.0 && syncedOff < 0.01 && syncedFundamental > 0.2,
+              "a synced operator plays the note's harmonic series, not its own pitch");
+    }
+    // The Sync warp plays the wave 1 + 7 x |amount| times through each cycle: at 2/7 three times, so an A4 sine
+    // comes out as 1320 Hz alone; at 2.5/7, 3.5 times, cut off where the cycle ends, so what sounds stays on the A4's
+    // harmonics and nothing sounds at 1540 Hz.
+    {
+        const std::vector<float> three = play({.warp = OpWarp::Sync, .warpAmount = 2.0 / 7.0});
+        const std::vector<float> cut = play({.warp = OpWarp::Sync, .warpAmount = 2.5 / 7.0});
+        const double threeOff = magnitude(three, 440.0) / std::max(magnitude(three, 1320.0), 1e-9);
+        const double cutOff = magnitude(cut, 1540.0) / std::max(magnitude(cut, 1320.0), 1e-9);
+        std::printf("      Sync warp on a sine: 440/1320 Hz %.4f at x3; 1540/1320 Hz %.4f at x3.5\n", threeOff, cutOff);
+        check(!three.empty() && !cut.empty() && threeOff < 0.01 && cutOff < 0.01,
+              "the Sync warp plays the wave several times through each cycle, on the note's harmonics");
+    }
+    // Squeeze on a square is its pulse width: at 0 a square has no 2nd harmonic; at +50 % (a pulse 72 % wide) and
+    // -50 % (28 %) its 2nd harmonic is |sin(2 pi d)| / 2 / sin(pi d) of its fundamental, about 0.64.
+    {
+        const double square = secondHarmonicRatio({.wave = OpWave::Square, .warp = OpWarp::Squeeze});
+        const double wide = secondHarmonicRatio({.wave = OpWave::Square, .warp = OpWarp::Squeeze, .warpAmount = 0.5});
+        const double narrow =
+            secondHarmonicRatio({.wave = OpWave::Square, .warp = OpWarp::Squeeze, .warpAmount = -0.5});
+        std::printf("      a square's 880/440 Hz: %.3f at 50 %%, %.3f squeezed wide, %.3f narrow\n", square, wide,
+                    narrow);
+        check(square < 0.01 && std::abs(wide - 0.63) < 0.05 && std::abs(narrow - 0.63) < 0.05,
+              "Squeeze moves a square's pulse width, and its harmonics with it");
+    }
 
     // Filters, with A's saw routed through filter 1.
     const double lowPassed = secondHarmonicRatio(
@@ -2201,10 +2246,13 @@ int main(int argc, char **argv) {
         check(slewed > 0.8f * resting && unslewed < 0.01f, "a source's Slew follows its controller slowly");
 
         // Random standing still (unsynced, at 0 Hz): a level of its own for each note, from none of A to all of it.
+        // Each note's level comes from the voice's generator, seeded by how many notes came before, so the notes this
+        // test plays are a different sample whenever a check before it plays more or fewer: sixteen of them span less
+        // than 30 % of the range about once in ten million samples, where eight did about once in a thousand.
         setParams({{type, static_cast<double>(SourceType::Random)}, {paramIndex(0, SourceParam::Sync), 0.0},
                    {paramIndex(0, SourceParam::Rate), 0.0}});
         float lowest = resting, highest = 0.0f;
-        for (int n = 0; n < 8; ++n) {
+        for (int n = 0; n < 16; ++n) {
             const float peak = peakOf(play({}));
             lowest = std::min(lowest, peak);
             highest = std::max(highest, peak);
@@ -2212,7 +2260,7 @@ int main(int argc, char **argv) {
         setParams({{type, static_cast<double>(SourceType::None)}, {slotTargetIndex(0, 0), 0.0},
                    {slotAmountIndex(0, 0), 0.0}, {paramIndex(0, SourceParam::Sync), 1.0},
                    {paramIndex(0, SourceParam::Rate), paramTable()[paramIndex(0, SourceParam::Rate)].def}});
-        std::printf("      Random on A's output at -100 %%: peaks of eight notes from %.3f to %.3f\n", lowest, highest);
+        std::printf("      Random on A's output at -100 %%: peaks of sixteen notes from %.3f to %.3f\n", lowest, highest);
         check(highest - lowest > 0.3f * resting && highest <= resting * 1.001f,
               "a Random source gives each note a value of its own");
     }

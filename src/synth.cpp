@@ -1,4 +1,5 @@
 #include "synth.h"
+#include "warp.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,6 +19,7 @@ namespace {
 bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
 
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
+constexpr double kWarpSlew = 250.0;           // how fast an operator's warp amount moves at most, a second
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
 constexpr double kMaxFeedback = std::numbers::pi;
 // The other ways a route can act on an operator (see RouteMode), at a 100 % amount and FM Amount: Linear FM swings
@@ -638,19 +640,41 @@ void Synth::applyMacros(const ParamValues &params) {
         macroMod_[macroTargets_[i]] = 0.0;
     macroTargetCount_ = 0;
     auto get = [this, &params](int i) { return hostValue(params, i); };
-    forEachMacroMod(get, [this](int target, double offset, int, int) {
+    // The knobs first, as the macros' and the mod wheel's slots on them take them, then what the knobs move.
+    macroGraph_ = macroGraph(get);
+    macroSet_ = macroKnobsSet(get);
+    macroKnobs_ = sharedMacroKnobs(get, macroGraph_);
+    voiceMovedSlotCount_ = 0;
+    forEachMacroMod(get, macroKnobs_, [&](int target, double offset, int source, int slot) {
         macroMod_[target] += offset;
         macroTargets_[macroTargetCount_++] = target;
+        // A slot whose knob, or aux's, the voices' sources move: each voice takes this back for its own.
+        const int aux = slotAux(get, source, slot);
+        if (!voiceMovedMacro(source) && !(aux >= 0 && voiceMovedMacro(aux)))
+            return;
+        const bool bipolar = sourceBipolar(get, source);
+        voiceMovedSlots_[voiceMovedSlotCount_++] = {
+            source,
+            slot,
+            target,
+            aux,
+            get(slotCurveIndex(source, slot)),
+            get(slotAmountIndex(source, slot)) * get(slotScaleIndex(source, slot)) *
+                (table_[target].max - table_[target].min),
+            bipolar,
+            offset};
     });
     voiceMacroSlotCount_ = 0;
     for (int source = kMaxSources; source < kAllSources; ++source) {
         if (!hasKnob(source))
             continue;
-        for (int slot = 0; slot < kSlots; ++slot)
-            if (const int aux = slotAux(get, source, slot); aux >= 0 && runsPerVoice(aux) &&
-                                                             slotTarget(params[slotTargetIndex(source, slot)]) >= 0 &&
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const int target = slotTarget(params[slotTargetIndex(source, slot)]);
+            if (const int aux = slotAux(get, source, slot); aux >= 0 && runsPerVoice(aux) && target >= 0 &&
+                                                             target < kModulatedCount &&
                                                              params[slotBypassIndex(source, slot)] < 0.5)
                 voiceMacroSlots_[voiceMacroSlotCount_++] = {source, slot};
+        }
     }
 }
 
@@ -1184,6 +1208,8 @@ void Synth::telemetry(Telemetry &out) const {
         if (!newest || v.order > newest->order)
             newest = &v;
     }
+    for (int m = 0; m < kMacros; ++m) // the macros' knobs as modulation takes them: in the newest voice, or every voice's
+        out.macroOffset[m] = static_cast<float>((newest ? newest->auxOut[kMaxSources + m] : macroKnobs_[m]) - macroSet_[m]);
     if (!newest) {
         // The free and anchored LFOs' shared clocks run on with no voice, and the editor's cards show them running.
         for (int s = 0; s < kMaxSources; ++s) {
@@ -1207,7 +1233,8 @@ void Synth::telemetry(Telemetry &out) const {
             }
             for (int m = 0; m < fxTailModCount_; ++m) {
                 const SlotMod &mod = fxTailMods_[m];
-                out.modOffset[mod.index] += static_cast<float>(mod.offset);
+                if (mod.index < kModulatedCount)
+                    out.modOffset[mod.index] += static_cast<float>(mod.offset);
                 if (mod.slot >= 0)
                     out.slotOffset[mod.slot] =
                         static_cast<float>(mod.offset / (table_[mod.index].max - table_[mod.index].min));
@@ -1217,7 +1244,8 @@ void Synth::telemetry(Telemetry &out) const {
     }
     for (int m = 0; m < newest->slotModCount; ++m) {
         const SlotMod &mod = newest->slotMods[m];
-        out.modOffset[mod.index] += static_cast<float>(mod.offset);
+        if (mod.index < kModulatedCount) // not a macro's knob, which macroOffset has
+            out.modOffset[mod.index] += static_cast<float>(mod.offset);
         if (mod.slot >= 0)
             out.slotOffset[mod.slot] =
                 static_cast<float>(mod.offset / (table_[mod.index].max - table_[mod.index].min));
@@ -1351,10 +1379,10 @@ void Synth::shareSlots(const ParamValues &params) {
             slot.scale = hostValue(params, slotScaleIndex(source, s));
             slot.voiceAux = -1;
             if (const int aux = slotAux(get, source, s); aux >= 0) {
-                if (runsPerVoice(aux))
+                if (runsPerVoice(aux) || voiceMovedMacro(aux)) // a macro the voice's sources move, as the voice has it
                     slot.voiceAux = aux;
                 else
-                    slot.scale *= hostValue(params, stripKnobIndex(aux));
+                    slot.scale *= macroKnobs_[knobOf(aux)];
             }
             slot.range = table_[target].max - table_[target].min;
             slot.depth = hostValue(params, slotAmountIndex(source, s));
@@ -1373,6 +1401,155 @@ void Synth::shareVoiceParams(const ParamValues &params) {
     std::copy(voiceClamped_.begin(), voiceClamped_.end(), voiceParams_.begin());
     voiceParamsChangedCount_ = 0;
     voiceBaseReady_ = true;
+}
+
+// What a warped operator's copy adds to this sample and the next for the warp's bends its phase passes before the next
+// sample, from `cycle` (`stretch` along the warp's stretch) on by `step`: each bend in its slope smoothed over the two
+// samples (polyBLAMP), by the change in slope, in the output's units a sample: the wave's slope where the warp reads
+// it there (over a sample at the faster side's speed) times the change in speed. Kept out of the voices' loop, which
+// passes a bend only now and then.
+namespace {
+
+struct WarpBends {
+    double now = 0.0, next = 0.0;
+};
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float *table, double cycle, double stretch,
+                    double step) {
+    WarpBends out;
+    const double by = step * kinks.perCycle; // how far it goes, in stretches
+    auto slopeAt = [&](double at, double span) { // the wave's, in its units a cycle
+        return (WaveTables::read(table, at + span) - WaveTables::read(table, at - span)) / (2.0 * span);
+    };
+    auto smooth = [&](int o, double ahead) {
+        const double until = ahead / by; // of a sample, to the bend
+        const double after = 1.0 - until;
+        if (coefs.mode == OpWarp::Sync) {
+            // Sync's cycle end: the wave jumps from where its last cycle is cut off back to its start, as a hard
+            // sync's restart does (polyBLEP), and its slope with it (polyBLAMP), at the same speed on either side.
+            const double span = 0.5 * std::abs(step) * coefs.a;
+            const double end = coefs.b, start = 0.0;
+            const double jump =
+                (WaveTables::read(table, start) - WaveTables::read(table, end)) * (step > 0.0 ? 1.0 : -1.0);
+            const double bend = coefs.a * std::abs(step) * (slopeAt(start, span) - slopeAt(end, span));
+            out.now += jump * 0.5 * after * after + bend * after * after * after / 6.0;
+            out.next += -jump * 0.5 * until * until + bend * until * until * until / 6.0;
+            return;
+        }
+        const double kink = cycle + ahead / kinks.perCycle;
+        const double at = warpPhase(coefs, kink - std::floor(kink));
+        const double span = 0.5 * std::abs(step) * std::max(kinks.before[o], kinks.after[o]);
+        const double slope = slopeAt(at, span);
+        const double bend = slope * std::abs(step) * (kinks.after[o] - kinks.before[o]);
+        out.now += bend * after * after * after / 6.0;
+        out.next += bend * until * until * until / 6.0;
+    };
+    for (int o = 0; o < kinks.count; ++o) {
+        double ahead = kinks.offsets[o] - stretch;
+        if (by > 0.0) {
+            if (ahead <= 0.0)
+                ahead += 1.0;
+            for (; ahead <= by; ahead += 1.0)
+                smooth(o, ahead);
+        } else {
+            if (ahead >= 0.0)
+                ahead -= 1.0;
+            for (; ahead >= by; ahead -= 1.0)
+                smooth(o, ahead);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+// Each copy read through its warp, and restarted by its master.
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
+                                    const UnisonGains *gains, bool sides,
+                                    const std::array<double, kMaxUnison> &syncIncStep, double warpStep) {
+    OpSample out;
+    const WarpCoefs coefs = warpCoefs(op.warp, op.warpNow);
+    const bool warping = coefs.mode != OpWarp::Off;
+    const WarpKinks kinks = warpKinks(coefs);
+    auto read = [&](double phase) {
+        return warping ? WaveTables::readCycle(table, warpPhase(coefs, phase - std::floor(phase)))
+                       : static_cast<double>(WaveTables::read(table, phase));
+    };
+    bool carrying = false;
+    for (int k = 0; k < copies; ++k) {
+        const double here = op.phases[k] + offset;
+        const double cycle = here - std::floor(here); // where along its cycle it is, 0..1
+        double x =
+            (warping ? WaveTables::readCycle(table, warpPhase(coefs, cycle)) : WaveTables::read(table, here)) +
+            op.syncCarry[k];
+        op.syncCarry[k] = 0.0;
+        const double advance = factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+        op.phases[k] += advance;
+        bool restarted = false;
+        if (op.syncOn) {
+            double master = op.syncPhases[k] + op.syncIncNow[k];
+            if (master >= 1.0) {
+                // The master's cycle ended `after` of a sample before the next one: the copy restarts at its start
+                // there. Its step and the change in its slope are spread over this sample and the next as
+                // band-limited ones would be (polyBLEP and polyBLAMP).
+                master -= 1.0;
+                const double after = std::min(master / op.syncIncNow[k], 1.0);
+                const double at = op.phases[k] - after * advance; // where the restart cut it off
+                const double start = op.startPhases[k];
+                const double from = read(at + offset), to = read(start + offset);
+                const double jump = to - from;
+                const double bend = (read(start + advance + offset) - to) - (from - read(at - advance + offset));
+                const double before = 1.0 - after;
+                x += jump * 0.5 * after * after + bend * after * after * after / 6.0;
+                op.syncCarry[k] = -jump * 0.5 * before * before + bend * before * before * before / 6.0;
+                carrying = true;
+                restarted = true;
+                op.phases[k] = start + after * advance;
+            }
+            op.syncPhases[k] = master;
+            op.syncIncNow[k] += syncIncStep[k];
+        }
+        // The warp's bends that the phase passes before the next sample (as it moves now), each smoothed as a sync's
+        // restart is: by the change in the slope, over this sample and the next (polyBLAMP). Along each of the warp's
+        // stretches (its steps, or the cycle), `ahead` is how far on a bend is.
+        if (warping && !restarted && advance != 0.0) {
+            const double along = cycle * kinks.perCycle;
+            const double stretch = kinks.perCycle == 1.0 ? cycle : along - std::floor(along); // 0..1
+            const double by = advance * kinks.perCycle; // how far it goes, in stretches
+            // Only now and then does it pass one: then they are smoothed out of the loop's way.
+            bool passes = false;
+            for (int o = 0; o < kinks.count; ++o) {
+                const double ahead = kinks.offsets[o] - stretch;
+                passes = passes || (by > 0.0 ? (ahead > 0.0 ? ahead : ahead + 1.0) <= by
+                                             : (ahead < 0.0 ? ahead : ahead - 1.0) >= by);
+            }
+            if (passes) {
+                const WarpBends bends = warpBends(coefs, kinks, table, cycle, stretch, advance);
+                x += bends.now;
+                op.syncCarry[k] += bends.next;
+                carrying = true;
+            }
+        }
+        if (op.phases[k] >= 1.0 || op.phases[k] < 0.0)
+            op.phases[k] -= std::floor(op.phases[k]);
+        out.mono += x;
+        if (sides) {
+            out.l += x * gains->gainL[k];
+            out.r += x * gains->gainR[k];
+        }
+    }
+    op.carrying = carrying;
+    op.warpNow += warpStep;
+    return out;
 }
 
 void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params) {
@@ -1439,7 +1616,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     auto scaleOf = [&](int source, int s) {
         double scale = hostValue(params, slotScaleIndex(source, s));
         if (const int aux = slotAux(getParam, source, s); aux >= 0)
-            scale *= runsPerVoice(aux) ? v.auxOut[aux] : hostValue(params, stripKnobIndex(aux));
+            scale *= runsPerVoice(aux) || isMacro(aux) ? v.auxOut[aux] : macroKnobs_[kMacros];
         return scale;
     };
     // What slot `s` of `source` takes of the source's `swing`, through the slot's curve (see slotCurveValue()).
@@ -1468,6 +1645,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                1.0);
     if (v.fresh)
         v.auxOut[kNoteSource] = noteSourceValue([&](int i) { return hostValue(params, i); }, pitchNow());
+    // The macros' knobs as every voice shares them, but those the voice's sources move (below), which a note starts
+    // from there.
+    for (int m = 0; m < kMacros; ++m)
+        if (v.fresh || !(macroGraph_.voiceMoved >> m & 1u))
+            v.auxOut[kMaxSources + m] = macroKnobs_[m];
     if (!sharedSlotsReady_)
         shareSlots(params);
     // A shared slot's depth scale in this voice: what is the same for every voice, times its own source's aux.
@@ -1588,6 +1770,43 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                                             kBendSource * kSlots + slot.slot};
         }
     }
+    // The macros' knobs as this voice's sources take them (see MacroGraph::voiceMoved): with what the places, velocity
+    // and the pitch bend add to them this block, and the note source from where it stood the last block (on a note's
+    // first, where it starts), then the macros' slots on one another. Then what those knobs make of the slots they
+    // move, against what every voice shares of them (in macroMod_ already).
+    // A macro's or the mod wheel's knob as the voice has it.
+    auto voiceKnob = [&](int source) { return isMacro(source) ? v.auxOut[source] : macroKnobs_[kMacros]; };
+    if (macroGraph_.voiceMoved != 0) {
+        std::array<double, kMacros> extra{};
+        for (int m = 0; m < v.slotModCount; ++m)
+            if (isMacroKnob(v.slotMods[m].index))
+                extra[macroOf(v.slotMods[m].index)] += v.slotMods[m].offset;
+        const bool noteBipolar = params[paramIndex(NoteParam::Bipolar)] >= 0.5;
+        for (int k = 0; k < sharedSlotCount_[kNoteSource]; ++k) {
+            const SharedSlot &slot = sharedSlots_[kNoteSource][k];
+            if (!isMacroKnob(slot.target) || slot.depth == 0.0)
+                continue;
+            const double offset = slotCurveValue(v.auxOut[kNoteSource] - (noteBipolar ? 0.5 : 0.0), slot.curve,
+                                                 noteBipolar) *
+                                  slot.depth * sharedScale(slot) * slot.range;
+            v.slotMods[v.slotModCount++] = {slot.target, offset, kNoteSource * kSlots + slot.slot};
+            extra[macroOf(slot.target)] += offset;
+        }
+        MacroKnobs knobs = macroSet_;
+        runMacroGraph(
+            macroGraph_, [&](int i) { return hostValue(params, i); }, knobs, extra.data(),
+            [&](int aux) { return v.auxOut[aux]; }, [](int, int, double) {});
+        for (int m = 0; m < kMacros; ++m)
+            v.auxOut[kMaxSources + m] = knobs[m];
+        for (int k = 0; k < voiceMovedSlotCount_; ++k) {
+            const VoiceMovedSlot &slot = voiceMovedSlots_[k];
+            const double offset = slotCurveValue(voiceKnob(slot.source) - (slot.bipolar ? 0.5 : 0.0), slot.curve,
+                                                 slot.bipolar) *
+                                      slot.depth * (slot.aux >= 0 ? voiceKnob(slot.aux) : 1.0) -
+                                  slot.shared;
+            v.slotMods[v.slotModCount++] = {slot.target, offset, slot.source * kSlots + slot.slot};
+        }
+    }
     // The macros' and the mod wheel's slots that an aux of this voice scales (see applyMacros()).
     for (int k = 0; k < voiceMacroSlotCount_; ++k) {
         const auto [source, s] = voiceMacroSlots_[k];
@@ -1596,7 +1815,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (target < 0 || amount == 0.0)
             continue;
         const bool bipolar = sourceBipolar(getParam, source);
-        const double swing = hostValue(params, stripKnobIndex(source)) - (bipolar ? 0.5 : 0.0);
+        const double swing = voiceKnob(source) - (bipolar ? 0.5 : 0.0);
         v.slotMods[v.slotModCount++] = {target,
                                         bent(source, s, swing, bipolar) * amount * scaleOf(source, s) *
                                             (table_[target].max - table_[target].min),
@@ -1618,7 +1837,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             for (int k = 0; k < kMaxUnison; ++k) {
                 const double phase = start + amount * 0.5 * (nextRandom(v.rng) + 1.0);
                 v.ops[i].phases[k] = phase - std::floor(phase);
+                v.ops[i].startPhases[k] = v.ops[i].phases[k];
+                v.ops[i].syncPhases[k] = 0.0; // a cycle of the note starts with the note
+                v.ops[i].syncCarry[k] = 0.0;
             }
+            v.ops[i].carrying = false;
         }
     }
 
@@ -1651,7 +1874,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const int noteModsStart = v.slotModCount;
     for (int k = 0; k < sharedSlotCount_[kNoteSource]; ++k) {
         const SharedSlot &slot = sharedSlots_[kNoteSource][k];
-        if (slot.depth != 0.0) {
+        if (slot.depth != 0.0 && !isMacroKnob(slot.target)) { // its slots on macros' knobs came with the macros
             v.slotMods[v.slotModCount++] = {slot.target,
                                             slotCurveValue(swing, slot.curve, noteBipolar) * slot.depth *
                                                 sharedScale(slot) * slot.range,
@@ -1721,6 +1944,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     std::array<std::array<double, kMaxUnison>, kOps> incStep; // per sample, toward the block's increments
     std::array<bool, kOps> incMoving{}; // whether any of an operator's increments moves this block
     std::array<const UnisonIncs *, kOps> copy;
+    // Sync and the warp (see Operator): the operators that read their wave through either, or still carry a sync's
+    // smoothing over, take a loop of their own (see warpedSample()). The masters' increments move like the copies' do.
+    std::array<bool, kOps> warped{};
+    std::array<double, kOps> warpStep{};
+    std::array<std::array<double, kMaxUnison>, kOps> syncIncStep;
     std::array<const UnisonGains *, kOps> copyGains;
     // Switched-off operators and filters are skipped and route nothing.
     std::array<bool, kOps> opOn;
@@ -1740,6 +1968,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.out = 0.0;
             op.prevOut = 0.0;
             op.incKnown = false;
+            op.syncOn = false;
+            op.syncKnown = false;
+            op.carrying = false;
+            op.syncCarry.fill(0.0);
+            op.warp = OpWarp::Off;
+            op.warpNow = 0.0;
             v.levels.out[i] = 0.0;
             v.levels.send[i].fill(0.0);
             v.levels.shaperSend[i].fill(0.0);
@@ -1793,8 +2027,51 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         monoGain[i] = 1.0 / std::sqrt(static_cast<double>(copies[i]));
         const double detune = p[paramIndex(i, OpParam::UnisonDetune)];
         const double spread = p[paramIndex(i, OpParam::UnisonSpread)];
-        // The table suits the highest copy, so none of them reaches past Nyquist.
-        const double highest = copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc;
+        // The warp: its amount ramps to this block's over a control block, as the levels do; a warp changed to another
+        // first takes its amount down to 0 (the plain wave, whatever the warp), then switches and takes it up again.
+        double squeeze = 1.0; // how much faster the warp reads the wave at its steepest, for the table
+        {
+            const auto want = noise[i] ? OpWarp::Off
+                                       : static_cast<OpWarp>(stepped(p[paramIndex(i, OpParam::Warp)],
+                                                                      static_cast<int>(OpWarp::Count) - 1));
+            const double amount =
+                want == OpWarp::Off ? 0.0 : std::clamp(p[paramIndex(i, OpParam::WarpAmount)], -1.0, 1.0);
+            if (starting) {
+                op.warp = want;
+                op.warpNow = amount;
+            }
+            if (want != op.warp && (op.warp == OpWarp::Off || op.warpNow == 0.0)) {
+                op.warp = want;
+                op.warpNow = 0.0;
+            }
+            const double to = want == op.warp ? amount : 0.0;
+            if (std::abs(to - op.warpNow) < 1e-6) // close enough: there, rather than ever closer
+                op.warpNow = to;
+            // At most kWarpSlew of its range a second, so a jump (a host's, or the duck to 0 and back of a warp
+            // changed) moves the wave's shape over a few milliseconds; modulation moves far slower than that.
+            const double most = kWarpSlew / rate_;
+            warpStep[i] = std::clamp((to - op.warpNow) * ramp, -most, most);
+            if (op.warp == OpWarp::Off && want == OpWarp::Off)
+                op.warpNow = 0.0;
+            if (op.warp != OpWarp::Off)
+                squeeze = warpSqueeze(op.warp, std::max(std::abs(op.warpNow), std::abs(to)));
+        }
+        // Sync to the note: switched on, a master starts a cycle of the note there.
+        const bool syncing = !noise[i] && p[paramIndex(i, OpParam::Sync)] >= 0.5;
+        if (syncing && !op.syncOn) {
+            op.syncPhases.fill(0.0);
+            op.syncKnown = false;
+        }
+        op.syncOn = syncing;
+        if (noise[i]) { // noise has no cycle: what a sync carried is let go, and the warp with it
+            op.carrying = false;
+            op.warp = OpWarp::Off;
+            op.warpNow = 0.0;
+        }
+        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying;
+
+        // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
+        const double highest = (copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc) * squeeze;
         if (shape == OpWave::Custom)
             customWaves_[i].build(); // its tables follow its partials once a voice plays it
         wave[i] = shape == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(shape, highest);
@@ -1839,6 +2116,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         for (int k = 0; k < copies[i]; ++k) {
             incStep[i][k] = (copy[i]->inc[k] - op.incNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
             incMoving[i] = incMoving[i] || incStep[i][k] != 0.0;
+        }
+        // The masters: each a cycle of the note, detuned as its copy is.
+        if (op.syncOn) {
+            const double noteInc = std::min(noteHz / rate_, 0.5);
+            for (int k = 0; k < copies[i]; ++k) {
+                const double to = std::min(noteInc * std::exp2(copyOffset(k) * detune / 1200.0), 0.5);
+                if (starting || !op.syncKnown || op.syncCopies != copies[i])
+                    op.syncIncNow[k] = to;
+                syncIncStep[i][k] = (to - op.syncIncNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
+            }
+            op.syncKnown = true;
+            op.syncCopies = copies[i];
         }
 
         // Squared amounts give finer control over the subtle low end.
@@ -2202,9 +2491,19 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // Its envelope a sample at a time, here: run a block ahead into a buffer of its own (Envelope::run()), the
             // same levels made the voices a sixth slower with one copy in the plugins' MSVC build.
             const double envLevel = op.env.next(rates[i]);
-            const double scopePhase = i == scopeOp ? op.phases[0] : 0.0; // where this sample is read
+            // A synced operator's scope follows the note's cycles, which its own restart with.
+            const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;
-            if (noise[i]) {
+            if (warped[i]) {
+                // Synced or warped (see Operator): in a function of its own, so the plain loops below are as they were.
+                const OpSample out =
+                    warpedSample(op, wave[i], offset, factor, copies[i], copyGains[i],
+                                 route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i],
+                                 warpStep[i]);
+                mono = out.mono;
+                l = out.l;
+                r = out.r;
+            } else if (noise[i]) {
                 mono = nextRandom(v.rng);
                 mono = colored[i] ? noiseColor_.process(mono, noiseCoefs[i], op.noise[0]) : mono * whiteGain;
                 l = r = mono * noiseMid[i];

@@ -40,6 +40,14 @@ public:
         return table[i] + (table[i + 1] - table[i]) * static_cast<float>(x - i);
     }
 
+    // As read(), for a phase already within 0..1 (a warped one): without the floor, which a warped operator would
+    // otherwise take twice a copy and a sample.
+    static float readCycle(const float *table, double phase) {
+        const double x = phase * kSize;
+        const int i = std::clamp(static_cast<int>(x), 0, kSize - 1);
+        return table[i] + (table[i + 1] - table[i]) * static_cast<float>(x - i);
+    }
+
 private:
     static size_t offset(int wave, int level) { return (static_cast<size_t>(wave) * kLevels + level) * (kSize + 1); }
 

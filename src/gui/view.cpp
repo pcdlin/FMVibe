@@ -8,6 +8,7 @@
 #include "../effects.h"
 #include "../filter.h"
 #include "../uistrings.h"
+#include "../warp.h"
 #include "../wavetable.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <numbers>
 #include <numeric>
@@ -575,6 +577,10 @@ bool View::sourceUsed(int source) const {
 }
 
 void View::assign(int source, int target) {
+    if (!canModulate(source, target)) {
+        flash(refusedMessage(source, target));
+        return;
+    }
     const UndoScope step(controller_); // with the route it may keep
     int free = -1;
     for (int slot = kSlots - 1; slot >= 0; --slot) {
@@ -679,9 +685,8 @@ void View::setWireBend(int param, float bend) {
 }
 
 bool View::droppable(const Widget &w, int source) const {
-    const bool own = hasKnob(source) && w.param == stripKnobIndex(source);
     // A list's row takes it as an aux instead; a disabled widget, which the mouse passes by, takes nothing.
-    return w.param >= 0 && isModTarget(w.param) && !own && !w.popup && !w.disabled &&
+    return w.param >= 0 && canModulate(source, w.param) && !w.popup && !w.disabled &&
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
             w.kind == Kind::SlotBar);
 }
@@ -1107,6 +1112,8 @@ std::string View::paramName(int index) const {
         return target >= 0 ? trf(Str::ParamNameBypassOn, {sourceName(owner), paramName(target)})
                            : trf(Str::ParamNameBypass, {sourceName(owner)});
     }
+    if (isMacroKnob(index)) // by the name it is given
+        return sourceName(kMaxSources + macroOf(index));
     const int source = sourceOf(index);
     const std::string &name = table_[index].name;
     if (source < 0)
@@ -1412,7 +1419,7 @@ bool View::poll() {
     // The audio thread captures the operator whose scope shows, and nothing while none does.
     const UiLayout &layout = controller_.layout();
     const bool scope = layout.selectedNode < kOps && !inspectorCovered() &&
-                       opTabShown(layout.selectedNode) == InspectorTab::Scope;
+                       opTabShown(layout.selectedNode) == InspectorTab::Warp;
     controller_.setScope(scope ? layout.selectedNode : -1, layout.scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
@@ -1454,6 +1461,8 @@ bool View::poll() {
             in(panels);
         if (index < kOpBase) // the header's knobs; the mod wheel's, under the keys
             in(index == paramIndex(GlobalParam::ModWheel) ? lower : header);
+        else if (isMacroKnob(index)) // a macro's, under the keys too
+            in(lower);
         else if (sourceOf(index) >= 0)
             inCard(sourceOf(index));
         else // an operator's, the matrix's, a filter's, a shaper's: the routing panel and the inspector; an effect's
@@ -1477,6 +1486,9 @@ bool View::poll() {
         for (int i = 0; i < kModulatedCount && !everywhere; ++i)
             if (t.modOffset[i] != telemetry_.modOffset[i])
                 inTarget(i);
+        for (int m = 0; m < kMacros && !everywhere; ++m)
+            if (t.macroOffset[m] != telemetry_.macroOffset[m])
+                inTarget(paramIndex(m, MacroParam::Value));
         for (int k = 0; k < kAllSources * kSlots && !everywhere; ++k)
             if (t.slotOffset[k] != telemetry_.slotOffset[k])
                 inTarget(slotTarget(value(slotTargetIndex(k / kSlots, k % kSlots))));
@@ -2489,9 +2501,10 @@ std::vector<View::Widget> View::widgets() const {
         // The tabs, a noise operator's without the scope, then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
-            if (!isNoise(op) || static_cast<InspectorTab>(t) != InspectorTab::Scope)
-                add(Kind::OpTab, opTab(t), -1, t);
-        if (tab == InspectorTab::Scope)
+            if (const auto shown = static_cast<InspectorTab>(t);
+                shown != InspectorTab::Scope && (!isNoise(op) || shown != InspectorTab::Warp))
+                add(Kind::OpTab, opTab(t, isNoise(op)), -1, t);
+        if (tab == InspectorTab::Warp)
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
         if (isNoise(op)) {
@@ -2565,6 +2578,15 @@ std::vector<View::Widget> View::widgets() const {
             }
             if (inputsEnd(op) > 0.0f)
                 add(Kind::InputsScroll, inputsScrollTrack().inset(-3.0f));
+        }
+        if (tab == InspectorTab::Warp) {
+            // The warps as buttons, each its icon (named in its tooltip), its amount, and hard sync to the note.
+            const size_t buttons = list.size();
+            for (int m = 0; m < static_cast<int>(OpWarp::Count); ++m)
+                add(Kind::Choice, warpButton(m), paramIndex(op, OpParam::Warp), op, m);
+            merge(buttons);
+            knob(paramIndex(op, OpParam::WarpAmount), kWarpAmountKnob, 30.0f, tr(Str::LabelAmount));
+            add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         }
         if (tab == InspectorTab::Envelope) {
             const EnvIndices e = envIndices(op);
@@ -2764,6 +2786,23 @@ std::vector<View::Widget> View::widgets() const {
         if (list[i].clip.w <= 0.0f)
             list[i].clip = sourceCardClip();
 
+    // The macros: their knobs, the names under them and their handles, before the depth handles, which a macro's knob
+    // takes too.
+    const float macros = keyboardTop(controller_.layout().sourcesCollapsed);
+    for (int macro = 0; macro < kMacros; ++macro) {
+        const Point center = macroKnob(macros, macro);
+        std::snprintf(macroLabels_[macro].data(), macroLabels_[macro].size(), "%s",
+                      macroName(controller_.layout(), macro).c_str());
+        knob(paramIndex(macro, MacroParam::Value), center, 34.0f, macroLabels_[macro].data());
+        add(Kind::MacroName, {center.x - 0.5f * kMacroCell, center.y + 18.0f, kMacroCell, 17.0f}, -1, macro);
+        add(Kind::MacroHandle, {center.x - 42.0f, center.y - 10.0f, 20.0f, 20.0f}, -1, kMaxSources + macro);
+    }
+    // The note source's handle and velocity's, after them, work the same way; their displays open their curves.
+    add(Kind::MacroHandle, noteHandle(macros), -1, kNoteSource);
+    add(Kind::NoteDisplay, noteDisplay(macros), -1, kNoteSource);
+    add(Kind::MacroHandle, velocityHandle(macros), -1, kVelocitySource);
+    add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
+
     // Depth handles in the gap under each modulated knob, and small ones in the bottom right corner of each
     // modulated wire label and the top right of each matrix cell and source's depth bar (another source modulating
     // its depth). As many as
@@ -2870,22 +2909,6 @@ std::vector<View::Widget> View::widgets() const {
         if (n > fit)
             pill({left + handles + (shown > 0 ? kPillGap : 0.0f), base.y - 0.5f * sizes.pillH, pillW, sizes.pillH}, shown, false);
     }
-
-    // The macros: their knobs, the names under them and their handles.
-    const float macros = keyboardTop(controller_.layout().sourcesCollapsed);
-    for (int macro = 0; macro < kMacros; ++macro) {
-        const Point center = macroKnob(macros, macro);
-        std::snprintf(macroLabels_[macro].data(), macroLabels_[macro].size(), "%s",
-                      macroName(controller_.layout(), macro).c_str());
-        knob(paramIndex(macro, MacroParam::Value), center, 34.0f, macroLabels_[macro].data());
-        add(Kind::MacroName, {center.x - 0.5f * kMacroCell, center.y + 18.0f, kMacroCell, 17.0f}, -1, macro);
-        add(Kind::MacroHandle, {center.x - 42.0f, center.y - 10.0f, 20.0f, 20.0f}, -1, kMaxSources + macro);
-    }
-    // The note source's handle and velocity's, after them, work the same way; their displays open their curves.
-    add(Kind::MacroHandle, noteHandle(macros), -1, kNoteSource);
-    add(Kind::NoteDisplay, noteDisplay(macros), -1, kNoteSource);
-    add(Kind::MacroHandle, velocityHandle(macros), -1, kVelocitySource);
-    add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
 
     // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only its top row
     // stays, where the wheels' handles are anyway.
@@ -3169,11 +3192,26 @@ void View::paint(Canvas &c, Rect area) {
     const std::vector<Widget> &list = scopedWidgets();
     std::fill(macroOffsets_.begin(), macroOffsets_.end(), 0.0f);
     macroSlotOffsets_.fill(0.0f);
-    forEachMacroMod([this](int i) { return value(i); }, [this](int target, double offset, int source, int slot) {
-        macroOffsets_[target] += static_cast<float>(offset);
-        macroSlotOffsets_[source * kSlots + slot] =
-            static_cast<float>(offset / (table_[target].max - table_[target].min));
-    });
+    {
+        // The macros' knobs as the macros' and the mod wheel's slots on them take them, then what the knobs move.
+        auto get = [this](int i) { return value(i); };
+        const MacroGraph graph = macroGraph(get);
+        voiceMovedMacros_ = graph.voiceMoved;
+        const MacroKnobs set = macroKnobsSet(get);
+        MacroKnobs knobs = set;
+        runMacroGraph(
+            graph, get, knobs, nullptr, [](int) { return -1.0; },
+            [this](int source, int slot, double offset) {
+                macroSlotOffsets_[source * kSlots + slot] = static_cast<float>(offset);
+            });
+        for (int m = 0; m < kMacros; ++m)
+            macroKnobOffsets_[m] = static_cast<float>(knobs[m] - set[m]);
+        forEachMacroMod(get, knobs, [this](int target, double offset, int source, int slot) {
+            macroOffsets_[target] += static_cast<float>(offset);
+            macroSlotOffsets_[source * kSlots + slot] =
+                static_cast<float>(offset / (table_[target].max - table_[target].min));
+        });
+    }
 
     theme_ = themeIndex(controller_.theme());
     hue_ = shownHue();
@@ -3922,8 +3960,15 @@ std::optional<double> View::liveSlotOffset(int source, int slot) const {
     if (source < 0 || slot < 0 || slotBypassed(source, slot) || !sourceOn(source))
         return std::nullopt;
     const int aux = slotAux([this](int i) { return value(i); }, source, slot);
-    if (!runsPerVoice(source) && (aux < 0 || !runsPerVoice(aux)))
-        return macroSlotOffsets_[source * kSlots + slot];
+    if (!runsPerVoice(source) && (aux < 0 || !runsPerVoice(aux))) {
+        // What every voice shares; where the newest voice's own sources move its knob, or its aux's, and it is on
+        // anything but a macro's knob, with what that voice adds to it.
+        const int target = slotTarget(value(slotTargetIndex(source, slot)));
+        const bool voiceMoved = voiceMovedMacro(source) || (aux >= 0 && voiceMovedMacro(aux));
+        return macroSlotOffsets_[source * kSlots + slot] +
+               (voiceMoved && !isMacroKnob(target) && telemetry_.voices > 0 ? telemetry_.slotOffset[source * kSlots + slot]
+                                                                            : 0.0f);
+    }
     if (telemetry_.voices <= 0) {
         const int target = slotTarget(value(slotTargetIndex(source, slot)));
         const bool effect = (target >= kFxBase && target < kShapeBase) || target == paramIndex(GlobalParam::Volume);
@@ -5789,6 +5834,10 @@ void View::paintInspector(Canvas &c) {
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
             summary += dot + trf(Str::SummaryUnison, {std::to_string(copies)});
+        if (!isNoise(op) && value(paramIndex(op, OpParam::Sync)) >= 0.5)
+            summary += dot + std::string(tr(Str::SummarySync));
+        if (const OpWarp warp = opWarp(op); !isNoise(op) && warp != OpWarp::Off)
+            summary += dot + std::string(warpName(warp));
         std::string feeds;
         if (value(paramIndex(op, OpParam::Out)) > 0.0)
             feeds = tr(Str::SummaryOut);
@@ -5812,6 +5861,7 @@ void View::paintInspector(Canvas &c) {
             paintEnvelope(c, kOpEnvRect, op, kAccent, true);
             break;
         case InspectorTab::Scope:
+        case InspectorTab::Warp:
             paintScope(c, kScopeRect, op);
             break;
         case InspectorTab::Inputs:
@@ -6037,7 +6087,9 @@ void View::paintInputs(Canvas &c, int op) {
 
 InspectorTab View::opTabShown(int op) const {
     const InspectorTab tab = controller_.layout().opTab;
-    return tab == InspectorTab::Scope && isNoise(op) ? InspectorTab::Envelope : tab;
+    if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WARP tab
+        return isNoise(op) ? InspectorTab::Envelope : InspectorTab::Warp;
+    return tab;
 }
 
 // Whether a source modulates one of the knobs on an operator's tab, which shows a dot on the tab while it is hidden.
@@ -6050,19 +6102,97 @@ bool View::opTabModulated(int op, InspectorTab tab) const {
         const EnvIndices e = envIndices(op);
         params = {e.attack, e.hold, e.decay, e.sustain, e.release};
     }
+    if (tab == InspectorTab::Warp && !isNoise(op))
+        params = {paramIndex(op, OpParam::WarpAmount)};
     for (const Assignment &m : assignments())
         if (std::find(params.begin(), params.end(), m.target) != params.end())
             return true;
     return false;
 }
 
+OpWarp View::opWarp(int op) const {
+    return static_cast<OpWarp>(std::clamp(std::lround(value(paramIndex(op, OpParam::Warp))), 0L,
+                                          static_cast<long>(OpWarp::Count) - 1));
+}
+
+bool View::opSynced(int op) const {
+    return !isNoise(op) && value(paramIndex(op, OpParam::Sync)) >= 0.5;
+}
+
+// `cycles` of the operator's wave across `r`, as it plays it: read through its warp (unless `plain`), and synced, a
+// cycle of the note each, its own cycles restarting at its Phase (at its ratio over the note; fixed, over a C4). The
+// wave is its icon's shape, or a Custom wave's partials, at full scale between r's top and bottom.
+std::vector<Point> View::opWavePoints(int op, Rect r, int cycles, bool plain) const {
+    const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
+    std::function<double(double)> shape;
+    if (wave == OpWave::Custom) {
+        std::vector<std::pair<double, double>> partials; // level, phase
+        const int count = std::clamp(static_cast<int>(std::lround(value(partialCountIndex(op)))), 1, kPartials);
+        for (int k = 0; k < count; ++k)
+            partials.emplace_back(value(partialLevelIndex(op, k)), value(partialPhaseIndex(op, k)));
+        auto sum = [partials](double t) {
+            double x = 0.0;
+            for (size_t k = 0; k < partials.size(); ++k)
+                x += partials[k].first * std::sin(2.0 * kPi * (partials[k].second + (k + 1.0) * t));
+            return x;
+        };
+        double peak = 1e-9;
+        for (int i = 0; i < 256; ++i)
+            peak = std::max(peak, std::abs(sum(i / 256.0)));
+        shape = [sum, peak](double t) { return sum(t) / peak; };
+    } else {
+        // Its icon's points along a cycle 1 wide, -1..1 tall: a value between two of them is on the line between.
+        const std::vector<Point> points = wavePoints(wave, {0.0f, -1.0f, 1.0f, 2.0f});
+        shape = [points](double t) {
+            for (size_t k = 1; k < points.size(); ++k)
+                if (points[k].x >= t && points[k].x > points[k - 1].x) {
+                    const double f = (t - points[k - 1].x) / (points[k].x - points[k - 1].x);
+                    return -(points[k - 1].y + (points[k].y - points[k - 1].y) * std::clamp(f, 0.0, 1.0));
+                }
+            return points.empty() ? 0.0 : -static_cast<double>(points.back().y);
+        };
+    }
+    const WarpCoefs coefs = warpCoefs(plain ? OpWarp::Off : opWarp(op), value(paramIndex(op, OpParam::WarpAmount)));
+    const bool synced = opSynced(op);
+    double over = 1.0; // its cycles to the note's, synced
+    if (synced) {
+        const double fixed =
+            fixedHz(value(paramIndex(op, OpParam::FixedFreq)), value(paramIndex(op, OpParam::FixedMult)));
+        over = isFixed(op) ? fixed / 261.63
+                           : ratioFromNorm(value(paramIndex(op, OpParam::Ratio))) *
+                                 std::exp2(value(paramIndex(op, OpParam::Transpose)) / 12.0 +
+                                           value(paramIndex(op, OpParam::Detune)) / 1200.0);
+        over = std::clamp(over, 0.01, 64.0);
+    }
+    const double start = synced ? value(paramIndex(op, OpParam::Phase)) : 0.0;
+    const int steps = std::max(64, static_cast<int>(r.w * 2.0f));
+    std::vector<Point> points;
+    points.reserve(static_cast<size_t>(steps) + 1);
+    for (int i = 0; i <= steps; ++i) {
+        const double t = static_cast<double>(i) / steps * cycles;
+        double p = t;
+        if (synced) {
+            const double note = std::min(t - std::floor(t), i == steps ? 1.0 : 0.999999);
+            p = start + note * over;
+        }
+        p -= std::floor(p);
+        if (i == steps && !synced)
+            p = 1.0; // the cycle's end, not its start again
+        const double y = std::clamp(shape(warpPhase(coefs, p)), -1.15, 1.15);
+        points.push_back(
+            {r.x + r.w * static_cast<float>(i) / steps, r.center().y - static_cast<float>(y) * r.h * 0.5f});
+    }
+    return points;
+}
+
 // The operator's output in the newest voice, a point per bin across the display: the cycles the switch in the corner
 // picks, at their real level between dashed lines at full scale, the level its peaks follow in the corner. A slow operator's span is drawn as it fills, up to
-// its cursor, the last one's rest faintly after it. With nothing captured, the wave's plain shape is drawn faintly.
+// its cursor, the last one's rest faintly after it. With nothing captured, the wave's plain shape is drawn faintly, or,
+// warped or synced, the wave as they make it over its plain shape; the warp is named along the bottom.
 void View::paintScope(Canvas &c, Rect r, int op) {
     c.fillRect(r, kDisplayColor, kRadiusCard);
     const int cycles = controller_.layout().scopeCycles;
-    const Rect inner{r.x + 8.0f, r.y + 28.0f, r.w - 16.0f, r.h - 40.0f};
+    const Rect inner{r.x + 8.0f, r.y + 26.0f, r.w - 16.0f, r.h - 46.0f};
     const float middle = inner.center().y;
     const float half = inner.h * 0.5f;
     c.line({inner.x, inner.y}, {inner.right(), inner.y}, kBorder, 1.0f, true);
@@ -6073,14 +6203,36 @@ void View::paintScope(Canvas &c, Rect r, int op) {
         c.line({x, inner.y - 6.0f}, {x, inner.bottom() + 6.0f}, kBorder.alpha(0.6f), 1.0f, true);
     }
 
+    // The warp along the bottom: its name and amount, and SYNC while synced.
+    const OpWarp warp = opWarp(op);
+    const bool shaped = warp != OpWarp::Off || opSynced(op);
+    if (shaped) {
+        std::string caption = warpName(warp);
+        if (warp != OpWarp::Off) {
+            char amount[32];
+            const int param = paramIndex(op, OpParam::WarpAmount);
+            formatParam(param, value(param), amount, sizeof(amount));
+            caption += std::string("  ") + amount;
+        }
+        if (opSynced(op))
+            caption += std::string("  \xC2\xB7  ") + tr(Str::CaptionNoteSync);
+        c.text({r.x + 8.0f, r.bottom() - 17.0f, r.w - 16.0f, 14.0f}, caption, kTextSmall, kDim, Align::Left);
+    }
+
     const int bins = cycles * kScopeBinsPerCycle;
     if (telemetry_.voices == 0 || telemetry_.scopeBins != bins) {
-        const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
-        for (int k = 0; k < cycles; ++k) {
-            const Rect cycle{inner.x + inner.w * k / cycles, inner.y, inner.w / cycles, inner.h};
-            const std::vector<Point> points = wavePoints(wave, cycle);
-            c.polyline(points.data(), points.size(), kDim.alpha(0.5f), 1.5f, true);
+        // No note: the wave as the operator plays it (warped, and synced a cycle of the note each), over its plain
+        // shape faintly while either changes it.
+        if (shaped) {
+            const std::vector<Point> plain = opWavePoints(op, inner, cycles, true);
+            c.polyline(plain.data(), plain.size(), kDim.alpha(0.45f), 1.0f, true);
         }
+        // Unchanged, the plain shape faintly, as a stand-in for the trace; warped or synced, what they make of it.
+        const std::vector<Point> points = opWavePoints(op, inner, cycles, false);
+        if (shaped)
+            c.polyline(points.data(), points.size(), kAccent.alpha(0.85f), 1.5f);
+        else
+            c.polyline(points.data(), points.size(), kDim.alpha(0.5f), 1.5f, true);
         return;
     }
     // A bin per point, but no more points than the display has pixels across, twice over.
@@ -6776,6 +6928,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                ? tr(Str::SwitchStereo)
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
+                           : opOfField(w.param, OpParam::Sync) >= 0                     ? tr(Str::SwitchHardSync)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
@@ -6798,6 +6951,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             powerIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else if (modeChoice)
             routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
+            warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
+                     on ? litInk(color) : (hovered ? kText : kDim));
         else if (fixedSwitchOp(w.param) >= 0) // a keyboard, crossed out while the operator doesn't follow it
             keyboardIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kFaint), on);
         else if (shaperFieldOf(w.param) == ShaperParam::Link) // a voice shaper's link, as the shaper effect's
@@ -6859,7 +7015,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
-                             Str::TabInputs};
+                             Str::TabInputs, Str::TabWarp};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
         c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
@@ -8797,6 +8953,14 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipNodePower);
     else if (fixedSwitchOp(param) >= 0)
         text = tr(value(param) >= 0.5 ? Str::TipFixedOn : Str::TipFixedOff);
+    else if (opOfField(param, OpParam::Sync) >= 0)
+        text = tr(Str::TipHardSync);
+    else if (opOfField(param, OpParam::Warp) >= 0) {
+        const Str tips[] = {Str::TipWarpOff,   Str::TipWarpBend,  Str::TipWarpSqueeze,
+                            Str::TipWarpPulse, Str::TipWarpSteps, Str::TipWarpSync};
+        static_assert(std::size(tips) == static_cast<size_t>(OpWarp::Count));
+        text = tr(tips[std::clamp(hover_->b, 0, static_cast<int>(OpWarp::Count) - 1)]);
+    }
     else if (isSourcePower(param))
         text = tr(Str::TipSourcePower);
     else if (param == paramIndex(GlobalParam::Mono))
