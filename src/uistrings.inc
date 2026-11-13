@@ -126,6 +126,20 @@ STR(SourceEnvelope, "Envelope")
 STR(SourceRandom, "Random") // a value taken at random as each note starts
 STR(SourceMidi, "MIDI") // a MIDI controller or aftertouch
 STR(SourceCurve, "Curve") // an LFO of a shape drawn from points
+STR(SourceFollower, "Follower") // an envelope follower: how loud the voice's own audio is
+STR(FollowInputOut, "OUT") // what a Follower source follows: the voice's sum going to the effects
+STR(FollowInputA, "A") // an operator's output
+STR(FollowInputB, "B")
+STR(FollowInputC, "C")
+STR(FollowInputD, "D")
+STR(FollowInputE, "E")
+STR(FollowInputF, "F")
+STR(FollowInputFilter1, "Filter 1")
+STR(FollowInputFilter2, "Filter 2")
+STR(FollowInputShaper1, "Shaper 1")
+STR(FollowInputShaper2, "Shaper 2")
+STR(FollowPeak, "PEAK") // a Follower's two ways of measuring a level
+STR(FollowRms, "RMS")
 STR(MidiInputCc, "CC") // what a MIDI source follows: a controller
 STR(MidiInputPressure, "Pressure") // or aftertouch
 STR(MidiInputSlide, "Slide") // or a note's slide (MPE's CC 74, CLAP's brightness expression)
@@ -233,6 +247,8 @@ STR(ParamPhase, "Phase")
 STR(ParamSlew, "Slew")
 STR(ParamCc, "CC")
 STR(ParamInput, "Input")
+STR(ParamRms, "RMS")
+STR(ParamLowCut, "Low Cut")
 STR(ParamRouteMode, "{1} Mode") // a route into an operator ("B → A"), how it acts on it
 STR(ParamOpFeedback, "{1} Feedback") // a node (an operator, a filter, a shaper) into itself, in the matrix
 
@@ -441,8 +457,10 @@ STR(SourceNameEnv, "Env {1}")
 STR(SourceNameRandom, "Random {1}")
 STR(SourceNameMidi, "MIDI {1}")
 STR(SourceNameCurve, "Curve {1}")
+STR(SourceNameFollower, "Follower {1}")
 STR(SourceFoldedRandom, "RND {1}") // a Random source's name down its folded card, which "Random 3" doesn't fit
 STR(SourceFoldedCurve, "CRV {1}")  // and a Curve source's, which "Curve 3" doesn't
+STR(SourceFoldedFollower, "FLW {1}") // and a Follower's
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")
@@ -587,6 +605,7 @@ STR(LabelSmooth, "Smooth")
 STR(LabelChaos, "Chaos")
 STR(LabelPhase, "Phase")
 STR(LabelSlew, "Slew")
+STR(LabelLowCut, "Low Cut")
 STR(LabelCc, "CC")
 STR(LabelBass, "Bass")
 STR(LabelTreble, "Treble")
@@ -910,6 +929,10 @@ STR(TipGlideAlways, "Glide between all notes")
 STR(TipMidiCc, "MIDI CC, chosen with the CC knob")
 STR(TipMidiPressure, "Aftertouch, per note or channel")
 STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
+STR(TipFollowInput, "Follows: {1}") // a Follower's input list button; {1} is the input
+STR(TipFollowInputOff, "Follows: {1} (off)") // ... while that operator, filter or shaper is switched off
+STR(TipFollowPeak, "Follow the peaks")
+STR(TipFollowRms, "Follow the RMS level")
 
 // --- The editor: right-click menus
 

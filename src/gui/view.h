@@ -1169,6 +1169,8 @@ private:
     // A param's name as the editor shows it: a source's fields go by the source's name, not their place's.
     std::string paramName(int index) const;
     bool sourceOn(int source) const;
+    // Whether what a Follower source follows is switched on (OUT always is).
+    bool followInputOn(FollowInput input) const;
     // Whether `m`'s depth handle is under the mouse or being dragged: its range is drawn wider, over the others.
     bool modFocused(const Assignment &m) const;
     // Whether it does anything, as its handle shows: a source once it is used (see sourceUsed()), and an LFO or
@@ -1307,6 +1309,7 @@ private:
     void paintSources(Canvas &c);
     void paintSource(Canvas &c, float card, int source);
     void paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live);
+    void paintFollowerTrace(Canvas &c, Rect r, int source, Color color);
     // The values of the envelope handle `w` (hovered or dragged), at its display's top right over everything else.
     void paintEnvReadout(Canvas &c, const Widget &w);
     // A filter's response, from its params; its key tracking (`keyTrackParam`) follows `pitch` (semitones, 69 is
@@ -1551,6 +1554,11 @@ private:
         return macroOffsets_[index] + (telemetry_.fxTail ? telemetry_.modOffset[index] : 0.0f);
     }
     bool metering_ = false;                  // the output meter showed something when last polled
+    // Each Follower source's trace: what the newest voice got from it at the last kFollowTrace polls while notes
+    // played, round a ring whose newest is at followHead_.
+    static constexpr int kFollowTrace = 64;
+    std::array<std::array<float, kFollowTrace>, kMaxSources> followTrace_{};
+    std::array<int, kMaxSources> followHead_{};
     std::vector<Rect> changedAreas_;         // see changedAreas()
     // The scopes' levels, following their spans' peaks (see followScopeLevel()): the output scope's, which its trace is
     // drawn to, and the operator scope's, which its dB readout shows.

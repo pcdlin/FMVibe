@@ -7143,6 +7143,97 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
           "a removed modulation takes what modulated its depth with it, in one undo step");
 }
 
+// A Follower source from + SOURCE's list (after Envelope): its card holds its input's list button and Peak | RMS on
+// the top row, Attack, Release, Gain and Low Cut in a row under them and its trace across the card (see
+// detail::followerInputButton() and on). It starts on OUT at 5 ms and 150 ms. Its list picks C and Filter 1, undoably;
+// RMS and Peak set its detector; the wheel turns Gain and Low Cut, a double-click putting Low Cut back to Off. Its
+// trace moves with what the newest voice gets from it, repainting its card alone, as a whole paint would. Folded, it
+// reads FLW 1; the MODS view and the host call it Follower 1.
+void testFollowerSource(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, detail::sourceMenuButton().center());
+    view.mouseMove(sourceMenuEntry(SourceType::Follower), {});
+    const bool listShot = renderer.save(view, dir / "11p-source-menu-follower.png");
+    click(view, sourceMenuEntry(SourceType::Follower));
+    const bool added = model.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Follower) &&
+                       model.value(paramIndex(0, SourceParam::FollowInput)) == static_cast<double>(FollowInput::Out) &&
+                       model.value(paramIndex(0, SourceParam::Attack)) == normFromEnvTime(0.005) &&
+                       model.value(paramIndex(0, SourceParam::Release)) == normFromEnvTime(0.15);
+    view.mouseMove({600.0f, 328.0f}, {});
+    const bool cardShot = renderer.save(view, dir / "11q-follower-card.png");
+    check(listShot && added && cardShot, "+ SOURCE adds a Follower on OUT, answering in 5 ms and letting go over 150 ms");
+
+    const Rect card = detail::sourceCard(0.0f);
+    const Rect button = detail::followerInputButton(card);
+    const int input = paramIndex(0, SourceParam::FollowInput);
+    const int count = static_cast<int>(FollowInput::Count);
+    auto entry = [&](FollowInput which) {
+        return detail::listMenuItem(button, count, static_cast<int>(which)).center();
+    };
+    click(view, button.center());
+    view.mouseMove(entry(FollowInput::OpC), {});
+    const bool inputListShot = renderer.save(view, dir / "11r-follower-input-list.png");
+    click(view, entry(FollowInput::OpC));
+    const bool onC = model.value(input) == static_cast<double>(FollowInput::OpC);
+    click(view, button.center());
+    click(view, entry(FollowInput::Filter1));
+    const bool onFilter = model.value(input) == static_cast<double>(FollowInput::Filter1);
+    view.undo();
+    const bool undone = model.value(input) == static_cast<double>(FollowInput::OpC);
+    view.undo();
+    check(inputListShot && onC && onFilter && undone && model.value(input) == static_cast<double>(FollowInput::Out),
+          "a Follower card's input list picks an operator and a filter, undoably");
+
+    const int rms = paramIndex(0, SourceParam::FollowRms);
+    click(view, detail::followerModeButton(card, 1).center());
+    const bool onRms = model.value(rms) == 1.0;
+    click(view, detail::followerModeButton(card, 0).center());
+    check(onRms && model.value(rms) == 0.0, "a Follower card's Peak | RMS sets its detector");
+
+    const int gain = paramIndex(0, SourceParam::FollowGain), lowCut = paramIndex(0, SourceParam::FollowLowCut);
+    view.wheel(detail::followerKnob(card, 2), 3.0f, {});
+    view.wheel(detail::followerKnob(card, 3), 3.0f, {});
+    const bool turned = model.value(gain) > 0.0 && model.value(lowCut) > 0.0;
+    doubleClick(view, detail::followerKnob(card, 3));
+    check(turned && model.value(lowCut) == 0.0,
+          "a Follower card's Gain and Low Cut knobs turn, and a double-click puts Low Cut back to Off");
+
+    // Its trace, as the newest voice's level goes up: drawn higher across the display, repainting the card alone.
+    auto sameArea = [](Rect a, Rect b) { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; };
+    const Rect display = detail::followerDisplay(card);
+    const Point high{display.right() - 8.0f, display.y + 8.0f};
+    model.live.voices = 1;
+    model.live.sources[0] = 0.0f;
+    view.mouseMove({600.0f, 328.0f}, {});
+    for (int i = 0; i < 80; ++i) // a trace along the bottom
+        view.poll();
+    renderer.save(view, dir / "11s-follower-trace-quiet.png");
+    const uint32_t quiet = renderer.pixel(high);
+    model.live.sources[0] = 0.9f;
+    const bool polled = view.poll();
+    const bool alone = view.changedAreas().size() == 1 && sameArea(view.changedAreas()[0], card);
+    bool repainted = true;
+    for (const Rect &area : view.changedAreas())
+        repainted = renderer.repaint(view, area) && repainted;
+    const std::vector<uint32_t> part = renderer.image();
+    const bool traceShot = renderer.save(view, dir / "11t-follower-trace.png");
+    const std::vector<uint32_t> full = renderer.image();
+    const uint32_t loud = renderer.pixel(high);
+    std::printf("follower trace: top right %06x -> %06x\n", quiet, loud);
+    check(polled && alone && repainted && traceShot && part == full && loud != quiet,
+          "a Follower's trace follows the newest voice, repainting its card alone as a whole paint would");
+    model.live = Telemetry{};
+    view.poll();
+
+    auto get = [&](int index) { return model.value(index); };
+    const bool named = gui::sourceName(model.layout(), get, 0) == trf(Str::SourceNameFollower, {"1"});
+    click(view, detail::cardFold(card).center());
+    view.mouseMove({600.0f, 328.0f}, {});
+    const bool foldShot = renderer.save(view, dir / "11u-follower-folded.png");
+    check(named && foldShot, "a Follower is named Follower 1, and folds to a strip");
+}
+
 // Modulations added in the MODS view: the row after the last adds an empty one and opens its source's menu; picking
 // a source leaves it empty, waiting for a target, and picking a target then makes it a modulation of that source,
 // each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
@@ -9947,6 +10038,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
+    testFollowerSource(dir, renderer);
     testMods(dir, renderer);
     testModsMoveDepth(dir, renderer);
     testModsLive(dir, renderer);

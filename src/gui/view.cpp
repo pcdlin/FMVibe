@@ -182,6 +182,10 @@ bool isMidiInput(int param) {
     return sourceFieldOf(param) == SourceParam::MidiInput;
 }
 
+bool isFollowInput(int param) {
+    return sourceFieldOf(param) == SourceParam::FollowInput;
+}
+
 // A choice that opens a list under its button (an LFO's shape, a MIDI source's input, a shaper's curve, the reverb's
 // algorithm, a filter's slope): how many values it offers (an LFO's shapes kLfoShapesOffered, in their order), and
 // their names.
@@ -190,6 +194,7 @@ int listCount(int param) {
            : isSlopeList(param)                       ? kFilterSlopes
            : isLfoShape(param)                        ? kLfoShapeItems
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
+           : isFollowInput(param)                     ? static_cast<int>(FollowInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
            : fxFieldOf(param) == FxParam::AmpModel   ? static_cast<int>(AmpModel::Count)
            : fxFieldOf(param) == FxParam::AmpCab     ? static_cast<int>(AmpCab::Count)
@@ -204,6 +209,8 @@ std::string listItemName(int param, int value) {
         return lfoShapeName(static_cast<LfoShape>(value));
     if (isMidiInput(param))
         return midiInputName(static_cast<MidiInput>(value));
+    if (isFollowInput(param))
+        return followInputName(static_cast<FollowInput>(value));
     if (fxFieldOf(param) == FxParam::AmpModel)
         return ampModelName(static_cast<AmpModel>(value));
     if (fxFieldOf(param) == FxParam::AmpCab)
@@ -698,7 +705,7 @@ Color View::fxColor(int slot) const {
 Color View::listColor(int param) const {
     if (routeModeFrom(param) >= 0)
         return routeColor(routeModeFrom(param), routeModeTo(param));
-    if (isLfoShape(param) || isMidiInput(param))
+    if (isLfoShape(param) || isMidiInput(param) || isFollowInput(param))
         return kSourceColors[sourceOf(param)];
     if (isSplitSlope(param))
         return splitColor();
@@ -1233,6 +1240,11 @@ int View::addSource(SourceType type, int copyOf) {
         changes.push_back({paramIndex(source, SourceParam::Bipolar), 1.0});
     if (type == SourceType::Curve && copyOf < 0)
         changes.push_back({paramIndex(source, SourceParam::Unipolar), 1.0});
+    // A new Follower answers in 5 ms and lets go over 150 ms, where an envelope's times start at 1 ms and 15 ms.
+    if (type == SourceType::Follower && copyOf < 0) {
+        changes.push_back({paramIndex(source, SourceParam::Attack), normFromEnvTime(0.005)});
+        changes.push_back({paramIndex(source, SourceParam::Release), normFromEnvTime(0.15)});
+    }
     changes.push_back({paramIndex(source, SourceParam::Type), static_cast<double>(type)});
     const auto at = copyOf >= 0 ? std::find(shown.begin(), shown.end(), copyOf) + 1 : shown.end();
     shown.insert(at, source);
@@ -1591,6 +1603,15 @@ bool View::poll() {
             }
         }
     }
+    // A Follower's trace takes what the newest voice gets from it at each poll while notes play, moving along; it
+    // stands still while none do.
+    if (t.voices > 0)
+        for (int s = 0; s < kMaxSources; ++s)
+            if (sourceTypeOf(s) == SourceType::Follower) {
+                followHead_[s] = (followHead_[s] + 1) % kFollowTrace;
+                followTrace_[s][followHead_[s]] = sourceOn(s) ? std::clamp(t.sources[s], 0.0f, 1.0f) : 0.0f;
+                inCard(s);
+            }
     telemetry_ = t;
     // The routing graph's nodes' halos and its wires' swell, and the effects graph's nodes' and wires' glow, follow
     // what they show as the glow behind OUT does (see follow()); the panel is painted again while any moves visibly.
@@ -2776,6 +2797,24 @@ std::vector<View::Widget> View::widgets() const {
             if (std::lround(value(input)) == static_cast<long>(MidiInput::Cc))
                 knob(paramIndex(s, SourceParam::CcNumber), {p.x + 172.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelCc));
             knob(paramIndex(s, SourceParam::Slew), {p.x + 228.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelSlew));
+        } else if (sourceTypeOf(s) == SourceType::Follower) {
+            // Its input's list button and Peak | RMS on the top row, its four knobs in a row under them, as an
+            // envelope's; its trace across the card under those (painted with the card). Its list opens as an LFO's
+            // shapes do.
+            const int input = paramIndex(s, SourceParam::FollowInput);
+            add(Kind::ListButton, followerInputButton(p), input);
+            if (listMenu_ == input)
+                lfoList = followerInputButton(p);
+            const size_t modes = list.size();
+            for (int rms = 0; rms < 2; ++rms)
+                add(Kind::Choice, followerModeButton(p, rms), paramIndex(s, SourceParam::FollowRms), s, rms);
+            merge(modes);
+            const int params[kFollowerKnobs] = {
+                paramIndex(s, SourceParam::Attack), paramIndex(s, SourceParam::Release),
+                paramIndex(s, SourceParam::FollowGain), paramIndex(s, SourceParam::FollowLowCut)};
+            const Str labels[kFollowerKnobs] = {Str::LabelAttack, Str::LabelRelease, Str::LabelGain, Str::LabelLowCut};
+            for (int i = 0; i < kFollowerKnobs; ++i)
+                knob(params[i], followerKnob(p, i), 32.0f, tr(labels[i]));
         }
         // Its modulations are listed in the MODS view, which the button under its display shows.
         add(Kind::SourceMods, sourceModsButton(card), -1, s);
@@ -2998,16 +3037,19 @@ std::vector<View::Widget> View::widgets() const {
         }
     }
     // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
-    // reaching past its bottom.
+    // reaching past its bottom; a Follower's inputs, too many for the panel, on over the keyboard strip.
     if (lfoList.w > 0.0f) {
         const int items = listCount(listMenu_);
+        Rect clip = sourceListClip();
+        if (isFollowInput(listMenu_))
+            clip.h = height() - clip.y;
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
-        list.back().clip = sourceListClip();
+        list.back().clip = clip;
         for (int item = 0; item < items; ++item) {
             add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1,
                 isLfoShape(listMenu_) ? static_cast<int>(kLfoShapesOffered[item]) : item);
-            list.back().clip = sourceListClip();
+            list.back().clip = clip;
         }
     }
     // A shaper's list of curves or a filter's slopes, under its button on its page.
@@ -6638,8 +6680,11 @@ void View::paintSource(Canvas &c, float card, int s) {
             c.fillCircle({p.center().x - 5.0f + (d / 2) * 5.0f, p.y + 35.0f + (d % 2) * 5.0f}, 1.4f, grip ? kText : kFaint);
         std::string name = sourceName(s);
         // "Random" and "Curve" too long for the strip: their short names, by their number.
-        if (sourceTypeOf(s) == SourceType::Random || sourceTypeOf(s) == SourceType::Curve)
-            name = trf(sourceTypeOf(s) == SourceType::Random ? Str::SourceFoldedRandom : Str::SourceFoldedCurve,
+        if (const SourceType type = sourceTypeOf(s);
+            type == SourceType::Random || type == SourceType::Curve || type == SourceType::Follower)
+            name = trf(type == SourceType::Random  ? Str::SourceFoldedRandom
+                       : type == SourceType::Curve ? Str::SourceFoldedCurve
+                                                   : Str::SourceFoldedFollower,
                        {name.substr(name.find_last_of(' ') + 1)});
         paintDownward(c, {p.x, p.y + 104.0f, p.w, p.h - 110.0f}, upperCase(name), sourceOn(s) ? color : kDim);
         return;
@@ -6656,6 +6701,8 @@ void View::paintSource(Canvas &c, float card, int s) {
         paintLfo(c, sourceDisplay(card, lfoShapeOf(s) == LfoShape::Random), s);
     } else if (sourceTypeOf(s) == SourceType::Env) {
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
+    } else if (sourceTypeOf(s) == SourceType::Follower) {
+        paintFollowerTrace(c, followerDisplay(p), s, color);
     } else {
         // MIDI: what the newest voice gets from it, as a bar from the left (from the middle while it is bipolar, where
         // its depths swing both ways), and in numbers.
@@ -6678,6 +6725,37 @@ void View::paintSource(Canvas &c, float card, int s) {
             c.text({d.x, d.y + 2.0f, d.w - 12.0f, 16.0f}, text, kTextLabel, kDim, Align::Right);
     }
     // Under the display, the button that shows its modulations in the MODS view (a widget).
+}
+
+bool View::followInputOn(FollowInput input) const {
+    const int at = static_cast<int>(input) - static_cast<int>(FollowInput::OpA);
+    if (input == FollowInput::Out)
+        return true;
+    if (at < kOps)
+        return value(paramIndex(at, OpParam::Enabled)) >= 0.5;
+    if (at < kOps + kFilters)
+        return value(paramIndex(at - kOps, FilterParam::Enabled)) >= 0.5;
+    return value(paramIndex(at - kOps - kFilters, ShaperParam::Enabled)) >= 0.5;
+}
+
+void View::paintFollowerTrace(Canvas &c, Rect d, int s, Color color) {
+    // What the newest voice got from it over the last polls, the newest at the right, as a filled line from the
+    // bottom; a dashed line at full scale, and a dot at the newest point while notes play.
+    c.fillRect(d, kBackground, kRadiusCard);
+    const Rect plot = d.inset(5.0f);
+    c.line({plot.x, plot.y}, {plot.right(), plot.y}, kFaint, 1.0f, true);
+    std::array<Point, kFollowTrace + 2> points;
+    for (int k = 0; k < kFollowTrace; ++k) {
+        const float level = followTrace_[s][(followHead_[s] + 1 + k) % kFollowTrace];
+        points[k] = {plot.x + plot.w * k / (kFollowTrace - 1), plot.bottom() - plot.h * level};
+    }
+    points[kFollowTrace] = {plot.right(), plot.bottom()};
+    points[kFollowTrace + 1] = {plot.x, plot.bottom()};
+    const bool on = sourceOn(s);
+    c.fillPolygon(points.data(), points.size(), (on ? color : kDim).alpha(0.22f));
+    c.polyline(points.data(), kFollowTrace, on ? color : kDim, 1.5f);
+    if (on && telemetry_.voices > 0)
+        c.fillCircle(points[kFollowTrace - 1], 2.5f, color);
 }
 
 int View::routingHoveredNode() const {
@@ -6930,6 +7008,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
                            : opOfField(w.param, OpParam::Sync) >= 0                     ? tr(Str::SwitchHardSync)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
+                           : sourceFieldOf(w.param) == SourceParam::FollowRms
+                               ? tr(w.b == 1 ? Str::FollowRms : Str::FollowPeak)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;
@@ -7627,6 +7707,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.polyline(env, 5, ink, 1.4f);
         } else if (type == SourceType::Curve) { // its drawn shape, as an LFO's Custom was
             lfoShapeIcon(c, icon, LfoShape::Custom, ink);
+        } else if (type == SourceType::Follower) { // a wave dying away, its envelope traced over its peaks
+            Point wave[25], outline[7];
+            for (int k = 0; k < 25; ++k) {
+                const float x = static_cast<float>(k) / 24.0f;
+                const float swing = std::exp(-2.2f * x) * ((k % 4) < 2 ? 1.0f : -1.0f) * ((k % 2) ? 1.0f : 0.35f);
+                wave[k] = {l + (r - l) * x, (t + b) * 0.5f + swing * (b - t) * 0.45f};
+            }
+            for (int k = 0; k < 7; ++k) {
+                const float x = static_cast<float>(k) / 6.0f;
+                outline[k] = {l + (r - l) * x, (t + b) * 0.5f - std::exp(-2.2f * x) * (b - t) * 0.5f - 0.5f};
+            }
+            c.polyline(wave, 25, ink.alpha(0.6f), 1.0f);
+            c.polyline(outline, 7, ink, 1.4f);
         } else if (type == SourceType::Random) {
             const Point steps[] = {{l, t + 8.0f},  {l + 5.0f, t + 8.0f}, {l + 5.0f, t + 2.0f}, {l + 10.0f, t + 2.0f},
                                    {l + 10.0f, b}, {l + 14.0f, b},        {l + 14.0f, t + 5.0f}, {r, t + 5.0f}};
@@ -7840,8 +7933,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         if (modeChoice)
             routeModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<RouteMode>(w.b),
                           selected ? listColor(w.param) : kDim);
+        // A Follower's inputs that are switched off show faintly, though they can be picked.
+        const bool off = isFollowInput(w.param) && !followInputOn(static_cast<FollowInput>(w.b));
         c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h}, listItemName(w.param, w.b),
-               kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
+               kTextBody, !fits || (off && !hovered) ? kFaint : hovered || selected ? kText : kDim, Align::Left,
+               selected);
         break;
     }
     case Kind::ShapePoint: { // compact: smaller, in a shaper's card
@@ -8765,7 +8861,9 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::NodeDelete &&
          hover_->kind != Kind::WireStart &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
-         !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param))) &&
+         !(hover_->kind == Kind::ListButton &&
+           (isSlopeList(hover_->param) || isMidiInput(hover_->param) || isFollowInput(hover_->param))) &&
+         !(hover_->kind == Kind::Choice && sourceFieldOf(hover_->param) == SourceParam::FollowRms) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
     // A source's handle tells how to use it only until it modulates something.
@@ -9016,6 +9114,12 @@ void View::paintTooltip(Canvas &c) {
                   : input == MidiInput::Pressure ? Str::TipMidiPressure
                                                  : Str::TipMidiSlide);
     }
+    else if (isFollowInput(param)) { // what it follows, and whether that is switched off
+        const auto input = static_cast<FollowInput>(std::lround(value(param)));
+        text = trf(followInputOn(input) ? Str::TipFollowInput : Str::TipFollowInputOff, {followInputName(input)});
+    }
+    else if (sourceFieldOf(param) == SourceParam::FollowRms)
+        text = tr(hover_->b == 1 ? Str::TipFollowRms : Str::TipFollowPeak);
     else if (param == paramIndex(GlobalParam::GlideAlways))
         text = tr(Str::TipGlideAlways);
     else

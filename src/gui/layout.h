@@ -398,7 +398,7 @@ constexpr float kSourceShadowW = (kCardH - kSourceShadowGap) * 0.5f;
 constexpr int kSourceTypes = static_cast<int>(SourceType::Count) - 1; // without None
 // The types it lists, in its order: the ones that run as LFOs first.
 constexpr SourceType kSourceMenuOrder[] = {SourceType::Lfo, SourceType::Curve, SourceType::Random, SourceType::Env,
-                                           SourceType::Midi};
+                                           SourceType::Follower, SourceType::Midi};
 static_assert(std::size(kSourceMenuOrder) == static_cast<size_t>(kSourceTypes));
 // That list, its top left given; an entry a type.
 inline Rect sourceMenu(Point at) { return {at.x, at.y, 150.0f, 8.0f + kSourceTypes * 26.0f}; }
@@ -411,6 +411,18 @@ inline Rect sourceMenuItem(Point at, SourceType type) {
 // A MIDI card's input (CC, Pressure or Slide), a list button under its title at the left, where an LFO's shape is;
 // its CC and Slew knobs at the right.
 inline Rect midiInputButton(Rect card) { return {card.x + 16.0f, card.y + 42.0f, 122.0f, 22.0f}; }
+// A Follower card: its input's list button under its title at the left and Peak | RMS right of it; its Attack,
+// Release, Gain and Low Cut knobs in a row under them, spaced as an envelope card's; its trace across the card under
+// those, over the MODS button.
+inline Rect followerInputButton(Rect card) { return {card.x + 16.0f, card.y + 38.0f, 122.0f, 22.0f}; }
+inline Rect followerModeButton(Rect card, int rms) {
+    return {card.x + 146.0f + rms * (card.w - 162.0f) * 0.5f, card.y + 38.0f, (card.w - 162.0f) * 0.5f, 22.0f};
+}
+constexpr int kFollowerKnobs = 4;
+inline Point followerKnob(Rect card, int knob) {
+    return {card.x + 12.0f + (card.w - 24.0f) / kFollowerKnobs * (knob + 0.5f), card.y + 80.0f};
+}
+inline Rect followerDisplay(Rect card) { return {card.x + 16.0f, card.y + 118.0f, card.w - 32.0f, 34.0f}; }
 constexpr float kSourceShadowSpan = (kSourceShadowW + kCardGap) / (kCardW + kCardGap);
 constexpr float kFxIconX = 10.0f; // the icon's left edge, from the card's
 constexpr float kFxIconW = 18.0f;

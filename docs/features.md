@@ -171,8 +171,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does).
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw or square; 0.02–100 Hz,
   and at the Rate knob's bottom 0 Hz, where an LFO stands still at its Phase), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
-  operator's envelope has them), Curve sources (LFOs of a drawn shape), and two that follow what a note or the
-  controller brings:
+  operator's envelope has them), Curve sources (LFOs of a drawn shape), Followers (how loud the voice's own sound
+  is), and two that follow what a note or the controller brings:
   - **Curve**: an LFO of a shape drawn from points (see below), with everything an LFO has (Rate or a synced note
     value, the clock modes, anchoring, Phase) but the shape list. It starts unipolar, where an LFO starts bipolar.
     It replaces the LFO's Custom shape, which the LFOs no longer offer: a patch saved before (state version 11 and
@@ -195,6 +195,24 @@ What the plugin does and how its editor works, in full. Building and installing 
     member channel), resting in the middle until some comes: bipolar, it moves nothing at rest. It follows its
     input through **Slew**, a time constant from 1 ms (all but at once, to begin with) to 10 s, starting each note
     where its input is.
+  - **Follower**: an envelope follower. In each voice, it follows how loud that voice's own sound is at its
+    **Input**: **OUT** (to begin with: the voice's sum that goes on to the effects, both sides), an operator's output
+    (**A**–**F**: after its envelope, before its Pan and Out, so one that only modulates can be followed too), or a
+    filter's or a shaper's (**Filter 1**, **Filter 2**, **Shaper 1**, **Shaper 2**: after its Mix, before its Out). An
+    input that is switched off puts out nothing. It measures each 32-sample block's **Peak** (to begin with) or
+    **RMS** (times √2, so a sine reads the same either way) at the voice's own rate, oversampled, after a 12 dB
+    high-pass at **Low Cut** (Off, to begin with, up to 5 kHz) so it can follow what is above it, times its **Gain**
+    (−12 to +36 dB, 0 to begin with), held to 0–100 % (full scale, an operator at its full level, is 100 %). It moves
+    toward that level once a block, through **Attack** while it is louder and **Release** while it is quieter (an
+    envelope's times, 0 ms to 10 s; a new Follower starts at 5 ms and 150 ms), alike at every oversampling factor.
+    The sources run before the sound in each block, so it hears the block before: 32 to 64 samples late (under
+    1.5 ms at 44.1 kHz), plus its Attack. A Follower modulating what it follows (its own operator's level, say) is a
+    loop with that block in it: it stays within its range, and at short times and a large depth it can wobble at
+    about the block rate. A new note's voice starts it at 0; a note taking over a voice that sounds (mono, legato)
+    carries it on. Once a voice's sound is over, it falls by its Release; it doesn't keep a released voice running,
+    as a mod envelope does. Through the newest voice it reaches the effects, as the other sources do, and once the
+    last voice has ended its modulation of them keeps the value it last gave while they ring out. A Follower that
+    is switched off measures nothing, so it costs nothing. It starts unipolar.
   A new Random source starts bipolar, as an LFO does, and a MIDI source unipolar. The browser demo takes no MIDI, so there a MIDI source stays at 0. A new
   instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
@@ -1071,7 +1089,8 @@ one may have changed since it last did.
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
-      an entry under the mouse. The source's lists the sources by category (LFOs, the Random and Curve sources among them, Envelopes,
+      an entry under the mouse. The source's lists the sources by category (LFOs, the Random and Curve sources among them, Envelopes, the
+      Followers among them,
       Note & MIDI for the MIDI sources, Macros, and Keyboard:
       Note, Velocity, Mod Wheel and Pitch Bend); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
@@ -1335,10 +1354,17 @@ one may have changed since it last did.
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
+  A Follower card has its input's list (OUT, A to F, Filter 1 and 2, Shaper 1 and 2; those switched off listed
+  faintly, though they can be picked; its tooltip says what the input follows, and whether it is off) and right of
+  it **PEAK** | **RMS**; under them its **Attack**, **Release**, **Gain** and **Low Cut** knobs in a row, as an
+  envelope card's (a double-click puts Low Cut back to Off); and under those a trace across the card of what the
+  newest voice got from it over about the last second, filled from the bottom under a dashed line at full scale, a
+  dot at its newest point while notes play. It moves with each poll while notes play, repainting its card alone,
+  and stands still while none do. Its list, longer than the panel, reaches on over the keyboard strip.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
   card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types at the mouse, moved back
   inside the editor where it would reach past an edge (LFO, Curve, Random,
-  Envelope and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
+  Envelope, Follower and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
   the list. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
   them along. Sources are numbered by type in the order they show ("LFO 2", "Curve 1", "Env 1", "Random 1",
@@ -1363,7 +1389,7 @@ one may have changed since it last did.
     while it modulates nothing (and scales no modulation as its aux).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
     to drag it by, the switch and ×, then the name, which unfolds it: its letters down the strip and its number
-    across (a Random source's shortened to RND, a Curve source's to CRV).
+    across (a Random source's shortened to RND, a Curve source's to CRV, a Follower's to FLW).
   - Each source has a colored handle in its card's title row. Drag it onto any knob, wire label
     or matrix cell; a filter's cutoff is the classic target. Held near the left or right end of the modulation
     panel or the effects chain, it scrolls those cards that way, faster nearer the edge, so a knob on a card out of
@@ -1734,7 +1760,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,280 of FMVibe's 19,623 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,280 of FMVibe's 19,687 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

@@ -3218,10 +3218,337 @@ void syncWarpChecks(const int (&factors)[4]) {
     }
 }
 
+// --- The Follower source: what it puts out (the newest voice's, as the editor sees it), set up in place 0.
+void followerOn(ParamValues &p, FollowInput input, double attack, double release) {
+    p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Follower);
+    p[sourceEnabledIndex(0)] = 1.0;
+    p[paramIndex(0, SourceParam::FollowInput)] = static_cast<double>(input);
+    p[paramIndex(0, SourceParam::Attack)] = normFromEnvTime(attack);
+    p[paramIndex(0, SourceParam::Release)] = normFromEnvTime(release);
+}
+
+double followed(Engine &e) {
+    Telemetry t;
+    e.synth().telemetry(t);
+    return t.sources[0];
+}
+
+// The time (s) from now until the follower crosses `level` (upward, or downward with `falling`), rendering in control
+// blocks; -1 if it doesn't within `most` seconds.
+double followerCrossing(Engine &e, double level, bool falling, double most) {
+    for (size_t frames = 32; frames <= static_cast<size_t>(most * kSampleRate); frames += 32) {
+        e.render(32, 32);
+        if (falling ? followed(e) <= level : followed(e) >= level)
+            return frames / kSampleRate;
+    }
+    return -1.0;
+}
+
+// It follows an operator's envelope a block late; Attack and Release set how fast it rises and falls, alike at every
+// oversampling factor; RMS reads a sine as the peaks do; it follows OUT, an operator that only modulates, a filter and a
+// shaper, and its Low Cut lets only what is above it through; following itself round a loop stays finite and the
+// note still ends; switched off or modulating nothing, it leaves the sound alone; it moves its target without zipper,
+// reaches the effects through the newest voice, starts each new note at 0 and carries on through a legato one.
+void followerChecks(const int (&factors)[4]) {
+    std::printf("Follower source:\n");
+    {
+        // Its own fields, which hosts aren't given (so the plugins' tests don't take them through text): each value's
+        // text, at its ends and between, reads back as the same text, and an input by its name.
+        bool roundTrips = true;
+        for (SourceParam field : {SourceParam::FollowInput, SourceParam::FollowGain, SourceParam::FollowRms,
+                                  SourceParam::FollowLowCut}) {
+            const int index = paramIndex(kMaxSources - 1, field);
+            const ParamDef &def = paramTable()[index];
+            const double nearEnd = (def.max - def.min) * 1e-4;
+            for (double value : {def.min, def.min + nearEnd, def.def, (def.min + def.max) / 2.0, def.max}) {
+                char text[64] = {}, again[64] = {};
+                double parsed = 0.0;
+                const bool ok = formatParam(index, value, text, sizeof(text)) && parseParam(index, text, &parsed) &&
+                                formatParam(index, parsed, again, sizeof(again)) && std::strcmp(text, again) == 0;
+                if (!ok)
+                    std::printf("      %s: %g -> \"%s\" -> %g -> \"%s\"\n", def.name.c_str(), value, text, parsed, again);
+                roundTrips = roundTrips && ok;
+            }
+        }
+        double filter2 = -1.0;
+        parseParam(paramIndex(0, SourceParam::FollowInput), "Filter 2", &filter2);
+        check(roundTrips && filter2 == static_cast<double>(FollowInput::Filter2) &&
+                  !hostListed(paramIndex(0, SourceParam::FollowInput)) && !hostListed(paramIndex(0, SourceParam::Attack)),
+              "a Follower's fields read back from their text, an input by its name, and aren't given to hosts");
+    }
+    constexpr int kHigh = 93; // A6: a cycle shorter than a control block, so each block holds a peak
+    {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Attack)] = normFromEnvTime(0.1);
+        e.p[paramIndex(0, OpParam::Decay)] = normFromEnvTime(0.3);
+        e.p[paramIndex(0, OpParam::Sustain)] = 0.25;
+        followerOn(e.p, FollowInput::OpA, 0.0, 0.0);
+        e.noteOn(kHigh);
+        double worst = 0.0, before = 0.0;
+        for (int block = 0; block < 900; ++block) { // 600 ms: the attack, the decay and into the sustain
+            e.render(32, 32);
+            Telemetry t;
+            e.synth().telemetry(t);
+            if (block > 0)
+                worst = std::max(worst, std::abs(t.sources[0] - before));
+            before = t.opEnvLevels[0];
+        }
+        std::printf("      at 0 ms, off the operator's envelope a block before by at most %.4f\n", worst);
+        check(worst < 0.02, "a Follower at 0 ms follows an operator's envelope a block late");
+    }
+    {
+        double spread = 0.0, firstUp = 0.0;
+        bool timed = true;
+        for (int factor : factors) {
+            Engine e(factor);
+            e.p[paramIndex(0, OpParam::Attack)] = normFromEnvTime(0.0);
+            e.p[paramIndex(0, OpParam::Sustain)] = 1.0;
+            followerOn(e.p, FollowInput::OpA, 0.02, 0.2);
+            e.noteOn(kHigh);
+            const double up = followerCrossing(e, 1.0 - std::exp(-1.0), false, 1.0);
+            e.render(9600, 32);
+            const double top = followed(e);
+            e.p[paramIndex(0, OpParam::Enabled)] = 0.0;
+            const double down = followerCrossing(e, std::exp(-1.0) * top, true, 2.0);
+            std::printf("      %dx: rises to 63%% in %.2f ms, falls to 37%% in %.1f ms\n", factor, up * 1000.0,
+                        down * 1000.0);
+            const double block = 32.0 / kSampleRate;
+            timed = timed && std::abs(up - 0.02) < 2.5 * block && std::abs(down - 0.2) < 2.5 * block;
+            if (factor == factors[0])
+                firstUp = up;
+            spread = std::max(spread, std::abs(up - firstUp));
+        }
+        check(timed, "a Follower's Attack and Release set how fast it rises and falls");
+        check(spread < 1.5 * 32.0 / kSampleRate, "a Follower rises alike at every oversampling factor");
+    }
+    auto steady = [&](int key, const auto &setup) {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Attack)] = normFromEnvTime(0.0);
+        e.p[paramIndex(0, OpParam::Sustain)] = 1.0;
+        followerOn(e.p, FollowInput::OpA, 0.0, 0.0);
+        setup(e.p);
+        e.noteOn(key);
+        e.render(9600, 32);
+        double least = 1.0, most = 0.0;
+        for (int block = 0; block < 100; ++block) {
+            e.render(32, 32);
+            least = std::min(least, followed(e));
+            most = std::max(most, followed(e));
+        }
+        return std::array<double, 2>{least, most};
+    };
+    {
+        const auto peak = steady(kHigh, [](ParamValues &) {});
+        const auto rms = steady(kHigh + 12, [](ParamValues &p) { p[paramIndex(0, SourceParam::FollowRms)] = 1.0; });
+        std::printf("      a full sine: peak %.3f-%.3f, RMS %.3f-%.3f\n", peak[0], peak[1], rms[0], rms[1]);
+        check(peak[0] > 0.98 && peak[1] <= 1.0 && rms[0] > 0.93 && rms[1] <= 1.0,
+              "a Follower reads a full sine as full, by its peaks or its RMS");
+    }
+    {
+        const auto out = steady(kHigh, [](ParamValues &p) {
+            p[paramIndex(0, OpParam::Out)] = 0.5;
+            p[paramIndex(0, SourceParam::FollowInput)] = static_cast<double>(FollowInput::Out);
+            p[paramIndex(1, OpParam::Enabled)] = 1.0; // B plays, but only into nothing
+            p[paramIndex(1, OpParam::Out)] = 0.0;
+            p[paramIndex(1, OpParam::Attack)] = normFromEnvTime(0.0);
+            p[paramIndex(1, OpParam::Sustain)] = 1.0;
+        });
+        const auto b = steady(kHigh, [](ParamValues &p) { // the same, followed at B
+            p[paramIndex(0, OpParam::Out)] = 0.5;
+            p[paramIndex(0, SourceParam::FollowInput)] = static_cast<double>(FollowInput::OpB);
+            p[paramIndex(1, OpParam::Enabled)] = 1.0;
+            p[paramIndex(1, OpParam::Out)] = 0.0;
+            p[paramIndex(1, OpParam::Attack)] = normFromEnvTime(0.0);
+            p[paramIndex(1, OpParam::Sustain)] = 1.0;
+        });
+        std::printf("      A at 50%% to OUT, B heard nowhere: OUT %.3f, B %.3f\n", out[1], b[1]);
+        check(std::abs(out[1] - 0.5) < 0.02 && b[0] > 0.98,
+              "a Follower follows OUT, and an operator that is heard nowhere");
+    }
+    {
+        auto lowPassed = [](ParamValues &p) {
+            p[paramIndex(0, SourceParam::FollowInput)] = static_cast<double>(FollowInput::Filter1);
+            p[sendIndex(0, 0)] = 1.0;
+            p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            p[paramIndex(0, FilterParam::Out)] = 1.0;
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LowPass);
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(300.0);
+            p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;
+        };
+        auto shaped = [](ParamValues &p) {
+            p[paramIndex(0, SourceParam::FollowInput)] = static_cast<double>(FollowInput::Shaper1);
+            p[shaperSendIndex(0, 0)] = 1.0;
+            p[paramIndex(0, ShaperParam::Enabled)] = 1.0;
+            p[paramIndex(0, ShaperParam::Out)] = 1.0;
+        };
+        auto cut = [](ParamValues &p) {
+            p[paramIndex(0, SourceParam::FollowInput)] = static_cast<double>(FollowInput::Out);
+            p[paramIndex(0, SourceParam::FollowLowCut)] = normFromCutoff(2000.0);
+        };
+        const double filtered = steady(kHigh, lowPassed)[1], shaper = steady(kHigh, shaped)[1];
+        const double low = steady(45, cut)[1], high = steady(kHigh + 12, cut)[1];
+        std::printf("      a low-pass at 300 Hz on an A6: %.3f; a shaper: %.3f; Low Cut at 2 kHz: A2 %.3f, A7 %.3f\n",
+                    filtered, shaper, low, high);
+        check(filtered < 0.05 && shaper > 0.3, "a Follower follows a filter's output and a shaper's");
+        check(low < 0.02 && high > 0.85, "a Follower's Low Cut leaves out what is below it");
+    }
+    {
+        bool finite = true, bounded = true, ended = true;
+        for (int factor : factors)
+            for (double depth : {-1.0, 1.0}) {
+                Engine e(factor);
+                followerOn(e.p, FollowInput::Out, 0.0, 0.0);
+                e.p[paramIndex(0, OpParam::Out)] = depth < 0.0 ? 1.0 : 0.2;
+                e.p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+                e.p[slotAmountIndex(0, 0)] = depth;
+                e.noteOn(57);
+                for (int block = 0; block < 1500; ++block) {
+                    const std::vector<float> out = e.render(32, 32);
+                    for (float x : out)
+                        finite = finite && std::isfinite(x);
+                    bounded = bounded && followed(e) >= 0.0 && followed(e) <= 1.0;
+                }
+                e.noteOff(57);
+                e.render(96000);
+                Telemetry t;
+                e.synth().telemetry(t);
+                ended = ended && t.voices == 0;
+            }
+        check(finite && bounded && ended, "a Follower modulating its own input stays finite, and the note ends");
+    }
+    {
+        auto play = [](bool follower, bool on) {
+            Engine e(2);
+            if (follower) {
+                followerOn(e.p, FollowInput::Out, 0.005, 0.15);
+                e.p[sourceEnabledIndex(0)] = on ? 1.0 : 0.0;
+                if (!on) { // switched off, a modulation it would have made
+                    e.p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+                    e.p[slotAmountIndex(0, 0)] = -0.8;
+                }
+            }
+            e.noteOn(57);
+            return e.render(24000);
+        };
+        const std::vector<float> plain = play(false, false);
+        check(play(true, false) == plain && play(true, true) == plain,
+              "a Follower switched off, or modulating nothing, leaves the sound as it was");
+    }
+    {
+        // A Follower on a steady operator, its Gain swung by a 20 Hz LFO, on another operator's level: only the
+        // sidebands the swing makes, as an LFO on the level leaves.
+        const int key = 57;
+        const double f0 = keyHz(key), lfo = 20.0;
+        auto swung = [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Out)] = 0.3;
+            p[paramIndex(1, OpParam::Enabled)] = 1.0;
+            p[paramIndex(1, OpParam::Out)] = 0.0;
+            p[paramIndex(1, OpParam::Ratio)] = normFromRatio(8.0);
+            p[paramIndex(1, OpParam::Attack)] = normFromEnvTime(0.0);
+            p[paramIndex(1, OpParam::Sustain)] = 1.0;
+            followerOn(p, FollowInput::OpB, 0.005, 0.005);
+            p[paramIndex(0, SourceParam::FollowGain)] = -6.0;
+            p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+            p[slotAmountIndex(0, 0)] = 0.5;
+            p[paramIndex(1, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+            p[sourceEnabledIndex(1)] = 1.0;
+            p[paramIndex(1, SourceParam::Shape)] = static_cast<double>(LfoShape::Sine);
+            p[paramIndex(1, SourceParam::Sync)] = 0.0;
+            p[paramIndex(1, SourceParam::Rate)] = normFromRate(lfo);
+            p[slotTargetIndex(1, 0)] = slotTargetValue(paramIndex(0, SourceParam::FollowGain));
+            p[slotAmountIndex(1, 0)] = 0.1;
+        };
+        std::vector<double> partials;
+        for (int k = -12; k <= 12; ++k)
+            partials.push_back(f0 + k * lfo);
+        const double zipper = unexpectedDb(steadyTone(8, key, swung), partials);
+        std::printf("      on an operator's level, swung at 20 Hz: %.1f dB off its sidebands\n", zipper);
+        check(zipper < -70.0, "a Follower on an operator's level doesn't zipper");
+    }
+    {
+        // Through the newest voice to Volume, after the effects, and held there while a reverb rings out.
+        Engine e(2);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        chain(e.p, {0});
+        followerOn(e.p, FollowInput::Out, 0.0, 2.0); // falling slowly, so it still moves Volume as the voice ends
+        const int volume = paramIndex(GlobalParam::Volume);
+        e.p[slotTargetIndex(0, 0)] = slotTargetValue(volume);
+        e.p[slotAmountIndex(0, 0)] = -0.3;
+        e.p[paramIndex(0, OpParam::Release)] = normFromEnvTime(0.05);
+        e.noteOn(kHigh);
+        e.render(9600);
+        Telemetry t;
+        e.synth().telemetry(t);
+        const double playing = t.modOffset[volume];
+        e.noteOff(kHigh);
+        double last = playing;
+        bool ended = false, held = true;
+        for (int block = 0; block < 3000 && held; ++block) {
+            e.render(32, 32);
+            e.synth().telemetry(t);
+            if (t.voices > 0) {
+                last = t.modOffset[volume];
+            } else if (t.fxTail) {
+                ended = true;
+                // what the voice gave in its last block, a block on from the telemetry taken before it ended
+                held = std::abs(t.modOffset[volume] - last) < 0.05;
+            }
+        }
+        std::printf("      on Volume: %.2f dB while the note plays, %.2f dB as it ends, %s through the reverb's tail\n",
+                    playing, last, held ? "held" : "not held");
+        check(playing < -5.0 && last < -5.0 && ended && held,
+              "a Follower reaches the effects through the newest voice, and holds there as they ring out");
+    }
+    {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Attack)] = normFromEnvTime(0.0);
+        e.p[paramIndex(0, OpParam::Sustain)] = 1.0;
+        followerOn(e.p, FollowInput::Out, 0.0, 0.2);
+        e.noteOn(kHigh);
+        e.render(9600, 32);
+        const double held = followed(e);
+        e.noteOn(kHigh + 2); // a new voice: nothing heard yet
+        e.render(32, 32);
+        const double fresh = followed(e);
+        Engine mono(2);
+        mono.p = e.p;
+        mono.synth().setPlayMode(true, true, false);
+        mono.noteOn(kHigh);
+        mono.render(9600, 32);
+        mono.noteOn(kHigh + 2); // taking the sounding voice over, legato
+        mono.render(32, 32);
+        const double carried = followed(mono);
+        std::printf("      held %.3f; a new voice starts at %.3f; a legato note carries on at %.3f\n", held, fresh,
+                    carried);
+        check(held > 0.95 && fresh == 0.0 && carried > 0.9,
+              "a Follower starts each new voice from silence and carries on through a legato note");
+    }
+    {
+        // What one costs: 16 voices of the default patch, with a Follower on OUT and without.
+        for (int factor : {1, 2}) {
+            double seconds[2];
+            for (int with = 0; with < 2; ++with) {
+                Engine e(factor);
+                if (with)
+                    followerOn(e.p, FollowInput::Out, 0.005, 0.15);
+                for (int k = 0; k < 16; ++k)
+                    e.noteOn(48 + k);
+                e.render(4800);
+                const auto start = std::chrono::steady_clock::now();
+                e.render(48000);
+                seconds[with] = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            }
+            std::printf("      %dx, 16 voices: %.1f ms a second of audio, %.1f ms with a Follower on OUT\n", factor,
+                        seconds[0] * 1000.0, seconds[1] * 1000.0);
+        }
+    }
+}
+
 } // namespace
 
 int main() {
     const int factors[] = {1, 2, 4, 8};
+    followerChecks(factors);
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
     for (int factor : {2, 4, 8}) {

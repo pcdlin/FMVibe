@@ -7,8 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, warp, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult
-  lists, and the state layout are
+- Parameter ids, the wave, warp, filter type, effect type, source type, Follower input, amp model, cabinet, mic and
+  fixed Mult lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -248,6 +248,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     turned over mid-sine fading through nothing rather than clicking;
   - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
     192 kHz;
+  - the Follower source: its own fields (which hosts aren't given) reading back from their text; at 0 ms following
+    an operator's envelope a block late; its Attack and Release setting how fast it rises and falls, alike at every
+    oversampling factor; a full sine read as full by its peaks and its RMS; following OUT, an operator heard nowhere,
+    a filter and a shaper, its Low Cut leaving out what is below it; following its own input round a loop staying
+    finite, the note ending; switched off, or modulating nothing, leaving the sound bit for bit as it was; on an
+    operator's level, its Gain swung by an LFO, without zipper; reaching Volume through the newest voice and holding
+    there through a reverb's tail; starting each new voice at 0 and carrying on through a legato note; and what it
+    costs at 16 voices (printed);
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
     retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
@@ -432,6 +440,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     with, setting its polarity (read off the rendered pixels), undoably; a Curve source added second from the list,
     unipolar and widened, its Unipolar | Bipolar in the same place setting its Unipolar, undoably, and folded showing
     CRV and its number (read off the rendered pixels);
+  - a Follower source from + SOURCE's list, on OUT at 5 ms and 150 ms: its input's list (reaching on over the keyboard
+    strip) picking an operator and a filter, undoably, its PEAK | RMS setting its detector, its Gain and Low Cut knobs
+    turning and a double-click putting Low Cut back to Off; its trace rising with the newest voice's level (read off
+    the rendered pixels), repainting its card alone as a whole paint would; named Follower 1, and folded;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel or Pitch Bend) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -951,7 +963,7 @@ itself.
   36400 + 40·slot; the slots past the
   first 16 every field
   26000 + 200·(slot - 16)), source places
-  2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
+  2800 + 40·place (a Follower's own fields the last four, 2834–2837, leaving two spare), freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
   17000 + 200·slot; the slots past the first 16 every field 30000 + 200·(slot - 16)), the chain's order 33400 + place,
   slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's,
@@ -977,7 +989,8 @@ itself.
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`) and
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, Follower input
+  (`FollowInput`), operator sync (`OpSync`) and
   warp (`OpWarp`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
@@ -990,16 +1003,20 @@ itself.
   a later state holds with it plays it as a Random source does; and the LFO's Custom shape (`LfoShape::Custom`),
   which the Curve source took over, a state from before version 12 loading an LFO with it as a Curve source.
 - Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
-  Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random, MIDI or Curve) that
+  Slew, CC, Bipolar and Input for Random and MIDI, and a Follower's Input, Gain, RMS and Low Cut), and a Type param
+  (Empty, LFO, Envelope, Random, MIDI, Curve or Follower) that
   picks which are used (`sourceFieldUsedBy()`). A Random source is a random LFO: it runs through the LFOs' code with
   the LFO's clock fields, Smooth and Chaos, as an LFO of the retired Random shape (`lfoShape()`), its polarity its own
   Bipolar. A Curve source is an LFO of a drawn shape: it runs as an LFO of the retired Custom shape, with every LFO
   field but Shape (its polarity the LFO's Unipolar, which the editor turns on for a new one) and its place's freeform
-  shape. Hosts are given only a place's slot depths and Amounts; its fields go by place
+  shape. A Follower follows a voice's own sound (OUT, an operator, a filter or a shaper) through an envelope's Attack and
+  Release, its polarity Random's and MIDI's Bipolar: it measures its input in the voice's sample loop
+  (`renderBlock()`), only while one is on, and moves on once a block in the sources' loop, hearing the block before.
+  Hosts are given only a place's slot depths and Amounts; its fields go by place
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,280 of the 19,623 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,280 of the 19,687 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
