@@ -22,6 +22,9 @@ constexpr Str kWaveNames[] = {Str::WaveSine,     Str::WaveTriangle, Str::WaveSaw
                               Str::WavePulse,    Str::WaveHalfSine, Str::WaveAbsSine, Str::WaveNoise,
                               Str::WaveCustom,   Str::WaveAltSine,  Str::WaveOrgan,   Str::WaveVowel};
 static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
+constexpr Str kWarpNames[] = {Str::WarpOff,   Str::WarpBend,  Str::WarpSqueeze,
+                              Str::WarpPulse, Str::WarpSteps, Str::WarpSync};
+static_assert(std::size(kWarpNames) == static_cast<size_t>(OpWarp::Count));
 constexpr Str kFilterTypeNames[] = {Str::FilterLowPass, Str::FilterHighPass, Str::FilterBandPass, Str::FilterNotch,
                                     Str::FilterComb};
 constexpr Str kFilterTypeShortNames[] = {Str::FilterShortLowPass, Str::FilterShortHighPass, Str::FilterShortBandPass,
@@ -60,7 +63,7 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
                             Str::FxUtility,   Str::FxChorus};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
-                                    Str::SourceMidi};
+                                    Str::SourceMidi,  Str::SourceCurve};
 constexpr Str kMidiInputNames[] = {Str::MidiInputCc, Str::MidiInputPressure, Str::MidiInputSlide};
 static_assert(std::size(kMidiInputNames) == static_cast<size_t>(MidiInput::Count));
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
@@ -160,7 +163,7 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
             kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
-            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling)
+            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -321,6 +324,13 @@ void buildTable(ParamTable &t) {
             0.0, 1.0, normFromFixedFreq(440.0));
         add(paramIndex(op, OpParam::FixedMult), name + " " + tr(Str::ParamFixedMult), module, ParamKind::FixedMult,
             0.0, kFixedMultCount - 1.0, 3.0);
+        // Hard sync and the warp, off to begin with: the wave as it was.
+        add(paramIndex(op, OpParam::Sync), name + " " + tr(Str::ParamNoteSync), module, ParamKind::Toggle, 0.0,
+            static_cast<double>(OpSync::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::Warp), name + " " + tr(Str::ParamWarp), module, ParamKind::OpWarp, 0.0,
+            static_cast<double>(OpWarp::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::WarpAmount), name + " " + tr(Str::ParamWarpAmount), module,
+            ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
         // The Custom wave starts as a sine: the first partial alone, of 32.
         add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,
             kPartialCounts[0], kPartials, kDefaultPartials);
@@ -834,14 +844,15 @@ void buildTable(ParamTable &t) {
 
         field(SourceParam::Shape, tr(Str::ParamShape), ParamKind::LfoShape, 0.0,
             static_cast<double>(LfoShape::Count) - 1.0, 0.0);
-        field(SourceParam::Rate, tr(Str::ParamRate), ParamKind::Rate, 0.0, 1.0, normFromRate(2.0));
+        // At its lowest, 0 Hz: an LFO stands still, and a Random source takes a value for each note and holds it.
+        field(SourceParam::Rate, tr(Str::ParamRate), ParamKind::SweepRate, 0.0, 1.0, normFromRate(2.0));
         field(SourceParam::Sync, tr(Str::ParamSync), ParamKind::Toggle, 0.0, 1.0,
             1.0); // an LFO starts on quarter notes
         field(SourceParam::Division, tr(Str::ParamDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kQuarter);
         field(SourceParam::Free, tr(Str::ParamFree), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::Unipolar, tr(Str::ParamUnipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::OneShot, tr(Str::ParamOneShot), ParamKind::Toggle, 0.0, 1.0, 0.0);
-        // Random starts as plain sample and hold: steps, each landing anywhere.
+        // A Random source starts as plain sample and hold: steps, each landing anywhere.
         field(SourceParam::RandomSmooth, tr(Str::ParamSmooth), ParamKind::Percent, 0.0, 1.0, 0.0);
         field(SourceParam::RandomChaos, tr(Str::ParamChaos), ParamKind::Percent, 0.0, 1.0, 1.0);
 
@@ -860,6 +871,7 @@ void buildTable(ParamTable &t) {
         // Random's and Midi's: following what comes in at once, from the mod wheel's controller, one way.
         field(SourceParam::Slew, tr(Str::ParamSlew), ParamKind::Time, 0.0, kMaxEnvNorm, 0.0);
         field(SourceParam::CcNumber, tr(Str::ParamCc), ParamKind::Count, 0.0, 127.0, 1.0);
+        // Off to begin with, as a MIDI source starts; the editor adds a Random source with it on (see addSource()).
         field(SourceParam::Bipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
               static_cast<double>(MidiInput::Count) - 1.0, 0.0);
@@ -948,6 +960,10 @@ int findName(const Str (&names)[N], const char *text) {
 
 const char *waveName(OpWave wave) {
     return nameAt(kWaveNames, static_cast<double>(wave));
+}
+
+const char *warpName(OpWarp warp) {
+    return nameAt(kWarpNames, static_cast<double>(warp));
 }
 
 const char *filterTypeName(FilterType type) {
@@ -1086,7 +1102,8 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
-           kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling;
+           kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
+           kind == ParamKind::OpWarp;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1127,10 +1144,8 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::SlotBypass:
         std::snprintf(out, capacity, "%s", value >= 0.5 ? tr(Str::ValueOn) : tr(Str::ValueOff));
         break;
-    case ParamKind::Rate:
     case ParamKind::SweepRate:
-        std::snprintf(out, capacity, "%.2f Hz",
-                      paramTable()[index].kind == ParamKind::SweepRate ? sweepRateHz(value) : rateFromNorm(value));
+        std::snprintf(out, capacity, "%.2f Hz", sweepRateHz(value));
         break;
     case ParamKind::Ratio:
         if (std::lround(value) <= 0)
@@ -1223,6 +1238,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     case ParamKind::OpWave:
         std::snprintf(out, capacity, "%s", nameAt(kWaveNames, value));
+        break;
+    case ParamKind::OpWarp:
+        std::snprintf(out, capacity, "%s", nameAt(kWarpNames, value));
         break;
     case ParamKind::FilterType:
         std::snprintf(out, capacity, "%s", nameAt(kFilterTypeNames, value));
@@ -1359,6 +1377,7 @@ bool parseParam(int index, const char *text, double *out) {
 
     const int named = def.kind == ParamKind::LfoShape       ? findName(kLfoShapeNames, text)
                       : def.kind == ParamKind::OpWave       ? findName(kWaveNames, text)
+                      : def.kind == ParamKind::OpWarp       ? findName(kWarpNames, text)
                       : def.kind == ParamKind::FilterType   ? std::max(findName(kFilterTypeNames, text),
                                                                        findName(kFilterTypeShortNames, text))
                       : def.kind == ParamKind::SyncDivision ? findName(kDivisionNames, text)
@@ -1562,9 +1581,6 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::SlotBypass:
         value = value >= 0.5 ? 1.0 : 0.0;
         break;
-    case ParamKind::Rate:
-        value = normFromRate(std::max(value, kMinRate));
-        break;
     case ParamKind::SweepRate: // below the slowest LFO rate, still; the slowest is above 0, which is still
         value = value < kMinRate ? 0.0 : std::max(normFromRate(value), kLeastNorm);
         break;
@@ -1589,6 +1605,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::VoiceCount:
     case ParamKind::LfoShape:
     case ParamKind::OpWave:
+    case ParamKind::OpWarp:
     case ParamKind::FilterType:
         value = std::round(value);
         break;

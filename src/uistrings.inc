@@ -29,6 +29,14 @@ STR(WaveAltSine, "Alt Sine")
 STR(WaveOrgan, "Organ")
 STR(WaveVowel, "Vowel")
 
+// How an operator reads its wave's cycle (its Warp), in its buttons' tooltips and the host.
+STR(WarpOff, "Off")
+STR(WarpBend, "Bend")
+STR(WarpSqueeze, "Squeeze")
+STR(WarpPulse, "Pulse")
+STR(WarpSteps, "Steps")
+STR(WarpSync, "Sync") // the wave played several times through each cycle, cut off at its end
+
 STR(FilterLowPass, "Low-pass")
 STR(FilterHighPass, "High-pass")
 STR(FilterBandPass, "Band-pass")
@@ -117,6 +125,7 @@ STR(SourceLfo, "LFO")
 STR(SourceEnvelope, "Envelope")
 STR(SourceRandom, "Random") // a value taken at random as each note starts
 STR(SourceMidi, "MIDI") // a MIDI controller or aftertouch
+STR(SourceCurve, "Curve") // an LFO of a shape drawn from points
 STR(MidiInputCc, "CC") // what a MIDI source follows: a controller
 STR(MidiInputPressure, "Pressure") // or aftertouch
 STR(MidiInputSlide, "Slide") // or a note's slide (MPE's CC 74, CLAP's brightness expression)
@@ -214,6 +223,9 @@ STR(ParamNoiseSlope, "Noise Slope")
 STR(ParamFixed, "Fixed") // the operator plays a fixed frequency instead of following the note
 STR(ParamFixedFreq, "Fixed Freq")
 STR(ParamFixedMult, "Fixed Mult")
+STR(ParamNoteSync, "Note Sync") // hard sync: the operator's wave restarts with each cycle of the note
+STR(ParamWarp, "Warp")
+STR(ParamWarpAmount, "Warp Amount")
 STR(ParamPartials, "Partials") // how many the Custom wave plays
 STR(ParamPartial, "Partial {1}")
 STR(ParamLevel, "Level")
@@ -428,7 +440,9 @@ STR(SourceNameLfo, "LFO {1}") // numbered by type in the order the sources show
 STR(SourceNameEnv, "Env {1}")
 STR(SourceNameRandom, "Random {1}")
 STR(SourceNameMidi, "MIDI {1}")
+STR(SourceNameCurve, "Curve {1}")
 STR(SourceFoldedRandom, "RND {1}") // a Random source's name down its folded card, which "Random 3" doesn't fit
+STR(SourceFoldedCurve, "CRV {1}")  // and a Curve source's, which "Curve 3" doesn't
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")
@@ -458,6 +472,7 @@ STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
 STR(TabScope, "SCOPE")
 STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
+STR(TabWarp, "WARP") // its scope, warp and hard sync
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -584,6 +599,8 @@ STR(SwitchPoly, "POLY")
 STR(SwitchMono, "MONO")
 STR(SwitchLegato, "LEGATO")
 STR(SwitchAlways, "ALWAYS") // the glide's
+STR(SwitchHardSync, "NOTE") // an operator's note sync switch: hard sync to the note (not the Sync warp)
+STR(CaptionNoteSync, "NOTE SYNC") // on the WARP display, while the operator is synced to the note
 STR(SwitchStereo, "STEREO")
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
@@ -600,7 +617,6 @@ STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
-STR(HintRandomSource, "Random value per note")
 STR(ButtonEffect, "EFFECT") // + EFFECT and + SOURCE, after a drawn plus
 STR(ButtonSource, "SOURCE")
 STR(ButtonOpenFolder, "OPEN FOLDER")
@@ -731,6 +747,14 @@ STR(NoisePinkCaption, "pink")
 STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
 STR(TipFixedOff, "Fixed pitch at Freq × Mult") // the keyboard switch, tracking the keys
+STR(TipHardSync, "Note sync: restart the wave with each cycle of the note") // an operator's NOTE switch
+STR(TipWarpOff, "Off") // an operator's warps, its WARP tab's buttons
+STR(TipWarpBend, "Bend")
+STR(TipWarpSqueeze, "Squeeze")
+STR(TipWarpPulse, "Pulse")
+STR(TipWarpSteps, "Steps")
+STR(TipWarpSync, "Sync")
+STR(SummarySync, "note sync") // on an operator's summary line, while it is synced to the note
 STR(TipFixedOn, "Fixed pitch on. Click to track keys")
 
 // The inspector's summary line, after the node's letter and its wave, filter type or curve; an operator's ratio
@@ -938,6 +962,7 @@ STR(RedoChanges, "Redo {1} changes")
 STR(MsgAlreadyModulates, "{1} already modulates {2}")
 STR(MsgSlotsFull, "{1}: all {2} slots are in use")
 STR(MsgOwnKnob, "{1} can't modulate its own knob")
+STR(MsgMacroLoop, "{1} moves {2} already: it can't modulate it back") // macros modulating each other in a loop
 STR(MsgEmptyModsFull, "Up to {1} empty modulations allowed.")
 STR(MsgRouteExists, "{1} already routes to {2}")
 STR(MsgChainFull, "Only supports up to {1} effects in the chain")
@@ -1027,6 +1052,7 @@ STR(CascadeAlready, "on it already") // a source that modulates the row's target
 STR(CascadeSlotsFull, "no slot free")
 STR(CascadeItself, "itself") // a row's own source, which can't be its aux
 STR(CascadeOwnKnob, "its own knob")
+STR(CascadeLoop, "would loop") // a macro moved by the macro whose knob it would modulate
 STR(CascadeOff, "off") // a switched-off operator
 STR(CascadeSearchHint, "Search targets")
 STR(CascadeNoMatch, "No target matches") // the target menu's search found nothing

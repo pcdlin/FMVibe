@@ -7,8 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult lists, and
-  the state layout are
+- Parameter ids, the wave, warp, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult
+  lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -56,7 +56,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     difference and at 50 % is AM, Linear FM keeps the mean pitch (through zero too) where Exp FM lifts it by its
     octaves, and feedback stays Phase whatever its mode param says; every wave sounds; a saw's 2nd harmonic sits at
     half the fundamental, and Alt Sine's, Organ's and Vowel's where their series put them; a Custom wave plays its
-    partials, only as many as its count (the 40th silent at 32, heard at 64); a low-pass at 300 Hz and a high-pass
+    partials, only as many as its count (the 40th silent at 32, heard at 64); a sine synced at 2.5 times an A4
+    playing the A4's harmonics and not its own 1100 Hz, and Squeeze moving a square's pulse width (its 2nd harmonic
+    from none at 50 % to about 0.63 of its fundamental either way at ±50 %), and the Sync warp at 3 times a cycle
+    playing an A4's 3rd harmonic alone and at 3.5 times its harmonics, not 1540 Hz; a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
@@ -85,7 +88,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a MIDI source following its controller (and not another), on pressure the channel's and a note's own
     (polyphonic aftertouch or CLAP's pressure expression, not another key's), and on slide resting in the middle and
     following a note's brightness expression; Slew taking a controller turned up mid-note slowly, and a Random source
-    giving each note a level of its own;
+    standing still (at 0 Hz) giving each note a level of its own;
   - MPE over MIDI, switched through the state's settings chunk (which saves it): with it on, a member channel's
     pitch bend bending its note alone and the master channel's every
     note, and a member channel's pressure being its note's alone (the master channel's standing in until it sends
@@ -210,7 +213,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     version 5 state's retired three-band compressor loading as a three-band dynamics doing what it did, its
     modulation along (a linked one's bands taking the low band's settings), while a version 6 state loads one back
     as saved; and a version 9 state's depths on its thresholds loading three quarters as deep, as their range grew
-    from 60 dB to 80, a version 10 state's as saved;
+    from 60 dB to 80, a version 10 state's as saved; and a version 10 state's Random source loading as one standing
+    still at 0 Hz and its LFO with the retired Random shape as a Random source running as it ran, a version 11
+    state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
+    it ran (its points and polarity kept), a version 12 state's as saved;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -242,12 +248,17 @@ the plain CMake commands and installing into a host are in the [README](README.m
     turned over mid-sine fading through nothing rather than clicking;
   - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
     192 kHz;
-  - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its last
-    counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
+  - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
+    retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
+    counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
+    an LFO with the retired Custom shape did, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
+  - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
+    knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
+    knob silencing it while a soft one played with it plays as it would alone;
   - where the pitch bend stands, as the bend wheel shows it: the host's MIDI bend and modulation on top of the Pitch
     Bend param as set, with no note and in a note with its own modulation;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
@@ -269,6 +280,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
   - a Custom wave playing the partials drawn, taken up as it is picked and changed partial by partial as it plays;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
+  - an operator's Note Sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
+    Pulse, Steps, Sync, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
+    plain wave bit for bit, sync switched on and off and a warp switched on and changed to another under a note
+    (in single frames too) no rougher than the sound before, after or the plain wave between, and an LFO on
+    Squeeze's amount and on a synced operator's ratio leaving only the note's harmonics and their sidebands;
   - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
     not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
     transport is stopped, and a random one stepping as the transport passes a cycle;
@@ -409,8 +425,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input; a Random card's Unipolar | Bipolar setting its polarity (read off the rendered pixels),
-    undoably;
+    following its input; a Random card's Unipolar | Bipolar, where an LFO's shape list is, bipolar to begin
+    with, setting its polarity (read off the rendered pixels), undoably; a Curve source added second from the list,
+    unipolar and widened, its Unipolar | Bipolar in the same place setting its Unipolar, undoably, and folded showing
+    CRV and its number (read off the rendered pixels);
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel or Pitch Bend) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -474,7 +492,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off the rendered pixels), and the attack's below 1 ms, to 0.5 ms and to 0 ms, drawn as a vertical line (read off
     the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
     over the curve (read off the rendered pixels);
-  - an operator page's ENVELOPE, UNISON and SCOPE tabs: a line across the envelope at the newest voice's level,
+  - an operator page's ENVELOPE, UNISON and WARP tabs: a line across the envelope at the newest voice's level,
     and a dot on the curve along the attack, decay and release (one releasing from above the sustain too), as on a
     mod envelope's card (read off the rendered pixels), the unison knobs on theirs, the scope asking for its
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
@@ -485,6 +503,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
     the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
     (read off the rendered pixels);
+  - the WARP tab's warp: its buttons picking the warp (the Sync warp apart from the NOTE switch), its knob the amount
+    and NOTE note sync, each an undo step,
+    its display with no note drawing a square's pulse width as Squeeze takes it (read off the rendered pixels), a
+    warp button's tooltip, the display synced, and a noise operator showing its envelope in the tab's place;
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the
     ratio was in one undo step and taking Ratio's and Fine's places, Mult stepping (and typed into, its × taken
     whole), and Pitch and Detune dimmed (read off the rendered pixels), not turning and not ringed for a dragged
@@ -529,6 +551,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
     too;
   - the right-click menu on knobs;
+  - a macro's knob as a target: an LFO's and another macro's handle dropped on it, with their depth handles under
+    it, its own macro's handle and one that would loop refused, its dot with no note playing showing where the other
+    macro takes it (read off the rendered pixels), and the target menu's Macros listing the knobs by their names, the
+    one that would loop and the row's own refused;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
     and velocity's handles, displays and curve editors, velocity's handle faint until it modulates something (read
     off the rendered pixels), the mod wheel's
@@ -556,15 +582,17 @@ the plain CMake commands and installing into a host are in the [README](README.m
     double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too (the wheel stepping through the counts), the ones a lower count hides kept as they were, the
     edit button (a pencil) by the keyboard switch opening the partial editor and closing it, as another node's tab
-    in the inspector does (read off the rendered pixels), and the full-size LFO shape editor hiding the inspector;
-  - a Custom LFO's card: picking Custom widening it, and so a click on its display (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
-    tools inverting, reversing and shifting the shape (each one undo step) and copying it into another LFO (one card
+    in the inspector does (read off the rendered pixels), and the full-size shape editor hiding the inspector;
+  - a Curve source's card: a click on its display widening it (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
+    tools inverting, reversing and shifting the shape (each one undo step) and copying it into another Curve source (one card
     widened at a time), its title row's expand button widening it as a click on its display does, Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
     full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
     tab, the card staying widened, also while the modulation panel collapses, and the
-    card back to its size by its collapse button or another shape;
-  - an LFO's shape list (going with the LFO undone), the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
-    pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
+    card back to its size by its collapse button;
+  - an LFO's shape list (going with the LFO undone, offering no Random or Custom shape, the wheel stepping along it
+    to Square), a Random
+    source starting synced and bipolar, its knobs, its dot waiting at the end of a cycle and, at 0 Hz, a line at the value it holds
+    (read off the rendered pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
     onto its neighbor's time, and
     scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands; a
@@ -849,13 +877,14 @@ breakpoints in `src/` then hit.
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
 | `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
 | `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
 | `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
-| `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
+| `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
@@ -906,7 +935,8 @@ itself.
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
-  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult and Phase; the
+  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
+  Sync, Warp and Warp Amount; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -942,21 +972,29 @@ itself.
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic and fixed Mult lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`) and
+  warp (`OpWarp`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
   three-band compressor (`FxType::MultiComp`) is no longer offered, and `readParams()` loads a slot holding one in a
   state from before version 6 as a three-band dynamics set from its fields, moving the modulation aimed at them
   along. A host can still set the retired type (the Type param's range takes it in): such a slot does nothing, and a
-  state keeps it as it is.
+  state keeps it as it is. Likewise the LFO's Random shape (`LfoShape::Random`), which the Random source took over:
+  the shape list doesn't offer it, a state from before version 11 loads an LFO with it as a Random source, and an LFO
+  a later state holds with it plays it as a Random source does; and the LFO's Custom shape (`LfoShape::Custom`),
+  which the Curve source took over, a state from before version 12 loading an LFO with it as a Curve source.
 - Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
-  Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random or MIDI) that
-  picks which are used (`sourceFieldUsedBy()`). Hosts are given only a place's slot depths and Amounts; its fields go by place
+  Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random, MIDI or Curve) that
+  picks which are used (`sourceFieldUsedBy()`). A Random source is a random LFO: it runs through the LFOs' code with
+  the LFO's clock fields, Smooth and Chaos, as an LFO of the retired Random shape (`lfoShape()`), its polarity its own
+  Bipolar. A Curve source is an LFO of a drawn shape: it runs as an LFO of the retired Custom shape, with every LFO
+  field but Shape (its polarity the LFO's Unipolar, which the editor turns on for a new one) and its place's freeform
+  shape. Hosts are given only a place's slot depths and Amounts; its fields go by place
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,262 of the 19,381 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,280 of the 19,623 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
@@ -981,7 +1019,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 10: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 12: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -995,7 +1033,11 @@ itself.
   loads its chain's order as the graph's line (`fxChainWires()`), since the wires alone put the effects in order now,
   and the places do nothing; before version 10, a modulation's depth on a three-band dynamics' Above or Below threshold
   loads scaled by `kMdRetiredThresholdMinDb / kMdThresholdMinDb`, since their range now reaches down to -80 dB rather
-  than -60), followed by the editor layout:
+  than -60; before version 11, a Random source, which then took a value for each note, loads unsynced at 0 Hz (the
+  LFO fields it now uses otherwise at their defaults), standing still and taking one for each note, and an LFO with
+  the retired Random shape as a Random source running as it ran (`loadRandomSources()`); before version 12, an LFO
+  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`)), followed by the
+  editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
@@ -1011,7 +1053,8 @@ itself.
   short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States
   with a newer version are refused.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation
-  have resolution where it matters. The value text shows ms/s/Hz. Envelopes' attacks, holds, decays and releases
+  have resolution where it matters. A rate's 0 (an LFO's, a Random source's, a phaser's, flanger's or chorus's) is
+  0 Hz, standing still (`sweepRateHz()`). The value text shows ms/s/Hz. Envelopes' attacks, holds, decays and releases
   stop at 10 s (`kMaxEnvTime`), their range ending short of the curve's top; a state or preset holding a longer one
   loads it as 10 s, since loading holds every param within its range. Their attacks, decays and releases also
   reach below 0, down to `kMinEnvNorm`: a straight line from 1 ms at 0 down to 0 ms (`envTimeFromNorm()`), so

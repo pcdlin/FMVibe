@@ -1814,6 +1814,108 @@ void effectsChainChecks() {
               "a state before version 10 loads its depths on the three-band dynamics' thresholds as far as they swung");
     }
     {
+        // Before version 11, a Random source took a value for each note and held it, and an LFO could have the Random
+        // shape. The source loads as a random LFO standing still (unsynced at 0 Hz, on its own clock in each voice, the
+        // LFO's fields it now uses as they start but for those), its polarity kept; an LFO with the Random shape as a
+        // Random source running as it ran (its rate, clock and chaos kept, Bipolar standing for its Unipolar), its shape
+        // and Unipolar back at their defaults; another LFO as it was. A version 11 state loads as saved.
+        ParamValues p = defaults();
+        auto set = [&p](int place, SourceParam f, double v) { p[paramIndex(place, f)] = v; };
+        set(0, SourceParam::Type, static_cast<double>(SourceType::Random));
+        set(0, SourceParam::Free, 1.0); // left by an LFO the place held, which the Random source ignored
+        set(0, SourceParam::RandomSmooth, 0.5);
+        set(0, SourceParam::Bipolar, 1.0);
+        for (int place : {1, 2}) {
+            set(place, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+            set(place, SourceParam::Shape, static_cast<double>(LfoShape::Random));
+            set(place, SourceParam::Unipolar, place == 1 ? 1.0 : 0.0);
+            set(place, SourceParam::Sync, 0.0);
+            set(place, SourceParam::Rate, normFromRate(3.0));
+            set(place, SourceParam::Anchor, 1.0);
+            set(place, SourceParam::RandomChaos, 0.3);
+        }
+        set(3, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+        set(3, SourceParam::Shape, static_cast<double>(LfoShape::Saw));
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues before = load(10), now = load(11);
+        auto at = [&before](int place, SourceParam f) { return before[paramIndex(place, f)]; };
+        auto def = [](int place, SourceParam f) { return paramTable()[paramIndex(place, f)].def; };
+        const double random = static_cast<double>(SourceType::Random);
+        const bool source = at(0, SourceParam::Type) == random && at(0, SourceParam::Sync) == 0.0 &&
+                            at(0, SourceParam::Rate) == 0.0 && at(0, SourceParam::Free) == 0.0 &&
+                            at(0, SourceParam::RandomSmooth) == def(0, SourceParam::RandomSmooth) &&
+                            at(0, SourceParam::Bipolar) == 1.0;
+        bool lfos = true;
+        for (int place : {1, 2})
+            lfos = lfos && at(place, SourceParam::Type) == random &&
+                   at(place, SourceParam::Bipolar) == (place == 1 ? 0.0 : 1.0) &&
+                   at(place, SourceParam::Rate) == normFromRate(3.0) && at(place, SourceParam::Sync) == 0.0 &&
+                   at(place, SourceParam::Anchor) == 1.0 && at(place, SourceParam::RandomChaos) == 0.3 &&
+                   at(place, SourceParam::Shape) == def(place, SourceParam::Shape) &&
+                   at(place, SourceParam::Unipolar) == 0.0;
+        const bool plain = at(3, SourceParam::Type) == static_cast<double>(SourceType::Lfo) &&
+                           at(3, SourceParam::Shape) == static_cast<double>(LfoShape::Saw);
+        check(source, "a state before version 11 loads its Random source as one standing still, taking a value a note");
+        check(lfos && plain, "a state before version 11 loads its random LFO as a Random source running as it ran");
+        check(std::equal(now.begin(), now.end(), p.begin()), "a version 11 state loads its sources as saved");
+    }
+    {
+        // Before version 12, an LFO could have the Custom shape: it loads as a Curve source running as it ran, its
+        // fields, points and polarity kept and its Shape back at its default; another LFO as it was. A version 12
+        // state loads as saved.
+        ParamValues p = defaults();
+        auto set = [&p](int place, SourceParam f, double v) { p[paramIndex(place, f)] = v; };
+        for (int place : {0, 1}) {
+            set(place, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+            set(place, SourceParam::Shape, static_cast<double>(LfoShape::Custom));
+            set(place, SourceParam::Unipolar, place == 0 ? 1.0 : 0.0);
+            set(place, SourceParam::Sync, 0.0);
+            set(place, SourceParam::Rate, normFromRate(4.0));
+            set(place, SourceParam::Phase, 0.25);
+            p[shapeCountIndex(place)] = 3.0;
+            p[shapePointIndex(place, 2, PointField::Y)] = 0.6;
+        }
+        set(2, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+        set(2, SourceParam::Shape, static_cast<double>(LfoShape::Triangle));
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues before = load(11), now = load(12);
+        auto at = [&before](int place, SourceParam f) { return before[paramIndex(place, f)]; };
+        bool curves = true;
+        for (int place : {0, 1})
+            curves = curves && at(place, SourceParam::Type) == static_cast<double>(SourceType::Curve) &&
+                     at(place, SourceParam::Shape) == paramTable()[paramIndex(place, SourceParam::Shape)].def &&
+                     at(place, SourceParam::Unipolar) == (place == 0 ? 1.0 : 0.0) &&
+                     at(place, SourceParam::Rate) == normFromRate(4.0) && at(place, SourceParam::Sync) == 0.0 &&
+                     at(place, SourceParam::Phase) == 0.25 && before[shapeCountIndex(place)] == 3.0 &&
+                     before[shapePointIndex(place, 2, PointField::Y)] == 0.6;
+        const bool plain = at(2, SourceParam::Type) == static_cast<double>(SourceType::Lfo) &&
+                           at(2, SourceParam::Shape) == static_cast<double>(LfoShape::Triangle);
+        check(curves && plain, "a state before version 12 loads its Custom LFO as a Curve source running as it ran");
+        check(std::equal(now.begin(), now.end(), p.begin()), "a version 12 state loads its LFOs as saved");
+    }
+    {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.
         auto stale = [&](FilterType first, int firstSlope, FilterType second, int secondSlope) {
@@ -2070,6 +2172,93 @@ void noteAndVoiceChecks() {
                     "source %.4f, velocity %.4f; %.3f unmodulated\n", macro, wheel, depth, velocity, still);
         check(macro < 1e-3f && wheel < 1e-3f && depth < 1e-3f && velocity < 1e-3f && still > 0.5f,
               "host modulation of a macro, the mod wheel, the note source's and velocity's depth moves their targets");
+    }
+    {
+        // A macro's knob as a target: the macros in a chain, Macro 3 on Macro 2's knob, Macro 2 on Macro 1's (the order
+        // they are worked out in isn't their numbers'), and Macro 1 taking A's Out down by 100 %. Macro 3 turned up
+        // takes A down to silence through the other two; turned down, A plays. The telemetry says where the knobs stand.
+        auto peakOf = [](Engine &e, int key, double velocity = 1.0) {
+            e.synth().noteOn({-1, 0, 0, static_cast<int16_t>(key)}, velocity);
+            const std::vector<float> out = e.render(9600);
+            float peak = 0.0f;
+            for (size_t i = 4800; i < out.size(); ++i)
+                peak = std::max(peak, std::abs(out[i]));
+            return peak;
+        };
+        auto link = [](Engine &e, int source, int slot, int target, double depth) {
+            e.p[slotTargetIndex(source, slot)] = slotTargetValue(target);
+            e.p[slotAmountIndex(source, slot)] = depth;
+        };
+        const int out = paramIndex(0, OpParam::Out);
+        auto chain = [&](double macro3, MacroKnobs *knobs) {
+            Engine e(2);
+            link(e, kMaxSources, 0, out, -1.0);
+            link(e, kMaxSources + 1, 0, paramIndex(0, MacroParam::Value), 1.0);
+            link(e, kMaxSources + 2, 0, paramIndex(1, MacroParam::Value), 1.0);
+            e.p[paramIndex(2, MacroParam::Value)] = macro3;
+            const float peak = peakOf(e, 60);
+            if (knobs) {
+                auto t = std::make_unique<Telemetry>();
+                e.synth().telemetry(*t);
+                for (int m = 0; m < kMacros; ++m)
+                    (*knobs)[m] = e.p[paramIndex(m, MacroParam::Value)] + t->macroOffset[m];
+            }
+            return peak;
+        };
+        MacroKnobs knobs{};
+        const float down = chain(1.0, &knobs), up = chain(0.0, nullptr);
+        std::printf("      A's peak through a chain of three macros: %.4f with the last turned up, %.3f down; knobs "
+                    "%.2f %.2f %.2f\n", down, up, knobs[0], knobs[1], knobs[2]);
+        check(down < 1e-3f && up > 0.5f && std::abs(knobs[0] - 1.0) < 1e-6 && std::abs(knobs[1] - 1.0) < 1e-6,
+              "a macro's knob takes the modulation of another macro, along a chain of them, whatever their numbers");
+
+        // A loop the editor doesn't make (Macro 1 and Macro 2 on each other's knobs), as a state can hold it: it plays
+        // steadily, each render alike.
+        auto loop = [&] {
+            Engine e(2);
+            link(e, kMaxSources, 0, out, -0.5);
+            link(e, kMaxSources, 1, paramIndex(1, MacroParam::Value), 1.0);
+            link(e, kMaxSources + 1, 0, paramIndex(0, MacroParam::Value), 0.7);
+            e.p[paramIndex(0, MacroParam::Value)] = 0.4;
+            return peakOf(e, 60);
+        };
+        const float looped = loop(), again = loop();
+        std::printf("      two macros on each other's knobs: peak %.4f, then %.4f\n", looped, again);
+        check(std::isfinite(looped) && looped == again && looped > 0.1f,
+              "macros modulating each other's knobs in a loop play steadily and alike");
+
+        // Per voice: velocity on Macro 2's knob, Macro 2 taking A's Out down by 100 %. A note at full velocity is
+        // silent, a soft one plays; played together, each voice has its own knob: the loud note adds nothing to the
+        // soft one. Its knob in the telemetry is the newest voice's.
+        auto voiced = [&](bool loud, bool soft, MacroKnobs *knobs) {
+            Engine e(2);
+            link(e, kMaxSources + 1, 0, out, -1.0);
+            link(e, kVelocitySource, 0, paramIndex(1, MacroParam::Value), 1.0);
+            if (loud)
+                e.synth().noteOn({-1, 0, 0, 60}, 1.0);
+            if (soft)
+                e.synth().noteOn({-1, 0, 0, 64}, 0.05);
+            const std::vector<float> rendered = e.render(9600);
+            if (knobs) {
+                auto t = std::make_unique<Telemetry>();
+                e.synth().telemetry(*t);
+                (*knobs)[1] = t->macroOffset[1];
+            }
+            return std::vector<float>(rendered.begin() + 4800, rendered.end());
+        };
+        MacroKnobs softKnob{};
+        const std::vector<float> loudAlone = voiced(true, false, nullptr), softAlone = voiced(false, true, &softKnob),
+                                 both = voiced(true, true, nullptr);
+        float loudPeak = 0.0f, softPeak = 0.0f, apart = 0.0f;
+        for (size_t i = 0; i < both.size(); ++i) {
+            loudPeak = std::max(loudPeak, std::abs(loudAlone[i]));
+            softPeak = std::max(softPeak, std::abs(softAlone[i]));
+            apart = std::max(apart, std::abs(both[i] - softAlone[i]));
+        }
+        std::printf("      velocity on a macro's knob: a loud note's peak %.4f, a soft one's %.3f, both less the soft "
+                    "one %.6f; the soft note's knob %.3f\n", loudPeak, softPeak, apart, softKnob[1]);
+        check(loudPeak < 1e-3f && softPeak > 0.5f && apart < 1e-4f && softKnob[1] > 0.0 && softKnob[1] < 0.2,
+              "a source of each voice on a macro's knob moves what the macro modulates in that voice alone");
     }
     {
         // A comb whose delay lies a hair over a whole number of samples (at a cutoff of 1 kHz at 2x, say) reads only
@@ -2744,6 +2933,197 @@ void outScopeChecks() {
     check(silent < 1e-4f && peakOf() == 0.0f, "the output scope falls silent with the output, and shows nothing off");
 }
 
+// What the switches below start from: operator A a saw at 2.5 times the note.
+void syncWarpBase(ParamValues &p) {
+    p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+    p[paramIndex(0, OpParam::Ratio)] = normFromRatio(2.5);
+}
+
+// --- An operator's hard sync and warp: band-limited (the energy off the note's harmonics, as the aliasing cases
+// above), switched on and changed under a note without a click, a warp's amount modulated without zipper, a synced
+// operator's ratio swept by an LFO staying on the note's harmonics and their sidebands, and a warp at 0 the plain wave.
+void syncWarpChecks(const int (&factors)[4]) {
+    std::printf("hard sync and warp:\n");
+    struct Case {
+        const char *name;
+        int key;
+        OpWave wave;
+        bool sync;
+        double ratio;
+        OpWarp warp;
+        double amount;
+        double limit2x; // dB at 2x oversampling
+    };
+    const Case cases[] = {
+        {"synced sine x3.3 at C6", 84, OpWave::Sine, true, 3.3, OpWarp::Off, 0.0, -60.0},
+        {"synced saw x2.6 at C6", 84, OpWave::Saw, true, 2.6, OpWarp::Off, 0.0, -50.0},
+        {"synced sine x7.7 at C5", 72, OpWave::Sine, true, 7.7, OpWarp::Off, 0.0, -60.0},
+        {"Bend 100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Bend, 1.0, -60.0},
+        {"Bend -60% saw at C6", 84, OpWave::Saw, false, 1.0, OpWarp::Bend, -0.6, -60.0},
+        {"Squeeze 80% square at C6", 84, OpWave::Square, false, 1.0, OpWarp::Squeeze, 0.8, -60.0},
+        {"Squeeze -100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Squeeze, -1.0, -60.0},
+        {"Pulse 100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Pulse, 1.0, -60.0},
+        {"Pulse -70% saw at C6", 84, OpWave::Saw, false, 1.0, OpWarp::Pulse, -0.7, -60.0},
+        {"Steps 100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Steps, 1.0, -60.0},
+        {"Steps -100% triangle at C6", 84, OpWave::Triangle, false, 1.0, OpWarp::Steps, -1.0, -58.0},
+        {"synced Squeeze 60% square x2.4 C6", 84, OpWave::Square, true, 2.4, OpWarp::Squeeze, 0.6, -50.0},
+        {"Sync warp 50% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Sync, 0.5, -60.0},
+        {"Sync warp -80% saw at C6", 84, OpWave::Saw, false, 1.0, OpWarp::Sync, -0.8, -50.0},
+        {"Sync warp 30% triangle at C7", 96, OpWave::Triangle, false, 1.0, OpWarp::Sync, 0.3, -60.0},
+    };
+    auto setup = [](const Case &c) {
+        return [&c](ParamValues &p) {
+            p[paramIndex(0, OpParam::Wave)] = static_cast<double>(c.wave);
+            p[paramIndex(0, OpParam::Sync)] = c.sync ? 1.0 : 0.0;
+            p[paramIndex(0, OpParam::Ratio)] = normFromRatio(c.ratio);
+            p[paramIndex(0, OpParam::Warp)] = static_cast<double>(c.warp);
+            p[paramIndex(0, OpParam::WarpAmount)] = c.amount;
+        };
+    };
+    for (const Case &c : cases) {
+        double db[4];
+        for (int f = 0; f < 4; ++f)
+            db[f] = unexpectedDb(steadyTone(factors[f], c.key, setup(c)), harmonics(keyHz(c.key)));
+        std::printf("      %-34s 1x %7.1f   2x %7.1f   4x %7.1f   8x %7.1f\n", c.name, db[0], db[1], db[2], db[3]);
+        char what[128];
+        std::snprintf(what, sizeof(what), "%s: below %.0f dB at 2x", c.name, c.limit2x);
+        check(db[1] < c.limit2x, what);
+        std::snprintf(what, sizeof(what), "%s: oversampling doesn't make it worse", c.name);
+        check(db[3] < db[0] + 3.0, what);
+    }
+
+    // A warp at 0 is the plain wave, bit for bit; and with Sync and Warp at their defaults (as every patch from before
+    // them has them) an operator plays as it did, which the factory presets' renders in fmvibe-bench also check.
+    {
+        auto plain = [](ParamValues &p) { p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw); };
+        const std::vector<float> a = steadyTone(2, 69, plain);
+        bool same = true;
+        for (OpWarp warp : {OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps, OpWarp::Sync}) {
+            const std::vector<float> b = steadyTone(2, 69, [&](ParamValues &p) {
+                plain(p);
+                p[paramIndex(0, OpParam::Warp)] = static_cast<double>(warp);
+            });
+            same = same && a == b;
+        }
+        const ParamDef &sync = paramTable()[paramIndex(0, OpParam::Sync)];
+        const ParamDef &warp = paramTable()[paramIndex(0, OpParam::Warp)];
+        const ParamDef &amount = paramTable()[paramIndex(0, OpParam::WarpAmount)];
+        check(same && sync.def == 0.0 && warp.def == 0.0 && amount.def == 0.0,
+              "every warp at 0 plays the plain wave bit for bit, and sync and warp start off");
+    }
+
+    // Switched on and changed under a held A3, A a saw at 2.5 times it (in single frames too, as events split
+    // blocks): nothing rougher than the synced or warped sound itself is, before or after, or the plain saw a warp
+    // changed to another passes through.
+    {
+        struct Switch {
+            const char *name;
+            void (*before)(ParamValues &);
+            void (*after)(ParamValues &);
+        };
+        const Switch switches[] = {
+            {"sync switched on", [](ParamValues &p) { syncWarpBase(p); },
+             [](ParamValues &p) { syncWarpBase(p), p[paramIndex(0, OpParam::Sync)] = 1.0; }},
+            {"sync switched off", [](ParamValues &p) { syncWarpBase(p), p[paramIndex(0, OpParam::Sync)] = 1.0; },
+             [](ParamValues &p) { syncWarpBase(p); }},
+            {"Squeeze 90% switched on", [](ParamValues &p) { syncWarpBase(p); },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             }},
+            {"Bend 90% to Steps 90%",
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Bend);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Steps);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             }},
+            {"Squeeze 90% to Sync 70%",
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Sync);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.7;
+             }},
+            {"Pulse -100% to +100%",
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Pulse);
+                 p[paramIndex(0, OpParam::WarpAmount)] = -1.0;
+             },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Pulse);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 1.0;
+             }},
+        };
+        // A warp changed to another goes through its plain wave (an amount of 0) on the way, which counts too.
+        double plain = 0.0;
+        {
+            Engine e(2);
+            syncWarpBase(e.p);
+            e.noteOn(57);
+            plain = roughness(e.render(9600), 4800, 9600);
+        }
+        double worst = 0.0;
+        for (const Switch &sw : switches)
+            for (uint32_t piece : {kBlock, 1u}) {
+                Engine e(2);
+                sw.before(e.p);
+                e.noteOn(57);
+                const std::vector<float> before = e.render(9600, piece);
+                sw.after(e.p);
+                const std::vector<float> after = e.render(9600, piece);
+                const std::vector<float> both = joined(before, after);
+                const double steady = std::max({roughness(both, 4800, before.size() - 1),
+                                                roughness(both, before.size() + 4800, both.size()), plain});
+                const double switched = roughness(both, before.size() - 2, before.size() + 480);
+                const double ratio = switched / steady;
+                if (piece == kBlock)
+                    std::printf("      %-34s %.2f times as rough as the sound itself\n", sw.name, ratio);
+                worst = std::max(worst, ratio);
+            }
+        check(worst < 1.5, "sync and warp switched or changed under a note don't click");
+    }
+
+    // Modulated: a 20 Hz LFO on Squeeze's amount (a square's pulse width) and on a synced operator's ratio leaves only
+    // the note's harmonics and their sidebands, not partials at the control rate.
+    {
+        const int key = 57;
+        const double f0 = keyHz(key), lfo = 20.0;
+        std::vector<double> partials;
+        for (double h : harmonics(f0))
+            for (int k = -16; k <= 16; ++k)
+                partials.push_back(h + k * lfo);
+        auto pwm = [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Square);
+            p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+            p[paramIndex(0, OpParam::WarpAmount)] = 0.0;
+            lfoOn(p, paramIndex(0, OpParam::WarpAmount), 0.3, lfo);
+        };
+        const double width = unexpectedDb(steadyTone(1, key, pwm), partials);
+        std::printf("      %-34s %7.1f dB off the expected partials\n", "LFO on Squeeze (PWM)", width);
+        check(width < -60.0, "an LFO on a warp's amount doesn't zipper");
+        auto sweep = [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Sync)] = 1.0;
+            p[paramIndex(0, OpParam::Ratio)] = normFromRatio(3.0);
+            lfoOn(p, paramIndex(0, OpParam::Ratio), 0.1, lfo);
+        };
+        const double swept = unexpectedDb(steadyTone(2, key, sweep), partials);
+        std::printf("      %-34s %7.1f dB off the expected partials\n", "LFO on a synced ratio (sweep)", swept);
+        check(swept < -60.0, "a synced operator's ratio swept stays on the note's harmonics, without zipper");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -2863,6 +3243,8 @@ int main() {
         check(db[3] < db[0] + 3.0, what);
     }
 
+    syncWarpChecks(factors);
+
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should
     // give only the sidebands it makes.
@@ -2954,13 +3336,56 @@ int main() {
         auto wobble = [](ParamValues &p) {
             p[paramIndex(0, OpParam::Out)] = 0.5;
             lfoOn(p, paramIndex(0, OpParam::Out), 0.4, 40.0);
-            p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+            p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
             p[paramIndex(0, SourceParam::RandomSmooth)] = 1.0;
             p[paramIndex(0, SourceParam::RandomChaos)] = 0.5;
         };
         const std::vector<float> out = steadyTone(2, 57, wobble);
         check(std::all_of(out.begin(), out.end(), [](float x) { return std::isfinite(x); }),
               "a smoothed random LFO on an operator's level stays finite");
+
+        // A Random source at 0 Hz (unsynced) stands still: each note takes a value of its own as it starts, at once
+        // (its smoothing gliding none), anywhere (in each quarter of the range about as often), and holds it; a note
+        // retriggering it in mono takes a new one.
+        auto t = std::make_unique<Telemetry>(); // large: the analyzers' spectra are in it
+        Engine e(1);
+        e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
+        e.p[sourceEnabledIndex(0)] = 1.0;
+        e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+        e.p[paramIndex(0, SourceParam::Rate)] = 0.0;
+        e.p[paramIndex(0, SourceParam::RandomSmooth)] = 1.0;
+        auto now = [&] {
+            e.synth().telemetry(*t);
+            return t->sources[0];
+        };
+        int notes[4] = {};
+        bool held = true, own = true;
+        float previous = -1.0f;
+        for (int n = 0; n < 400; ++n) {
+            e.noteOn(60 + n % 12);
+            e.render(kBlock);
+            const float first = now();
+            e.render(2400);
+            held = held && now() == first;
+            own = own && first != previous;
+            previous = first;
+            ++notes[std::clamp(static_cast<int>(first * 4.0f), 0, 3)];
+            e.noteOff(60 + n % 12);
+            e.render(kBlock);
+        }
+        std::printf("      notes per quarter at 0 Hz  %d %d %d %d\n", notes[0], notes[1], notes[2], notes[3]);
+        check(held && own && std::all_of(std::begin(notes), std::end(notes), [](int n) { return n > 60 && n < 140; }),
+              "a Random source at 0 Hz takes a value anywhere for each note, at once, and holds it");
+        e.synth().setPlayMode(true, false, false);
+        e.noteOn(50);
+        e.render(2400);
+        const float before = now();
+        e.noteOn(52);
+        e.render(kBlock);
+        const float retriggered = now();
+        e.render(2400);
+        check(retriggered != before && now() == retriggered,
+              "a Random source at 0 Hz takes a new value as a note retriggers it in mono, and holds it");
     }
 
     // --- A freeform LFO's points sharing a time: a spike up at 0.5 and a drop at the cycle's end. Either side of a
@@ -3000,6 +3425,26 @@ int main() {
         check(near(shapeValue(get, 0, 0.0), 0.0) && near(shapeValue(get, 0, 0.5), 0.5) &&
                   near(shapeValue(get, 0, 1.0), 1.0),
               "a freeform LFO ending on a point at the cycle's end stays there, as a one-shot does");
+
+        // A Curve source plays its drawn shape as an LFO with the retired Custom shape did, sample for sample: on an
+        // operator's level, free at 3 Hz, its points a lopsided ramp, unipolar.
+        auto drawn = [](SourceType type) {
+            Engine e(2);
+            lfoOn(e.p, paramIndex(0, OpParam::Out), 0.5, 3.0);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(type);
+            e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Custom);
+            e.p[paramIndex(0, SourceParam::Unipolar)] = 1.0;
+            e.p[shapeCountIndex(0)] = 3.0;
+            e.p[shapePointIndex(0, 1, PointField::X)] = 0.3;
+            e.p[shapePointIndex(0, 1, PointField::Y)] = 0.8;
+            e.p[shapePointIndex(0, 1, PointField::Curve)] = 0.4;
+            e.p[shapePointIndex(0, 2, PointField::X)] = 0.7;
+            e.p[shapePointIndex(0, 2, PointField::Y)] = -0.6;
+            e.noteOn(57);
+            return e.render(24000);
+        };
+        check(drawn(SourceType::Curve) == drawn(SourceType::Lfo),
+              "a Curve source plays its drawn shape as an LFO with the Custom shape did");
     }
 
     // --- An anchored LFO stands where the host's transport puts it, as if it had started at its Phase at the song's
@@ -3068,7 +3513,7 @@ int main() {
         // Random: the value it holds through a cycle, and a new one in the next.
         Engine random(1);
         anchored(random);
-        random.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+        random.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
         random.noteOn(57);
         auto heldAt = [&](double beats) {
             random.synth().setTransport(true, beats, beats * 0.5);
@@ -3797,8 +4242,7 @@ int main() {
         {
             Engine e(2);
             e.synth().setPlayMode(false, true, false);
-            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
-            e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
             e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
             e.p[paramIndex(0, SourceParam::Rate)] = normFromRate(0.05); // no new step meanwhile
             e.noteOn(48);

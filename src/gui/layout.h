@@ -102,11 +102,23 @@ inline Rect clipEditButton(Rect display) {
 // An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
-inline Rect opTab(int tab) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; along the line ENVELOPE, UNISON, INPUTS, SCOPE
-    constexpr float kX[] = {78.0f, 0.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
-    return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
+inline Rect opTab(int tab, bool noise = false) {
+    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS. SCOPE is
+    // no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens WARP): it sits where WARP
+    // does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS.
+    constexpr float kX[] = {78.0f, 0.0f, 144.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 52.0f, 54.0f, 52.0f};
+    constexpr float kNoiseX[] = {78.0f, 0.0f, 144.0f, 168.0f, 144.0f}, kNoiseW[] = {84.0f, 74.0f, 52.0f, 54.0f, 52.0f};
+    return {kInspector.x + 16.0f + (noise ? kNoiseX : kX)[tab], kOpTabsY, (noise ? kNoiseW : kW)[tab], kOpTabH};
 }
+// Wave: its display (the scope; with no note, the operator's cycles as its warp reads them, or the note's when
+// synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the NOTE
+// (note sync) switch along the row under it.
+constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 116.0f};
+inline Rect warpButton(int warp) {
+    return {kInspector.x + 16.0f + warp * 28.0f, kInspector.y + 306.0f, 28.0f, 22.0f};
+}
+constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kInspector.y + 314.0f};
+constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 46.0f, kInspector.y + 306.0f, 46.0f, 22.0f};
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
 // with room under the depth for its modulations' handles. Past the rows the tab holds, they scroll, with a bar at
 // their right; drawn and hit within kInputsList, which leaves room for the ranges on the first row's depth's top.
@@ -127,8 +139,6 @@ constexpr float kUnisonKnobsY = kInspector.y + 206.0f;
 constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 102.0f};
 // A noise operator's spectrum, in Unison's place.
 constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
-// Scope: the operator's output, the cycle count's buttons in its top right corner.
-constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 166.0f};
 inline Rect scopeCycleButton(int choice) {
     return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
 }
@@ -386,11 +396,17 @@ inline Rect lfoCardButton(float card, int button) {
 constexpr float kSourceShadowGap = 10.0f;
 constexpr float kSourceShadowW = (kCardH - kSourceShadowGap) * 0.5f;
 constexpr int kSourceTypes = static_cast<int>(SourceType::Count) - 1; // without None
+// The types it lists, in its order: the ones that run as LFOs first.
+constexpr SourceType kSourceMenuOrder[] = {SourceType::Lfo, SourceType::Curve, SourceType::Random, SourceType::Env,
+                                           SourceType::Midi};
+static_assert(std::size(kSourceMenuOrder) == static_cast<size_t>(kSourceTypes));
 // That list, its top left given; an entry a type.
 inline Rect sourceMenu(Point at) { return {at.x, at.y, 150.0f, 8.0f + kSourceTypes * 26.0f}; }
 inline Rect sourceMenuItem(Point at, SourceType type) {
     const Rect menu = sourceMenu(at);
-    return {menu.x + 4.0f, menu.y + 4.0f + (static_cast<int>(type) - 1) * 26.0f, menu.w - 8.0f, 24.0f};
+    const auto *order = std::begin(kSourceMenuOrder);
+    const auto row = static_cast<float>(std::find(order, std::end(kSourceMenuOrder), type) - order);
+    return {menu.x + 4.0f, menu.y + 4.0f + row * 26.0f, menu.w - 8.0f, 24.0f};
 }
 // A MIDI card's input (CC, Pressure or Slide), a list button under its title at the left, where an LFO's shape is;
 // its CC and Slew knobs at the right.
@@ -553,16 +569,21 @@ inline Rect lfoModeSwitch(float card, int mode) {
     return {p.x + 16.0f + mode * 30.5f, p.y + 72.0f, 30.5f, 16.0f};
 }
 
-// A Random card's polarity, Unipolar (0) | Bipolar (1), centered under what the card says it does, level with an
-// LFO's clock modes and as wide as two of them.
-inline Rect randomPolaritySwitch(float card, int bipolar) {
-    const Rect mode = lfoModeSwitch(card, bipolar);
-    return {sourceCard(card).center().x + (static_cast<float>(bipolar) - 1.0f) * mode.w, mode.y, mode.w, mode.h};
-}
-
 inline Rect lfoShapeButton(float card) {
     const Rect p = sourceCard(card);
     return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, kLfoModes - 1).right() - p.x - 16.0f, 22.0f};
+}
+
+// The shapes an LFO's list offers, in its order: every one but the retired Random and Custom, which the Random and
+// Curve sources took over.
+constexpr LfoShape kLfoShapesOffered[] = {LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square};
+constexpr int kLfoShapeItems = static_cast<int>(std::size(kLfoShapesOffered));
+
+// A Random or Curve card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over
+// its clock modes as an LFO's.
+inline Rect randomPolaritySwitch(float card, int bipolar) {
+    const Rect list = lfoShapeButton(card);
+    return {list.x + bipolar * list.w * 0.5f, list.y, list.w * 0.5f, list.h};
 }
 
 // Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, centered on them, each over a random

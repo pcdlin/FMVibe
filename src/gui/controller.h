@@ -20,10 +20,11 @@ constexpr int kNodes = kOps + kFilters + kShapers;
 enum class RoutingView { Graph, Matrix, Fx, Mods };
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
-// the page (Envelope, Unison, Inputs, Scope) is layout.h's opTab(). A noise operator shows
-// its spectrum in Unison's place, and its envelope in Scope's.
+// the page (Envelope, Unison, Warp, Inputs) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note
+// sync); Scope, which had a tab of its own, shows it too, so a layout saved on it opens WARP. A noise operator shows
+// its spectrum in Unison's place, and its envelope in Warp's (noise has no cycle to show, warp or sync).
 // Stored in the layout by number: only append.
-enum class InspectorTab { Unison, Envelope, Scope, Inputs, Count };
+enum class InspectorTab { Unison, Envelope, Scope, Inputs, Warp, Count };
 
 // How many of the operator's cycles the scope shows across.
 constexpr int kScopeCycleChoices[] = {1, 2, 4};
@@ -165,6 +166,7 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
     const Str name = type == SourceType::Env        ? Str::SourceNameEnv
                      : type == SourceType::Random   ? Str::SourceNameRandom
                      : type == SourceType::Midi     ? Str::SourceNameMidi
+                     : type == SourceType::Curve    ? Str::SourceNameCurve
                                                     : Str::SourceNameLfo;
     return trf(name, {std::to_string(number)});
 }

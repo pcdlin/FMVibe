@@ -565,6 +565,13 @@ private:
     // target already. An aux of -1 takes it away.
     void moveModulation(int source, int slot, int to);
     void retarget(int source, int slot, int target);
+    // Whether `source` may modulate `target` at all: a macro or the mod wheel can't move its own knob, and a macro not
+    // the knob of a macro its own knob moves (through the macros' modulations of one another), which would loop. And
+    // what the menus note, and the message that flashes up, where it can't.
+    bool canModulate(int source, int target) const;
+    bool closesLoop(int source, int target) const;
+    std::string refusedNote(int source, int target) const;
+    std::string refusedMessage(int source, int target) const;
     void setAux(int source, int slot, int aux);
     // Adds an empty modulation from `source` (-1 for none yet), at the end of the list or after its source's rows,
     // scrolls to it and opens the menu of what it lacks; refused past kMaxEmptyMods.
@@ -645,7 +652,8 @@ private:
     // else -1.
     int rerouting() const;
     // Whether a source's handle let go of on `w` modulates what it shows: a knob, a route's label or matrix cell, or
-    // a depth bar, as the drag's overlay rings them; never the source's own output (the mod wheel's knob).
+    // a depth bar, as the drag's overlay rings them; never the source's own output (a macro's or the mod wheel's
+    // knob), nor a macro's knob that would loop (see canModulate()).
     bool droppable(const Widget &w, int source) const;
     // The color of the effect in `slot`: each type of effect has its own.
     Color fxColor(int slot) const;
@@ -1150,6 +1158,8 @@ private:
     std::vector<int> sourcesShown() const;
     std::vector<int> sourcesMoved() const; // sourcesShown() worked out
     SourceType sourceTypeOf(int source) const;
+    // The shape the source in place `source` runs as an LFO (see fmvibe::lfoShape()): Random for a Random source.
+    LfoShape lfoShapeOf(int source) const;
     std::pair<double, double> modReach(const Assignment &m) const;
     // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
     bool sourceBipolar(int source) const;
@@ -1306,6 +1316,9 @@ private:
                              const Spectrum *spectrum = nullptr);
     void paintUnison(Canvas &c, Rect r, int op);
     void paintScope(Canvas &c, Rect r, int op);
+    OpWarp opWarp(int op) const;
+    bool opSynced(int op) const;
+    std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
     // A route's label in the graph, from its place as it rests (`idle`): while it or its parts are under the mouse,
@@ -1518,11 +1531,19 @@ private:
     // with no note playing too, while the host may have let the plugin sleep.
     std::vector<float> macroOffsets_ = std::vector<float>(kModulatedCount, 0.0f);
     std::array<float, kAllSources * kSlots> macroSlotOffsets_{}; // their slots', as a share of each target's range
+    // Where the macros' and the mod wheel's slots on the macros' knobs take those knobs, against their set values, and
+    // the macros a source of each voice moves (see MacroGraph), worked out with them.
+    std::array<float, kMacros> macroKnobOffsets_{};
+    uint32_t voiceMovedMacros_ = 0;
+    bool voiceMovedMacro(int source) const { return isMacro(source) && (voiceMovedMacros_ >> knobOf(source) & 1u); }
     std::optional<double> liveSlotOffset(int source, int slot) const;
     // Where modulation takes param `index` for the newest voice, against its set value, or with no note playing
     // where the macros take it, and the last voice's modulation of the effects as they ring out; nothing for the
-    // params that can't be modulated, such as the macros' own knobs.
+    // params that can't be modulated. A macro's knob, as the newest voice has it, or with none, where the macros and
+    // the mod wheel take it.
     float liveOffset(int index) const {
+        if (isMacroKnob(index))
+            return telemetry_.voices > 0 ? telemetry_.macroOffset[macroOf(index)] : macroKnobOffsets_[macroOf(index)];
         if (index < 0 || index >= kModulatedCount)
             return 0.0f;
         if (telemetry_.voices > 0)

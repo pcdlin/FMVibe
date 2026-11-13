@@ -53,7 +53,14 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 10: The three-band dynamics' Above and Below thresholds reach down to -80 dB (kMdThresholdMinDb) rather than -60.
 //    Their values keep their meaning, but a modulation's depth is a share of its target's range, so an earlier state's
 //    depths on them load smaller, to swing them as far as they did.
-constexpr uint32_t kStateVersion = 10;
+// 11: The Random source is a random LFO, with the LFO's Rate, Sync and clock (see SourceType), and the LFO's Random
+//    shape is retired for it. An earlier state's Random source loads as one standing still (unsynced, at 0 Hz, on
+//    its own per voice), taking a value for each note as it did, and its LFO with the Random shape as a Random source
+//    running as the LFO ran (see loadRandomSources()).
+// 12: The Curve source is an LFO of a drawn shape, and the LFO's Custom shape is retired for it. An earlier state's
+//    LFO with the Custom shape loads as a Curve source running as the LFO ran, its points and polarity kept (see
+//    loadCurveSources()).
+constexpr uint32_t kStateVersion = 12;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -466,6 +473,43 @@ void loadRetiredMultiComp(ParamValues &values) {
     }
 }
 
+// Before version 11, a Random source took a value of its own as each note started and held it, and an LFO could have the
+// Random shape. The source keeps doing what it did as a random LFO standing still, which takes a value for each note,
+// anywhere, at once (the LFO's fields it now uses go back to their defaults, but for Rate at 0 Hz and Sync off); the
+// LFO turns into a Random source running as it did, with the same fields, Bipolar standing for its Unipolar.
+void loadRandomSources(ParamValues &values) {
+    const ParamTable &table = paramTable();
+    for (int s = 0; s < kMaxSources; ++s) {
+        const SourceType type = sourceType(values[paramIndex(s, SourceParam::Type)]);
+        if (type == SourceType::Random) {
+            for (const SourceParam f : {SourceParam::Division, SourceParam::Free, SourceParam::OneShot,
+                                        SourceParam::Anchor, SourceParam::RandomSmooth, SourceParam::RandomChaos})
+                values[paramIndex(s, f)] = table[paramIndex(s, f)].def;
+            values[paramIndex(s, SourceParam::Rate)] = 0.0;
+            values[paramIndex(s, SourceParam::Sync)] = 0.0;
+        } else if (type == SourceType::Lfo &&
+                   std::lround(values[paramIndex(s, SourceParam::Shape)]) == static_cast<long>(LfoShape::Random)) {
+            values[paramIndex(s, SourceParam::Type)] = static_cast<double>(SourceType::Random);
+            values[paramIndex(s, SourceParam::Bipolar)] = values[paramIndex(s, SourceParam::Unipolar)] >= 0.5 ? 0.0 : 1.0;
+            for (const SourceParam f : {SourceParam::Shape, SourceParam::Unipolar, SourceParam::Phase})
+                values[paramIndex(s, f)] = table[paramIndex(s, f)].def;
+        }
+    }
+}
+
+// Before version 12, an LFO could have the Custom shape, drawn from points. It turns into a Curve source running as
+// it did: the same fields and points (its freeform shape is the place's), Unipolar its polarity as before; its Shape
+// goes back to its default.
+void loadCurveSources(ParamValues &values) {
+    const int shapeIndex = paramIndex(0, SourceParam::Shape);
+    for (int s = 0; s < kMaxSources; ++s)
+        if (sourceType(values[paramIndex(s, SourceParam::Type)]) == SourceType::Lfo &&
+            std::lround(values[paramIndex(s, SourceParam::Shape)]) == static_cast<long>(LfoShape::Custom)) {
+            values[paramIndex(s, SourceParam::Type)] = static_cast<double>(SourceType::Curve);
+            values[paramIndex(s, SourceParam::Shape)] = paramTable()[shapeIndex].def;
+        }
+}
+
 } // namespace
 
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
@@ -547,6 +591,10 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
             loaded[index] = value;
         loaded[retired] = table[retired].def;
     }
+    if (header[1] < 11)
+        loadRandomSources(loaded);
+    if (header[1] < 12)
+        loadCurveSources(loaded);
     if (header[1] < 9) { // the chain's effects in its order, as the graph's line
         if (!outWired) {
             std::vector<int> chain;

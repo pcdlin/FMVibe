@@ -94,6 +94,9 @@ struct Telemetry {
     // editor works out itself.
     std::array<float, kAllSources * kSlots> slotOffset{};
     std::array<float, kMaxSources> sources{};      // LFO outputs (-1..1), envelope levels (0..1)
+    // Where modulation takes each macro's knob, against its set value (with the host's modulation for every voice):
+    // the newest voice's, or with none what every voice shares (the macros' and the mod wheel's slots on it).
+    std::array<float, kMacros> macroOffset{};
     std::array<float, kMaxSources> lfoPhases{};    // 0..1
     std::array<float, kMaxSources> lfoRates{};     // cycles per second, to move the phases on between snapshots
     std::array<float, kMaxSources> lfoFrom{};      // a Random LFO's glide this cycle: the value it leaves,
@@ -283,6 +286,20 @@ private:
         Memo<UnisonIncs, 3> unisonIncs;   // its copies' increments, from its pitch, detune and copies
         Memo<UnisonGains, 2> unisonGains; // and their gains, from its spread and copies
         std::array<NoiseColor::State, 2> noise{}; // the Noise wave's color filters: middle and sides
+        // Hard sync: each copy's master, a cycle of the note (as detuned as the copy), restarts the copy at the phase
+        // the note started it at. A restart's step, and the bend in its slope, are smoothed over the samples either
+        // side of it (polyBLEP and polyBLAMP): the one after's share waits in `syncCarry`.
+        std::array<double, kMaxUnison> startPhases{}; // where the note started each copy
+        std::array<double, kMaxUnison> syncPhases{};  // the masters', in cycles
+        std::array<double, kMaxUnison> syncIncNow{};  // and their increments, moving to each block's
+        std::array<double, kMaxUnison> syncCarry{};   // what the next sample adds, per copy
+        bool syncOn = false;  // syncing: the masters run
+        bool syncKnown = false; // syncIncNow holds the last block's
+        int syncCopies = 0;     // for how many copies
+        bool carrying = false;  // some copy's syncCarry isn't 0 yet
+        // The warp it plays (see warp.h) and its amount, which goes to 0 before the warp changes to another one.
+        OpWarp warp = OpWarp::Off;
+        double warpNow = 0.0;
     };
 
     struct Lfo {
@@ -346,8 +363,8 @@ private:
         double exprPan = 0.0;
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
         double slide = 0.5;     // its note's slide, 0..1, resting in the middle
-        bool newRandom = false; // (re)started: the Random sources take a new value in its next block
-        std::array<double, kMaxSources> follow{}; // what Random and Midi sources put out, 0..1
+        bool newRandom = false; // (re)started: its random LFOs take a new value in its next block
+        std::array<double, kMaxSources> follow{}; // what Midi sources put out, 0..1
         double fmScale = 0.0;   // ramped, like the output gains and levels
         Levels levels{};
         double gainL = 0.0;
@@ -383,12 +400,15 @@ private:
         std::array<double, kMaxSources> sourceValues{};
         // Slot modulation of the latest block. Sources read their own params (rates,
         // times, amounts) with these applied, so LFO 1 can modulate LFO 2's rate
-        // one block later. Velocity's come after the places', then the macros' and the mod wheel's that an aux scales
-        // per voice, and the note source's last.
+        // one block later. Velocity's and the pitch bend's come after the places', then the note source's on the
+        // macros' knobs and what the voice's own knobs make of the macros' and the mod wheel's slots, then those an aux
+        // scales per voice, and the note source's others last.
         std::array<SlotMod, kAllSources * kSlots> slotMods{};
         // What each source that runs per voice puts out, 0..1 as a unipolar one would, for the slots it scales as an
         // aux: as of this block for the sources before them and velocity (and on a note's first block, the note
-        // source), else the last block's.
+        // source), else the last block's. And each macro's knob as the voice has it: as every voice shares it, or for
+        // a macro its sources move (see MacroGraph::voiceMoved), as they took it this block, after the places,
+        // velocity and the pitch bend (the slots before that taking the last block's).
         std::array<double, kAllSources> auxOut{};
         int slotModCount = 0;
         std::array<double, kVoiceParamCount> mod{}; // per-voice host modulation
@@ -430,6 +450,15 @@ private:
     // Adds the voice to `left` and `right`, which run at the voices' rate: hostFrames * oversampling_ samples, and
     // while analyzing, what its filters put out to filterTaps_.
     void renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params);
+    // A synced or warped operator's sample (see renderBlock()): its copies' sum and, with `sides`, their left and
+    // right. Kept out of the voices' loop: inside it, MSVC's code made the voices a twenty-fifth slower with one copy
+    // when no operator was synced or warped.
+    struct OpSample {
+        double mono = 0.0, l = 0.0, r = 0.0;
+    };
+    static OpSample warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
+                                 const UnisonGains *gains, bool sides, const std::array<double, kMaxUnison> &syncIncStep,
+                                 double warpStep);
     // Brings the filters' block down to the host rate and measures it.
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
     // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.
@@ -490,6 +519,29 @@ private:
     // The macros' and the mod wheel's slots that an aux running per voice scales, which the voices add (source, slot).
     std::array<std::pair<int, int>, (kMacros + 1) * kSlots> voiceMacroSlots_{};
     int voiceMacroSlotCount_ = 0;
+    // How the macros' knobs modulate one another (see MacroGraph), and the knobs as set (with the host's modulation for
+    // every voice) and as the macros' and the mod wheel's slots on them take them, which every voice shares.
+    MacroGraph macroGraph_;
+    MacroKnobs macroSet_{};
+    MacroKnobs macroKnobs_{};
+    // The macros' and the mod wheel's slots that every voice shares but whose source's knob, or aux's, a source of the
+    // voice moves (see MacroGraph::voiceMoved): what is the same for every voice, and what they add there
+    // (`shared`, in macroMod_ already), which each voice takes back for what its own knobs make of it.
+    struct VoiceMovedSlot {
+        int source;
+        int slot;
+        int target;
+        int aux = -1; // a macro or the mod wheel, or none
+        double curve = 0.0;
+        double depth = 0.0; // the slot's depth times its Amount, in the target's units
+        bool bipolar = false;
+        double shared = 0.0;
+    };
+    std::array<VoiceMovedSlot, (kMacros + 1) * kSlots> voiceMovedSlots_{};
+    int voiceMovedSlotCount_ = 0;
+    bool voiceMovedMacro(int source) const {
+        return isMacro(source) && (macroGraph_.voiceMoved >> knobOf(source) & 1u) != 0;
+    }
     void applyMacros(const ParamValues &params);
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
     // note source read their knobs, depths and range.
