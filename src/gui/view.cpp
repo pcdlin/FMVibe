@@ -6054,7 +6054,8 @@ void View::paintUnison(Canvas &c, Rect r, int op) {
     c.text({r.x + 4.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "L", kTextLabel, kFaint);
     c.text({r.right() - 16.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "R", kTextLabel, kFaint);
     const int copies = std::clamp(static_cast<int>(std::lround(value(paramIndex(op, OpParam::Unison)))), 1, kMaxUnison);
-    const double detune = value(paramIndex(op, OpParam::UnisonDetune)) / 100.0;
+    // Up and down by detune, its whole range from the middle to an edge.
+    const double detune = value(paramIndex(op, OpParam::UnisonDetune)) / kMaxUnisonDetune;
     const double spread = value(paramIndex(op, OpParam::UnisonSpread));
     // As the voices spread them (unison.h); the Random modes as one note might.
     const auto curve = static_cast<UniCurve>(std::clamp(std::lround(value(paramIndex(op, OpParam::UnisonCurve))), 0L,

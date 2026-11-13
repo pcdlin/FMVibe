@@ -216,7 +216,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     from 60 dB to 80, a version 10 state's as saved; and a version 10 state's Random source loading as one standing
     still at 0 Hz and its LFO with the retired Random shape as a Random source running as it ran, a version 11
     state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
-    it ran (its points and polarity kept), a version 12 state's as saved;
+    it ran (its points and polarity kept), a version 12 state's as saved; and a version 12 state's depth on an
+    operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
+    saved;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -1036,7 +1038,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 12: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 13: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1053,8 +1055,9 @@ itself.
   than -60; before version 11, a Random source, which then took a value for each note, loads unsynced at 0 Hz (the
   LFO fields it now uses otherwise at their defaults), standing still and taking one for each note, and an LFO with
   the retired Random shape as a Random source running as it ran (`loadRandomSources()`); before version 12, an LFO
-  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`)), followed by the
-  editor layout:
+  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`); before version 13,
+  a modulation's depth on an operator's Unison Detune loads scaled by `kRetiredMaxUnisonDetune / kMaxUnisonDetune`,
+  since its range now reaches 200 cents rather than 100), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

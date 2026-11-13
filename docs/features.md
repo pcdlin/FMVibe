@@ -59,7 +59,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
     (see Velocity, under the modulation sources), aimed at Out or wherever else;
   - **Unison**: up to 16 copies of the operator. *Detune* (Unison Detune) spreads them in pitch (the outermost
-    copies by up to ±100 cents) and *Spread* (Unison Spread) across the stereo field. On a modulator, the copies' sum
+    copies by up to ±200 cents; patches saved while it stopped at 100, state version 12 and earlier, load a
+    modulation's depth on it half as deep, to swing it as far) and *Spread* (Unison Spread) across the stereo field. On a modulator, the copies' sum
     is what its targets hear; on a carrier, every copy is modulated by the same signal. How they spread is the
     operator's to pick (`src/unison.h`; to begin with, evenly in pitch, from left to right, all as loud, as unison
     always played):

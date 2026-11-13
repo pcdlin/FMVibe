@@ -315,7 +315,7 @@ void buildTable(ParamTable &t) {
         add(paramIndex(op, OpParam::Unison), name + " " + tr(Str::ParamUnison), module, ParamKind::Count, 1.0,
             kMaxUnison, 1.0);
         add(paramIndex(op, OpParam::UnisonDetune), name + " " + tr(Str::ParamUnisonDetune), module,
-            ParamKind::CentsAmount, 0.0, 100.0, 20.0);
+            ParamKind::CentsAmount, 0.0, kMaxUnisonDetune, 20.0);
         add(paramIndex(op, OpParam::UnisonSpread), name + " " + tr(Str::ParamUnisonSpread), module,
             ParamKind::Percent, 0.0, 1.0, 0.5);
         add(paramIndex(op, OpParam::PhaseRandom), name + " " + tr(Str::ParamPhaseRandom), module, ParamKind::Percent,

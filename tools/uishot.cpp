@@ -8339,7 +8339,7 @@ void run(const std::filesystem::path &dir, float scale) {
         const int blend = paramIndex(0, OpParam::UnisonBlend);
         const int detune = paramIndex(0, OpParam::UnisonDetune), spread = paramIndex(0, OpParam::UnisonSpread);
         const double detuneWas = model.value(detune), spreadWas = model.value(spread);
-        model.set(detune, 100.0);
+        model.set(detune, kMaxUnisonDetune);
         model.set(spread, 1.0);
         view.poll();
         const Rect r = detail::kUnisonRect;

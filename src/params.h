@@ -735,6 +735,10 @@ constexpr double kMdLiftHeadroom = 12.0;
 // kMdRetiredThresholdMinDb, so a modulation's depth on one loads scaled (see readParams()).
 constexpr double kMdThresholdMinDb = -80.0;
 constexpr double kMdRetiredThresholdMinDb = -60.0;
+// An operator's Unison Detune reaches up to here (cents, the outermost copies' offset); before state version 13, to
+// kRetiredMaxUnisonDetune, so a modulation's depth on it loads scaled (see readParams()).
+constexpr double kMaxUnisonDetune = 200.0;
+constexpr double kRetiredMaxUnisonDetune = 100.0;
 
 // --- Layout. An *index* is a position in the param table, used by the DSP.
 // An *id* is what hosts store in projects and automation; ids are grouped per

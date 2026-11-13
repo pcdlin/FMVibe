@@ -60,7 +60,9 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 12: The Curve source is an LFO of a drawn shape, and the LFO's Custom shape is retired for it. An earlier state's
 //    LFO with the Custom shape loads as a Curve source running as the LFO ran, its points and polarity kept (see
 //    loadCurveSources()).
-constexpr uint32_t kStateVersion = 12;
+// 13: An operator's Unison Detune reaches 200 cents rather than 100 (kMaxUnisonDetune), so an earlier state's
+//    depths on it load half as deep, to swing it as far as they did.
+constexpr uint32_t kStateVersion = 13;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -584,6 +586,16 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                     threshold = threshold || target == mdAboveIndex(fx, band) || target == mdBelowIndex(fx, band);
                 if (threshold)
                     loaded[slotAmountIndex(source, slot)] *= kMdRetiredThresholdMinDb / kMdThresholdMinDb;
+            }
+    if (header[1] < 13) // as far as they swung an operator's Unison Detune: its range was 0 to kRetiredMaxUnisonDetune
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                bool detune = false;
+                for (int op = 0; op < kOps; ++op)
+                    detune = detune || target == paramIndex(op, OpParam::UnisonDetune);
+                if (detune)
+                    loaded[slotAmountIndex(source, slot)] *= kRetiredMaxUnisonDetune / kMaxUnisonDetune;
             }
     if (header[1] < 8) { // the chain's order onto its places
         const int retired = paramIndex(GlobalParam::RetiredFxOrder);

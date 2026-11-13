@@ -3277,6 +3277,34 @@ void unisonModeChecks() {
         check(shuffled, "Random pan deals the copies the even places");
         check(blended, "Blend turns the outer copies down, as loud together as before");
     }
+    {
+        // Unison Detune reaches 200 cents since version 13, 100 before: a version 12 state's depth on it (on operator
+        // C's) loads half as deep, swinging it as far as it did, and a version 13 state's as saved.
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(2, OpParam::UnisonDetune));
+        p[slotAmountIndex(0, 0)] = 0.4;
+        p[slotTargetIndex(0, 1)] = slotTargetValue(paramIndex(2, OpParam::Detune)); // not Unison Detune: as saved
+        p[slotAmountIndex(0, 1)] = 0.4;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto depths = [&bytes](uint32_t version) { // the two depths, from the patch as saved by that version
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            const bool read = readParams(&in, loaded);
+            return std::pair(read ? loaded[slotAmountIndex(0, 0)] : -1.0, loaded[slotAmountIndex(0, 1)]);
+        };
+        const auto [older, olderDetune] = depths(12);
+        const auto [now, nowDetune] = depths(13);
+        std::printf("      a depth of 0.4 on Unison Detune: %.2f from a version 12 state, %.2f from 13\n", older, now);
+        check(older == 0.2 && olderDetune == 0.4 && now == 0.4 && nowDetune == 0.4,
+              "a version 12 state's depth on Unison Detune loads half as deep, a version 13 state's as saved");
+    }
 
     // An A4's copies at 100 cents: what each one plays where, from a sine's lines.
     auto level = [](const std::vector<float> &signal, double hz) { // the loudest bin near it, in dB
