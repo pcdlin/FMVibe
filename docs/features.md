@@ -1163,7 +1163,7 @@ one may have changed since it last did.
     button, gives all 64 partials a random level under a pink slope (partial *k* at most 1/√*k*, falling 3 dB an
     octave) and a random phase, in one undo step. The reset button (a circular arrow) goes back to a
     sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
-    edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
+    edit button (a pencil) on the operator's title row opens it again. A stroke is one undo step.
   - **Shape editor**: adding a Curve source, a click anywhere on a Curve source's display (which shows an
     edit button, a pencil, in its corner), or the expand button in its title row, left of the fold button, widens its card to two card places, the cards after it moving along and the row scrolling to show it
     whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
@@ -1269,15 +1269,16 @@ one may have changed since it last did.
   node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes
   into it). Clicking the
   selected tab switches it off, or on again (its
-  tooltip says which). Under the tabs, the page's title: the node's letter, at the heading's size in its color,
-  then a summary line that sums the node up in short: an operator's wave, ratio, unison copies (×4) and where it
-  goes ("A Saw · 1.20 · ×4 · to F1"), or a filter's type and slope, or a shaper's curve, and what feeds them, where
-  they go and the operators they modulate; the wave, type or curve in full text, the rest dimmed. The power switch
-  next to it does the same as clicking the selected tab. While the node is off, its page is dimmed below the summary
-  line; its knobs still work.
-  - Operators: the operator's sound in one block. At its left, as tall as two rows, the Ratio readout; at its right,
-    the source switch, **WAVE | TABLE | SAMPLE** (each an undo step; WAVE brings back the wave the operator had
-    before, which the project keeps), and under it what the source picks: for WAVE the waves as one segmented row of
+  tooltip says which). Under the tabs, the page's title row: for a filter or a shaper, the node's letter, at the
+  heading's size in its color, then a summary line that sums the node up in short: its type and slope, or its curve,
+  and what feeds it, where it goes and the operators it modulates; the type or curve in full text, the rest dimmed.
+  An operator's title row holds its source switch instead (below). The power switch at the row's right end does the
+  same as clicking the selected tab. While the node is off, its page is dimmed below the title row; its knobs still
+  work.
+  - Operators: on the title row, the source switch, **WAVE | TABLE | SAMPLE** (each an undo step; WAVE brings back
+    the wave the operator had before, which the project keeps), then a Custom wave's edit button, the keyboard switch
+    and the power switch. Under it, the operator's sound in one block. At its left, as tall as two rows, the Ratio
+    readout; at its right, along the top, what the source picks: for WAVE the waves as one segmented row of
     buttons, the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine, Organ, Vowel and Custom
     (picked, one of these shows on that button); for TABLE a step back, the table's picker (its glyph, its name and a
     chevron), which opens the table browser, and a step on (through the factory tables, the patch's own or the files
@@ -1293,13 +1294,12 @@ one may have changed since it last did.
     each modulation's reach in its source's color (wider while its depth handle is hovered, with an arrow after the
     end where it goes on past 64), and a dot where
     modulation takes the newest voice; the depth handles sit along the box's bottom edge, clear of it, and drag an octave of depth every 60 px (50 times finer with Shift), and a source's handle
-    dropped anywhere on the box modulates it. A keyboard on the summary
-    line, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out
+    dropped anywhere on the box modulates it. A keyboard on the title
+    row, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out
     and lit while it is fixed. Switched on, Freq and Mult are set to where the ratio put an A4 (the smallest Mult
     that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult knobs take the
     Ratio readout's place, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
-    handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
-    ratio. Switched off, the ratio, Pitch and Detune count again as they were. While the wave is Custom,
+    handles), and the operator's circle in the graph shows the frequency in Hz instead of the ratio. Switched off, the ratio, Pitch and Detune count again as they were. While the wave is Custom,
     an edit button (a pencil, the same as a Curve source's and a drawn shaper curve's), left of the keyboard, opens
     the operator's partial editor (lit while it is open; a second click closes it, as does picking another operator, filter or shaper in the
     inspector). Under the block, past a line across the page, a well: tabs along its top edge pick what the
@@ -1326,8 +1326,7 @@ one may have changed since it last did.
       it (synced, the note's cycles, the operator's own restarting in each) shows in the accent over the plain one.
       The warp's name and amount, and NOTE SYNC while synced to the note, run along the display's bottom. Under it,
       the warps as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the NOTE switch
-      (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
-      sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
+      (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
     - **TABLE** (a Wavetable operator's, in WARP's place: it has no WARP tab, and no scope; picking TABLE, or
       importing a table, opens it, and a layout left on WARP shows it): the table's frames as a stack seen from a

@@ -1301,7 +1301,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
               "the partial editor's dice randomizes levels on a pink slope and phases, in one undo step");
     }
     click(view, kRoutingEditorDone);
-    // While the wave is Custom, a pencil on the summary line, left of the keyboard switch, opens the partial editor
+    // While the wave is Custom, a pencil on the title row, left of the keyboard switch, opens the partial editor
     // again, lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).
     {
         const Point kPartialEdit = detail::kPartialEditButton.center();
@@ -6247,7 +6247,7 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
 void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    // B..F, F1 and F2 into A, and A's feedback: eight rows.
+    // B..F, F1, F2, S1 and S2 into A, and A's feedback: ten rows.
     for (int op = 1; op < kOps; ++op) {
         model.set(paramIndex(op, OpParam::Enabled), 1.0);
         model.set(detail::routeParam(op, 0), 0.5);
@@ -6255,6 +6255,10 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     for (int filter = 0; filter < kFilters; ++filter) {
         model.set(paramIndex(filter, FilterParam::Enabled), 1.0);
         model.set(detail::routeParam(kOps + filter, 0), 0.5);
+    }
+    for (int shaper = 0; shaper < kShapers; ++shaper) {
+        model.set(paramIndex(shaper, ShaperParam::Enabled), 1.0);
+        model.set(detail::routeParam(kOps + kFilters + shaper, 0), 0.5);
     }
     model.set(detail::routeParam(0, 0), 0.3);
     model.ui.selectedNode = 0;
@@ -6283,14 +6287,15 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
               pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 5.0f, depth.y - 2.0f) != top,
           "an INPUTS row's modulated depth has its handles under it and its ranges just above it, its number as it was");
 
-    // The fifth row's depth is F1's; three notches down over the names, the eighth's, the feedback's, is there.
+    // The fifth row's depth is F1's; three notches down over the names, the eighth's, S1's, is there.
+    const int s1 = detail::routeParam(kOps + kFilters, 0), f2 = detail::routeParam(kOps + 1, 0);
     const Point sixth{depth.center().x, depth.center().y + 4.0f * 30.0f};
     const float names = detail::inputsName(detail::kInputsTop).center().x;
     view.wheel({names, detail::kInputsTop + 18.0f}, -3.0f, {});
     view.poll();
     const bool scrolledShot = renderer.save(view, dir / "5n-op-inputs-scrolled.png");
     drag(view, sixth, {sixth.x, sixth.y - 20.0f});
-    const bool feedback = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
+    const bool shaper = model.value(s1) > 0.5 && model.value(f2) == 0.5;
     view.undo();
     // The thumb, at the bar's foot now, dragged up to its top: the first row is B's again.
     const Point thumb{detail::inputsScrollTrack().center().x, detail::kInputsBottom - 12.0f};
@@ -6299,13 +6304,13 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, depth.center(), {depth.center().x, depth.center().y - 20.0f});
     const bool back = model.value(detail::routeParam(1, 0)) > 0.5;
     view.undo();
-    // Dragged up 90 px with the middle button over the names, the rows follow: the feedback's is the fifth again.
+    // Dragged up 90 px with the middle button over the names, the rows follow: S1's is the fifth again.
     view.middleDown({names, detail::kInputsTop + 108.0f});
     view.mouseMove({names, detail::kInputsTop + 18.0f}, {});
     view.middleUp({names, detail::kInputsTop + 18.0f});
     drag(view, sixth, {sixth.x, sixth.y - 20.0f});
-    const bool panned = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
-    check(scrolledShot && feedback && back && panned,
+    const bool panned = model.value(s1) > 0.5 && model.value(f2) == 0.5;
+    check(scrolledShot && shaper && back && panned,
           "the INPUTS tab's rows scroll under the wheel, the middle button and their scrollbar's thumb");
 }
 
@@ -7743,16 +7748,20 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Saw));
     view.poll();
     const int wave = paramIndex(0, OpParam::Wave), table = paramIndex(0, OpParam::Table);
-    // The block is 22 px taller: the knobs, the well and the controls' row lower, all inside the lens; five tabs fit.
+    // The source switch takes the title row, left of the Custom wave's edit button; the block starts under it, and the
+    // display grows into the room it leaves, the controls' row where it was, all inside the lens; four tabs fit.
     const Rect lens = detail::kInspector;
-    check(detail::opKnobCenter(0).y == lens.y + 124.0f && detail::kOpTabsY == lens.y + 172.0f &&
-              detail::kOpDisplay.y == lens.y + 194.0f && detail::kOpControlsY == lens.y + 315.0f &&
+    check(detail::kOpSourceRow.y == detail::kFixedSwitch.y &&
+              detail::kOpSourceRow.right() + 4.0f <= detail::kPartialEditButton.x &&
+              detail::kOpSourceRow.bottom() <= detail::kInspectorPage.y &&
+              detail::opKnobCenter(0).y == lens.y + 102.0f && detail::kOpTabsY == lens.y + 150.0f &&
+              detail::kOpDisplay.y == lens.y + 172.0f && detail::kOpControlsY == lens.y + 315.0f &&
               detail::kOpControlsY + 0.5f * detail::kOpKnobD + 18.0f <= lens.bottom() - 10.0f &&
               detail::kOpWellTall.bottom() <= lens.bottom() &&
               detail::opTab(static_cast<int>(InspectorTab::Inputs), detail::OpTabs::Table).right() <= detail::kOpWell.right() + 0.5f &&
               detail::opTab(static_cast<int>(InspectorTab::Warp), detail::OpTabs::Table).x ==
                   detail::opTab(static_cast<int>(InspectorTab::Source), detail::OpTabs::Table).x,
-          "the operator's block makes room for the source switch, its well and controls inside the lens; a Wavetable "
+          "the operator's source switch takes its title row, its well and controls inside the lens; a Wavetable "
           "operator's four tabs fit, its TABLE tab in WARP's place");
     renderer.save(view, dir / "wt-0-saw.png");
     const uint32_t below = renderer.pixel({lens.center().x, lens.bottom() + 3.0f});
@@ -8988,7 +8997,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.undo();
         check(syncWarpShot && syncWarp && std::lround(model.value(warp)) == static_cast<long>(OpWarp::Squeeze),
               "the Sync warp is picked apart from the NOTE switch, undoably");
-        // NOTE: on, the summary says so and the display shows the note's cycles; then each step undone.
+        // NOTE: on, the display shows the note's cycles; then each step undone.
         model.set(paramIndex(0, OpParam::Ratio), normFromRatio(1.5));
         click(view, detail::kSyncButton.center());
         const bool synced = model.value(sync) == 1.0;
@@ -9152,7 +9161,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.poll();
     }
 
-    // Fixed pitch: the keyboard on A's summary line switches it, setting Freq and Mult to where the ratio put A4 in
+    // Fixed pitch: the keyboard on A's title row switches it, setting Freq and Mult to where the ratio put A4 in
     // one undo step. Freq and Mult take the Ratio readout's place (Mult stepping, 10 px up a step), and Pitch and
     // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).
     {

@@ -483,7 +483,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
   - the INPUTS tab's rows: a modulated depth's handles under it and its ranges just above it, its number left as it
-    was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
+    was (read off the rendered pixels), and ten rows scrolling under the wheel, the scrollbar's thumb and the
     middle button;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, a dotted leader running
     from it across to the inspector's lens, and a switched-off one's ghost filled while it is shown (read off the
@@ -669,7 +669,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
     text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
-  - an operator's source switch: the block making room for it, the knobs, the well and the controls' labels inside
+  - an operator's source switch: on its title row, left of the edit button, the knobs, the well and the controls' labels inside
     the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place); TABLE making the operator a Wavetable and opening its tab, WAVE
     bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
     picker opening the table browser, a row picking a table, Done closing it and the steps going through the tables;

@@ -536,7 +536,7 @@ private:
     // Plays at its Freq x Mult rather than following the note (see OpParam::Fixed).
     bool isFixed(int op) const;
     bool isCustomWave(int op) const; // its wave is drawn from partials
-    std::string fixedHzText(int op, bool compact) const;
+    std::string fixedHzText(int op) const;
     double norm(int index) const;
     void edit(int index, double value);
     std::vector<Assignment> assignments() const;

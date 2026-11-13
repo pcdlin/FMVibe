@@ -5905,9 +5905,8 @@ void View::paintInspector(Canvas &c) {
         const float x = nodeTabDivider(group);
         c.line({x, kInspector.y + 13.0f}, {x, kInspector.y + 27.0f}, kBorder, 1.0f);
     }
-    // The title row leaves room for the on/off switch at the right.
-    Rect summaryRect{kTitleRow.x, kTitleRow.y, kInspector.w - 84.0f, kTitleRow.h};
-    const char *dot = "  \xC2\xB7  ";
+    // A filter's or shaper's title row leaves room for the on/off switch at the right.
+    const Rect summaryRect{kTitleRow.x, kTitleRow.y, kInspector.w - 84.0f, kTitleRow.h};
     // While the node is off, the page under its title is drawn dimmed (its widgets are too, see dimmedAreas()).
     struct PageDim {
         Canvas &c;
@@ -5932,39 +5931,8 @@ void View::paintInspector(Canvas &c) {
     }
     if (node < kOps) {
         const int op = node;
-        const double ratio = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
-        std::string head, summary;
-        summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
-        if (isCustomWave(op))
-            summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's edit button, left of that
-        if (isNoise(op)) {
-            char slope[32];
-            const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
-            formatParam(slopeParam, value(slopeParam), slope, sizeof(slope));
-            head = waveName(OpWave::Noise);
-            summary = dot + std::string(slope);
-        } else {
-            head = waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))));
-            summary = dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio));
-            if (isTableOp(op) || isSampleOp(op)) // which table or sample, after its source
-                head += dot + dataName(op);
-        }
-        const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
-        if (copies > 1 && !isNoise(op))
-            summary += dot + trf(Str::SummaryUnison, {std::to_string(copies)});
-        if (!isNoise(op) && value(paramIndex(op, OpParam::Sync)) >= 0.5)
-            summary += dot + std::string(tr(Str::SummarySync));
-        if (const OpWarp warp = opWarp(op); !isNoise(op) && warp != OpWarp::Off)
-            summary += dot + std::string(warpName(warp));
-        std::string feeds;
-        if (value(paramIndex(op, OpParam::Out)) > 0.0)
-            feeds = tr(Str::SummaryOut);
-        for (int to = 0; to < kNodes; ++to)
-            if (to != op && nodeOn(to) && value(routeParam(op, to)) > 0.0)
-                feeds += (feeds.empty() ? "" : ", ") + std::string(kNodeNames[to]);
-        if (!feeds.empty())
-            summary += dot + trf(Str::SummaryTo, {feeds});
-        paintPageTitle(c, node, summaryRect, head, summary);
+        // Its title row holds the source switch (WAVE | TABLE | SAMPLE) in a summary's place: what a summary would say,
+        // the wave, the ratio, the unison, the warp and where it goes, the page and the graph show.
         const PageDim page(c, !nodeOn(node));
         // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
         // the shown one's accent sits on, and the display under them.
@@ -6044,8 +6012,8 @@ std::string View::boxRoutes(int node) const {
     return text;
 }
 
-// A page's title: the node's letter in its color at the heading's size, then the summary's head (an operator's wave,
-// a filter's type, a shaper's curve) in full text and the rest dimmed, cut off at r's right end.
+// A page's title: the node's letter in its color at the heading's size, then the summary's head (a filter's
+// type, a shaper's curve) in full text and the rest dimmed, cut off at r's right end.
 void View::paintPageTitle(Canvas &c, int node, Rect r, const std::string &head, const std::string &rest) {
     const char *const letter = kNodeNames[node];
     const float letterW = std::ceil(c.textWidth(letter, kTextHeading, true)) + 8.0f;
@@ -6091,13 +6059,12 @@ bool View::isFixed(int op) const {
     return value(paramIndex(op, OpParam::Fixed)) >= 0.5;
 }
 
-// A fixed operator's Freq x Mult: "440 Hz" in the summary line, "440Hz" or "5.3kHz" inside its circle in the graph.
-std::string View::fixedHzText(int op, bool compact) const {
+// A fixed operator's Freq x Mult, "440Hz" or "5.3kHz", inside its circle in the graph.
+std::string View::fixedHzText(int op) const {
     const double hz = fixedHz(value(paramIndex(op, OpParam::FixedFreq)), value(paramIndex(op, OpParam::FixedMult)));
-    const char *unit = compact ? "Hz" : " Hz";
     if (hz >= 1000.0)
-        return number(compact ? "%.2g" : "%.2f", hz / 1000.0) + (compact ? "kHz" : " kHz");
-    return number(hz >= 100.0 ? "%.0f" : hz >= 10.0 ? "%.1f" : hz >= 0.1 ? "%.2f" : "%.3f", hz) + unit;
+        return number("%.2g", hz / 1000.0) + "kHz";
+    return number(hz >= 100.0 ? "%.0f" : hz >= 10.0 ? "%.1f" : hz >= 0.1 ? "%.2f" : "%.3f", hz) + "Hz";
 }
 
 // A switch flips; the Fixed and symmetric switches with what goes along, as clicked or scrolled.
@@ -6942,7 +6909,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
     const double r = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
     std::snprintf(ratio, sizeof(ratio), "\xC3\x97%.2g", r);
     if (isFixed(op))
-        std::snprintf(ratio, sizeof(ratio), "%s", fixedHzText(op, true).c_str());
+        std::snprintf(ratio, sizeof(ratio), "%s", fixedHzText(op).c_str());
     if (isNoise(op)) {
         // No ratio: its color, or its slope between the named ones.
         const double db = std::round(value(paramIndex(op, OpParam::NoiseSlope)) * 60.0) / 10.0;

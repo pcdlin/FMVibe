@@ -825,12 +825,10 @@ STR(TipWarpSqueeze, "Squeeze")
 STR(TipWarpPulse, "Pulse")
 STR(TipWarpSteps, "Steps")
 STR(TipWarpSync, "Sync")
-STR(SummarySync, "note sync") // on an operator's summary line, while it is synced to the note
 STR(TipFixedOn, "Fixed pitch on. Click to track keys")
 
-// The inspector's summary line, after the node's letter and its wave, filter type or curve; an operator's ratio
-// goes in as a bare number. Keep it short: the line has room for about 38 characters.
-STR(SummaryUnison, "×{1}") // the operator's unison copies
+// A filter's or shaper's summary line, after the node's letter and its filter type or curve. Keep it short: the line
+// has room for about 38 characters.
 STR(SummaryTo, "to {1}")
 STR(SummaryOut, "out")
 STR(SummaryNoInput, "no input yet")

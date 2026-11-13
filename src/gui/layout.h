@@ -76,28 +76,31 @@ inline float nodeTabDivider(int group) {
 }
 // The page below the tabs, title and switch, dimmed while its node is off.
 constexpr Rect kInspectorPage{kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f};
-// The page's title row under the tabs: the node's letter, then its summary; the switches at its right end.
+// The page's title row under the tabs: the node's letter, then its summary (an operator's source switch instead); the
+// switches at its right end.
 constexpr Rect kTitleRow{kInspector.x + 16.0f, kInspector.y + 37.0f, kInspector.w - 32.0f, 20.0f};
 constexpr float kTitleLetterW = 16.0f;
-// An operator's Fixed switch, a keyboard on the summary line left of the power switch.
+// An operator's Fixed switch, a keyboard on the title row left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
-// An operator's sound in one block under the title: at its left, its pitch (the Ratio readout, Freq and Mult when
-// fixed, or a noise operator's Slope and Spread), as tall as two rows; at its right, the source switch (WAVE | TABLE |
-// SAMPLE), under it the waves (or the table's or the sample's picker), and under them the Pitch, Detune, Phase and Pan
-// knobs. Their labels, and the Ratio readout's, share one line.
+// An operator's sound in one block under the title row, whose place its source switch (WAVE | TABLE | SAMPLE) takes:
+// at its left, its pitch (the Ratio readout, Freq and Mult when fixed, or a noise operator's Slope and Spread), as tall
+// as two rows; at its right, the waves (or the table's or the sample's picker), and under them the Pitch, Detune, Phase
+// and Pan knobs. Their labels, and the Ratio readout's, share one line.
 constexpr float kOpHeroY = kInspector.y + 64.0f;
 constexpr float kOpPitchW = 88.0f; // the left column
 constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
 constexpr float kOpRightW = kInspector.x + kInspector.w - 16.0f - kOpRightX;
-// The source switch, three equal segments; the row under it.
-constexpr Rect kOpSourceRow{kOpRightX, kOpHeroY, kOpRightW, 18.0f};
+// The source switch, three equal segments along the title row, where a filter's or shaper's page has its summary; it
+// stops short of a Custom wave's edit button, left of the keyboard switch.
+constexpr Rect kOpSourceRow{kTitleRow.x, kFixedSwitch.y, kFixedSwitch.x - kFixedSwitch.w - 10.0f - kTitleRow.x,
+                            kFixedSwitch.h};
 inline Rect opSourceButton(int source) {
     const float w = kOpSourceRow.w / 3.0f;
     return {kOpSourceRow.x + source * w, kOpSourceRow.y, w, kOpSourceRow.h};
 }
-constexpr float kOpRowY = kOpHeroY + 22.0f;
+constexpr float kOpRowY = kOpHeroY;
 constexpr float kOpWavesH = 20.0f; // the waves' row, over the knobs
-constexpr float kOpKnobY = kOpHeroY + 60.0f, kOpKnobD = 28.0f;
+constexpr float kOpKnobY = kOpHeroY + 38.0f, kOpKnobD = 28.0f;
 // The TABLE row: a step back, the table's picker (its glyph, its name and a chevron), a step on. The SAMPLE row: the
 // sample's picker, then the import button.
 inline Rect tableStepButton(int dir) {
@@ -153,11 +156,11 @@ inline Rect clipEditButton(Rect display) {
 }
 // An operator's page: under its block, a line across, then a well whose top edge holds the tabs (one per
 // InspectorTab) and whose display under them shows what the tab picks; the tab's controls in a row under the well.
-constexpr float kOpRuleY = kInspector.y + 166.0f;
-constexpr float kOpTabsY = kInspector.y + 172.0f;
+constexpr float kOpRuleY = kInspector.y + 144.0f;
+constexpr float kOpTabsY = kInspector.y + 150.0f;
 constexpr float kOpTabH = 22.0f;
 // An even height keeps the envelope's levels (from 12 px under its top to 10 px over its bottom) on whole pixels at 0.5.
-constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w - 32.0f, 96.0f};
+constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w - 32.0f, 118.0f};
 // The well, the tabs and the display; INPUTS, with no controls under it, takes it down to the lens's bottom.
 constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpDisplay.h - kOpTabsY};
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
@@ -249,10 +252,10 @@ constexpr Rect kShaperDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInsp
 constexpr OpWave kCommonWaves[] = {OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Noise};
 constexpr OpWave kMoreWaves[] = {OpWave::Pulse,   OpWave::HalfSine, OpWave::AbsSine, OpWave::AltSine,
                                  OpWave::Organ,   OpWave::Vowel,    OpWave::Custom};
-// Every wave but Wavetable and Sample, which the source switch over the row picks (see kOpSourceRow).
+// Every wave but Wavetable and Sample, which the source switch on the title row picks (see kOpSourceRow).
 static_assert(std::size(kCommonWaves) + std::size(kMoreWaves) + 2 == static_cast<size_t>(OpWave::Count));
 constexpr int kWaveButtons = static_cast<int>(std::size(kCommonWaves)) + 1;
-// One segmented row under the source switch, in the block's right column.
+// One segmented row along the block's top, in its right column.
 inline Rect waveButton(int button) {
     const float step = kOpRightW / kWaveButtons;
     return {kOpRightX + button * step, kOpRowY, step, kOpWavesH};
