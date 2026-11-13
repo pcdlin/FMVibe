@@ -1518,7 +1518,8 @@ bool View::poll() {
                 (t.voices > 0 && t.lfoRates[s] != 0.0f))
                 inCard(s);
         if (t.opLevels != telemetry_.opLevels || t.opEnvLevels != telemetry_.opEnvLevels ||
-            t.opEnvPos != telemetry_.opEnvPos)
+            t.opEnvPos != telemetry_.opEnvPos || t.opTablePos != telemetry_.opTablePos ||
+            t.opSamplePos != telemetry_.opSamplePos)
             in(kInspector);
         if (t.scope != telemetry_.scope || t.scopeBins != telemetry_.scopeBins ||
             t.scopeCursor != telemetry_.scopeCursor)
@@ -9588,6 +9589,9 @@ void View::applyDrag(Point p) {
     case DragKind::SampleHandle:
         dataDrag(p, drag_.snap);
         break;
+    case DragKind::TbScrollBar:
+        tbScrollDrag(p);
+        break;
     case DragKind::Value: {
         const ParamDef &def = table_[w.param];
         if (w.kind == Kind::GridCell) // dragging a matrix cell switches on what it joins, in the same step
@@ -9966,10 +9970,15 @@ void View::mouseDown(Point p, Modifiers mods) {
     // state load may have replaced the layout since it last ran.
     keepRoutes();
     const auto hit = hitTest(p);
-    // The MODS view's filter lets the keyboard go at a click anywhere else.
-    if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
-          hit->a == static_cast<int>(Field::ModsFilter)))
+    // The MODS view's filter and the table browser's search let the keyboard go at a click anywhere else: the browser's
+    // keys then play notes, as the host has them.
+    auto onField = [&](Field f) {
+        return hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) && hit->a == static_cast<int>(f);
+    };
+    if (!onField(Field::ModsFilter))
         modsFiltering_ = false;
+    if (!onField(Field::Tables))
+        tbSearching_ = false;
     // A pill's open list closes at a click anywhere else, which does nothing more; but not at a source's handle,
     // which can then be dragged onto one of its rows.
     if (modList_ && !(hit && (hit->popup || hit->kind == Kind::ModPill || hit->kind == Kind::SourceHandle ||
@@ -10285,7 +10294,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (partialEditor_ != w.a) // another node shown closes the partial editor, and the table browser
             partialEditor_ = -1;
         if (tableBrowser_ != w.a)
-            closeTableBrowser(true);
+            closeTableBrowser();
         break;
     case Kind::NodeGhost: // into the graph where it was, and into the inspector
         edit(enabledParam(w.a), 1.0);
@@ -10293,10 +10302,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (partialEditor_ != w.a)
             partialEditor_ = -1;
         if (tableBrowser_ != w.a)
-            closeTableBrowser(true);
+            closeTableBrowser();
         break;
     case Kind::ViewTab:
-        closeTableBrowser(true);
+        closeTableBrowser();
         showView(static_cast<RoutingView>(w.a));
         break;
     case Kind::OpTab:
@@ -10488,6 +10497,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (w.a == static_cast<int>(Field::Browser))
             revealBrowserRow(controller_.presetIndex(), true);
         modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
+        tbSearching_ = w.a == static_cast<int>(Field::Tables); // and the table browser's search
         hover_.reset();
         break;
     case Kind::SearchField: { // the caret where it is clicked, and a drag selects; with Shift, from where it was
@@ -10499,6 +10509,7 @@ void View::mouseDown(Point p, Modifiers mods) {
             break;
         }
         modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
+        tbSearching_ = w.a == static_cast<int>(Field::Tables);
         t.caret = t.stopAt(p.x);
         if (!mods.shift)
             t.anchor = t.caret;
@@ -10783,6 +10794,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::ModsScroll:
     case DragKind::InputsScroll:
     case DragKind::ModListScroll:
+    case DragKind::TbScrollBar:
     case DragKind::Pan: // the left button let go of mid-pan ends it too
     case DragKind::None:
         break; // finishDrag() ends what they hold
@@ -10923,6 +10935,7 @@ void View::finishDrag() {
     case DragKind::ModsScroll:
     case DragKind::InputsScroll:
     case DragKind::ModListScroll:
+    case DragKind::TbScrollBar:
     case DragKind::Connect:
     case DragKind::Reroute:
     case DragKind::RerouteFrom:
@@ -11147,6 +11160,7 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::ModsScroll:
     case Kind::InputsScroll:
     case Kind::ModListScroll:
+    case Kind::TbScrollBar:
     case Kind::Scrollbar:
     case Kind::Node:
     case Kind::Port:
@@ -12222,6 +12236,7 @@ CursorKind View::cursor() const {
     case Kind::SampleHandle:
         return CursorKind::Horizontal;
     case Kind::TbScroll:
+    case Kind::TbScrollBar:
         return CursorKind::Arrow;
     case Kind::ShapeArea:
     case Kind::SettingsBackdrop:

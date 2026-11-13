@@ -7,6 +7,7 @@
 #include "fft.h"
 #include "gui/controller.h"
 #include "opdata.h"
+#include "sharedtelemetry.h"
 #include "state.h"
 #include "synth.h"
 #include "tables.h"
@@ -3605,6 +3606,37 @@ void sampleChecks(const int (&factors)[4]) {
         const bool finite = std::all_of(out.begin(), out.end(), [](float x) { return std::isfinite(x) && std::abs(x) < 8.0f; });
         check(finite && t.opSamplePos[0] >= 0.0f && t.opSamplePos[0] <= 1.0f,
               "Linear FM through zero on a sample stays finite and within the sample");
+    }
+
+    // Where the newest voice plays a table and a sample reaches the editor through the telemetry the plugin hands it
+    // (SharedTelemetry), as the TABLE tab's lit frame and the SAMPLE tab's playhead show it.
+    {
+        auto through = [](const Telemetry &t) {
+            auto shared = std::make_unique<SharedTelemetry>();
+            shared->store(t);
+            auto back = std::make_unique<Telemetry>();
+            shared->load(*back);
+            return back;
+        };
+        DataEngine table(2);
+        table.table(static_cast<uint32_t>(FactoryTable::BasicShapes), 0.7);
+        table.e.noteOn(57);
+        table.e.render(4800);
+        auto t = std::make_unique<Telemetry>();
+        table.e.synth().telemetry(*t);
+        const auto tableBack = through(*t);
+        DataEngine sample(2);
+        sample.sample(sawSample(kUserDataBase + 24));
+        sample.e.noteOn(57);
+        sample.e.render(4800);
+        sample.e.synth().telemetry(*t);
+        const auto sampleBack = through(*t);
+        std::printf("      through the editor's telemetry: Position %.3f (0.7 set), the sample at %.3f\n",
+                    tableBack->opTablePos[0], sampleBack->opSamplePos[0]);
+        check(std::abs(tableBack->opTablePos[0] - 0.7f) < 1e-4f && tableBack->opTablePos[1] < 0.0f &&
+                  sampleBack->opSamplePos[0] > 0.0f && sampleBack->opSamplePos[0] < 1.0f &&
+                  sampleBack->opTablePos[0] < 0.0f,
+              "the editor is told where the newest voice plays its table and its sample");
     }
 
     // The operators' ids past their 50th field go on from 38000 (no field is there yet: the static_asserts in

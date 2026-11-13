@@ -348,6 +348,7 @@ private:
         TbGroup,      // a = its row: a subfolder's header, which folds it
         TbRow,        // a = its row in the list: loads it into the operator
         TbScroll,     // the list's area, which the wheel scrolls
+        TbScrollBar,  // the list's scrollbar along its right: its thumb dragged, or the track clicked to jump there
         TbDone,       // closes the browser, keeping what was picked
         TbImport,     // Import file...: the file dialog
     };
@@ -418,6 +419,7 @@ private:
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
         UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
         SampleHandle,  // a handle on a Sample operator's display, across (with Alt, a loop's onto zero crossings)
+        TbScrollBar,   // the table browser's list's scrollbar: its thumb, or the track a click jumps along
     };
 
     struct Drag {
@@ -1327,6 +1329,7 @@ private:
     // A press on one of their widgets: false for a kind that isn't theirs.
     bool dataPress(const Widget &w, Point p, Modifiers mods);
     void dataDrag(Point p, bool alt);
+    void tbScrollDrag(Point p); // the table browser's list follows its scrollbar's thumb
     bool dataDoubleClick(const Widget &w);
     bool dataWheel(Point p, float steps);
     void tablesKey(Key key);
@@ -1335,10 +1338,11 @@ private:
     // The operator whose table or sample the browser picks, or -1.
     int tableBrowsing() const { return tableBrowser_ >= 0 && shapeEditing() < 0 ? tableBrowser_ : -1; }
     void openTableBrowser(int op, DataKind kind);
-    void closeTableBrowser(bool keep);
+    void closeTableBrowser();
     std::vector<TbRow> tbRows() const;
     void pickTbRow(const TbRow &row);
     float tbEnd() const; // how many rows the list scrolls past at most
+    Rect tbThumb() const; // the list's scrollbar's thumb, at least 24 px tall however long the list
     // The data a row holds (read from its file for a library's, kept for a while): null where it can't be read.
     std::shared_ptr<const OpData> tbData(const TbRow &row) const;
     void stepTable(int op, int dir);
@@ -1583,16 +1587,15 @@ private:
     int wideLfo_ = -1;                       // the LFO whose card is widened (see wideLfo()), or -1
     int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
     // The table browser (see tableBrowsing()): the operator it picks for and what it picks, the source it shows, how far
-    // its list is scrolled, the row picked with the keys, the subfolders folded, and what the operator played as it
-    // opened (its wave and its table or sample), which Escape goes back to.
+    // its list is scrolled, the row picked with the keys, the subfolders folded, and whether its search has the keyboard
+    // (once clicked, until a click elsewhere, Enter or Escape lets it go; till then the keys play notes, as the host has them).
     int tableBrowser_ = -1;
     DataKind tbKind_ = DataKind::Table;
     int tbSource_ = -2;
     float tbScroll_ = 0.0f;
     int tbPick_ = -1;
     std::vector<std::string> tbFolded_;
-    double tbOpenWave_ = 0.0, tbOpenKey_ = 0.0;
-    bool tbChanged_ = false; // something was picked since it opened
+    bool tbSearching_ = false;
     TextField tablesSearch_;
     // The data the browser read from the library's files: the last few, by source and path.
     mutable std::vector<std::pair<std::string, std::shared_ptr<const OpData>>> tbRead_;

@@ -290,7 +290,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - Sample operators: one three octaves above its root 60 dB clean of aliasing at 2x (no worse oversampled further);
     a forward and a ping-pong loop off whole cycles, and a loop an LFO moves, not clicking; a One-Shot sample, and a
     Gate one with no loop, ending its voice at its end with the key down, Sustain leaving its loop once let go and
-    playing to its end, where Gate loops on; Linear FM through zero staying finite and within the sample;
+    playing to its end, where Gate loops on; Linear FM through zero staying finite and within the sample; and where
+    the newest voice plays its table and its sample reaching the editor through `SharedTelemetry`, as the plugin
+    hands it;
   - the operators' new fields at their ids (op A's Position 134, op F's Sample Mode 393, 38000 on free for them);
   - the file readers: WAVs at 16, 24 and 32 bits and float with Serum's `clm` (its frame size read, 2048 guessed
     without one, the folder's taken), stereo summed, past 512 frames thinned, `uhWT`, `srge`, cue and `smpl` frame
@@ -675,9 +677,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Import file... opening the file dialog;
   - the table browser over a library of made-up folders: a folder's table loading from its row, the preview drawing
     the table under the mouse and a file that can't be read telling why (read off the rendered pixels), the step on
-    loading the next file in its folder, the search finding a table in every source with Down and Enter, Escape
-    emptying it and then taking the operator back, a folder gone shown so and its menu setting the frame size for
-    its files, and + Add folder... opening the folder dialog;
+    loading the next file in its folder, the search taking the keyboard only once clicked (ringed, read off the
+    rendered pixels) and letting it go at Enter, at Escape (which first empties it) and at a click elsewhere, a key
+    typed then going nowhere, and finding a table in every source with Down and Enter, a folder gone shown so and its
+    menu setting the frame size for its files, and + Add folder... opening the folder dialog; and over a folder of
+    2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
+    and jumping to a click on its track;
   - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
     does; no WARP tab; Start and the loop's end dragged, each an undo step, a double-click putting one back; LOOP and
     MODE picking; the newest voice's playhead (read off the rendered pixels); and Phase dimmed, not turning.

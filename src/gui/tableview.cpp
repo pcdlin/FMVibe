@@ -20,6 +20,11 @@ namespace {
 // Where a Sample operator's waveform goes in its display: under the ROOT readout's line.
 Rect sampleArea(Rect display) { return {display.x + 8.0f, display.y + 22.0f, display.w - 16.0f, display.h - 30.0f}; }
 
+// The table browser's list's scrollbar, along its right edge, and its thumb's least height (as the editor's other
+// scrollbars have one), so a list of thousands of files still has a thumb to grab.
+constexpr Rect kTbScrollTrack{kTbList.x + kTbList.w - 5.0f, kTbList.y, 4.0f, kTbList.h};
+constexpr float kTbThumbMin = 24.0f;
+
 constexpr int kTbRenameCommand = 60000;
 constexpr int kTbFrameSizeCommand = 60001; // + 0 Auto, 1 256, 2 512, 3 1024, 4 2048
 constexpr int kTbRescanCommand = 60010;
@@ -366,6 +371,10 @@ bool View::paintDataWidget(Canvas &c, const Widget &w, bool hovered, bool active
         return true;
     case Kind::TbScroll:
         return true;
+    case Kind::TbScrollBar: // as the MODS view's
+        c.fillRect(kTbScrollTrack, kTrack.alpha(0.5f), kRadiusMark);
+        c.fillRect(tbThumb(), hovered || active ? kDim : kFaint, kRadiusMark);
+        return true;
     default:
         return false;
     }
@@ -513,22 +522,21 @@ void View::paintSampleTab(Canvas &c, Rect r, int op) {
 
 void View::openTableBrowser(int op, DataKind kind) {
     if (tableBrowser_ == op && tbKind_ == kind) { // a second click closes it
-        closeTableBrowser(true);
+        closeTableBrowser();
         return;
     }
     tableBrowser_ = op;
     tbKind_ = kind;
-    tbOpenWave_ = value(paramIndex(op, OpParam::Wave));
-    tbOpenKey_ = value(paramIndex(op, kind == DataKind::Table ? OpParam::Table : OpParam::Sample));
-    tbChanged_ = false;
     tbPick_ = -1;
+    tbSearching_ = false; // the keys play notes until the search is clicked
     tbScroll_ = 0.0f;
     partialEditor_ = -1;
     shapeEditor_ = -1;
     clearField(Field::Tables);
     // The source the operator's data came from, else Factory for a table and the patch for a sample.
     tbSource_ = kind == DataKind::Table ? -2 : -1;
-    if (const OpData *d = controller_.opData(dataKey(tbOpenKey_)); d) {
+    const double playing = value(paramIndex(op, kind == DataKind::Table ? OpParam::Table : OpParam::Sample));
+    if (const OpData *d = controller_.opData(dataKey(playing)); d) {
         if (d->key >= kUserDataBase)
             tbSource_ = -1;
         if (TableLibrary *lib = library(); lib && !d->origin.empty())
@@ -541,16 +549,10 @@ void View::openTableBrowser(int op, DataKind kind) {
     hover_.reset();
 }
 
-void View::closeTableBrowser(bool keep) {
-    const int op = tableBrowser_;
+void View::closeTableBrowser() {
     tableBrowser_ = -1;
+    tbSearching_ = false;
     hover_.reset();
-    if (keep || op < 0 || !tbChanged_)
-        return;
-    // Back to what it played as the browser opened, as an undo step of its own.
-    const UndoScope step(controller_);
-    controller_.setValue(paramIndex(op, tbKind_ == DataKind::Table ? OpParam::Table : OpParam::Sample), tbOpenKey_);
-    controller_.setValue(paramIndex(op, OpParam::Wave), tbOpenWave_);
 }
 
 void View::showTableSource(int source) {
@@ -723,6 +725,23 @@ void View::tableBrowserWidgets(std::vector<Widget> &list) const {
         add(rows[r].header ? Kind::TbGroup : Kind::TbRow, tbListRow(at), r);
         list.back().clip = kTbList;
     }
+    if (tbEnd() > 0.0f) // over the rows' right ends, a little wider than it is drawn
+        add(Kind::TbScrollBar, kTbScrollTrack.inset(-3.0f));
+}
+
+Rect View::tbThumb() const {
+    const float end = tbEnd(), shown = kTbList.h / kTbRowH;
+    const float h = std::clamp(kTbScrollTrack.h * shown / (shown + end), std::min(kTbThumbMin, kTbScrollTrack.h),
+                               kTbScrollTrack.h);
+    const float at = end > 0.0f ? std::clamp(tbScroll_, 0.0f, end) / end : 0.0f;
+    return {kTbScrollTrack.x, kTbScrollTrack.y + (kTbScrollTrack.h - h) * at, kTbScrollTrack.w, h};
+}
+
+void View::tbScrollDrag(Point p) {
+    const float room = kTbScrollTrack.h - tbThumb().h;
+    if (room > 0.0f)
+        tbScroll_ = std::clamp(static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * tbEnd(), 0.0f,
+                               tbEnd());
 }
 
 void View::paintTableBrowser(Canvas &c) {
@@ -747,15 +766,6 @@ void View::paintTableBrowser(Canvas &c) {
             say = s.missing ? trf(Str::TablesMissing, {s.folder.path}) : s.scanning ? tr(Str::TablesScanning) : say;
         }
         c.text({kTbList.x, kTbList.y + 20.0f, kTbList.w, 20.0f}, say, kTextBody, kDim);
-    }
-    // Where the list is, along its right.
-    if (const float end = tbEnd(); end > 0.0f) {
-        const Rect track{kTbList.right() - 4.0f, kTbList.y, 3.0f, kTbList.h};
-        const float shown = kTbList.h / kTbRowH;
-        const float thumb = track.h * shown / (shown + end);
-        c.fillRect(track, kBorder, kRadiusMark);
-        c.fillRect({track.x, track.y + (track.h - thumb) * std::clamp(tbScroll_, 0.0f, end) / end, track.w, thumb}, kFaint,
-                   kRadiusMark);
     }
     // The preview: the row under the mouse, else the one picked with the keys, else what the operator plays.
     std::optional<TbRow> shown;
@@ -900,7 +910,6 @@ void View::pickTbRow(const TbRow &row) {
     const int op = tableBrowsing();
     if (op < 0 || row.header || row.error != ReadError::None)
         return;
-    tbChanged_ = true;
     if (row.source == -2) {
         if (tbKind_ == DataKind::Table)
             controller_.pickTable(op, row.key);
@@ -935,7 +944,7 @@ void View::pickTbRow(const TbRow &row) {
         flash(said);
 }
 
-bool View::dataPress(const Widget &w, Point, Modifiers mods) {
+bool View::dataPress(const Widget &w, Point p, Modifiers mods) {
     switch (w.kind) {
     case Kind::SourceSwitch:
         switchSource(w.a, w.b);
@@ -993,7 +1002,7 @@ bool View::dataPress(const Widget &w, Point, Modifiers mods) {
         return true;
     }
     case Kind::TbDone:
-        closeTableBrowser(true);
+        closeTableBrowser();
         return true;
     case Kind::TbImport:
         if (tableBrowsing() >= 0)
@@ -1001,6 +1010,16 @@ bool View::dataPress(const Widget &w, Point, Modifiers mods) {
         return true;
     case Kind::TbScroll:
         return true;
+    case Kind::TbScrollBar: { // as the MODS view's: off the thumb, it jumps to center on the click, then drags on
+        const Rect thumb = tbThumb();
+        if (p.y < thumb.y || p.y >= thumb.bottom())
+            tbScroll_ = std::clamp((p.y - thumb.h * 0.5f - kTbScrollTrack.y) /
+                                       std::max(kTbScrollTrack.h - thumb.h, 1.0f) * tbEnd(),
+                                   0.0f, tbEnd());
+        drag_.kind = DragKind::TbScrollBar;
+        drag_.startValue = std::clamp(tbScroll_, 0.0f, tbEnd());
+        return true;
+    }
     default:
         return false;
     }
@@ -1055,15 +1074,16 @@ bool View::dataWheel(Point p, float steps) {
 void View::tablesKey(Key key) {
     const std::vector<TbRow> rows = tbRows();
     switch (key) {
-    case Key::Enter:
+    case Key::Enter: // plays the row picked, and lets the keyboard go, so its keys play it
         if (tbPick_ >= 0 && tbPick_ < static_cast<int>(rows.size()))
             pickTbRow(rows[tbPick_]);
+        tbSearching_ = false;
         break;
-    case Key::Escape:
+    case Key::Escape: // empties the search, then lets the keyboard go
         if (!tablesSearch_.text.empty())
             clearField(Field::Tables);
         else
-            closeTableBrowser(false);
+            tbSearching_ = false;
         break;
     case Key::Up:
     case Key::Down: { // to the next row that is a table, that way

@@ -7880,22 +7880,43 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     const OpData *square = model.opData(dataKey(model.value(table)));
     check(square && square->origin == "Serum/Analog/square.wav", "the step on loads the next file in its folder");
 
-    // The search narrows the list over every source; Up, Down and Enter load, an undo step each; Escape takes it back.
+    // The search takes the keyboard only once clicked: till then, and after a click elsewhere, Enter or Escape, the keys
+    // go on to the host, which plays notes with them. Typed into, it narrows the list over every source; Down and
+    // Enter load what it finds.
     click(view, detail::kTablePicker.center());
-    model.set(table, 2.0);
     view.poll();
-    // (The browser opened on square: Escape would take it back there.)
+    const bool freeAtOpen = !view.typing();
+    renderer.save(view, dir / "wt-10-search-unfocused.png");
+    const uint32_t unfocused = renderer.pixel({detail::kTbSearch.right() - 0.5f, detail::kTbSearch.center().y});
     click(view, detail::kTbSearch.center());
+    const bool clicked = view.typing();
     type(view, "pwm");
+    renderer.save(view, dir / "wt-10-search.png");
+    const bool ringed = renderer.pixel({detail::kTbSearch.right() - 0.5f, detail::kTbSearch.center().y}) != unfocused;
     view.typeKey(View::Key::Down);
     view.typeKey(View::Key::Enter);
-    const bool found = model.value(table) == static_cast<double>(FactoryTable::Pwm);
-    renderer.save(view, dir / "wt-10-search.png");
-    view.typeKey(View::Key::Escape); // empties the search
-    view.typeKey(View::Key::Escape); // and back to what it played as the browser opened
+    const bool found = model.value(table) == static_cast<double>(FactoryTable::Pwm) && !view.typing();
+    click(view, detail::kTbSearch.center());
+    view.typeKey(View::Key::Escape); // empties the search, keeping the keyboard
+    const bool emptied = view.typing();
+    view.typeKey(View::Key::Escape); // then lets it go
+    const bool escaped = !view.typing();
+    click(view, detail::kTbSearch.center());
+    type(view, "sq");
+    click(view, {detail::kTableBrowser.x + 20.0f, detail::kTableBrowser.y + 12.0f}); // the title, elsewhere
+    const bool letGo = !view.typing();
+    view.typeChar(U'z'); // taken by nothing now: "sq" still finds square
+    click(view, detail::kTbSearch.center());
+    view.typeKey(View::Key::Down);
+    view.typeKey(View::Key::Enter);
     const OpData *again = model.opData(dataKey(model.value(table)));
-    check(found && again && again->origin == "Serum/Analog/square.wav",
-          "the search finds a table in every source, Enter loads it, and Escape takes the operator back");
+    std::printf("      search: free at open %d, clicked %d, ringed %d, Enter %d, Escape %d then %d, a click elsewhere %d\n",
+                freeAtOpen, clicked, ringed, found, emptied, escaped, letGo);
+    check(freeAtOpen && clicked && ringed && found && emptied && escaped && letGo && again &&
+              again->origin == "Serum/Analog/square.wav",
+          "the browser's search takes the keyboard only once clicked, and lets it go at Enter, Escape or a click "
+          "elsewhere; it finds a table in every source, and Enter loads it");
+    click(view, detail::kTbDone.center());
 
     // A folder gone shows greyed out; its menu sets the frame size for its files that have none.
     click(view, detail::kTablePicker.center());
@@ -7914,6 +7935,48 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::tbSourceRow(4).center()); // + Add folder...
     check(model.folderDialogs == 1, "+ Add folder... opens the folder dialog");
     click(view, detail::kTbDone.center());
+}
+
+// The table browser's scrollbar over a folder of thousands of files: a thumb that can still be seen and grabbed, dragged
+// to the list's end, and a click on the track taking it there.
+void testTableBrowserScroll(const std::filesystem::path &dir, Renderer &renderer) {
+    std::printf("table browser's scrollbar:\n");
+    FakeController model;
+    View view(model);
+    model.ui.selectedNode = 0;
+    model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
+    const std::string text = "not a wave at all";
+    std::vector<std::pair<std::string, std::vector<uint8_t>>> files;
+    for (int i = 0; i < 2000; ++i)
+        files.push_back({"many/" + std::to_string(10000 + i) + ".wav", std::vector<uint8_t>(text.begin(), text.end())});
+    model.tableLibrary()->addFiles("Many", std::move(files));
+    click(view, detail::kTablePicker.center());
+    click(view, detail::tbSourceRow(2).center());
+    const Rect track{detail::kTbList.x + detail::kTbList.w - 5.0f, detail::kTbList.y, 4.0f, detail::kTbList.h};
+    const float x = track.x + 2.0f;
+    const Point away{detail::kTableBrowser.x + 20.0f, detail::kTableBrowser.y + 12.0f};
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-16-scroll-top.png");
+    // The thumb's height: the run of its color down from the track's top.
+    const uint32_t thumb = renderer.pixel({x, track.y + 4.0f});
+    int run = 0;
+    while (run < static_cast<int>(track.h) && renderer.pixel({x, track.y + 1.0f + run}) == thumb)
+        ++run;
+    const bool trackElsewhere = renderer.pixel({x, track.center().y}) != thumb;
+    // Dragged past the track's end: at the list's end.
+    drag(view, {x, track.y + 8.0f}, {x, track.bottom() + 40.0f});
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-17-scroll-end.png");
+    const bool atEnd = renderer.pixel({x, track.bottom() - 4.0f}) == thumb && renderer.pixel({x, track.y + 4.0f}) != thumb;
+    // A click on the track's middle: the thumb centered there.
+    click(view, {x, track.center().y});
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-18-scroll-middle.png");
+    const bool jumped = renderer.pixel({x, track.center().y}) == thumb && renderer.pixel({x, track.bottom() - 4.0f}) != thumb;
+    std::printf("      thumb %d px tall over a %.0f px track, for 2000 rows\n", run + 1, track.h);
+    check(run + 1 >= 22 && trackElsewhere, "a list of thousands of files still has a thumb 24 px tall (read off the "
+                                           "rendered pixels)");
+    check(atEnd && jumped, "the thumb drags the list to its end, and a click on the track takes it there");
 }
 
 // The SAMPLE source, its row and tab, its handles, its lists and its playhead.
@@ -10352,6 +10415,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testTempo(dir, renderer);
     testWavetables(dir, renderer);
     testTableBrowser(dir, renderer);
+    testTableBrowserScroll(dir, renderer);
     testSamples(dir, renderer);
 }
 

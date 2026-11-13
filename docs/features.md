@@ -1353,7 +1353,7 @@ one may have changed since it last did.
     envelope).
 
     The **table browser** takes the routing panel's place beside the inspector, opened by a table's or a sample's
-    picker (a second click closes it, as do **Done** and Escape). At its left the sources: **Factory** (FMVibe's
+    picker (a second click closes it, as does **Done**). At its left the sources: **Factory** (FMVibe's
     tables), **In this patch** (the tables and samples the patch holds), then the folders added, each with how many
     files it lists (greyed out, and saying so in its tooltip, while it can't be found), and **+ Add folder…**, which
     asks for a folder and names it after it. A folder's right-click menu renames it, sets the frame size for its files
@@ -1364,9 +1364,11 @@ one may have changed since it last did.
     subfolder's under its name, which folds them: each its glyph, its name, its frames (or a sample's length) and its
     format, with a ? after a guessed frame size; one that can't be read greyed out, its tooltip saying why (an
     encrypted format, or a preset with its table inside, says to export the table from its synth as a WAV). A click on a row plays it at once,
-    an undo step each; the search over the list finds tables in every source, each source's under its name; Up and
-    Down pick a row there and Enter plays it. Escape empties the search, and then closes the browser, putting back
-    what the operator played as it opened (one undo step). At the right a preview of the row under the mouse (else
+    an undo step each, and the computer keyboard (or the host's) then plays it: the browser takes no keys until its
+    search is clicked. Clicked, the search has the keyboard and finds tables in every source, each source's under its
+    name; Up and Down pick a row there and Enter plays it. Enter, a click anywhere else, or Escape (which first empties
+    it) lets the keyboard go. The list scrolls by the wheel, or by its scrollbar, whose thumb (24 px at least, however
+    many files) drags it and whose track a click jumps along. At the right a preview of the row under the mouse (else
     the one picked, else what the operator plays): a table's stack or a sample's waveform, with its path, format,
     frame size and frames. **Import file…** opens the file dialog, as a sample's import button does. A file picked
     from a folder, or imported, is copied into the patch, so a project plays without it.

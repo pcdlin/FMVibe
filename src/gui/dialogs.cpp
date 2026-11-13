@@ -387,7 +387,7 @@ std::optional<View::Field> View::fieldTyping() const {
         return Field::CascadeSearch;
     if (modsFiltering_ && modsWide())
         return Field::ModsFilter;
-    if (tableBrowsing() >= 0) // the table browser's search, which its keys go through
+    if (tableBrowsing() >= 0 && tbSearching_) // the table browser's search, once clicked: its keys go through it
         return Field::Tables;
     return std::nullopt;
 }
