@@ -679,6 +679,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     played frame drawn warped (read off the rendered pixels); a table
     imported, undone back to the factory table and redone, its data kept while the history names it; the browser's
     Import file... opening the file dialog;
+  - every factory table at its first, middle, a late and its last frame drawn inside the TABLE tab's display and the
+    browser's preview, the strips around them as with nothing drawn (read off the rendered pixels);
   - the table browser over a library of made-up folders: a folder's table loading from its row, the preview drawing
     the table under the mouse and a file that can't be read telling why (read off the rendered pixels), the step on
     loading the next file in its folder, the search taking the keyboard only once clicked (ringed, read off the

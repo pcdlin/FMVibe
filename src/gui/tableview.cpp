@@ -342,13 +342,14 @@ bool View::paintDataWidget(Canvas &c, const Widget &w, bool hovered, bool active
                 if (id == std::to_string(row.source) + "|" + row.group + "/" + row.name)
                     data = read;
         if (data && data->kind == DataKind::Table && data->frames > 0) {
+            const float height = thumb.h * 0.4f / tablePeak(*data);
             for (int k = 0; k < 3; ++k) {
                 const int f = k * (data->frames - 1) / 2;
                 const float *x = &data->pcm[static_cast<size_t>(f) * FrameTable::kFrameSize];
                 Point p[33];
                 for (int i = 0; i <= 32; ++i)
                     p[i] = {thumb.x + 2.0f + i * (thumb.w - 4.0f) / 32.0f,
-                            thumb.center().y - x[i * (FrameTable::kFrameSize / 32) % FrameTable::kFrameSize] * (thumb.h * 0.4f)};
+                            thumb.center().y - x[i * (FrameTable::kFrameSize / 32) % FrameTable::kFrameSize] * height};
                 c.polyline(p, 33, (unreadable ? kFaint : kAccent).alpha(k == 2 ? 1.0f : 0.4f), 1.0f);
             }
         } else if (row.sample || (data && data->kind == DataKind::Sample)) {
@@ -389,6 +390,24 @@ bool View::paintDataWidget(Canvas &c, const Widget &w, bool hovered, bool active
     }
 }
 
+// The frames as stored aren't scaled yet (a factory table's least of all): drawn at the gain the synth plays them at,
+// the loudest frame's peak at full scale, none reaches past where it is drawn. Found once a table, in the curve cache.
+float View::tablePeak(const OpData &table) {
+    const size_t samples = static_cast<size_t>(std::max(table.frames, 0)) * FrameTable::kFrameSize;
+    if (samples == 0 || table.pcm.size() < samples)
+        return 1.0f;
+    const std::vector<double> key = {static_cast<double>(Curve::TableFrame), static_cast<double>(table.key),
+                                     static_cast<double>(table.frames), static_cast<double>(table.pcm[0]),
+                                     static_cast<double>(table.pcm[samples / 2]), -1.0};
+    const float peak = curves_.get(key, [&] {
+        float most = 0.0f;
+        for (size_t i = 0; i < samples; ++i)
+            most = std::max(most, std::abs(table.pcm[i]));
+        return std::vector<Point>{{most, 0.0f}};
+    })[0].x;
+    return peak > 0.0f ? peak : 1.0f;
+}
+
 void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float position, Color color, OpWarp warp,
                            double amount) {
     const int frames = table.frames;
@@ -399,13 +418,14 @@ void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, flo
     const float width = r.w - depthX - 12.0f, amp = (r.h - depthY - 14.0f) * 0.45f;
     const float baseX = r.x + 6.0f, baseY = r.bottom() - 7.0f - amp;
     constexpr int kPoints = 96;
+    const float scale = amp / tablePeak(table);
     // A frame read through coefs: the frames behind plainly, the one played as the operator's warp reads it.
     auto frameAt = [&](double f, float t, Color ink, float thickness, const WarpCoefs &coefs) {
         // By the table's key and frames (a file previewed, under the key 0, apart from Basic Shapes by its frames' count).
         const std::vector<double> key = {static_cast<double>(Curve::TableFrame), static_cast<double>(table.key),
                                          static_cast<double>(frames), static_cast<double>(table.pcm[0]),
                                          static_cast<double>(table.pcm[table.pcm.size() / 2]), f, r.x, r.y, r.w, r.h,
-                                         static_cast<double>(coefs.mode), coefs.a, coefs.b, coefs.c};
+                                         static_cast<double>(coefs.mode), coefs.a, coefs.b, coefs.c, scale};
         const std::vector<Point> points = curves_.get(key, [&] {
             std::vector<Point> p(kPoints + 1);
             const int a = std::clamp(static_cast<int>(f), 0, frames - 1), b = std::min(a + 1, frames - 1);
@@ -421,7 +441,7 @@ void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, flo
                 const float frac = static_cast<float>(at - s);
                 const float xa = x[s] + (x[s1] - x[s]) * frac, ya = y[s] + (y[s1] - y[s]) * frac;
                 const float v = xa * (1.0f - blend) + ya * blend;
-                p[i] = {static_cast<float>(i) / kPoints * width, -v * amp};
+                p[i] = {static_cast<float>(i) / kPoints * width, -v * scale};
             }
             return p;
         });
@@ -431,6 +451,7 @@ void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, flo
             moved[i] = {points[i].x + dx, points[i].y + dy};
         c.polyline(moved.data(), moved.size(), ink, thickness);
     };
+    c.pushClip(r.inset(-2.0f)); // and whatever a frame does, kept to where it is drawn
     const int shown = std::max(1, std::min(most, frames));
     for (int j = shown - 1; j >= 0; --j) { // the back first, fainter
         const double f = shown > 1 ? std::round(static_cast<double>(j) * (frames - 1) / (shown - 1)) : 0.0;
@@ -441,6 +462,7 @@ void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, flo
         const double f = std::clamp(position, 0.0f, 1.0f) * (frames - 1);
         frameAt(f, frames > 1 ? static_cast<float>(f / (frames - 1)) : 0.0f, color, 2.0f, warpCoefs(warp, amount));
     }
+    c.popClip();
 }
 
 void View::paintTableTab(Canvas &c, Rect r, int op) {

@@ -7912,6 +7912,70 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::kTbDone.center());
 }
 
+// Every factory table, at its first, middle, a late and its last frame, drawn inside the TABLE tab's display and the
+// browser's preview: the strips just outside them as they are with nothing drawn (read off the rendered pixels).
+void testTableBounds(const std::filesystem::path &dir, Renderer &renderer) {
+    std::printf("wavetables inside their displays:\n");
+    FakeController model;
+    View view(model);
+    model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Source;
+    const int table = paramIndex(0, OpParam::Table), position = paramIndex(0, OpParam::TablePos);
+    model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
+    const Point away{detail::kInspector.center().x, detail::kInspector.y + 40.0f};
+    const Rect display = detail::kOpDisplay;
+    const Rect preview{detail::kTbPreview.x, detail::kTbPreview.y, detail::kTbPreview.w, detail::kTbPreview.h * 0.62f};
+    // Above the display (the tabs' names), under it (to the controls' row), and above the preview.
+    auto outside = [&](bool browsing) {
+        std::vector<uint32_t> pixels;
+        auto strip = [&](float x0, float x1, float y0, float y1) {
+            for (float y = y0; y < y1; y += 1.0f)
+                for (float x = x0; x < x1; x += 2.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+        };
+        if (browsing) {
+            strip(preview.x + 4.0f, preview.right() - 4.0f, preview.y - 8.0f, preview.y - 1.0f);
+        } else {
+            strip(display.x + 4.0f, display.right() - 4.0f, detail::kOpTabsY + 2.0f, display.y - 2.0f);
+            strip(display.x + 4.0f, display.right() - 4.0f, display.bottom() + 2.0f,
+                  detail::kOpControlsY - 0.5f * detail::kOpKnobD - 2.0f);
+        }
+        return pixels;
+    };
+    // Nothing drawn: a table the patch doesn't hold.
+    model.set(table, static_cast<double>(kUserDataBase + 77));
+    view.poll();
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-19-bounds-none.png");
+    const std::vector<uint32_t> empty = outside(false);
+    click(view, detail::kTablePicker.center());
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-19-bounds-none-browser.png");
+    const std::vector<uint32_t> emptyBrowser = outside(true);
+    click(view, detail::kTbDone.center());
+    std::string over;
+    for (int t = 0; t < static_cast<int>(FactoryTable::Count); ++t) {
+        model.set(table, static_cast<double>(t));
+        for (const double at : {0.0, 0.5, 0.86, 1.0}) {
+            model.set(position, at);
+            view.poll();
+            view.mouseMove(away, {});
+            renderer.save(view, dir / "wt-19-bounds.png");
+            if (outside(false) != empty)
+                over += std::string(" ") + factoryTableName(t) + "@" + std::to_string(at).substr(0, 4);
+        }
+        click(view, detail::kTablePicker.center()); // the preview shows what the operator plays
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "wt-19-bounds-browser.png");
+        if (outside(true) != emptyBrowser)
+            over += std::string(" ") + factoryTableName(t) + " (preview)";
+        click(view, detail::kTbDone.center());
+    }
+    std::printf("      drawn outside:%s\n", over.empty() ? " nothing" : over.c_str());
+    check(over.empty(), "every factory table, at any frame, stays inside the TABLE tab's display and the browser's "
+                        "preview (read off the rendered pixels)");
+}
+
 // The table browser over a library of made-up sources.
 void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     std::printf("table browser:\n");
@@ -10500,6 +10564,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testRatioDisplay(dir, renderer);
     testTempo(dir, renderer);
     testWavetables(dir, renderer);
+    testTableBounds(dir, renderer);
     testTableBrowser(dir, renderer);
     testTableBrowserScroll(dir, renderer);
     testSamples(dir, renderer);

@@ -1325,6 +1325,7 @@ private:
     void paintTableBrowser(Canvas &c);
     // A table's frames in a stack seen from the side, the front one first, up to `most`, the frame at `position` lit
     // (none for a position below 0).
+    float tablePeak(const OpData &table); // its frames' peak as stored, to draw them at full scale
     // A table's frames as a stack, the frame at position (0..1, or none below 0) lit, read through warp at mount.
     void paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float position, Color color,
                          OpWarp warp = OpWarp::Off, double amount = 0.0);
