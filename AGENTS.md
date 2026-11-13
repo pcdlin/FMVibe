@@ -287,7 +287,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Squeeze's amount and on a synced operator's ratio leaving only the note's harmonics and their sidebands;
   - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
     not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
-    transport is stopped, and a random one stepping as the transport passes a cycle;
+    transport is stopped, and a Random source anchored running free and one-shot retriggering;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, a low note's (an A0's)
@@ -521,7 +521,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes
     going one at a time, undoably, a click on the one lit leaving it and the wheel stepping along them, and its
-    Unipolar switch standing apart;
+    Unipolar switch standing apart; a Random source's only Retrigger and Free;
   - the three-band dynamics' card: a band's row picking the band its knobs set, its threshold lines dragged
     across (Above stopping at Below) undoably, Alt-dragged for the ratio and double-clicked back, a line on another
     band picking that band, its zones dragged for their ratios (the upward one up for more, the downward one down, undoably, picking their

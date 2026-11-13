@@ -1306,13 +1306,17 @@ void View::removeSource(int source) {
 double View::lfoPhaseNow(int lfo) const {
     const double age = std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
     const double phase = telemetry_.lfoPhases[lfo] + telemetry_.lfoRates[lfo] * age;
-    if (value(paramIndex(lfo, SourceParam::OneShot)) >= 0.5)
+    if (lfoOneShot([this](int i) { return value(i); }, lfo))
         return std::min(phase, 1.0);
     return phase - std::floor(phase);
 }
 
 LfoClock View::lfoClockOf(int lfo) const {
     return lfoClock([this](int i) { return value(i); }, lfo);
+}
+
+int View::lfoClockCount(int lfo) const {
+    return lfoShapeOf(lfo) == LfoShape::Random ? kRandomClocks : kLfoModes;
 }
 
 // Free, Anchor and One-Shot set for `clock` alone (none for Retrigger), in one undo step.
@@ -2827,8 +2831,9 @@ std::vector<View::Widget> View::widgets() const {
             // A Random or Curve card has no Unipolar switch, which its polarity stands for, and a Random one no Phase,
             // which it takes none of.
             const size_t modes = list.size();
-            for (int i = 0; i < kLfoModes; ++i)
-                add(Kind::Choice, lfoModeSwitch(card, i), paramIndex(s, SourceParam::Free), s, i);
+            const int clocks = lfoClockCount(s);
+            for (int i = 0; i < clocks; ++i)
+                add(Kind::Choice, lfoModeSwitch(card, i, clocks), paramIndex(s, SourceParam::Free), s, i);
             merge(modes);
             if (!random && !curve)
                 add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
@@ -11539,7 +11544,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     }
     if (isLfoClockChoice(*hit)) { // to the next mode along, as the wheel turns, from the one lit
-        const int to = std::clamp(static_cast<int>(lfoClockOf(hit->a)) + whole, 0, kLfoModes - 1);
+        const int to = std::clamp(static_cast<int>(lfoClockOf(hit->a)) + whole, 0, lfoClockCount(hit->a) - 1);
         if (whole != 0)
             setLfoClock(hit->a, static_cast<LfoClock>(to));
         return;

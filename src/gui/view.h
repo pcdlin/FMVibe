@@ -1199,6 +1199,8 @@ private:
     bool lfoPhaseUsed(int lfo) const;
     // An LFO's clock mode, as its Free, Anchor and One-Shot make it, and setting them for one.
     LfoClock lfoClockOf(int lfo) const;
+    // How many clock modes its card offers: a random one only Retrigger and Free.
+    int lfoClockCount(int lfo) const;
     void setLfoClock(int lfo, LfoClock clock);
     // Whether a widget is one of an LFO's clock modes (a Choice on its Free, a = the LFO, b = the mode).
     static bool isLfoClockChoice(const Widget &w) {

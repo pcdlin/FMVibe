@@ -151,8 +151,8 @@ enum class ShaperParam {
 // the kMaxSources places holds a source of either type, or none, and has the
 // fields of both; only those of its type are used (and shown to hosts). Stored
 // in projects by number: only append.
-// Random and Midi came later. Random is a random LFO: it runs as an LFO does, with the LFO's Rate, Sync, Division,
-// Free, One-Shot and Anchor, and takes a new value each cycle (see RandomChaos and RandomSmooth below); at a Rate of
+// Random and Midi came later. Random is a random LFO: it runs as an LFO does, with the LFO's Rate, Sync, Division
+// and Free (never anchored nor one-shot: see lfoAnchored()), and takes a new value each cycle (see RandomChaos and RandomSmooth below); at a Rate of
 // 0 Hz (unsynced) it takes one as each note starts (see lfoHeld()) and holds it. It has no Shape, Phase or Unipolar,
 // but its Bipolar. Curve, added after them, is an LFO of a drawn shape: it runs as an LFO with the Custom shape does
 // (see lfoShape()), with every LFO field but Shape, its points the place's freeform shape (see ShapeParam). Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice; pressure,
@@ -948,9 +948,10 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::Sync:
     case SourceParam::Division:
     case SourceParam::Free:
-    case SourceParam::OneShot:
-    case SourceParam::Anchor:
         return runsLfo(t);
+    case SourceParam::OneShot:
+    case SourceParam::Anchor: // Random only retriggers or runs free (see lfoClock())
+        return runsLfo(t) && t != SourceType::Random;
     case SourceParam::RandomSmooth:
     case SourceParam::RandomChaos:
         return t == SourceType::Random;
@@ -963,29 +964,6 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     default:
         return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
     }
-}
-// Whether the LFO in place `source` follows the host's transport (see SourceParam), or runs on one clock all voices
-// share (an anchored one too, while the transport is stopped), reading its params through `get`. A one-shot is
-// neither.
-template <class Get>
-bool lfoAnchored(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::Anchor)) >= 0.5 && get(paramIndex(source, SourceParam::OneShot)) < 0.5;
-}
-template <class Get>
-bool lfoShared(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
-           (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
-            get(paramIndex(source, SourceParam::Anchor)) >= 0.5);
-}
-// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free): the
-// editor picks one, setting the switches for it.
-enum class LfoClock { Retrigger, Free, Anchor, OneShot, Count };
-template <class Get>
-LfoClock lfoClock(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5  ? LfoClock::OneShot
-           : get(paramIndex(source, SourceParam::Anchor)) >= 0.5 ? LfoClock::Anchor
-           : get(paramIndex(source, SourceParam::Free)) >= 0.5   ? LfoClock::Free
-                                                                 : LfoClock::Retrigger;
 }
 inline SourceType sourceType(double value) {
     const long t = std::lround(value);
@@ -1002,6 +980,38 @@ LfoShape lfoShape(const Get &get, int source) {
         return LfoShape::Custom;
     const long shape = std::lround(get(paramIndex(source, SourceParam::Shape)));
     return static_cast<LfoShape>(std::clamp(shape, 0l, static_cast<long>(LfoShape::Count) - 1));
+}
+// Whether the LFO in place `source` follows the host's transport (see SourceParam), or runs on one clock all voices
+// share (an anchored one too, while the transport is stopped), reading its params through `get`. A one-shot is
+// neither. A random one (Random, or the retired Random shape) is never anchored nor one-shot: its values can't be
+// told ahead, so neither means anything to it. Anchored, it runs free; one-shot, it retriggers (as lfoShared() says).
+template <class Get>
+bool lfoAnchored(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::Anchor)) >= 0.5 &&
+           get(paramIndex(source, SourceParam::OneShot)) < 0.5 && lfoShape(get, source) != LfoShape::Random;
+}
+template <class Get>
+bool lfoOneShot(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5 && lfoShape(get, source) != LfoShape::Random;
+}
+template <class Get>
+bool lfoShared(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
+           (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
+            get(paramIndex(source, SourceParam::Anchor)) >= 0.5);
+}
+// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free): the
+// editor picks one, setting the switches for it. A random one only retriggers or runs free (kRandomClocks).
+enum class LfoClock { Retrigger, Free, Anchor, OneShot, Count };
+constexpr int kRandomClocks = static_cast<int>(LfoClock::Anchor);
+template <class Get>
+LfoClock lfoClock(const Get &get, int source) {
+    if (lfoShape(get, source) == LfoShape::Random)
+        return lfoShared(get, source) ? LfoClock::Free : LfoClock::Retrigger;
+    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5  ? LfoClock::OneShot
+           : get(paramIndex(source, SourceParam::Anchor)) >= 0.5 ? LfoClock::Anchor
+           : get(paramIndex(source, SourceParam::Free)) >= 0.5   ? LfoClock::Free
+                                                                 : LfoClock::Retrigger;
 }
 // Whether the LFO in place `source` stands still: unsynced, at a Rate of 0 Hz. A random one then takes a value of its
 // own as each note starts, at once, and holds it.

@@ -178,7 +178,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     It replaces the LFO's Custom shape, which the LFOs no longer offer: a patch saved before (state version 11 and
     earlier) loads an LFO with that shape as a Curve source running as the LFO ran, its points and polarity kept.
   - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
-    in quarter notes, as an LFO does), clock modes and anchoring, and takes a new value every cycle. **Chaos** sets
+    in quarter notes, as an LFO does), and takes a new value every cycle. Of the clock modes it has only
+    **Retrigger** and **Free**: its values can't be told ahead, so standing where the transport puts it or running
+    one cycle means nothing to it (a patch or host that sets its Anchor runs it free, and its One-Shot retriggers it). **Chaos** sets
     how far it may move from the last one: up to a tenth of the range either way at 0 %, so it wanders, rising to
     anywhere at all at 100 % (the default), like sample and hold. **Smooth** glides to each new value instead of
     jumping: over that share of the cycle, easing in and out, then it holds (0 %, the default, steps). Unsynced at
@@ -290,7 +292,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
-    wins, then Anchor.
+    wins, then Anchor. A Random source has only Retrigger and Free (see Random above).
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes.
   - **Anchor** ties an LFO to the host's transport: while it plays, the LFO stands where it would had it started at
@@ -1398,7 +1400,8 @@ one may have changed since it last did.
     along them). Under the shape list, as
     wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
     (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
-    anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. A click picks one (a click on the
+    anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot** (a Random card's two, Retrigger and
+    Free, each twice as wide). A click picks one (a click on the
     one lit leaves it), and the wheel over them steps to the next one. Right of those two rows, centered
     on them, are the Rate and Phase knobs (a Random card's Rate alone),
     over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button

@@ -951,7 +951,7 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
         }
         if (!free)
             advanceLfo(lfo, lfoHz(get, s, tempo_), frames, fxTail_.rng,
-                       get(paramIndex(s, SourceParam::OneShot)) >= 0.5, get(paramIndex(s, SourceParam::RandomChaos)));
+                       lfoOneShot(get, s), get(paramIndex(s, SourceParam::RandomChaos)));
     }
     return count;
 }
@@ -985,23 +985,16 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
             continue;
         }
         // The cycles it has run since the song's start: synced, a note value's beats each, else at its rate. Its
-        // Phase is where it stood at the start; Random takes none, as with notes.
+        // Phase is where it stood at the start. A random one is never anchored (see lfoAnchored()).
         const double seconds = end / sampleRate_;
         const double cycles =
             shared(paramIndex(s, SourceParam::Sync)) >= 0.5
                 ? (songBeats_ + seconds * tempo_ / 60.0) /
                       divisionBeats(static_cast<int>(std::lround(shared(paramIndex(s, SourceParam::Division)))))
                 : (songSeconds_ + seconds) * sweepRateHz(shared(paramIndex(s, SourceParam::Rate)));
-        const bool random = lfoShape(shared, s) == LfoShape::Random;
-        const double at = cycles + (random ? 0.0 : shared(paramIndex(s, SourceParam::Phase)));
-        const double cycle = std::floor(at);
+        const double at = cycles + shared(paramIndex(s, SourceParam::Phase));
         lfo.hz = lfoHz(shared, s, tempo_);
-        lfo.phase = at - cycle;
-        if (cycle != lfo.cycle) { // Random takes a new value each cycle
-            lfo.cycle = cycle;
-            lfo.from = lfo.held;
-            lfo.held = randomStep(lfo.held, chaos, freeRng_);
-        }
+        lfo.phase = at - std::floor(at);
     }
 }
 
@@ -1756,7 +1749,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // A free LFO takes the shared clock, which render() moves on; switched
             // back to retrigger, it carries on from there. A one-shot is never free.
             // So does an anchored one, which render() moves to where the transport stands.
-            const bool oneShot = p[paramIndex(s, SourceParam::OneShot)] >= 0.5;
+            const bool oneShot = lfoOneShot(get, s);
             const bool free = lfoShared(get, s);
             const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
             // A note takes a new value for it to glide to; so does a note retriggering it in mono while it stands

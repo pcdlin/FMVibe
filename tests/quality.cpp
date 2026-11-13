@@ -3543,7 +3543,8 @@ int main() {
 
     // --- An anchored LFO stands where the host's transport puts it, as if it had started at its Phase at the song's
     // start: synced, by the beats, else by the seconds, whenever a note starts; a block split into pieces keeps the
-    // position moving; stopped, it runs on from where it was; a one-shot isn't anchored; Random steps each cycle.
+    // position moving; stopped, it runs on from where it was; a one-shot isn't anchored. Random is neither anchored nor one-shot: anchored,
+    // it runs free, and one-shot, it retriggers, running on past its cycle's end.
     std::printf("anchored LFO:\n");
     {
         auto telemetry = std::make_unique<Telemetry>();
@@ -3604,20 +3605,31 @@ int main() {
               "an anchored LFO follows the transport through blocks split into pieces");
         check(near(stopped, 0.4), "an anchored LFO runs on from where it is while the transport is stopped");
 
-        // Random: the value it holds through a cycle, and a new one in the next.
-        Engine random(1);
-        anchored(random);
-        random.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
-        random.noteOn(57);
-        auto heldAt = [&](double beats) {
-            random.synth().setTransport(true, beats, beats * 0.5);
-            random.render(32);
-            random.synth().telemetry(*telemetry);
-            return telemetry->lfoTo[0];
+        // Random, anchored, runs on the free clock (standing nowhere the transport puts it), and as a one-shot runs
+        // on past its cycle's end: after 1.5 cycles from the note, half way through its second.
+        auto randomPhase = [&](auto setup) {
+            Engine e(1);
+            anchored(e);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
+            setup(e);
+            e.synth().setTransport(true, 2.25, 2.25 * 0.5);
+            e.noteOn(57);
+            e.render(36000); // 0.75 s: 1.5 cycles at 2 Hz
+            return phase(e);
         };
-        const float first = heldAt(4.2), same = heldAt(4.9), next = heldAt(5.1);
-        std::printf("      random: %.3f at beat 4.2, %.3f at 4.9, %.3f at 5.1\n", first, same, next);
-        check(first == same && next != same, "an anchored random LFO steps as the transport passes a cycle");
+        const double randomAnchored = randomPhase(none), randomFree = randomPhase([](Engine &e) {
+            e.p[paramIndex(0, SourceParam::Anchor)] = 0.0;
+            e.p[paramIndex(0, SourceParam::Free)] = 1.0;
+        });
+        const double randomOneShot = randomPhase([](Engine &e) {
+            e.p[paramIndex(0, SourceParam::Anchor)] = 0.0;
+            e.p[paramIndex(0, SourceParam::OneShot)] = 1.0;
+        });
+        std::printf("      random: anchored %.4f, free %.4f; one-shot %.4f\n", randomAnchored, randomFree,
+                    randomOneShot);
+        check(near(randomAnchored, randomFree) && !near(randomAnchored, 0.25),
+              "an anchored Random source runs free, not where the transport puts it");
+        check(std::abs(randomOneShot - 0.5) < 0.01, "a one-shot Random source retriggers, running on past its cycle");
     }
 
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ

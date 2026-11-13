@@ -319,7 +319,6 @@ private:
         double held = 0.0; // the Random shape's value for this cycle
         double from = 0.0; // and for the last one, which it glides from
         bool restart = false; // a note (re)started it: its next block moves it to its Phase
-        double cycle = 0.0;   // an anchored one's cycle since the song's start, whole: Random steps as it changes
     };
 
     // One LFO/envelope slot's contribution to a param, in plain units.

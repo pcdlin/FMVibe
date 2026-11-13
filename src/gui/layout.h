@@ -609,11 +609,13 @@ inline Rect lfoWidenButton(float card) {
 }
 
 // An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes
-// (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide.
+// (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide. A random
+// one has only the first `modes` (retrigger and free), each as much wider.
 constexpr int kLfoModes = static_cast<int>(LfoClock::Count);
-inline Rect lfoModeSwitch(float card, int mode) {
+inline Rect lfoModeSwitch(float card, int mode, int modes = kLfoModes) {
     const Rect p = sourceCard(card);
-    return {p.x + 16.0f + mode * 30.5f, p.y + 72.0f, 30.5f, 16.0f};
+    const float w = 30.5f * kLfoModes / modes;
+    return {p.x + 16.0f + mode * w, p.y + 72.0f, w, 16.0f};
 }
 
 inline Rect lfoShapeButton(float card) {

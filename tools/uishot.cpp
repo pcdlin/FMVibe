@@ -520,6 +520,15 @@ Point oneShotToggle(float card) {
     return {cardX(card) + 122.75f, 644.0f};
 }
 
+// A Random card's two clock modes, Retrigger and Free, each as wide as two of an LFO's.
+Point randomRetriggerToggle(float card) {
+    return {cardX(card) + 46.5f, 644.0f};
+}
+
+Point randomFreeToggle(float card) {
+    return {cardX(card) + 107.5f, 644.0f};
+}
+
 Point unipolarToggle(float card) {
     return {cardX(card) + 155.0f, 644.0f};
 }
@@ -1069,6 +1078,28 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
+    // Its clock modes are Retrigger and Free alone: the wheel stops at Free, and a click where an LFO's One-Shot
+    // would be picks Free, Anchor and One-Shot left off.
+    {
+        auto clocks = [&] {
+            return std::array{model.value(paramIndex(1, SourceParam::Free)),
+                              model.value(paramIndex(1, SourceParam::Anchor)),
+                              model.value(paramIndex(1, SourceParam::OneShot))};
+        };
+        using Clocks = std::array<double, 3>;
+        view.wheel(randomRetriggerToggle(1), 3.0f, {});
+        const bool wheeled = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, randomRetriggerToggle(1));
+        const bool retriggered = clocks() == Clocks{};
+        click(view, oneShotToggle(1));
+        const bool freed = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, randomRetriggerToggle(1));
+        click(view, randomFreeToggle(1));
+        const bool freeAgain = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, randomRetriggerToggle(1));
+        check(wheeled && retriggered && freed && freeAgain && clocks() == Clocks{},
+              "a Random source's clock modes are Retrigger and Free alone");
+    }
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed Random source");
     // Running, it shows its own last cycles instead, as one line scrolling left, the live dot at its right end.
