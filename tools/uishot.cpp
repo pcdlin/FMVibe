@@ -7721,38 +7721,94 @@ void run(const std::filesystem::path &dir, float scale) {
               "a switched-off source's handle looks switched off");
     }
 
-    // Op A's envelope fills its display: the hold handle sits just after the peak, and
-    // dragging it 20 % of the zoomed scale along gives a hold of 0.2.
+    // Op A's envelope fills its display: the hold handle sits just after the peak. Dragged 20 % of the zoomed scale
+    // along, the decay and release after it would run past the display's end: the display zooms out just enough to
+    // keep them in (their 208 px of time in what is left past the handle), the handle staying under the mouse, which
+    // sets the hold by that zoom.
     {
         const double total = normFromTime(1.5) + normFromTime(0.015); // A's decay and release
         const float zoom = static_cast<float>((248.0f - 40.0f) / total);
         drag(view, {930.0f + kInsDx, kOpEnvTop + 12.0f}, {930.0f + kInsDx + 0.2f * zoom, kOpEnvTop + 12.0f});
-        check(std::abs(model.value(paramIndex(0, OpParam::Hold)) - 0.2) < 1e-3 && model.openEdits == 0,
-              "dragging the hold handle sets the hold, at the zoom the drag started with");
+        const double expected = 0.2 * 208.0 / (208.0 - 0.2 * zoom);
+        std::printf("      hold dragged to %.4f (%.4f under the mouse)\n", model.value(paramIndex(0, OpParam::Hold)),
+                    expected);
+        check(std::abs(model.value(paramIndex(0, OpParam::Hold)) - expected) < 1e-3 && model.openEdits == 0,
+              "dragging the hold handle sets the hold under the mouse, the display zooming out to keep the rest in");
+        // On with a hold of 0.2, the mouse away and the display filled again, for the checks after.
+        model.set(paramIndex(0, OpParam::Hold), 0.2);
+        view.mouseMove({600.0f, 328.0f}, {});
+        for (int i = 0; i < 60; ++i)
+            view.poll();
     }
-    // Dragged on past the display's end (at its bottom right), the release handle goes on lengthening the release,
-    // while the envelope zooms out to stay in the display: nothing of it shows between the display and the panel's
-    // edge.
+    // Dragged on past the display's end (at its bottom right), the release handle stops there; held past it, the
+    // envelope zooms out a little each poll and the release grows, the envelope staying in the display: nothing of it
+    // shows between the display and the panel's edge. Taken back inside, the handle follows the mouse at that zoom,
+    // and the polls move nothing.
     {
         const int release = paramIndex(0, OpParam::Release);
         const double before = model.value(release);
-        auto edge = [&] {
-            std::vector<uint32_t> column;
-            for (float y = kOpEnvTop; y < kOpEnvBottom + 1.0f; y += 1.0f)
-                column.push_back(renderer.pixel({1176.0f + kInsDx, y}));
-            return column;
+        auto column = [&](float x, float from, float to) {
+            std::vector<uint32_t> pixels;
+            for (float y = from; y < to; y += 1.0f)
+                pixels.push_back(renderer.pixel({x + kInsDx, y}));
+            return pixels;
         };
+        auto edge = [&] { return column(1176.0f, kOpEnvTop, kOpEnvBottom + 1.0f); };
+        // Inside the display, short of its end and under a handle's readout: the envelope's fill and line while it
+        // fills the display.
+        auto inner = [&] { return column(1120.0f, kOpEnvTop + 18.0f, kOpEnvBottom - 6.0f); };
         const bool shot = renderer.save(view, dir / "4c-envelope-dragged.png");
-        const std::vector<uint32_t> still = edge();
-        view.mouseDown({1158.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
-        view.mouseMove({1240.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
-        view.mouseMove({1320.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
+        const std::vector<uint32_t> still = edge(), filled = inner();
+        const float y = kOpEnvBottom - 10.0f;
+        view.mouseDown({1158.0f + kInsDx, y}, {});
+        view.mouseMove({1240.0f + kInsDx, y}, {});
+        const bool stopped = std::abs(model.value(release) - before) < 1e-6;
+        for (int i = 0; i < 20; ++i)
+            view.poll();
+        const double pushed = model.value(release);
         const bool inside = renderer.save(view, dir / "4c-envelope-dragged.png") && edge() == still;
-        view.mouseUp({1320.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
-        const bool longer = model.value(release) > before + 0.2;
+        view.mouseMove({1100.0f + kInsDx, y}, {});
+        const double back = model.value(release);
+        for (int i = 0; i < 5; ++i)
+            view.poll();
+        const bool steady = model.value(release) == back;
+        std::printf("      release pushed from %.3f to %.3f, taken back to %.3f\n", before, pushed, back);
+        check(shot && stopped && pushed > before + 0.2 && back < pushed && steady && inside,
+              "an envelope handle pushed past its display's end lengthens its segment as the display zooms out, "
+              "the envelope staying inside");
+
+        // Let go of over the display, the zoom stays as it is, its end where it was put, short of the column; once
+        // the mouse leaves the display, it eases back to filling it over a few polls (none at once).
+        view.mouseUp({1100.0f + kInsDx, y}, {});
+        for (int i = 0; i < 10; ++i)
+            view.poll();
+        renderer.save(view, dir / "4c-envelope-held.png");
+        const std::vector<uint32_t> held = inner();
+        view.mouseMove({600.0f, 328.0f}, {});
+        renderer.save(view, dir / "4c-envelope-held.png");
+        const bool still2 = inner() == held;
+        view.poll();
+        renderer.save(view, dir / "4c-envelope-easing.png");
+        const std::vector<uint32_t> easing = inner();
+        // Rendered each poll, until two in a row come out alike.
+        int polls = 1;
+        for (std::vector<uint32_t> last = easing; polls < 100;) {
+            view.poll();
+            ++polls;
+            renderer.save(view, dir / "4c-envelope-settled.png");
+            const std::vector<uint32_t> now = inner();
+            if (now == last)
+                break;
+            last = now;
+        }
+        const bool settled = inner() != held && inner() != easing;
         view.undo();
-        check(shot && inside && longer && model.value(release) == before,
-              "an envelope handle dragged past its display lengthens its segment, the envelope staying inside");
+        view.poll();
+        renderer.save(view, dir / "4c-envelope-undone.png");
+        std::printf("      the zoom let go of settled in %d polls\n", polls);
+        check(held != filled && still2 && easing != held && settled && polls > 3 && polls < 60 &&
+                  inner() == filled && model.value(release) == before,
+              "an envelope's zoom stays while the mouse is over its display, then eases back to filling it");
     }
     // Below 1 ms the attack's segment shrinks away: A's attack handle (1 ms, at the end of its 10 pixels from the
     // envelope's start at 910) dragged half way there sets 0.5 ms, and on past the start 0 ms, which draws the attack

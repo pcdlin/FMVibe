@@ -337,6 +337,23 @@ float envFitScale(Rect r, const EnvIndices &e, const Get &get) {
     return room / static_cast<float>(std::max(total, 0.15));
 }
 
+// The furthest an envelope in a display `r` wide zooms out: as far as fits its four times at their longest.
+float envLeastScale(Rect r, const EnvIndices &e) {
+    const float room = r.w - 20.0f - 4.0f * kEnvMinSegment;
+    double total = 0.0;
+    for (const int param : {e.attack, e.hold, e.decay, e.release})
+        total += std::max(paramTable()[param].max, 0.0);
+    return room / static_cast<float>(total);
+}
+
+// How far right handle `point` (0 the attack's peak, 1 the hold's end, 2 the decay's end, 3 the release's end) of
+// envelope `s` in display `r` goes, the segments after it keeping their lengths, before the envelope's end runs past
+// the display's.
+float envPointLimit(Rect r, const EnvShape &s, int point) {
+    const Point points[] = {s.p1, s.ph, s.p2, s.p4};
+    return r.right() - 10.0f - (s.p4.x - points[point].x);
+}
+
 // A point on segment 0 (attack, p0 to p1), 1 (decay, ph to p2) or 2 (release,
 // p2 to p4), at time t (0..1) along it, bent by its curve as the DSP bends it.
 Point envSegmentPoint(const EnvShape &s, int segment, double t, double curve, double sustain) {
@@ -1642,6 +1659,16 @@ bool View::poll() {
         if (drag_.kind == DragKind::FxMove && drag_.moved) // where it lands follows the row scrolling under it
             retargetRowDrag(drag_.now);
     }
+    // An envelope's display zooming: pushed out by a handle, which changes its params (anywhere they show), or easing
+    // back to filling the display, on the inspector's ENVELOPE tab or its card.
+    if (const int env = envZoom_.env; envZoomStep()) {
+        if (drag_.kind == DragKind::EnvPoint)
+            everywhere = true;
+        else if (env < kOps)
+            in(kInspector);
+        else
+            inCard(env - kOps);
+    }
     if (glideMods())
         everywhere = true;
     if (glideFxGraph()) // the effects graph's nodes making room for one dragged, or settling after
@@ -1715,11 +1742,63 @@ Rect View::envRect(int env) const {
 
 float View::envScale(int env) const {
     const float fit = envFitScale(envRect(env), envIndices(env), [this](int index) { return value(index); });
-    // While one of its handles is dragged, the zoom holds still, so the point stays under the mouse, until the
-    // envelope would run past the display's end: then it zooms out to keep all of it in.
-    if ((drag_.kind == DragKind::EnvPoint || drag_.kind == DragKind::EnvCurve) && drag_.widget.a == env)
-        return std::min(drag_.envScale, fit);
-    return fit;
+    // While its zoom is held, it stays still, so a point stays where it was put, until the envelope would run past the
+    // display's end: then it zooms out to keep all of it in.
+    return envZoom_.env == env ? std::min(envZoom_.scale, fit) : fit;
+}
+
+int View::envOfTime(int index) {
+    for (int env = 0; env < kOps + kMaxSources; ++env) {
+        const EnvIndices e = envIndices(env);
+        if (index == e.attack || index == e.hold || index == e.decay || index == e.release)
+            return env;
+    }
+    return -1;
+}
+
+int View::envDragged() const {
+    if (drag_.kind == DragKind::EnvPoint || drag_.kind == DragKind::EnvCurve)
+        return drag_.widget.a;
+    return drag_.kind == DragKind::Value ? envOfTime(drag_.widget.param) : -1;
+}
+
+void View::envZoomLeft(Point p) {
+    if (envZoom_.env >= 0 && !envZoom_.easing && envDragged() != envZoom_.env && !envRect(envZoom_.env).contains(p))
+        envZoom_.easing = true;
+}
+
+bool View::envZoomStep() {
+    const int env = envZoom_.env;
+    if (env < 0)
+        return false;
+    const Rect r = envRect(env);
+    const EnvIndices e = envIndices(env);
+    auto get = [this](int index) { return value(index); };
+    const float fit = envFitScale(r, e, get);
+    const float scale = envZoom_.scale = std::min(envZoom_.scale, fit); // as drawn: never further in than fits
+    if (drag_.kind == DragKind::EnvPoint && drag_.widget.a == env) {
+        // Pushed past where it stops, up to 24 px further, a handle zooms the envelope out by up to 2.5 % a poll (and
+        // at least a third of that), as a card held at a row's edge scrolls it; the handle staying at the display's
+        // end, its segment grows. A handle grabbed past where it stops pushes only once taken further right.
+        const float limit = envPointLimit(r, envShape(r, e, get, scale), drag_.widget.b);
+        const float push = std::min((drag_.now.x - std::max(limit, drag_.start.x + 4.0f)) / 24.0f, 1.0f);
+        const float least = envLeastScale(r, e);
+        if (push <= 0.0f || scale <= least)
+            return false;
+        envZoom_.scale = std::max(scale * (1.0f - 0.025f * (0.35f + 0.65f * push)), least);
+        applyDrag(drag_.now);
+        return true;
+    }
+    if (!envZoom_.easing)
+        return false;
+    // Back to filling the display, a third of the way (on the zoom's log scale) each poll: settled within a few tenths
+    // of a second.
+    const float next = scale * std::pow(fit / scale, 0.35f);
+    if (fit / next < 1.002f)
+        envZoom_ = {};
+    else
+        envZoom_.scale = next;
+    return true;
 }
 
 void View::mergeButtons(std::vector<Widget> &list, size_t from) {
@@ -9399,6 +9478,12 @@ std::vector<int> peqPointParams(int slot, int band) {
 
 void View::applyDrag(Point p) {
     const Widget &w = drag_.widget;
+    // A drag of an envelope's handle or time knob holds its zoom from its first move, before that moves anything.
+    // Each move keeps the zoom as drawn, as far out as the move before took it.
+    if (const int env = envDragged(); env >= 0 && (envZoom_.env != env || envZoom_.easing))
+        envZoom_ = {env, envScale(env), false};
+    else if (env >= 0)
+        envZoom_.scale = envScale(env);
     auto set = [&](int index, double v) {
         v = std::clamp(v, table_[index].min, table_[index].max);
         if (v != value(index))
@@ -9483,12 +9568,30 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::EnvPoint: {
-        // Times go by the zoom the drag started with, so the point stays under the mouse; dragged past the
-        // display's end, it goes on lengthening its segment while the display zooms out (see envScale()).
+        // Times go by the zoom held (see envZoom_), so the point stays under the mouse. Taken so far right that the
+        // segments after it would run past the display's end, the display zooms out just enough to keep them in,
+        // the point still under the mouse. Where they can't shrink (the release's end, or segments that are all
+        // their least pixels), it stops at the end; pushed on past there, the display zooms out and its segment
+        // grows (see envZoomStep()).
+        const Rect r = envRect(w.a);
         const EnvIndices e = envIndices(w.a);
-        const EnvShape s = envShape(envRect(w.a), e, [this](int index) { return value(index); }, drag_.envScale);
+        auto get = [this](int index) { return value(index); };
+        EnvShape s = envShape(r, e, get, envScale(w.a));
+        if (p.x > envPointLimit(r, s, w.b)) {
+            // The pixels the segments after it take: a part that stays, and one that grows with the zoom.
+            const float least = envLeastScale(r, e);
+            const float after = r.right() - 10.0f - envPointLimit(r, s, w.b);
+            const EnvShape bare = envShape(r, e, get, 0.0f);
+            const float fixed = r.right() - 10.0f - envPointLimit(r, bare, w.b);
+            if (after - fixed > 1.0f) {
+                const float fits = (r.right() - 10.0f - p.x - fixed) / ((after - fixed) / s.scale);
+                envZoom_.scale = std::max(std::min(fits, s.scale), least);
+                s = envShape(r, e, get, envScale(w.a));
+            }
+        }
+        const float x = std::min(p.x, envPointLimit(r, s, w.b));
         auto time = [&](int param, float from, bool attack = false) {
-            return envSpanTime(param, p.x - from, s.scale, attack);
+            return envSpanTime(param, x - from, s.scale, attack);
         };
         if (w.b == 0) {
             set(e.attack, time(e.attack, s.p0.x, true));
@@ -9716,6 +9819,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
     hoverPoint_ = p;
     const bool ctrlChanged = setCtrl(mods.ctrl);
     if (drag_.kind == DragKind::None) {
+        envZoomLeft(p);
         // The widget under the mouse, all of it (a tooltip goes under its rect), or for the partial editor's bars,
         // where along them the mouse is: its caption names the partial under it.
         std::optional<Widget> hit = hitTest(p);
@@ -9789,6 +9893,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         return;
     endTyping(true);
     finishDrag(); // a drag that never saw its button go up
+    envZoomLeft(p);
     fxRowGlide_.on = false; // the row's cards still settling snap into place, where a click means them
     // Before a drag can take a route down to 0 %: the poll timer waits while the mouse moves, and a
     // state load may have replaced the layout since it last ran.
@@ -9950,13 +10055,11 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.kind = DragKind::ModSource;
         break;
     case Kind::EnvPoint:
-        drag_.envScale = envScale(w.a); // before the drag starts, while it still fits the display
         drag_.kind = DragKind::EnvPoint;
         for (int index : envPointParams(w.a, w.b))
             controller_.beginEdit(index);
         break;
     case Kind::EnvCurve:
-        drag_.envScale = envScale(w.a);
         drag_.kind = DragKind::EnvCurve;
         drag_.startValue = value(w.param);
         controller_.beginEdit(w.param);
@@ -10610,6 +10713,7 @@ void View::mouseUp(Point p, Modifiers) {
         break; // finishDrag() ends what they hold
     }
     finishDrag();
+    envZoomLeft(p); // a knob's: its envelope's display is elsewhere
     hover_ = hitTest(p);
 }
 
@@ -10635,6 +10739,8 @@ void View::cancelDrag() {
     }
     finishDrag();
     hover_.reset();
+    if (envZoom_.env >= 0) // the mouse gone, a zoom held goes back to filling the display
+        envZoom_.easing = true;
 }
 
 void View::copyDragged() {
@@ -10764,6 +10870,8 @@ void View::mouseLeave() {
     if (drag_.kind == DragKind::None) {
         hover_.reset();
         hoverCard_ = -1;
+        if (envZoom_.env >= 0)
+            envZoom_.easing = true;
     }
 }
 
