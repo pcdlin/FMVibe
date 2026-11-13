@@ -100,17 +100,18 @@ inline Point opKnobCenter(int place) {
 // An operator's Ratio: a 7-segment readout, 0.50 to 64.00, the left column of its block, each digit dragged on its
 // own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along its
 // top, clear of the depth handles along its bottom edge.
-// Its label on the knobs' labels' line: 10 px under its box, as theirs are under their knobs.
-constexpr Rect kRatioBox{kInspector.x + 16.0f, kOpHeroY, kOpPitchW, kOpKnobY + 0.5f * kOpKnobD - kOpHeroY};
+// Its top level with the waves' row, and its label on the knobs' labels' line (kOpLabelY), as a knob's is under it.
+constexpr Rect kRatioBox{kInspector.x + 16.0f, kOpHeroY, kOpPitchW, 44.0f};
+constexpr float kOpLabelY = kOpKnobY + 0.5f * kOpKnobD + 2.0f; // the top of the block's labels' line
 constexpr int kRatioDigits = 4; // tens, ones, tenths, hundredths
 constexpr long kRatioPlaces[kRatioDigits] = {1000, 100, 10, 1}; // in hundredths
-constexpr float kRatioDigitW = 15.0f, kRatioDigitH = 24.0f, kRatioDigitGap = 2.5f, kRatioPointW = 6.5f;
+constexpr float kRatioDigitW = 15.0f, kRatioDigitH = 21.0f, kRatioDigitGap = 2.5f, kRatioPointW = 6.5f;
 // Digit k's place in the box (the decimal point after the second).
 inline Rect ratioDigitRect(int k) {
     const float total = kRatioDigits * kRatioDigitW + (kRatioDigits - 1) * kRatioDigitGap + kRatioPointW;
     const float left = kRatioBox.x + (kRatioBox.w - total) * 0.5f;
     const float x = left + k * (kRatioDigitW + kRatioDigitGap) + (k >= 2 ? kRatioPointW : 0.0f);
-    return {x, kRatioBox.y + 12.0f, kRatioDigitW, kRatioDigitH};
+    return {x, kRatioBox.y + 11.0f, kRatioDigitW, kRatioDigitH};
 }
 // The digit nearest along the box to x.
 inline int ratioDigit(float x) {

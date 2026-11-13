@@ -2577,7 +2577,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     // opens their list under it (read off the rendered pixels, inside the envelope's display, clear of the tabs above
     // it, whose width follows the font).
     const float middle = detail::kRatioBox.center().x, edge = detail::kRatioBox.bottom() - 1.0f;
-    const Point eighth{middle + 35.0f, edge}, pill{middle + 29.5f, edge}, under{middle + 18.0f, edge + 62.0f};
+    const Point eighth{middle + 35.0f, edge}, pill{middle + 29.5f, edge}, under{middle + 18.0f, detail::kOpDisplay.y + 6.0f};
     const uint32_t noEighth = renderer.pixel(eighth);
     for (int place = 1; place < 9; ++place) {
         model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));

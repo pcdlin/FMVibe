@@ -2532,7 +2532,7 @@ std::vector<View::Widget> View::widgets() const {
             for (size_t i = row; i < list.size(); ++i)
                 list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
             if (!fixed) {
-                add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kRatioBox.h + 19.0f},
+                add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kOpLabelY + 17.0f - kRatioBox.y},
                     paramIndex(op, OpParam::Ratio));
                 list.back().label = tr(Str::LabelRatio);
             }
@@ -8750,7 +8750,7 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     if (offset != 0.0f)
         c.fillCircle({along(n + offset / (def.max - def.min)), kRatioTrack.center().y}, 2.5f, kText);
 
-    c.text({w.rect.x, kRatioBox.bottom() + 2.0f, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
+    c.text({w.rect.x, kOpLabelY, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
            focused ? kText : kDim);
 }
 
