@@ -7073,7 +7073,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
         paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, kRadiusControl); // a part of the waves' row
         const std::vector<Point> points =
-            waveIcon(static_cast<OpWave>(w.b), {w.rect.x + 6.0f, w.rect.y + 7.0f, w.rect.w - 12.0f, w.rect.h - 14.0f});
+            waveIcon(static_cast<OpWave>(w.b), {w.rect.x + 6.0f, w.rect.y + 6.0f, w.rect.w - 12.0f, w.rect.h - 12.0f});
         c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
         break;
     }
@@ -7334,7 +7334,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool lit = hovered || waveMenu_ == w.a;
         paintButtonFace(c, w, selected, lit, kAccent, 0.18f, kRadiusControl); // the last part of the waves' row
         if (selected) {
-            const Rect icon{w.rect.x + 4.0f, w.rect.y + 7.0f, w.rect.w - 15.0f, w.rect.h - 14.0f};
+            const Rect icon{w.rect.x + 4.0f, w.rect.y + 6.0f, w.rect.w - 15.0f, w.rect.h - 12.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
             c.polyline(points.data(), points.size(), litInk(kAccent), 1.5f);
             const Point m{w.rect.right() - 6.0f, w.rect.center().y};

@@ -85,10 +85,11 @@ constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f,
 // fixed, or a noise operator's Slope and Spread), as tall as two rows; at its right, the waves and under them the
 // Pitch, Detune, Phase and Pan knobs. Their labels, and the Ratio readout's, share one line.
 constexpr float kOpHeroY = kInspector.y + 64.0f;
-constexpr float kOpPitchW = 96.0f; // the left column
+constexpr float kOpPitchW = 88.0f; // the left column
 constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
 constexpr float kOpRightW = kInspector.x + kInspector.w - 16.0f - kOpRightX;
-constexpr float kOpKnobY = kOpHeroY + 40.0f, kOpKnobD = 28.0f;
+constexpr float kOpWavesH = 20.0f; // the waves' row, over the knobs
+constexpr float kOpKnobY = kOpHeroY + 38.0f, kOpKnobD = 28.0f;
 // Place 0-3 along the right column (Pitch, Detune, Phase, Pan); the left column's two (Freq and Mult, or Slope and
 // Spread) are places -2 and -1.
 inline Point opKnobCenter(int place) {
@@ -99,10 +100,11 @@ inline Point opKnobCenter(int place) {
 // An operator's Ratio: a 7-segment readout, 0.50 to 64.00, the left column of its block, each digit dragged on its
 // own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along its
 // top, clear of the depth handles along its bottom edge.
-constexpr Rect kRatioBox{kInspector.x + 16.0f, kOpHeroY, kOpPitchW, 54.0f};
+// Its label on the knobs' labels' line: 10 px under its box, as theirs are under their knobs.
+constexpr Rect kRatioBox{kInspector.x + 16.0f, kOpHeroY, kOpPitchW, kOpKnobY + 0.5f * kOpKnobD - kOpHeroY};
 constexpr int kRatioDigits = 4; // tens, ones, tenths, hundredths
 constexpr long kRatioPlaces[kRatioDigits] = {1000, 100, 10, 1}; // in hundredths
-constexpr float kRatioDigitW = 17.0f, kRatioDigitH = 27.0f, kRatioDigitGap = 3.0f, kRatioPointW = 7.0f;
+constexpr float kRatioDigitW = 15.0f, kRatioDigitH = 24.0f, kRatioDigitGap = 2.5f, kRatioPointW = 6.5f;
 // Digit k's place in the box (the decimal point after the second).
 inline Rect ratioDigitRect(int k) {
     const float total = kRatioDigits * kRatioDigitW + (kRatioDigits - 1) * kRatioDigitGap + kRatioPointW;
@@ -214,7 +216,7 @@ constexpr int kWaveButtons = static_cast<int>(std::size(kCommonWaves)) + 1;
 // One segmented row at the top of the block's right column.
 inline Rect waveButton(int button) {
     const float step = kOpRightW / kWaveButtons;
-    return {kOpRightX + button * step, kOpHeroY, step, 22.0f};
+    return {kOpRightX + button * step, kOpHeroY, step, kOpWavesH};
 }
 // The list "..." opens, right-aligned under it.
 inline Rect waveMenu() {

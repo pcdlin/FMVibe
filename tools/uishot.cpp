@@ -2514,8 +2514,9 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     check(wheeled && rounded && shown() == 100,
           "the wheel steps the Ratio digit under the mouse, and a double-click resets it and the digits below");
 
-    // The digit under the mouse is lit behind: a pixel in its corner, clear of its segments.
-    const Point corner{kRatioTenths.x + 5.5f, kRatioTenths.y - 9.0f};
+    // The digit under the mouse is lit behind, a little past its edges: a pixel just right of it, half way down, where
+    // its segments don't lean.
+    const Point corner{detail::ratioDigitRect(2).right() + 0.75f, kRatioTenths.y};
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "3g-ratio.png");
     const uint32_t idle = renderer.pixel(corner);
@@ -2571,16 +2572,16 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     check(std::abs(octaves - 1.0) < 1e-6 && model.value(slotAmountIndex(0, 0)) == depthBefore,
           "a depth handle on the Ratio readout drags an octave of depth every 60 px");
 
-    // Its depth handles, 10 px apart along its bottom edge and centered on it, hold nine before a pill: the ninth 40 px
-    // right of the middle, and with a tenth, six handles and the pill (its middle 29.5 px right of the box's), which
+    // Its depth handles, 10 px apart along its bottom edge and centered on it, hold eight before a pill: the eighth 35 px
+    // right of the middle, and with a ninth, six handles and the pill (its middle 29.5 px right of the box's), which
     // opens their list under it (read off the rendered pixels, inside the envelope's display, clear of the tabs above
     // it, whose width follows the font).
     const float middle = detail::kRatioBox.center().x, edge = detail::kRatioBox.bottom() - 1.0f;
-    const Point eighth{middle + 40.0f, edge}, pill{middle + 29.5f, edge}, under{middle + 18.0f, edge + 62.0f};
+    const Point eighth{middle + 35.0f, edge}, pill{middle + 29.5f, edge}, under{middle + 18.0f, edge + 62.0f};
     const uint32_t noEighth = renderer.pixel(eighth);
-    for (int place = 1; place < 10; ++place) {
+    for (int place = 1; place < 9; ++place) {
         model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
-        if (place < 9) {
+        if (place < 8) {
             model.set(slotTargetIndex(place, 0), slotTargetValue(ratio));
             model.set(slotAmountIndex(place, 0), 0.05);
         }
@@ -2589,8 +2590,8 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     const bool eightShot = renderer.save(view, dir / "3g-ratio-eight.png");
     const bool eightFit = renderer.pixel(eighth) != noEighth;
-    model.set(slotTargetIndex(9, 0), slotTargetValue(ratio));
-    model.set(slotAmountIndex(9, 0), 0.05);
+    model.set(slotTargetIndex(8, 0), slotTargetValue(ratio));
+    model.set(slotAmountIndex(8, 0), 0.05);
     view.poll();
     view.mouseMove({600.0f, 328.0f}, {});
     const bool nineShot = renderer.save(view, dir / "3g-ratio-nine.png");
@@ -2601,7 +2602,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     const bool opened = renderer.pixel(under) != closedList;
     click(view, {600.0f, 328.0f});
     check(eightShot && nineShot && listShot && eightFit && opened,
-          "the Ratio readout holds nine depth handles, and a tenth puts them in a pill");
+          "the Ratio readout holds eight depth handles, and a ninth puts them in a pill");
 }
 
 // The examples that use the most of the synth, as the preset library writes them: Init, then their changes,
