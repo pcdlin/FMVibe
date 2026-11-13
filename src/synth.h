@@ -440,6 +440,15 @@ private:
     // Adds the voice to `left` and `right`, which run at the voices' rate: hostFrames * oversampling_ samples, and
     // while analyzing, what its filters put out to filterTaps_.
     void renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params);
+    // A synced or warped operator's sample (see renderBlock()): its copies' sum and, with `sides`, their left and
+    // right. Kept out of the voices' loop: inside it, MSVC's code made the voices a twenty-fifth slower with one copy
+    // when no operator was synced or warped.
+    struct OpSample {
+        double mono = 0.0, l = 0.0, r = 0.0;
+    };
+    static OpSample warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
+                                 const UnisonGains *gains, bool sides, const std::array<double, kMaxUnison> &syncIncStep,
+                                 double warpStep);
     // Brings the filters' block down to the host rate and measures it.
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
     // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.

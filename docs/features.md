@@ -95,8 +95,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     aliases about 60 dB down at 2x. Warp Amount can be modulated (pulse-width modulation is an LFO on Squeeze); it
     glides to each control block's value, moving at most its whole range in 8 ms, and a warp changed to another
     first goes back to the plain wave and then out to the new one, so neither clicks. Warp and Note Sync work
-    together: the restarted wave is read through the warp. Off, neither costs anything: an operator without them runs as
-    before;
+    together: the restarted wave is read through the warp. An operator with neither runs the plain loop it ran before,
+    the synced and warped ones a loop of their own;
   - **Rnd Phase** (phase randomization): at 0 % (the default) every note starts the waveform, and each unison copy, at
     Phase, so notes sound alike from the first sample; turned up, each copy starts up to that much of a cycle
     later, at random. Unison copies at 0 % start in step and drift apart as they detune.

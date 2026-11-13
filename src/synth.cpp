@@ -1443,6 +1443,91 @@ WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float 
 
 } // namespace
 
+// Each copy read through its warp, and restarted by its master.
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
+                                    const UnisonGains *gains, bool sides,
+                                    const std::array<double, kMaxUnison> &syncIncStep, double warpStep) {
+    OpSample out;
+    const WarpCoefs coefs = warpCoefs(op.warp, op.warpNow);
+    const bool warping = coefs.mode != OpWarp::Off;
+    const WarpKinks kinks = warpKinks(coefs);
+    auto read = [&](double phase) {
+        return warping ? WaveTables::readCycle(table, warpPhase(coefs, phase - std::floor(phase)))
+                       : static_cast<double>(WaveTables::read(table, phase));
+    };
+    bool carrying = false;
+    for (int k = 0; k < copies; ++k) {
+        const double here = op.phases[k] + offset;
+        const double cycle = here - std::floor(here); // where along its cycle it is, 0..1
+        double x =
+            (warping ? WaveTables::readCycle(table, warpPhase(coefs, cycle)) : WaveTables::read(table, here)) +
+            op.syncCarry[k];
+        op.syncCarry[k] = 0.0;
+        const double advance = factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+        op.phases[k] += advance;
+        bool restarted = false;
+        if (op.syncOn) {
+            double master = op.syncPhases[k] + op.syncIncNow[k];
+            if (master >= 1.0) {
+                // The master's cycle ended `after` of a sample before the next one: the copy restarts at its start
+                // there. Its step and the change in its slope are spread over this sample and the next as
+                // band-limited ones would be (polyBLEP and polyBLAMP).
+                master -= 1.0;
+                const double after = std::min(master / op.syncIncNow[k], 1.0);
+                const double at = op.phases[k] - after * advance; // where the restart cut it off
+                const double start = op.startPhases[k];
+                const double from = read(at + offset), to = read(start + offset);
+                const double jump = to - from;
+                const double bend = (read(start + advance + offset) - to) - (from - read(at - advance + offset));
+                const double before = 1.0 - after;
+                x += jump * 0.5 * after * after + bend * after * after * after / 6.0;
+                op.syncCarry[k] = -jump * 0.5 * before * before + bend * before * before * before / 6.0;
+                carrying = true;
+                restarted = true;
+                op.phases[k] = start + after * advance;
+            }
+            op.syncPhases[k] = master;
+            op.syncIncNow[k] += syncIncStep[k];
+        }
+        // The warp's bends that the phase passes before the next sample (as it moves now), each smoothed as a sync's
+        // restart is: by the change in the slope, over this sample and the next (polyBLAMP). Along each of the warp's
+        // stretches (its steps, or the cycle), `ahead` is how far on a bend is.
+        if (warping && !restarted && advance != 0.0) {
+            const double along = cycle * kinks.perCycle;
+            const double stretch = kinks.perCycle == 1.0 ? cycle : along - std::floor(along); // 0..1
+            const double by = advance * kinks.perCycle; // how far it goes, in stretches
+            // Only now and then does it pass one: then they are smoothed out of the loop's way.
+            bool passes = false;
+            for (int o = 0; o < kinks.count; ++o) {
+                const double ahead = kinks.offsets[o] - stretch;
+                passes = passes || (by > 0.0 ? (ahead > 0.0 ? ahead : ahead + 1.0) <= by
+                                             : (ahead < 0.0 ? ahead : ahead - 1.0) >= by);
+            }
+            if (passes) {
+                const WarpBends bends = warpBends(coefs, kinks, table, cycle, stretch, advance);
+                x += bends.now;
+                op.syncCarry[k] += bends.next;
+                carrying = true;
+            }
+        }
+        if (op.phases[k] >= 1.0 || op.phases[k] < 0.0)
+            op.phases[k] -= std::floor(op.phases[k]);
+        out.mono += x;
+        if (sides) {
+            out.l += x * gains->gainL[k];
+            out.r += x * gains->gainR[k];
+        }
+    }
+    op.carrying = carrying;
+    op.warpNow += warpStep;
+    return out;
+}
+
 void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params) {
     // This voice's param values before LFOs and envelopes: automation plus host modulation, global and per voice.
     // Freeform shapes are read from `params`; slot modulation of the effects reaches them in render(). What every
@@ -1799,7 +1884,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     std::array<bool, kOps> incMoving{}; // whether any of an operator's increments moves this block
     std::array<const UnisonIncs *, kOps> copy;
     // Sync and the warp (see Operator): the operators that read their wave through either, or still carry a sync's
-    // smoothing over, take a loop of their own. The masters' increments move like the copies' do.
+    // smoothing over, take a loop of their own (see warpedSample()). The masters' increments move like the copies' do.
     std::array<bool, kOps> warped{};
     std::array<double, kOps> warpStep{};
     std::array<std::array<double, kMaxUnison>, kOps> syncIncStep;
@@ -1917,8 +2002,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.syncKnown = false;
         }
         op.syncOn = syncing;
-        if (noise[i])
-            op.carrying = false; // noise has no cycle: what a sync carried is let go
+        if (noise[i]) { // noise has no cycle: what a sync carried is let go, and the warp with it
+            op.carrying = false;
+            op.warp = OpWarp::Off;
+            op.warpNow = 0.0;
+        }
         warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying;
 
         // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
@@ -2346,83 +2434,14 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;
             if (warped[i]) {
-                // Synced or warped (see Operator): each copy read through its warp, and restarted by its master. The
-                // plain loops below are as they were, so an operator with neither costs nothing more.
-                const WarpCoefs coefs = warpCoefs(op.warp, op.warpNow);
-                const bool warping = coefs.mode != OpWarp::Off;
-                const WarpKinks kinks = warpKinks(coefs);
-                const float *table = wave[i];
-                auto read = [&](double phase) {
-                    return warping ? WaveTables::readCycle(table, warpPhase(coefs, phase - std::floor(phase)))
-                                   : static_cast<double>(WaveTables::read(table, phase));
-                };
-                const bool sides = route.out || route.sendCount > 0 || route.shaperSendCount > 0;
-                bool carrying = false;
-                for (int k = 0; k < copies[i]; ++k) {
-                    const double here = op.phases[k] + offset;
-                    const double cycle = here - std::floor(here); // where along its cycle it is, 0..1
-                    double x = (warping ? WaveTables::readCycle(table, warpPhase(coefs, cycle))
-                                        : WaveTables::read(table, here)) +
-                               op.syncCarry[k];
-                    op.syncCarry[k] = 0.0;
-                    const double advance = factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
-                    op.phases[k] += advance;
-                    bool restarted = false;
-                    if (op.syncOn) {
-                        double master = op.syncPhases[k] + op.syncIncNow[k];
-                        if (master >= 1.0) {
-                            // The master's cycle ended `after` of a sample before the next one: the copy restarts
-                            // at its start there. Its step and the change in its slope are spread over this sample
-                            // and the next as band-limited ones would be (polyBLEP and polyBLAMP).
-                            master -= 1.0;
-                            const double after = std::min(master / op.syncIncNow[k], 1.0);
-                            const double at = op.phases[k] - after * advance; // where the restart cut it off
-                            const double start = op.startPhases[k];
-                            const double from = read(at + offset), to = read(start + offset);
-                            const double jump = to - from;
-                            const double bend =
-                                (read(start + advance + offset) - to) - (from - read(at - advance + offset));
-                            const double before = 1.0 - after;
-                            x += jump * 0.5 * after * after + bend * after * after * after / 6.0;
-                            op.syncCarry[k] = -jump * 0.5 * before * before + bend * before * before * before / 6.0;
-                            carrying = true;
-                            restarted = true;
-                            op.phases[k] = start + after * advance;
-                        }
-                        op.syncPhases[k] = master;
-                        op.syncIncNow[k] += syncIncStep[i][k];
-                    }
-                    // The warp's bends that the phase passes before the next sample (as it moves now), each smoothed
-                    // as a sync's restart is: by the change in the slope, over this sample and the next (polyBLAMP).
-                    // Along each of the warp's stretches (its steps, or the cycle), `ahead` is how far on a bend is.
-                    if (warping && !restarted && advance != 0.0) {
-                        const double along = cycle * kinks.perCycle;
-                        const double stretch = kinks.perCycle == 1.0 ? cycle : along - std::floor(along); // 0..1
-                        const double by = advance * kinks.perCycle; // how far it goes, in stretches
-                        // Only now and then does it pass one: then they are smoothed out of the loop's way.
-                        bool passes = false;
-                        for (int o = 0; o < kinks.count; ++o) {
-                            const double ahead = kinks.offsets[o] - stretch;
-                            passes = passes || (by > 0.0 ? (ahead > 0.0 ? ahead : ahead + 1.0) <= by
-                                                         : (ahead < 0.0 ? ahead : ahead - 1.0) >= by);
-                        }
-                        if (passes) {
-                            const WarpBends bends = warpBends(coefs, kinks, table, cycle, stretch, advance);
-                            x += bends.now;
-                            op.syncCarry[k] += bends.next;
-                            carrying = true;
-                        }
-                    }
-                    if (op.phases[k] >= 1.0 || op.phases[k] < 0.0)
-                        op.phases[k] -= std::floor(op.phases[k]);
-                    mono += x;
-                    if (sides) {
-                        l += x * copyGains[i]->gainL[k];
-                        r += x * copyGains[i]->gainR[k];
-                    }
-                }
-                op.carrying = carrying;
-                op.warpNow += warpStep[i];
+                // Synced or warped (see Operator): in a function of its own, so the plain loops below are as they were.
+                const OpSample out =
+                    warpedSample(op, wave[i], offset, factor, copies[i], copyGains[i],
+                                 route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i],
+                                 warpStep[i]);
+                mono = out.mono;
+                l = out.l;
+                r = out.r;
             } else if (noise[i]) {
                 mono = nextRandom(v.rng);
                 mono = colored[i] ? noiseColor_.process(mono, noiseCoefs[i], op.noise[0]) : mono * whiteGain;
