@@ -18,6 +18,7 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kModulatedCount> modOffset{};
     std::array<std::atomic<float>, kAllSources * kSlots> slotOffset{};
     std::array<std::atomic<float>, kMaxSources> sources{};
+    std::array<std::atomic<float>, kMacros> macroOffset{};
     std::array<std::atomic<float>, kMaxSources> lfoPhases{};
     std::array<std::atomic<float>, kMaxSources> lfoRates{};
     std::array<std::atomic<float>, kMaxSources> lfoFrom{};
@@ -58,6 +59,8 @@ struct SharedTelemetry {
             modOffset[i].store(t.modOffset[i], std::memory_order_relaxed);
         for (int i = 0; i < kAllSources * kSlots; ++i)
             slotOffset[i].store(t.slotOffset[i], std::memory_order_relaxed);
+        for (int i = 0; i < kMacros; ++i)
+            macroOffset[i].store(t.macroOffset[i], std::memory_order_relaxed);
         for (int i = 0; i < kMaxSources; ++i) {
             sources[i].store(t.sources[i], std::memory_order_relaxed);
             lfoPhases[i].store(t.lfoPhases[i], std::memory_order_relaxed);
@@ -112,6 +115,8 @@ struct SharedTelemetry {
             t.modOffset[i] = modOffset[i].load(std::memory_order_relaxed);
         for (int i = 0; i < kAllSources * kSlots; ++i)
             t.slotOffset[i] = slotOffset[i].load(std::memory_order_relaxed);
+        for (int i = 0; i < kMacros; ++i)
+            t.macroOffset[i] = macroOffset[i].load(std::memory_order_relaxed);
         for (int i = 0; i < kMaxSources; ++i) {
             t.sources[i] = sources[i].load(std::memory_order_relaxed);
             t.lfoPhases[i] = lfoPhases[i].load(std::memory_order_relaxed);

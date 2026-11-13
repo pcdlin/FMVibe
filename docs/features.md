@@ -227,6 +227,18 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Macros**: eight knobs (0–100 %) that hosts can automate, each with 16 slots like a source's. A macro's
     value times each slot's depth is added to its target for every voice and the effects alike, so a macro can
     also move effect params, which per-voice sources can't. Their names are part of the patch.
+    A macro's knob is a target too: any other source can modulate it (an LFO, an envelope, the note source,
+    velocity, the pitch bend, a Random or MIDI source, the mod wheel, or another macro), and what the knob then puts
+    out, in its range, moves what the macro modulates and scales the modulations it is the aux of. The macros and the
+    mod wheel moving a macro's knob do so for every voice and the effects alike, along a chain of macros too (they
+    are worked out in the order the chain needs, whatever their numbers); a macro can't modulate its own knob, nor
+    the knob of a macro its own knob moves, which would make a loop (a loop a host or a state holds anyway is broken
+    where it closes: the macro read there that comes later is read as set). A source that runs per voice on a macro's
+    knob makes that macro, and the macros its knob moves, run per voice: each voice works its knob out for itself,
+    as of the same 32-sample block (the note source's from the block before, as for an aux), its modulations moving
+    that voice and reaching the effects through the newest voice, as a per-voice source's do; with no note playing
+    the macro moves its targets from its knob with the macros' and the mod wheel's modulation alone. Turned by the
+    host or by hand, the knob's own value is what the modulation is added to.
   - **Mod Wheel**: a macro of its own, its knob the Mod Wheel param (the wheel in the keyboard strip), with 16
     slots like a macro's. It moves nothing until something is assigned to it. A hardware mod wheel (MIDI CC 1, on any
     channel; in a VST3 host, through its MIDI mapping) moves it as the wheel in the strip does, and the host is told
@@ -1063,7 +1075,8 @@ one may have changed since it last did.
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the line, in its order, each with the knobs of its type, then each split's crossover (its two
       in three bands) and each join's High and Low levels (and Mid); and Modulation, each LFO's and
-      envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
+      envelope's own knobs and the depths of its modulations; then Macros, the macros' knobs by their names (the row's
+  own macro's, and one that would make a loop, listed faintly, saying why). Picking one moves the modulation there, keeping the
       rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
       menu, and so does a second click on what opened it. Atop the target's menu, a **search** takes the keyboard
       while the menu is open: as soon as something is typed, the menu's first level lists the targets whose path
@@ -1502,7 +1515,10 @@ one may have changed since it last did.
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
   the name to change it (Enter
   keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
-  Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. Until a
+  Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. A macro's
+  knob takes modulation like any other knob (a source's handle dropped on it, its depth handles under it), but not
+  its own macro's handle nor one that would loop, which says why as it is let go of; its dot then shows where the
+  newest voice's modulation takes it, or with no note playing where the other macros and the mod wheel take it. Until a
   macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint,
   and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the wheels' and
   velocity's). The right-click menu of its knob,

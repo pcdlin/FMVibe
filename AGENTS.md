@@ -251,6 +251,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
+  - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
+    knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
+    knob silencing it while a soft one played with it plays as it would alone;
   - where the pitch bend stands, as the bend wheel shows it: the host's MIDI bend and modulation on top of the Pitch
     Bend param as set, with no note and in a note with its own modulation;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
@@ -540,6 +543,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
     too;
   - the right-click menu on knobs;
+  - a macro's knob as a target: an LFO's and another macro's handle dropped on it, with their depth handles under
+    it, its own macro's handle and one that would loop refused, its dot with no note playing showing where the other
+    macro takes it (read off the rendered pixels), and the target menu's Macros listing the knobs by their names, the
+    one that would loop and the row's own refused;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
     and velocity's handles, displays and curve editors, velocity's handle faint until it modulates something (read
     off the rendered pixels), the mod wheel's
