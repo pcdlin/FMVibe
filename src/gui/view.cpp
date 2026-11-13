@@ -8891,8 +8891,8 @@ void View::paintTooltip(Canvas &c) {
     else if (opOfField(param, OpParam::Sync) >= 0)
         text = tr(Str::TipHardSync);
     else if (opOfField(param, OpParam::Warp) >= 0) {
-        const Str tips[] = {Str::TipWarpOff, Str::TipWarpBend, Str::TipWarpSqueeze, Str::TipWarpPulse,
-                            Str::TipWarpSteps};
+        const Str tips[] = {Str::TipWarpOff,   Str::TipWarpBend,  Str::TipWarpSqueeze,
+                            Str::TipWarpPulse, Str::TipWarpSteps, Str::TipWarpSync};
         static_assert(std::size(tips) == static_cast<size_t>(OpWarp::Count));
         text = tr(tips[std::clamp(hover_->b, 0, static_cast<int>(OpWarp::Count) - 1)]);
     }

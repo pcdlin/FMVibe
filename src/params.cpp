@@ -22,7 +22,8 @@ constexpr Str kWaveNames[] = {Str::WaveSine,     Str::WaveTriangle, Str::WaveSaw
                               Str::WavePulse,    Str::WaveHalfSine, Str::WaveAbsSine, Str::WaveNoise,
                               Str::WaveCustom,   Str::WaveAltSine,  Str::WaveOrgan,   Str::WaveVowel};
 static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
-constexpr Str kWarpNames[] = {Str::WarpOff, Str::WarpBend, Str::WarpSqueeze, Str::WarpPulse, Str::WarpSteps};
+constexpr Str kWarpNames[] = {Str::WarpOff,   Str::WarpBend,  Str::WarpSqueeze,
+                              Str::WarpPulse, Str::WarpSteps, Str::WarpSync};
 static_assert(std::size(kWarpNames) == static_cast<size_t>(OpWarp::Count));
 constexpr Str kFilterTypeNames[] = {Str::FilterLowPass, Str::FilterHighPass, Str::FilterBandPass, Str::FilterNotch,
                                     Str::FilterComb};
@@ -324,7 +325,7 @@ void buildTable(ParamTable &t) {
         add(paramIndex(op, OpParam::FixedMult), name + " " + tr(Str::ParamFixedMult), module, ParamKind::FixedMult,
             0.0, kFixedMultCount - 1.0, 3.0);
         // Hard sync and the warp, off to begin with: the wave as it was.
-        add(paramIndex(op, OpParam::Sync), name + " " + tr(Str::ParamSync), module, ParamKind::Toggle, 0.0,
+        add(paramIndex(op, OpParam::Sync), name + " " + tr(Str::ParamNoteSync), module, ParamKind::Toggle, 0.0,
             static_cast<double>(OpSync::Count) - 1.0, 0.0);
         add(paramIndex(op, OpParam::Warp), name + " " + tr(Str::ParamWarp), module, ParamKind::OpWarp, 0.0,
             static_cast<double>(OpWarp::Count) - 1.0, 0.0);

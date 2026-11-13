@@ -58,7 +58,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     half the fundamental, and Alt Sine's, Organ's and Vowel's where their series put them; a Custom wave plays its
     partials, only as many as its count (the 40th silent at 32, heard at 64); a sine synced at 2.5 times an A4
     playing the A4's harmonics and not its own 1100 Hz, and Squeeze moving a square's pulse width (its 2nd harmonic
-    from none at 50 % to about 0.63 of its fundamental either way at ±50 %); a low-pass at 300 Hz and a high-pass
+    from none at 50 % to about 0.63 of its fundamental either way at ±50 %), and the Sync warp at 3 times a cycle
+    playing an A4's 3rd harmonic alone and at 3.5 times its harmonics, not 1540 Hz; a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
@@ -271,8 +272,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
   - a Custom wave playing the partials drawn, taken up as it is picked and changed partial by partial as it plays;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
-  - an operator's hard sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
-    Pulse, Steps, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
+  - an operator's Note Sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
+    Pulse, Steps, Sync, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
     plain wave bit for bit, sync switched on and off and a warp switched on and changed to another under a note
     (in single frames too) no rougher than the sound before, after or the plain wave between, and an LFO on
     Squeeze's amount and on a synced operator's ratio leaving only the note's harmonics and their sidebands;
@@ -491,7 +492,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
     the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
     (read off the rendered pixels);
-  - the WAVE tab's warp: its buttons picking the warp, its knob the amount and SYNC hard sync, each an undo step,
+  - the WAVE tab's warp: its buttons picking the warp (the Sync warp apart from NOTE SYNC), its knob the amount and
+    NOTE SYNC hard sync, each an undo step,
     its display with no note drawing a square's pulse width as Squeeze takes it (read off the rendered pixels), a
     warp button's tooltip, the display synced, and a noise operator showing its envelope in the tab's place;
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the

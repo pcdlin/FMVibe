@@ -61,17 +61,19 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Unison**: up to 16 copies of the operator. *Uni Detune* spreads them in pitch (the outermost copies by up to
     ±100 cents) and *Uni Spread* across the stereo field. On a modulator, the copies' sum is what its targets
     hear; on a carrier, every copy is modulated by the same signal.
-  - **Sync** (hard sync, off by default): each cycle of the note's pitch restarts the operator's wave at its Phase,
-    as an analog oscillator synced to a master at the note. The operator's ratio (or its fixed Freq × Mult, Pitch
-    and Detune) then sets the pitch inside each of those cycles, while what sounds stays on the note's harmonics,
-    so a ratio swept by an envelope or an LFO is the classic sync sweep. Every operator can sync, carriers and
-    modulators alike: a synced modulator gives its carrier a spectrum tied to the note whatever its ratio. The note
-    is the master rather than another operator because it is there for every operator in every patch, doesn't
-    depend on a routing, and is what sync is played against; a Sync From an operator could be added to its list
-    later. Its unison copies each sync to a note detuned as the copy is, and the note's pitch follows bend, glide
-    and tuning. A restart's step, and the change in the wave's slope there, are smoothed over the samples either
-    side as a band-limited restart would be (polyBLEP and polyBLAMP), so a synced sine at C6 keeps what aliases
-    65 dB down at the default 2x oversampling. Its scope (on the WAVE tab) follows the note's cycles. Noise has no cycle to sync or warp;
+  - **Note Sync** (hard sync, off by default; not the Sync warp below): each cycle of the note's pitch restarts
+    the operator's wave at its Phase, as an analog oscillator synced to a master at the note. The operator's ratio
+    (or its fixed Freq × Mult, Pitch and Detune) then sets the pitch inside each of those cycles, while what sounds
+    stays on the note's harmonics, so a ratio swept by an envelope or an LFO is the classic sync sweep. Every
+    operator can sync, carriers and modulators alike: a synced modulator gives its carrier a spectrum tied to the
+    note whatever its ratio. The note is the master rather than another operator because it is there for every
+    operator in every patch, doesn't depend on a routing, and is what sync is played against; a Sync From an
+    operator could be added to its list later (its name says what it syncs to, as the Sync warp syncs the wave to
+    the operator's own cycle). Its unison copies each sync to a note detuned as the copy is, and the note's pitch
+    follows bend, glide and tuning. A restart's step, and the change in the wave's slope there, are smoothed over
+    the samples either side as a band-limited restart would be (polyBLEP and polyBLAMP), so a synced sine at C6
+    keeps what aliases 65 dB down at the default 2x oversampling. Its scope (on the WAVE tab) follows the note's
+    cycles. Noise has no cycle to sync or warp;
   - **Warp** (Off by default) and **Warp Amount** (−100 to +100 %, 0 to begin with): where along its cycle the
     operator reads its wave, any wave, Custom too (Vital-style phase warps):
     - **Bend**: rushes through the cycle's start and lingers at its end (below 0, the other way round), as Casio's
@@ -80,15 +82,20 @@ What the plugin does and how its editor works, in full. Building and installing 
       square's pulse width, from 50 % to a sixteenth either way, a sine or a saw leaning;
     - **Pulse**: the whole cycle squeezed into its start, resting where it began for the rest (below 0, resting
       first and the cycle at the end);
-    - **Steps**: the cycle in 8 steps (below 0, 4), each holding, then rising to the next.
+    - **Steps**: the cycle in 8 steps (below 0, 4), each holding, then rising to the next;
+    - **Sync**: the wave played up to 8 times through each cycle (1 + 7 × the amount's size, either way), cut off
+      where the cycle ends, as Serum's Sync warp: an oscillator hard-synced to the operator's own pitch, its formant
+      sweeping up as the amount rises while the pitch stays. At whole numbers of times (2/7 is 3 times) it plays
+      that harmonic alone. Its step at the cycle's end is smoothed as Note Sync's restart is, so a sine at C6 keeps
+      what aliases 80 dB down at 2x (a saw, cut through its own edge, 55).
 
     At 0 every warp is the plain wave, bit for bit; the most it squeezes a stretch is 8 times, at ±100 %. A warped
     operator reads a table with as many fewer harmonics as its warp squeezes the cycle at its steepest, and the
     bends a warp puts in the wave's slope are smoothed as a sync's restart is, so even Steps at C6 keeps what
     aliases about 60 dB down at 2x. Warp Amount can be modulated (pulse-width modulation is an LFO on Squeeze); it
     glides to each control block's value, moving at most its whole range in 8 ms, and a warp changed to another
-    first goes back to the plain wave and then out to the new one, so neither clicks. Warp and sync work together:
-    the restarted wave is read through the warp. Off, neither costs anything: an operator without them runs as
+    first goes back to the plain wave and then out to the new one, so neither clicks. Warp and Note Sync work
+    together: the restarted wave is read through the warp. Off, neither costs anything: an operator without them runs as
     before;
   - **Rnd Phase** (phase randomization): at 0 % (the default) every note starts the waveform, and each unison copy, at
     Phase, so notes sound alike from the first sample; turned up, each copy starts up to that much of a cycle
@@ -1238,19 +1245,20 @@ one may have changed since it last did.
       up/down by detune).
     - **WAVE**: the operator's wave, its warp and its hard sync. Its display is a scope: the operator's output in
       the newest voice as it plays, with its unison copies together and everything that moves it (the FM it gets,
-      its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output.
-      It is caught at the operator's own phase (a synced one's at the note's), so a span starts where a cycle does
-      and stands still even under heavy FM. The buttons in its corner show 1, 2 or 4 cycles across (2 to begin
-      with): real cycles, so a modulator at a ratio of 0.5 or detuned copies make them differ. The trace is drawn
-      at its level, between dashed lines at full scale, its level in dB in the top left corner: following its peaks
-      as the header's output scope does, up at once and down slowly, so it doesn't flicker. A slow operator, whose
-      cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left of the last span
-      faint after it. With no note playing, the wave's plain shape shows faintly; warped or synced, the wave as they
-      make it (synced, the note's cycles, the operator's own restarting in each) shows in the accent over the plain
-      one. The warp's name and amount, and SYNC while synced, run along the display's bottom. Under it, the warps
-      as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the SYNC switch. The audio
-      thread captures only while the tab is shown. The summary line names the warp and says "sync" while either is
-      on. (The scope and the warp had a tab each before; a layout saved on the scope's opens this one.)
+      its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output. It
+      is caught at the operator's own phase (a synced one's at the note's), so a span starts where a cycle does and
+      stands still even under heavy FM. The buttons in its corner show 1, 2 or 4 cycles across (2 to begin with):
+      real cycles, so a modulator at a ratio of 0.5 or detuned copies make them differ. The trace is drawn at its
+      level, between dashed lines at full scale, its level in dB in the top left corner: following its peaks as the
+      header's output scope does, up at once and down slowly, so it doesn't flicker. A slow operator, whose cycles
+      take longer than a fifth of a second, is drawn as it goes, up to a line, what is left of the last span faint
+      after it. With no note playing, the wave's plain shape shows faintly; warped or synced, the wave as they make
+      it (synced, the note's cycles, the operator's own restarting in each) shows in the accent over the plain one.
+      The warp's name and amount, and NOTE SYNC while synced to the note, run along the display's bottom. Under it,
+      the warps as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the NOTE SYNC
+      switch. The audio thread captures only while the tab is shown. The summary line names the warp and says "note
+      sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
+      this one.)
     - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a

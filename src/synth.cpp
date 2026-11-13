@@ -1398,13 +1398,28 @@ WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float 
                     double step) {
     WarpBends out;
     const double by = step * kinks.perCycle; // how far it goes, in stretches
+    auto slopeAt = [&](double at, double span) { // the wave's, in its units a cycle
+        return (WaveTables::read(table, at + span) - WaveTables::read(table, at - span)) / (2.0 * span);
+    };
     auto smooth = [&](int o, double ahead) {
         const double until = ahead / by; // of a sample, to the bend
         const double after = 1.0 - until;
+        if (coefs.mode == OpWarp::Sync) {
+            // Sync's cycle end: the wave jumps from where its last cycle is cut off back to its start, as a hard
+            // sync's restart does (polyBLEP), and its slope with it (polyBLAMP), at the same speed on either side.
+            const double span = 0.5 * std::abs(step) * coefs.a;
+            const double end = coefs.b, start = 0.0;
+            const double jump =
+                (WaveTables::read(table, start) - WaveTables::read(table, end)) * (step > 0.0 ? 1.0 : -1.0);
+            const double bend = coefs.a * std::abs(step) * (slopeAt(start, span) - slopeAt(end, span));
+            out.now += jump * 0.5 * after * after + bend * after * after * after / 6.0;
+            out.next += -jump * 0.5 * until * until + bend * until * until * until / 6.0;
+            return;
+        }
         const double kink = cycle + ahead / kinks.perCycle;
         const double at = warpPhase(coefs, kink - std::floor(kink));
         const double span = 0.5 * std::abs(step) * std::max(kinks.before[o], kinks.after[o]);
-        const double slope = (WaveTables::read(table, at + span) - WaveTables::read(table, at - span)) / (2.0 * span);
+        const double slope = slopeAt(at, span);
         const double bend = slope * std::abs(step) * (kinks.after[o] - kinks.before[o]);
         out.now += bend * after * after * after / 6.0;
         out.next += bend * until * until * until / 6.0;

@@ -2698,6 +2698,9 @@ void syncWarpChecks(const int (&factors)[4]) {
         {"Steps 100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Steps, 1.0, -60.0},
         {"Steps -100% triangle at C6", 84, OpWave::Triangle, false, 1.0, OpWarp::Steps, -1.0, -58.0},
         {"synced Squeeze 60% square x2.4 C6", 84, OpWave::Square, true, 2.4, OpWarp::Squeeze, 0.6, -50.0},
+        {"Sync warp 50% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Sync, 0.5, -60.0},
+        {"Sync warp -80% saw at C6", 84, OpWave::Saw, false, 1.0, OpWarp::Sync, -0.8, -50.0},
+        {"Sync warp 30% triangle at C7", 96, OpWave::Triangle, false, 1.0, OpWarp::Sync, 0.3, -60.0},
     };
     auto setup = [](const Case &c) {
         return [&c](ParamValues &p) {
@@ -2726,7 +2729,7 @@ void syncWarpChecks(const int (&factors)[4]) {
         auto plain = [](ParamValues &p) { p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw); };
         const std::vector<float> a = steadyTone(2, 69, plain);
         bool same = true;
-        for (OpWarp warp : {OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps}) {
+        for (OpWarp warp : {OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps, OpWarp::Sync}) {
             const std::vector<float> b = steadyTone(2, 69, [&](ParamValues &p) {
                 plain(p);
                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(warp);
@@ -2770,6 +2773,17 @@ void syncWarpChecks(const int (&factors)[4]) {
                  syncWarpBase(p);
                  p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Steps);
                  p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             }},
+            {"Squeeze 90% to Sync 70%",
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Sync);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.7;
              }},
             {"Pulse -100% to +100%",
              [](ParamValues &p) {

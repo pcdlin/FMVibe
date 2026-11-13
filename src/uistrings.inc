@@ -35,6 +35,7 @@ STR(WarpBend, "Bend")
 STR(WarpSqueeze, "Squeeze")
 STR(WarpPulse, "Pulse")
 STR(WarpSteps, "Steps")
+STR(WarpSync, "Sync") // the wave played several times through each cycle, cut off at its end
 
 STR(FilterLowPass, "Low-pass")
 STR(FilterHighPass, "High-pass")
@@ -221,6 +222,7 @@ STR(ParamNoiseSlope, "Noise Slope")
 STR(ParamFixed, "Fixed") // the operator plays a fixed frequency instead of following the note
 STR(ParamFixedFreq, "Fixed Freq")
 STR(ParamFixedMult, "Fixed Mult")
+STR(ParamNoteSync, "Note Sync") // hard sync: the operator's wave restarts with each cycle of the note
 STR(ParamWarp, "Warp")
 STR(ParamWarpAmount, "Warp Amount")
 STR(ParamPartials, "Partials") // how many the Custom wave plays
@@ -594,7 +596,7 @@ STR(SwitchPoly, "POLY")
 STR(SwitchMono, "MONO")
 STR(SwitchLegato, "LEGATO")
 STR(SwitchAlways, "ALWAYS") // the glide's
-STR(SwitchHardSync, "SYNC") // an operator's hard sync to the note
+STR(SwitchHardSync, "NOTE SYNC") // an operator's hard sync to the note (not the Sync warp)
 STR(SwitchStereo, "STEREO")
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
@@ -742,13 +744,14 @@ STR(NoisePinkCaption, "pink")
 STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
 STR(TipFixedOff, "Fixed pitch at Freq × Mult") // the keyboard switch, tracking the keys
-STR(TipHardSync, "Hard sync: restart the wave with each cycle of the note") // an operator's SYNC switch
+STR(TipHardSync, "Note sync: restart the wave with each cycle of the note") // an operator's NOTE SYNC switch
 STR(TipWarpOff, "Off: the wave as it is") // an operator's warps, its WARP tab's buttons
 STR(TipWarpBend, "Bend: rush through the cycle's start, linger at its end")
 STR(TipWarpSqueeze, "Squeeze: the first half in less of the cycle (a square's pulse width)")
 STR(TipWarpPulse, "Pulse: the cycle squeezed into its start, then resting")
 STR(TipWarpSteps, "Steps: the cycle in 8 steps (4 below 0)")
-STR(SummarySync, "sync") // on an operator's summary line, while it is synced
+STR(TipWarpSync, "Sync: the wave up to 8 times a cycle, cut off at its end")
+STR(SummarySync, "note sync") // on an operator's summary line, while it is synced to the note
 STR(TipFixedOn, "Fixed pitch on. Click to track keys")
 
 // The inspector's summary line, after the node's letter and its wave, filter type or curve; an operator's ratio

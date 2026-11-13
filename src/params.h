@@ -101,8 +101,8 @@ enum class OpParam {
     Ratio,                          // 0..1 on a log curve, 0.5 to 64 times the note; see ratioFromNorm()
     Pan,                            // -1..1: where what it puts out (to the output, the filters, the shapers) sits;
                                     // what other operators hear of it stays mono
-    Sync,                           // stored by number: 0 off, 1 hard sync to the note (its phase restarts at Phase
-                                    // each cycle of the note's pitch; see OpSync)
+    Sync,                           // Note Sync, stored by number: 0 off, 1 hard sync to the note (its phase restarts
+                                    // at Phase each cycle of the note's pitch; see OpSync)
     Warp,                           // one of OpWarp, by number: how its wave's cycle is read (see warpPhase())
     WarpAmount,                     // -1..1, 0 (every warp's plain wave) to begin with
     Count
@@ -302,9 +302,9 @@ enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise
 // operator to sync to could come after Note).
 enum class OpSync { Off, Note, Count };
 // How an operator reads its wave's cycle (see warpPhase() in warp.h): as it is, bent toward its start or end, squeezed
-// into a share of the cycle about its middle (a square's pulse width), squeezed into a pulse that then rests, or in
-// steps. Stored by number: only append.
-enum class OpWarp { Off, Bend, Squeeze, Pulse, Steps, Count };
+// into a share of the cycle about its middle (a square's pulse width), squeezed into a pulse that then rests, in
+// steps, or played several times through and cut off (Sync). Stored by number: only append.
+enum class OpWarp { Off, Bend, Squeeze, Pulse, Steps, Sync, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
@@ -1659,7 +1659,7 @@ static_assert(numberedInOrder({OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWa
               "OpWave is stored by number: only append");
 static_assert(numberedInOrder({OpSync::Off, OpSync::Note, OpSync::Count}), "OpSync is stored by number: only append");
 static_assert(numberedInOrder({OpWarp::Off, OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps,
-                               OpWarp::Count}),
+                               OpWarp::Sync, OpWarp::Count}),
               "OpWarp is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
                                FilterType::Comb, FilterType::Count}),
