@@ -277,7 +277,8 @@ public:
 
 private:
     // An operator's unison copies: each one's phase increment, and apart from those, which follow its pitch, their
-    // stereo gains, which follow only the spread and the number of copies (see renderBlock()).
+    // stereo gains, which follow only the spread, the number of copies and how they spread (see unison.h and
+    // renderBlock()). Each copy's weight in the mono sum other operators hear goes beside them, in the voice.
     struct UnisonIncs {
         std::array<double, kMaxUnison> inc;
     };
@@ -294,8 +295,8 @@ private:
         bool incKnown = false; // incNow holds the last block's, not stale: false for a new note and after being off
         Envelope env;
         Memo<EnvRates, 8> rates; // its envelope's, from its params
-        Memo<UnisonIncs, 3> unisonIncs;   // its copies' increments, from its pitch, detune and copies
-        Memo<UnisonGains, 2> unisonGains; // and their gains, from its spread and copies
+        Memo<UnisonIncs, 4> unisonIncs;   // its copies' increments, from its pitch, detune, copies and modes
+        Memo<UnisonGains, 4> unisonGains; // and their gains, from its spread, copies, modes and blend
         std::array<NoiseColor::State, 2> noise{}; // the Noise wave's color filters: middle and sides
         // Hard sync: each copy's master, a cycle of the note (as detuned as the copy), restarts the copy at the phase
         // the note started it at. A restart's step, and the bend in its slope, are smoothed over the samples either
@@ -426,6 +427,9 @@ private:
         std::array<uint16_t, kVoiceParamCount> modded{};
         int moddedCount = 0;
         std::bitset<kVoiceParamCount> modSet;
+        // Each operator's copies' weights in the mono sum other operators hear, as its unison gains last worked them
+        // out (1 until Blend moves them): beside the operators, which grew slower in renderBlock() as they grew.
+        std::array<std::array<double, kMaxUnison>, kOps> copyWeights{};
     };
 
     struct HeldNote {
@@ -467,8 +471,21 @@ private:
         double mono = 0.0, l = 0.0, r = 0.0;
     };
     static OpSample warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
-                                 const UnisonGains *gains, bool sides, const std::array<double, kMaxUnison> &syncIncStep,
-                                 double warpStep);
+                                 const UnisonGains *gains, const double *weights, bool sides,
+                                 const std::array<double, kMaxUnison> &syncIncStep, double warpStep);
+    // An operator's copies' increments and gains for a block, from its memos, as its Unison Curve, Pan and Blend
+    // spread them (see unison.h); and each copy's share of the detune alone, for the sync's masters. Out of
+    // renderBlock()'s way, which MSVC compiles the slower the more it holds.
+    struct UnisonModes {
+        UniCurve curve;
+        UniPan pan;
+        double blend;
+        uint32_t seed; // the note's, which the Random modes draw from
+    };
+    static void unisonCopies(Operator &op, int index, int copies, double inc, double detune, double spread,
+                             double monoGain, const UnisonModes &modes, const UnisonIncs *&incs,
+                             const UnisonGains *&gains, std::array<double, kMaxUnison> &weights);
+    static std::array<double, kMaxUnison> unisonDetunes(int index, int copies, const UnisonModes &modes);
     // Brings the filters' block down to the host rate and measures it.
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
     // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.

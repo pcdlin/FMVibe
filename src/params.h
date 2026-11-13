@@ -105,6 +105,9 @@ enum class OpParam {
                                     // at Phase each cycle of the note's pitch; see OpSync)
     Warp,                           // one of OpWarp, by number: how its wave's cycle is read (see warpPhase())
     WarpAmount,                     // -1..1, 0 (every warp's plain wave) to begin with
+    UnisonCurve,                    // one of UniCurve, by number: how the copies spread in pitch (see unison.h)
+    UnisonPan,                      // one of UniPan, by number: where the copies sit across the stereo field
+    UnisonBlend,                    // 0..1: how far the outer copies are turned down under the middle ones
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -313,6 +316,12 @@ enum class OpSync { Off, Note, Count };
 // into a share of the cycle about its middle (a square's pulse width), squeezed into a pulse that then rests, in
 // steps, or played several times through and cut off (Sync). Stored by number: only append.
 enum class OpWarp { Off, Bend, Squeeze, Pulse, Steps, Sync, Count };
+// How an operator's unison copies spread in pitch (see unison.h): evenly, bunched about the middle, as a supersaw's
+// uneven seven, or anywhere along the range, each note anew. Stored by number: only append.
+enum class UniCurve { Linear, Center, Supersaw, Random, Count };
+// Where its copies sit across the stereo field: from left to right as their pitch rises, copies next to each other in
+// pitch on opposite sides, or anywhere, each note anew. Stored by number: only append.
+enum class UniPan { Ramp, Alternate, Random, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
@@ -1557,7 +1566,9 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 &&
                   idOfIndex(paramIndex(0, OpParam::Sync)) == 131 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 &&
+                  idOfIndex(paramIndex(0, OpParam::UnisonCurve)) == 134 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::UnisonBlend)) == 386 && kOpParamCount <= 50,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -1713,6 +1724,11 @@ static_assert(numberedInOrder({OpSync::Off, OpSync::Note, OpSync::Count}), "OpSy
 static_assert(numberedInOrder({OpWarp::Off, OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps,
                                OpWarp::Sync, OpWarp::Count}),
               "OpWarp is stored by number: only append");
+static_assert(numberedInOrder({UniCurve::Linear, UniCurve::Center, UniCurve::Supersaw, UniCurve::Random,
+                               UniCurve::Count}),
+              "UniCurve is stored by number: only append");
+static_assert(numberedInOrder({UniPan::Ramp, UniPan::Alternate, UniPan::Random, UniPan::Count}),
+              "UniPan is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
                                FilterType::Comb, FilterType::Count}),
               "FilterType is stored by number: only append");
@@ -2353,6 +2369,8 @@ enum class ParamKind {
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
     OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
+    UniCurve,     // stepped: how an operator's unison copies spread in pitch (see UniCurve)
+    UniPan,       // stepped: where they sit across the stereo field (see UniPan)
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2635,6 +2653,8 @@ bool parseParam(int index, const char *text, double *out);
 const char *lfoShapeName(LfoShape shape);
 const char *waveName(OpWave wave);
 const char *warpName(OpWarp warp);
+const char *uniCurveName(UniCurve curve);
+const char *uniPanName(UniPan pan);
 const char *filterTypeName(FilterType type);
 const char *filterTypeShortName(FilterType type);
 const char *divisionName(int division);

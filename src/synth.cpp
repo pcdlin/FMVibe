@@ -1,4 +1,5 @@
 #include "synth.h"
+#include "unison.h"
 #include "warp.h"
 
 #include <algorithm>
@@ -1531,6 +1532,52 @@ WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float 
 
 } // namespace
 
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+void Synth::unisonCopies(Operator &op, int index, int copies, double inc, double detune, double spread,
+                         double monoGain, const UnisonModes &modes, const UnisonIncs *&incs,
+                         const UnisonGains *&gains, std::array<double, kMaxUnison> &weights) {
+    // The curve, the pan and the note's seed as one number, whole and exact: the seed only for the Random modes, so
+    // the others keep their memos from note to note.
+    const double seedKey = modes.curve == UniCurve::Random || modes.pan == UniPan::Random
+                               ? static_cast<double>(modes.seed)
+                               : 0.0;
+    const double modesKey = static_cast<double>(modes.curve) +
+                            static_cast<double>(UniCurve::Count) *
+                                (static_cast<double>(modes.pan) + static_cast<double>(UniPan::Count) * seedKey);
+    auto spreadOf = [&] { return unisonSpread(copies, modes.curve, modes.pan, modes.blend, modes.seed, index); };
+    incs = &op.unisonIncs.get({inc, detune, static_cast<double>(copies), modesKey}, [&] {
+        const UnisonSpreadOut at = spreadOf();
+        UnisonIncs c{};
+        for (int k = 0; k < copies; ++k)
+            c.inc[k] = std::min(inc * std::exp2(at.detune[k] * detune / 1200.0), 0.5);
+        return c;
+    });
+    gains = &op.unisonGains.get({spread, static_cast<double>(copies), modesKey, modes.blend}, [&] {
+        const UnisonSpreadOut at = spreadOf();
+        UnisonGains c{};
+        for (int k = 0; k < copies; ++k) {
+            const double copyAngle = (at.pan[k] * spread + 1.0) * std::numbers::pi / 4.0;
+            c.gainL[k] = std::numbers::sqrt2 * std::cos(copyAngle) * monoGain * at.weight[k];
+            c.gainR[k] = std::numbers::sqrt2 * std::sin(copyAngle) * monoGain * at.weight[k];
+        }
+        weights = at.weight;
+        return c;
+    });
+}
+
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+std::array<double, kMaxUnison> Synth::unisonDetunes(int index, int copies, const UnisonModes &modes) {
+    return unisonSpread(copies, modes.curve, modes.pan, modes.blend, modes.seed, index).detune;
+}
+
 // Each copy read through its warp, and restarted by its master.
 #ifdef _MSC_VER
 __declspec(noinline)
@@ -1538,7 +1585,7 @@ __declspec(noinline)
 __attribute__((noinline))
 #endif
 Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
-                                    const UnisonGains *gains, bool sides,
+                                    const UnisonGains *gains, const double *weights, bool sides,
                                     const std::array<double, kMaxUnison> &syncIncStep, double warpStep) {
     OpSample out;
     const WarpCoefs coefs = warpCoefs(op.warp, op.warpNow);
@@ -1605,7 +1652,7 @@ Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double off
         }
         if (op.phases[k] >= 1.0 || op.phases[k] < 0.0)
             op.phases[k] -= std::floor(op.phases[k]);
-        out.mono += x;
+        out.mono += x * weights[k];
         if (sides) {
             out.l += x * gains->gainL[k];
             out.r += x * gains->gainR[k];
@@ -2002,14 +2049,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     std::array<double, kOps> noiseMid;
     std::array<double, kOps> noiseSide;
     // Unison: each copy has its own increment and stereo gains. The copies'
-    // mono sum, scaled by 1/sqrt(copies), is what other operators hear.
+    // mono sum, scaled by 1/sqrt(copies), is what other operators hear (each by its weight once Blend moves them).
     std::array<int, kOps> copies;
     std::array<double, kOps> monoGain;
     std::array<std::array<double, kMaxUnison>, kOps> incStep; // per sample, toward the block's increments
     std::array<bool, kOps> incMoving{}; // whether any of an operator's increments moves this block
     std::array<const UnisonIncs *, kOps> copy;
     // Sync and the warp (see Operator): the operators that read their wave through either, or still carry a sync's
-    // smoothing over, take a loop of their own (see warpedSample()). The masters' increments move like the copies' do.
+    // smoothing over, take a loop of their own (see warpedSample()), as do those whose copies Blend weighs. The
+    // masters' increments move like the copies' do.
     std::array<bool, kOps> warped{};
     std::array<double, kOps> warpStep{};
     std::array<std::array<double, kMaxUnison>, kOps> syncIncStep;
@@ -2083,14 +2131,20 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             heard = std::max(heard, target.shaperSend[i][sh]);
         }
 
-        // Copies spread evenly from -1 to 1: detuned by up to Unison Detune
-        // cents and panned by up to Unison Spread.
+        // Copies spread from -1 to 1 as Unison Curve and Unison Pan say (see unison.h): detuned by up to Unison
+        // Detune cents and panned by up to Unison Spread, Blend turning the outer ones down.
         copies[i] = noise[i] ? 1
                              : std::clamp(static_cast<int>(std::lround(p[paramIndex(i, OpParam::Unison)])), 1,
                                           kMaxUnison);
         monoGain[i] = 1.0 / std::sqrt(static_cast<double>(copies[i]));
         const double detune = p[paramIndex(i, OpParam::UnisonDetune)];
         const double spread = p[paramIndex(i, OpParam::UnisonSpread)];
+        // The Random modes draw from the note: a seed of its own, the same every block.
+        const UnisonModes modes{
+            static_cast<UniCurve>(
+                stepped(p[paramIndex(i, OpParam::UnisonCurve)], static_cast<int>(UniCurve::Count) - 1)),
+            static_cast<UniPan>(stepped(p[paramIndex(i, OpParam::UnisonPan)], static_cast<int>(UniPan::Count) - 1)),
+            std::clamp(p[paramIndex(i, OpParam::UnisonBlend)], 0.0, 1.0), static_cast<uint32_t>(v.order)};
         // The warp: its amount ramps to this block's over a control block, as the levels do; a warp changed to another
         // first takes its amount down to 0 (the plain wave, whatever the warp), then switches and takes it up again.
         double squeeze = 1.0; // how much faster the warp reads the wave at its steepest, for the table
@@ -2132,7 +2186,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.warp = OpWarp::Off;
             op.warpNow = 0.0;
         }
-        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying;
+        // Blended copies weigh into the mono sum other operators hear, which only that loop does: the plain loops
+        // below, which most operators run, sum them as they are (a multiply a copy there cost every patch 2-3 %).
+        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying || (modes.blend > 0.0 && copies[i] > 1);
 
         // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
         const double highest = (copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc) * squeeze;
@@ -2151,22 +2207,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             noiseSide[i] = spread * noiseMid[i];
         }
         // The gains apart from the increments: a pitch that moves (vibrato, a bend, glide) works out only these.
-        auto copyOffset = [&](int k) { return copies[i] > 1 ? 2.0 * k / (copies[i] - 1) - 1.0 : 0.0; };
-        copy[i] = &op.unisonIncs.get({inc, detune, static_cast<double>(copies[i])}, [&] {
-            UnisonIncs c{};
-            for (int k = 0; k < copies[i]; ++k)
-                c.inc[k] = std::min(inc * std::exp2(copyOffset(k) * detune / 1200.0), 0.5);
-            return c;
-        });
-        copyGains[i] = &op.unisonGains.get({spread, static_cast<double>(copies[i])}, [&] {
-            UnisonGains c{};
-            for (int k = 0; k < copies[i]; ++k) {
-                const double copyAngle = (copyOffset(k) * spread + 1.0) * std::numbers::pi / 4.0;
-                c.gainL[k] = std::numbers::sqrt2 * std::cos(copyAngle) * monoGain[i];
-                c.gainR[k] = std::numbers::sqrt2 * std::sin(copyAngle) * monoGain[i];
-            }
-            return c;
-        });
+        unisonCopies(op, i, copies[i], inc, detune, spread, monoGain[i], modes, copy[i], copyGains[i], v.copyWeights[i]);
         // Panned, or still ramping back from a pan, it is stereo too.
         const bool panned = opPan != 0.0 || v.levels.panL[i] != v.levels.panR[i];
         stereo = stereo || ((((copies[i] > 1 || noise[i]) && spread > 0.0) || panned) && heard > 0.0);
@@ -2184,8 +2225,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // The masters: each a cycle of the note, detuned as its copy is.
         if (op.syncOn) {
             const double noteInc = std::min(noteHz / rate_, 0.5);
+            const std::array<double, kMaxUnison> shares = unisonDetunes(i, copies[i], modes);
             for (int k = 0; k < copies[i]; ++k) {
-                const double to = std::min(noteInc * std::exp2(copyOffset(k) * detune / 1200.0), 0.5);
+                const double to = std::min(noteInc * std::exp2(shares[k] * detune / 1200.0), 0.5);
                 if (starting || !op.syncKnown || op.syncCopies != copies[i])
                     op.syncIncNow[k] = to;
                 syncIncStep[i][k] = (to - op.syncIncNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
@@ -2561,7 +2603,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             if (warped[i]) {
                 // Synced or warped (see Operator): in a function of its own, so the plain loops below are as they were.
                 const OpSample out =
-                    warpedSample(op, wave[i], offset, factor, copies[i], copyGains[i],
+                    warpedSample(op, wave[i], offset, factor, copies[i], copyGains[i], v.copyWeights[i].data(),
                                  route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i],
                                  warpStep[i]);
                 mono = out.mono;

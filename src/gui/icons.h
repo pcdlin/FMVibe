@@ -96,6 +96,10 @@ void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale 
 // An operator's warp: a cycle of a sine across `r` as the warp reads it at three quarters of its amount (Steps at
 // its full amount; Off: the sine).
 void warpIcon(Canvas &c, Rect r, OpWarp warp, Color color);
+// How unison copies spread in pitch, about 12 x 9 around `m`: five ticks across, where five copies' pitches go.
+void uniCurveIcon(Canvas &c, Point m, UniCurve curve, Color color);
+// Where they sit, about 12 x 10 around `m`: five dots, rising in pitch from bottom to top, placed across as they sit.
+void uniPanIcon(Canvas &c, Point m, UniPan pan, Color color);
 void fxIcon(Canvas &c, Rect r, FxType type, Color color);
 // A split of the effects graph: a line forking into two; and a join, two lines meeting and going on as one.
 void splitIcon(Canvas &c, Rect r, Color color, int bands = 2); // a fork into two prongs, or three

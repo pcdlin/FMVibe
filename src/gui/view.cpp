@@ -8,6 +8,7 @@
 #include "../effects.h"
 #include "../filter.h"
 #include "../uistrings.h"
+#include "../unison.h"
 #include "../warp.h"
 #include "../wavetable.h"
 
@@ -2625,13 +2626,26 @@ std::vector<View::Widget> View::widgets() const {
             if (isCustomWave(op))
                 add(Kind::PartialEdit, kPartialEditButton, -1, op);
             const int unison[] = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
-                                  paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
-            const Str unisonLabels[] = {Str::LabelUnison, Str::LabelUniDetune, Str::LabelUniSpread, Str::LabelRndPhase};
-            const float step = (kInspector.w - 32.0f) / 4.0f;
-            if (tab == InspectorTab::Unison)
-                for (int i = 0; i < 4; ++i)
+                                  paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::UnisonBlend),
+                                  paramIndex(op, OpParam::PhaseRandom)};
+            const Str unisonLabels[] = {Str::LabelUnison, Str::LabelDetune, Str::LabelSpread, Str::LabelBlend,
+                                        Str::LabelRndPhase};
+            const float step = (kInspector.w - 32.0f) / 5.0f;
+            if (tab == InspectorTab::Unison) {
+                // How the copies spread in pitch and where they sit, as buttons along the well's bottom, each its icon
+                // (named in its tooltip), as the WARP tab's warps.
+                size_t buttons = list.size();
+                for (int m = 0; m < static_cast<int>(UniCurve::Count); ++m)
+                    add(Kind::Choice, uniCurveButton(m), paramIndex(op, OpParam::UnisonCurve), op, m);
+                merge(buttons);
+                buttons = list.size();
+                for (int m = 0; m < static_cast<int>(UniPan::Count); ++m)
+                    add(Kind::Choice, uniPanButton(m), paramIndex(op, OpParam::UnisonPan), op, m);
+                merge(buttons);
+                for (int i = 0; i < 5; ++i)
                     knob(unison[i], {kInspector.x + 16.0f + step * (i + 0.5f), kUnisonKnobsY}, kOpKnobD,
                          tr(unisonLabels[i]));
+            }
         }
         if (tab == InspectorTab::Inputs) {
             // A row per route into it: the name shows its node, the buttons pick its mode, the label sets its
@@ -6042,12 +6056,24 @@ void View::paintUnison(Canvas &c, Rect r, int op) {
     const int copies = std::clamp(static_cast<int>(std::lround(value(paramIndex(op, OpParam::Unison)))), 1, kMaxUnison);
     const double detune = value(paramIndex(op, OpParam::UnisonDetune)) / 100.0;
     const double spread = value(paramIndex(op, OpParam::UnisonSpread));
+    // As the voices spread them (unison.h); the Random modes as one note might.
+    const auto curve = static_cast<UniCurve>(std::clamp(std::lround(value(paramIndex(op, OpParam::UnisonCurve))), 0L,
+                                                        static_cast<long>(UniCurve::Count) - 1));
+    const auto pan = static_cast<UniPan>(std::clamp(std::lround(value(paramIndex(op, OpParam::UnisonPan))), 0L,
+                                                    static_cast<long>(UniPan::Count) - 1));
+    const UnisonSpreadOut at =
+        unisonSpread(copies, curve, pan, value(paramIndex(op, OpParam::UnisonBlend)), 1u, op);
+    double loudest = 0.0;
+    for (int k = 0; k < copies; ++k)
+        loudest = std::max(loudest, at.weight[k]);
     for (int k = 0; k < copies; ++k) {
-        const double offset = copies > 1 ? 2.0 * k / (copies - 1) - 1.0 : 0.0;
-        const Point dot{r.center().x + static_cast<float>(offset * spread) * (r.w * 0.5f - 24.0f),
-                        r.center().y - static_cast<float>(offset * detune) * (r.h * 0.5f - 12.0f)};
-        c.line({dot.x, r.center().y}, dot, (copies > 1 ? kAccent : kDim).alpha(0.4f), 1.5f);
-        c.fillCircle(dot, 4.0f, copies > 1 ? kAccent : kDim);
+        const Point dot{r.center().x + static_cast<float>(at.pan[k] * spread) * (r.w * 0.5f - 24.0f),
+                        r.center().y - static_cast<float>(at.detune[k] * detune) * (r.h * 0.5f - 10.0f)};
+        // Blend shows in each copy's size and strength: the quieter, the smaller and fainter.
+        const float level = static_cast<float>(at.weight[k] / loudest);
+        const Color color = (copies > 1 ? kAccent : kDim).alpha(0.35f + 0.65f * level);
+        c.line({dot.x, r.center().y}, dot, color.alpha(0.4f * level), 1.5f);
+        c.fillCircle(dot, 1.5f + 2.5f * level, color);
     }
 }
 
@@ -6205,7 +6231,8 @@ bool View::opTabModulated(int op, InspectorTab tab) const {
     std::vector<int> params;
     if (tab == InspectorTab::Unison && !isNoise(op))
         params = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
-                  paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
+                  paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::UnisonBlend),
+                  paramIndex(op, OpParam::PhaseRandom)};
     if (tab == InspectorTab::Envelope) {
         const EnvIndices e = envIndices(op);
         params = {e.attack, e.hold, e.decay, e.sustain, e.release};
@@ -7063,6 +7090,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
             warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
                      on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::UnisonCurve) >= 0) // where five copies' pitches go
+            uniCurveIcon(c, w.rect.center(), static_cast<UniCurve>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::UnisonPan) >= 0) // and where they sit
+            uniPanIcon(c, w.rect.center(), static_cast<UniPan>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (fixedSwitchOp(w.param) >= 0) // a keyboard, crossed out while the operator doesn't follow it
             keyboardIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kFaint), on);
         else if (shaperFieldOf(w.param) == ShaperParam::Link) // a voice shaper's link, as the shaper effect's
@@ -9068,6 +9099,17 @@ void View::paintTooltip(Canvas &c) {
                             Str::TipWarpPulse, Str::TipWarpSteps, Str::TipWarpSync};
         static_assert(std::size(tips) == static_cast<size_t>(OpWarp::Count));
         text = tr(tips[std::clamp(hover_->b, 0, static_cast<int>(OpWarp::Count) - 1)]);
+    }
+    else if (opOfField(param, OpParam::UnisonCurve) >= 0) {
+        const Str tips[] = {Str::TipUniCurveLinear, Str::TipUniCurveCenter, Str::TipUniCurveSupersaw,
+                            Str::TipUniCurveRandom};
+        static_assert(std::size(tips) == static_cast<size_t>(UniCurve::Count));
+        text = tr(tips[std::clamp(hover_->b, 0, static_cast<int>(UniCurve::Count) - 1)]);
+    }
+    else if (opOfField(param, OpParam::UnisonPan) >= 0) {
+        const Str tips[] = {Str::TipUniPanRamp, Str::TipUniPanAlternate, Str::TipUniPanRandom};
+        static_assert(std::size(tips) == static_cast<size_t>(UniPan::Count));
+        text = tr(tips[std::clamp(hover_->b, 0, static_cast<int>(UniPan::Count) - 1)]);
     }
     else if (isSourcePower(param))
         text = tr(Str::TipSourcePower);

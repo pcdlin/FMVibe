@@ -428,9 +428,10 @@ constexpr Point kOutCore = detail::kOutCore; // the routing graph's OUT
 // What covers the routing panel alone (the note curve's and the partial editor) moved with it, right of the lens.
 constexpr float kRoutingDx = detail::kRouting.x - 16.0f;
 const Point kPitchKnob = detail::opKnobCenter(0);
-// On the UNISON tab, under its display: Unison (the copies) first, Rnd Phase last.
-constexpr Point kUnisonKnob{detail::kInspector.x + 16.0f + 268.0f / 4.0f * 0.5f, detail::kUnisonKnobsY};
-constexpr Point kPhaseKnob{detail::kInspector.x + 16.0f + 268.0f / 4.0f * 3.5f, detail::kUnisonKnobsY};
+// On the UNISON tab, under its display: Unison (the copies) first, Blend fourth, Rnd Phase last.
+constexpr Point kUnisonKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 0.5f, detail::kUnisonKnobsY};
+constexpr Point kBlendKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 3.5f, detail::kUnisonKnobsY};
+constexpr Point kPhaseKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 4.5f, detail::kUnisonKnobsY};
 const Point kSlopeKnob = detail::opKnobCenter(-2); // a noise operator's, where the Ratio readout is
 constexpr Point kDecayKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 2.5f, detail::kOpControlsY};
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
@@ -8329,6 +8330,52 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(GlobalParam::Voices)) == 64.0, "the voices knob doubles every 40 px");
     view.mouseMove(kUnisonKnob, {});
     check(renderer.save(view, dir / "3b-unison.png"), "render an operator with unison");
+
+    // How the copies spread in pitch and where they sit, by the buttons along the display's bottom, and Blend by its
+    // knob, each an undo step; the display's lowest copy (of four) moving from the left to the right as Alternate
+    // takes it there (read off the rendered pixels).
+    {
+        const int curve = paramIndex(0, OpParam::UnisonCurve), pan = paramIndex(0, OpParam::UnisonPan);
+        const int blend = paramIndex(0, OpParam::UnisonBlend);
+        const int detune = paramIndex(0, OpParam::UnisonDetune), spread = paramIndex(0, OpParam::UnisonSpread);
+        const double detuneWas = model.value(detune), spreadWas = model.value(spread);
+        model.set(detune, 100.0);
+        model.set(spread, 1.0);
+        view.poll();
+        const Rect r = detail::kUnisonRect;
+        const float half = r.w * 0.5f - 24.0f, down = r.h * 0.5f - 10.0f;
+        const Point lowLeft{r.center().x - half, r.center().y + down - 1.0f};
+        const Point lowRight{r.center().x + half, r.center().y + down - 1.0f};
+        const Point away{600.0f, 328.0f};
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "3b-unison-ramp.png");
+        const int rampLeft = ringLevel(renderer, lowLeft, 2.0f), rampRight = ringLevel(renderer, lowRight, 2.0f);
+        click(view, detail::uniCurveButton(static_cast<int>(UniCurve::Supersaw)).center());
+        click(view, detail::uniPanButton(static_cast<int>(UniPan::Alternate)).center());
+        drag(view, kBlendKnob, {kBlendKnob.x, kBlendKnob.y - 100.0f});
+        const bool set = std::lround(model.value(curve)) == static_cast<long>(UniCurve::Supersaw) &&
+                         std::lround(model.value(pan)) == static_cast<long>(UniPan::Alternate) &&
+                         std::abs(model.value(blend) - 0.5) < 1e-6;
+        view.mouseMove(away, {});
+        const bool shot = renderer.save(view, dir / "3b-unison-modes.png");
+        const int altLeft = ringLevel(renderer, lowLeft, 2.0f), altRight = ringLevel(renderer, lowRight, 2.0f);
+        std::printf("      the lowest copy's place, left and right: %d and %d under Ramp, %d and %d under Alternate\n",
+                    rampLeft, rampRight, altLeft, altRight);
+        check(set && shot && rampLeft > rampRight + 60 && altRight > altLeft + 60,
+              "the UNISON tab's buttons pick the copies' curve and pan, its knob Blend, and its display follows");
+        view.mouseMove(detail::uniPanButton(static_cast<int>(UniPan::Alternate)).center(), {});
+        check(renderer.save(view, dir / "3b-unison-tip.png"), "render a unison pan button's tooltip");
+        view.undo();
+        const bool blendUndone = model.value(blend) == 0.0 && std::lround(model.value(pan)) == 1;
+        view.undo();
+        const bool panUndone = std::lround(model.value(pan)) == 0 && std::lround(model.value(curve)) == 2;
+        view.undo();
+        check(blendUndone && panUndone && std::lround(model.value(curve)) == 0,
+              "the unison curve, pan and Blend are each an undo step");
+        model.set(detune, detuneWas);
+        model.set(spread, spreadWas);
+        view.poll();
+    }
 
     // Noise: the slope knob takes the ratio knob's place, and the unison row shows the spectrum.
     click(view, kNoiseButton);

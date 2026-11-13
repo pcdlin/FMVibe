@@ -25,6 +25,11 @@ static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
 constexpr Str kWarpNames[] = {Str::WarpOff,   Str::WarpBend,  Str::WarpSqueeze,
                               Str::WarpPulse, Str::WarpSteps, Str::WarpSync};
 static_assert(std::size(kWarpNames) == static_cast<size_t>(OpWarp::Count));
+constexpr Str kUniCurveNames[] = {Str::UniCurveLinear, Str::UniCurveCenter, Str::UniCurveSupersaw,
+                                  Str::UniCurveRandom};
+static_assert(std::size(kUniCurveNames) == static_cast<size_t>(UniCurve::Count));
+constexpr Str kUniPanNames[] = {Str::UniPanRamp, Str::UniPanAlternate, Str::UniPanRandom};
+static_assert(std::size(kUniPanNames) == static_cast<size_t>(UniPan::Count));
 constexpr Str kFilterTypeNames[] = {Str::FilterLowPass, Str::FilterHighPass, Str::FilterBandPass, Str::FilterNotch,
                                     Str::FilterComb};
 constexpr Str kFilterTypeShortNames[] = {Str::FilterShortLowPass, Str::FilterShortHighPass, Str::FilterShortBandPass,
@@ -163,7 +168,8 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
             kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
-            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp)
+            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp ||
+            kind == ParamKind::UniCurve || kind == ParamKind::UniPan)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -331,6 +337,13 @@ void buildTable(ParamTable &t) {
             static_cast<double>(OpWarp::Count) - 1.0, 0.0);
         add(paramIndex(op, OpParam::WarpAmount), name + " " + tr(Str::ParamWarpAmount), module,
             ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        // The unison copies spread evenly, from left to right, all as loud: as they did before these.
+        add(paramIndex(op, OpParam::UnisonCurve), name + " " + tr(Str::ParamUnisonCurve), module, ParamKind::UniCurve,
+            0.0, static_cast<double>(UniCurve::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::UnisonPan), name + " " + tr(Str::ParamUnisonPan), module, ParamKind::UniPan, 0.0,
+            static_cast<double>(UniPan::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::UnisonBlend), name + " " + tr(Str::ParamUnisonBlend), module, ParamKind::Percent,
+            0.0, 1.0, 0.0);
         // The Custom wave starts as a sine: the first partial alone, of 32.
         add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,
             kPartialCounts[0], kPartials, kDefaultPartials);
@@ -966,6 +979,14 @@ const char *warpName(OpWarp warp) {
     return nameAt(kWarpNames, static_cast<double>(warp));
 }
 
+const char *uniCurveName(UniCurve curve) {
+    return nameAt(kUniCurveNames, static_cast<double>(curve));
+}
+
+const char *uniPanName(UniPan pan) {
+    return nameAt(kUniPanNames, static_cast<double>(pan));
+}
+
 const char *filterTypeName(FilterType type) {
     return nameAt(kFilterTypeNames, static_cast<double>(type));
 }
@@ -1103,7 +1124,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
            kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
-           kind == ParamKind::OpWarp;
+           kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1242,6 +1263,12 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::OpWarp:
         std::snprintf(out, capacity, "%s", nameAt(kWarpNames, value));
         break;
+    case ParamKind::UniCurve:
+        std::snprintf(out, capacity, "%s", nameAt(kUniCurveNames, value));
+        break;
+    case ParamKind::UniPan:
+        std::snprintf(out, capacity, "%s", nameAt(kUniPanNames, value));
+        break;
     case ParamKind::FilterType:
         std::snprintf(out, capacity, "%s", nameAt(kFilterTypeNames, value));
         break;
@@ -1378,6 +1405,8 @@ bool parseParam(int index, const char *text, double *out) {
     const int named = def.kind == ParamKind::LfoShape       ? findName(kLfoShapeNames, text)
                       : def.kind == ParamKind::OpWave       ? findName(kWaveNames, text)
                       : def.kind == ParamKind::OpWarp       ? findName(kWarpNames, text)
+                      : def.kind == ParamKind::UniCurve     ? findName(kUniCurveNames, text)
+                      : def.kind == ParamKind::UniPan       ? findName(kUniPanNames, text)
                       : def.kind == ParamKind::FilterType   ? std::max(findName(kFilterTypeNames, text),
                                                                        findName(kFilterTypeShortNames, text))
                       : def.kind == ParamKind::SyncDivision ? findName(kDivisionNames, text)
@@ -1606,6 +1635,8 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::LfoShape:
     case ParamKind::OpWave:
     case ParamKind::OpWarp:
+    case ParamKind::UniCurve:
+    case ParamKind::UniPan:
     case ParamKind::FilterType:
         value = std::round(value);
         break;

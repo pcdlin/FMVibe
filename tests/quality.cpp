@@ -7,6 +7,7 @@
 #include "gui/controller.h"
 #include "state.h"
 #include "synth.h"
+#include "unison.h"
 
 #include <algorithm>
 #include <chrono>
@@ -3218,6 +3219,159 @@ void syncWarpChecks(const int (&factors)[4]) {
     }
 }
 
+// Unison Curve, Unison Pan and Blend: the spreads unison.h works out, and what an A4's copies then play.
+void unisonModeChecks() {
+    std::printf("unison modes:\n");
+    {
+        bool linear = true, center = true, supersaw = true, random = true, alternate = true, shuffled = true;
+        bool blended = true;
+        for (int n = 1; n <= kMaxUnison; ++n) {
+            const UnisonSpreadOut even = unisonSpread(n, UniCurve::Linear, UniPan::Ramp, 0.0, 7u, 0);
+            const UnisonSpreadOut mid = unisonSpread(n, UniCurve::Center, UniPan::Alternate, 0.0, 7u, 0);
+            const UnisonSpreadOut a = unisonSpread(n, UniCurve::Random, UniPan::Random, 0.0, 7u, 2);
+            const UnisonSpreadOut again = unisonSpread(n, UniCurve::Random, UniPan::Random, 0.0, 7u, 2);
+            const UnisonSpreadOut other = unisonSpread(n, UniCurve::Random, UniPan::Random, 0.0, 8u, 2);
+            std::vector<double> places, evenPlaces, dealt;
+            bool differs = n == 1;
+            for (int k = 0; k < n; ++k) {
+                // Linear and Ramp are the even spread the copies always had, to the bit.
+                const double was = n > 1 ? 2.0 * k / (n - 1) - 1.0 : 0.0;
+                linear = linear && even.detune[k] == was && even.pan[k] == was && even.weight[k] == 1.0;
+                center = center && std::abs(std::abs(mid.detune[k]) - was * was) < 1e-12 &&
+                         (mid.detune[k] < 0.0) == (was < 0.0);
+                // Random: one copy in each even stretch, the same for a seed, another for another seed.
+                const double lo = -1.0 + 2.0 * k / n, hi = -1.0 + 2.0 * (k + 1) / n;
+                random = random && (n == 1 ? a.detune[k] == 0.0 : a.detune[k] >= lo && a.detune[k] < hi) &&
+                         a.detune[k] == again.detune[k] && a.pan[k] == again.pan[k];
+                differs = differs || a.detune[k] != other.detune[k];
+                // Alternate: copies next in pitch on opposite sides (or one in the middle), no two in one place.
+                if (k > 0)
+                    alternate = alternate && mid.pan[k] * mid.pan[k - 1] <= 0.0;
+                places.push_back(mid.pan[k]);
+                evenPlaces.push_back(was);
+                dealt.push_back(a.pan[k]);
+            }
+            random = random && differs;
+            std::sort(places.begin(), places.end());
+            alternate = alternate && std::adjacent_find(places.begin(), places.end()) == places.end();
+            // Random pan: the even places, dealt out.
+            std::sort(dealt.begin(), dealt.end());
+            shuffled = shuffled && dealt == evenPlaces;
+            // Blend: the outer copies quieter than the middle ones, the squares summing to the count as before.
+            const UnisonSpreadOut full = unisonSpread(n, UniCurve::Linear, UniPan::Ramp, 1.0, 7u, 0);
+            double squares = 0.0;
+            for (int k = 0; k < n; ++k)
+                squares += full.weight[k] * full.weight[k];
+            const double ratio = n % 2 ? 0.1 : 0.1 / (1.0 - 0.9 / (n - 1)); // the outermost over the middle one
+            blended = blended && std::abs(squares - n) < 1e-9 &&
+                      (n < 3 || std::abs(full.weight[0] / full.weight[n / 2] - ratio) < 1e-9);
+        }
+        const UnisonSpreadOut saw = unisonSpread(7, UniCurve::Supersaw, UniPan::Ramp, 0.0, 0u, 0);
+        for (int k = 0; k < 7; ++k)
+            supersaw = supersaw && std::abs(saw.detune[k] - kSupersawDetune[k]) < 1e-12;
+        check(linear, "Linear and Ramp spread the copies evenly, as unison always did");
+        check(center, "Center bunches the copies about the pitch, the outer ones as far out");
+        check(supersaw, "Supersaw spaces seven copies as a supersaw does");
+        check(random, "Random puts a copy in each stretch of the detune, the same through a note and anew for another");
+        check(alternate, "Alternate puts copies next in pitch on opposite sides, none in one place");
+        check(shuffled, "Random pan deals the copies the even places");
+        check(blended, "Blend turns the outer copies down, as loud together as before");
+    }
+
+    // An A4's copies at 100 cents: what each one plays where, from a sine's lines.
+    auto level = [](const std::vector<float> &signal, double hz) { // the loudest bin near it, in dB
+        const std::vector<double> power = powerSpectrum(signal);
+        const long center = std::lround(hz / (kSampleRate / kFftSize));
+        double most = 1e-30;
+        for (long b = center - 2; b <= center + 2; ++b)
+            most = std::max(most, power[static_cast<size_t>(b)]);
+        return 10.0 * std::log10(most);
+    };
+    struct Sides {
+        std::vector<float> left, right;
+    };
+    auto play = [](int copies, UniCurve curve, UniPan pan, double blend, double spread = 1.0) {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Unison)] = copies;
+        e.p[paramIndex(0, OpParam::UnisonDetune)] = 100.0;
+        e.p[paramIndex(0, OpParam::UnisonSpread)] = spread;
+        e.p[paramIndex(0, OpParam::UnisonCurve)] = static_cast<double>(curve);
+        e.p[paramIndex(0, OpParam::UnisonPan)] = static_cast<double>(pan);
+        e.p[paramIndex(0, OpParam::UnisonBlend)] = blend;
+        e.noteOn(69);
+        e.render(4800);
+        Sides s{std::vector<float>(kFftSize), std::vector<float>(kFftSize)};
+        for (size_t done = 0; done < kFftSize; done += kBlock)
+            e.synth().render(s.left.data() + done, s.right.data() + done, kBlock, e.p);
+        return s;
+    };
+    auto cents = [](double c) { return 440.0 * std::exp2(c / 1200.0); };
+    {
+        // Five copies: Linear's inner pair at 50 cents, Center's at 25.
+        const Sides lin = play(5, UniCurve::Linear, UniPan::Ramp, 0.0);
+        const Sides mid = play(5, UniCurve::Center, UniPan::Ramp, 0.0);
+        const double lin50 = level(lin.left, cents(-50.0)), lin25 = level(lin.left, cents(-25.0));
+        const double mid50 = level(mid.left, cents(-50.0)), mid25 = level(mid.left, cents(-25.0));
+        std::printf("      5 copies, -50 and -25 cents: Linear %.0f and %.0f dB, Center %.0f and %.0f dB\n", lin50, lin25,
+                    mid50, mid25);
+        check(lin50 - lin25 > 30.0 && mid25 - mid50 > 30.0, "Center plays its inner copies nearer the pitch than Linear");
+    }
+    {
+        // Three copies: Ramp puts the lowest on the left, Alternate (mirrored outward from the middle) on the right.
+        const Sides ramp = play(3, UniCurve::Linear, UniPan::Ramp, 0.0);
+        const Sides alt = play(3, UniCurve::Linear, UniPan::Alternate, 0.0);
+        const double rampSide = level(ramp.left, cents(-100.0)) - level(ramp.right, cents(-100.0));
+        const double altSide = level(alt.left, cents(-100.0)) - level(alt.right, cents(-100.0));
+        std::printf("      3 copies, the lowest left over right: Ramp %+.0f dB, Alternate %+.0f dB\n", rampSide, altSide);
+        check(rampSide > 30.0 && altSide < -30.0, "Alternate moves the copies to other sides than Ramp");
+    }
+    {
+        // Five copies, in the middle: at full Blend the outermost a tenth of the middle one, 20 dB under it; with
+        // none, as loud.
+        auto mono = [](const Sides &s) {
+            std::vector<float> m(kFftSize);
+            for (size_t i = 0; i < kFftSize; ++i)
+                m[i] = s.left[i] + s.right[i];
+            return m;
+        };
+        const std::vector<float> flat = mono(play(5, UniCurve::Linear, UniPan::Ramp, 0.0, 0.0));
+        const std::vector<float> full = mono(play(5, UniCurve::Linear, UniPan::Ramp, 1.0, 0.0));
+        const double flatGap = level(flat, 440.0) - level(flat, cents(100.0));
+        const double fullGap = level(full, 440.0) - level(full, cents(100.0));
+        std::printf("      5 copies, the outermost under the middle one: Blend 0 %.1f dB, full %.1f dB\n", flatGap,
+                    fullGap);
+        check(std::abs(flatGap) < 1.5 && std::abs(fullGap - 20.0) < 1.5,
+              "Blend turns the outer copies down under the middle ones");
+    }
+    {
+        // A modulator's copies at full Blend: in what its carrier plays, the outermost's sideband 20 dB under the
+        // middle one's, as heard.
+        auto modulated = [](double blend) {
+            Engine e(2);
+            e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+            e.p[paramIndex(1, OpParam::Out)] = 0.0;
+            e.p[paramIndex(1, OpParam::Ratio)] = normFromRatio(0.5);
+            e.p[paramIndex(1, OpParam::Unison)] = 5.0;
+            e.p[paramIndex(1, OpParam::UnisonDetune)] = 100.0;
+            e.p[paramIndex(1, OpParam::UnisonBlend)] = blend;
+            e.p[matrixIndex(1, 0)] = 0.3;
+            e.noteOn(69);
+            e.render(4800);
+            return e.render(kFftSize);
+        };
+        const std::vector<float> flat = modulated(0.0), full = modulated(1.0);
+        // The first sideband above the carrier from the middle copy (220 Hz) and from the outermost (100 cents up).
+        const double outer = 440.0 + 220.0 * std::exp2(100.0 / 1200.0);
+        const double flatGap = level(flat, 660.0) - level(flat, outer);
+        const double fullGap = level(full, 660.0) - level(full, outer);
+        std::printf("      a modulator's outermost copy under its middle one, in its carrier: Blend 0 %.1f dB, full %.1f dB "
+                    "(the middle one's sideband %.0f dB under the carrier)\n",
+                    flatGap, fullGap, level(flat, 440.0) - level(flat, 660.0));
+        check(std::abs(flatGap) < 1.5 && std::abs(fullGap - 20.0) < 2.0,
+              "Blend turns a modulator's outer copies down in what its carrier plays");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -3338,6 +3492,7 @@ int main() {
     }
 
     syncWarpChecks(factors);
+    unisonModeChecks();
 
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should

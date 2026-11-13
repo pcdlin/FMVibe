@@ -16,7 +16,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     Fewer partials leave the ones past them out of the sound, but keep their levels and phases for when there are
     more again. It is band-limited like the others and normalized to its
     peak; the synth builds its tables again whenever the partials change. Noise has no pitch or unison: instead a **Slope** moves it from white through pink (−3 dB per
-    octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Uni Spread param) widens it
+    octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Unison Spread param) widens it
     from mono to fully uncorrelated left and right;
   - **Ratio**, 0.50 to 64.00 times the note, set to the hundredth. It is stored on a log curve, so a host's knob
     gives 1 to 2 as much travel as 32 to 64, and a modulation's depth is the same interval wherever the ratio is set
@@ -58,9 +58,25 @@ What the plugin does and how its editor works, in full. Building and installing 
     its peak). It is read as a note starts, with the host's and the sources' modulation on it then, and holds for the
     note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
     (see Velocity, under the modulation sources), aimed at Out or wherever else;
-  - **Unison**: up to 16 copies of the operator. *Uni Detune* spreads them in pitch (the outermost copies by up to
-    ±100 cents) and *Uni Spread* across the stereo field. On a modulator, the copies' sum is what its targets
-    hear; on a carrier, every copy is modulated by the same signal.
+  - **Unison**: up to 16 copies of the operator. *Detune* (Unison Detune) spreads them in pitch (the outermost
+    copies by up to ±100 cents) and *Spread* (Unison Spread) across the stereo field. On a modulator, the copies' sum
+    is what its targets hear; on a carrier, every copy is modulated by the same signal. How they spread is the
+    operator's to pick (`src/unison.h`; to begin with, evenly in pitch, from left to right, all as loud, as unison
+    always played):
+    - **Unison Curve**, where the copies go in pitch: *Linear* (evenly), *Center* (bunched about the pitch, the
+      outermost as far out as Linear's, each copy's share of the detune its even share squared), *Supersaw* (as a
+      classic supersaw spaces its seven: unevenly, the outer pair far out; other counts read along those seven) or
+      *Random* (one copy anywhere in each of as many even stretches of the detune, drawn anew for each note and
+      each operator, held through the note);
+    - **Unison Pan**, where they sit: *Ramp* (from left to right as their pitch rises), *Alternate* (copies next to
+      each other in pitch on opposite sides, mirrored outward from the middle copy, so the stereo field is wide
+      however few copies play, and no two sit in one place) or *Random* (the even places dealt out anew for each
+      note);
+    - **Blend** (Unison Blend, 0 % to begin with): turns each copy down by how far out its detune takes it, the
+      outermost to a tenth of the middle at 100 %, all together kept as loud as before. It acts on what a modulator's
+      targets hear too, so a detuned modulator can keep a strong middle with a quiet halo.
+
+    Nothing changes for Noise, which has no copies.
   - **Note Sync** (hard sync, off by default; not the Sync warp below): each cycle of the note's pitch restarts
     the operator's wave at its Phase, as an analog oscillator synced to a master at the note. The operator's ratio
     (or its fixed Freq × Mult, Pitch and Detune) then sets the pitch inside each of those cycles, while what sounds
@@ -1272,8 +1288,11 @@ one may have changed since it last did.
     - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does.
-    - **UNISON**: a display of where the copies sit (left/right by spread, up/down by detune), and the unison knobs
-      and Rnd Phase under it.
+    - **UNISON**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
+      and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
+      its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,
+      past a rule, the three Unison Pans (five copies as dots, rising in pitch, placed across). Under it the knobs:
+      Unison (the copies), Detune, Spread, Blend and Rnd Phase.
     - **WARP**: the operator's scope, its warp and its note sync. Its display is a scope: the operator's output in
       the newest voice as it plays, with its unison copies together and everything that moves it (the FM it gets,
       its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output. It
@@ -1746,7 +1765,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,280 of FMVibe's 19,623 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,298 of FMVibe's 19,641 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
