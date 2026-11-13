@@ -359,8 +359,8 @@ private:
         double exprPan = 0.0;
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
         double slide = 0.5;     // its note's slide, 0..1, resting in the middle
-        bool newRandom = false; // (re)started: the Random sources take a new value in its next block
-        std::array<double, kMaxSources> follow{}; // what Random and Midi sources put out, 0..1
+        bool newRandom = false; // (re)started: its random LFOs take a new value in its next block
+        std::array<double, kMaxSources> follow{}; // what Midi sources put out, 0..1
         double fmScale = 0.0;   // ramped, like the output gains and levels
         Levels levels{};
         double gainL = 0.0;

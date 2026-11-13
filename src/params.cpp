@@ -63,7 +63,7 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
                             Str::FxUtility,   Str::FxChorus};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
-                                    Str::SourceMidi};
+                                    Str::SourceMidi,  Str::SourceCurve};
 constexpr Str kMidiInputNames[] = {Str::MidiInputCc, Str::MidiInputPressure, Str::MidiInputSlide};
 static_assert(std::size(kMidiInputNames) == static_cast<size_t>(MidiInput::Count));
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
@@ -844,14 +844,15 @@ void buildTable(ParamTable &t) {
 
         field(SourceParam::Shape, tr(Str::ParamShape), ParamKind::LfoShape, 0.0,
             static_cast<double>(LfoShape::Count) - 1.0, 0.0);
-        field(SourceParam::Rate, tr(Str::ParamRate), ParamKind::Rate, 0.0, 1.0, normFromRate(2.0));
+        // At its lowest, 0 Hz: an LFO stands still, and a Random source takes a value for each note and holds it.
+        field(SourceParam::Rate, tr(Str::ParamRate), ParamKind::SweepRate, 0.0, 1.0, normFromRate(2.0));
         field(SourceParam::Sync, tr(Str::ParamSync), ParamKind::Toggle, 0.0, 1.0,
             1.0); // an LFO starts on quarter notes
         field(SourceParam::Division, tr(Str::ParamDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kQuarter);
         field(SourceParam::Free, tr(Str::ParamFree), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::Unipolar, tr(Str::ParamUnipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::OneShot, tr(Str::ParamOneShot), ParamKind::Toggle, 0.0, 1.0, 0.0);
-        // Random starts as plain sample and hold: steps, each landing anywhere.
+        // A Random source starts as plain sample and hold: steps, each landing anywhere.
         field(SourceParam::RandomSmooth, tr(Str::ParamSmooth), ParamKind::Percent, 0.0, 1.0, 0.0);
         field(SourceParam::RandomChaos, tr(Str::ParamChaos), ParamKind::Percent, 0.0, 1.0, 1.0);
 
@@ -870,6 +871,7 @@ void buildTable(ParamTable &t) {
         // Random's and Midi's: following what comes in at once, from the mod wheel's controller, one way.
         field(SourceParam::Slew, tr(Str::ParamSlew), ParamKind::Time, 0.0, kMaxEnvNorm, 0.0);
         field(SourceParam::CcNumber, tr(Str::ParamCc), ParamKind::Count, 0.0, 127.0, 1.0);
+        // Off to begin with, as a MIDI source starts; the editor adds a Random source with it on (see addSource()).
         field(SourceParam::Bipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
               static_cast<double>(MidiInput::Count) - 1.0, 0.0);
@@ -1142,10 +1144,8 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::SlotBypass:
         std::snprintf(out, capacity, "%s", value >= 0.5 ? tr(Str::ValueOn) : tr(Str::ValueOff));
         break;
-    case ParamKind::Rate:
     case ParamKind::SweepRate:
-        std::snprintf(out, capacity, "%.2f Hz",
-                      paramTable()[index].kind == ParamKind::SweepRate ? sweepRateHz(value) : rateFromNorm(value));
+        std::snprintf(out, capacity, "%.2f Hz", sweepRateHz(value));
         break;
     case ParamKind::Ratio:
         if (std::lround(value) <= 0)
@@ -1580,9 +1580,6 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::Toggle:
     case ParamKind::SlotBypass:
         value = value >= 0.5 ? 1.0 : 0.0;
-        break;
-    case ParamKind::Rate:
-        value = normFromRate(std::max(value, kMinRate));
         break;
     case ParamKind::SweepRate: // below the slowest LFO rate, still; the slowest is above 0, which is still
         value = value < kMinRate ? 0.0 : std::max(normFromRate(value), kLeastNorm);

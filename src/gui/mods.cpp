@@ -479,7 +479,7 @@ View::MenuNode View::cascadeCategories() const {
         MenuNode lfos = category(tr(Str::CascadeLfos)), envs = category(tr(Str::CascadeEnvelopes)),
                  others = category(tr(Str::CascadeNoteMidi));
         for (int source : sources())
-            (sourceTypeOf(source) == SourceType::Lfo   ? lfos
+            (runsLfo(sourceTypeOf(source))             ? lfos // Random among them, a random LFO
              : sourceTypeOf(source) == SourceType::Env ? envs
                                                        : others)
                 .children.push_back(sourcePick(source));

@@ -122,15 +122,14 @@ int View::shapeEditing() const {
                    ? shapeEditor_
                    : -1;
     }
-    if (sourceTypeOf(shapeEditor_) != SourceType::Lfo ||
-        std::lround(value(paramIndex(shapeEditor_, SourceParam::Shape))) != static_cast<long>(LfoShape::Custom))
+    if (!runsLfo(sourceTypeOf(shapeEditor_)) || lfoShapeOf(shapeEditor_) != LfoShape::Custom) // a Curve source's
         return -1;
     return shapeEditor_;
 }
 
 int View::wideLfo() const {
-    if (wideLfo_ < 0 || sourceTypeOf(wideLfo_) != SourceType::Lfo || sourceFolded(wideLfo_) ||
-        std::lround(value(paramIndex(wideLfo_, SourceParam::Shape))) != static_cast<long>(LfoShape::Custom))
+    if (wideLfo_ < 0 || !runsLfo(sourceTypeOf(wideLfo_)) || sourceFolded(wideLfo_) ||
+        lfoShapeOf(wideLfo_) != LfoShape::Custom)
         return -1;
     return wideLfo_;
 }

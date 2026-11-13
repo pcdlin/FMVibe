@@ -491,8 +491,11 @@ Point shapeButton(float card) {
     return {cardX(card) + 80.0f, 617.0f};
 }
 
+// The list offers every shape but the retired Random (detail::kLfoShapesOffered), in its order.
 Point shapeItem(float card, LfoShape shape) {
-    return {shapeButton(card).x, 647.0f + static_cast<int>(shape) * 22.0f};
+    const auto *offered = std::begin(detail::kLfoShapesOffered);
+    const auto row = std::find(offered, std::end(detail::kLfoShapesOffered), shape) - offered;
+    return {shapeButton(card).x, 647.0f + static_cast<float>(row) * 22.0f};
 }
 
 // An LFO card's clock modes under its shape list, and its Unipolar switch under the sync switch.
@@ -671,9 +674,12 @@ bool fxGroupStrip(const Renderer &renderer, Point at, int group) {
 Point besidePlus(Point plus) {
     return {plus.x + 26.0f, plus.y - 44.0f};
 }
+// The list of source types opened at `click`: an entry 26 px a type, in its order (detail::kSourceMenuOrder).
 Point sourceListItem(const View &view, Point click, SourceType type) {
-    const Point at = listAt(view, click, 150.0f, 8.0f + 4.0f * 26.0f);
-    return {at.x + 70.0f, at.y + 16.0f + 26.0f * (static_cast<float>(type) - 1.0f)};
+    const Point at = listAt(view, click, 150.0f, 8.0f + detail::kSourceTypes * 26.0f);
+    const auto *order = std::begin(detail::kSourceMenuOrder);
+    const auto row = std::find(order, std::end(detail::kSourceMenuOrder), type) - order;
+    return {at.x + 70.0f, at.y + 16.0f + 26.0f * static_cast<float>(row)};
 }
 
 
@@ -1016,8 +1022,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(outTyped && std::abs(model.value(aOutParam) - 0.25) < 1e-9,
           "Ctrl+Click types a route's amount, on its label or its matrix cell");
 
-    // A random LFO shows Smooth and Chaos beside a preview of what they do.
-    check(rateFromNorm(1.0) == 100.0, "LFOs run up to 100 Hz");
+    // A Random source, a random LFO, shows Smooth and Chaos beside a preview of what they do.
+    check(rateFromNorm(1.0) == 100.0 && sweepRateHz(0.0) == 0.0, "LFOs run from 0 Hz up to 100 Hz");
     addSource(view, SourceType::Lfo);
     // Undone with its shape list open, the LFO takes the list along: added again in its place, its button opens the
     // list afresh (rather than the click closing one left open), which picks a shape.
@@ -1030,28 +1036,41 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // The list reaches past the card's bottom, and shows whole there: its bottom padding, under Custom, is drawn
     // like its top's (read off the rendered pixels).
     const Point listTop{shapeButton(0).x, shapeItem(0, LfoShape::Sine).y - 13.0f};
-    const Point listBottom{listTop.x, shapeItem(0, LfoShape::Custom).y + 12.0f};
+    const Point listBottom{listTop.x, shapeItem(0, LfoShape::Square).y + 12.0f};
     check(renderer.pixel(listTop) == renderer.pixel(listBottom),
           "an LFO's shape list shows whole, past its card's bottom");
-    click(view, shapeItem(0, LfoShape::Random));
+    click(view, shapeItem(0, LfoShape::Square));
     check(lfoUndone && shapeListShot &&
-              std::lround(model.value(paramIndex(0, SourceParam::Shape))) == static_cast<long>(LfoShape::Random),
+              std::lround(model.value(paramIndex(0, SourceParam::Shape))) == static_cast<long>(LfoShape::Square),
           "an LFO's shape list picks its shape, and goes with the LFO when that is undone");
-    drag(view, randomKnob(0, 0), {randomKnob(0, 0).x, randomKnob(0, 0).y - 120.0f});
-    drag(view, randomKnob(0, 1), {randomKnob(0, 1).x, randomKnob(0, 1).y + 140.0f});
-    check(std::abs(model.value(paramIndex(0, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
-              std::abs(model.value(paramIndex(0, SourceParam::RandomChaos)) - 0.3) < 1e-6,
-          "a random LFO's Smooth and Chaos knobs set them");
+    // The wheel over it steps along the shapes the list offers, which end at Square (the retired Random and Custom
+    // left out).
+    view.wheel(shapeButton(0), -1.0f, {});
+    const bool wheeledDown =
+        std::lround(model.value(paramIndex(0, SourceParam::Shape))) == static_cast<long>(LfoShape::Saw);
+    view.wheel(shapeButton(0), 2.0f, {});
+    check(wheeledDown && std::lround(model.value(paramIndex(0, SourceParam::Shape))) ==
+                             static_cast<long>(LfoShape::Square),
+          "the wheel over an LFO's shape list steps along the shapes it offers, Square the last");
+    // The Random source, in the next card: synced on quarter notes as it starts, as an LFO is.
+    addSource(view, SourceType::Random);
+    const bool randomSynced = model.value(paramIndex(1, SourceParam::Sync)) == 1.0 &&
+                              model.value(paramIndex(1, SourceParam::Bipolar)) == 1.0;
+    drag(view, randomKnob(1, 0), {randomKnob(1, 0).x, randomKnob(1, 0).y - 120.0f});
+    drag(view, randomKnob(1, 1), {randomKnob(1, 1).x, randomKnob(1, 1).y + 140.0f});
+    check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
+              std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
+          "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
     view.mouseMove({400.0f, 328.0f}, {});
-    check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed random LFO");
+    check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed Random source");
     // Running, it shows its own last cycles instead, as one line scrolling left, the live dot at its right end.
     model.live.voices = 1;
     const float glides[] = {0.3f, -0.4f, 0.5f, 0.1f, -0.6f, 0.2f, 0.7f};
     for (int cycle = 0; cycle < 6; ++cycle) {
-        model.live.lfoFrom[0] = glides[cycle];
-        model.live.lfoTo[0] = glides[cycle + 1];
-        model.live.lfoPhases[0] = 0.7f;
-        model.live.sources[0] = glides[cycle + 1];
+        model.live.lfoFrom[1] = glides[cycle];
+        model.live.lfoTo[1] = glides[cycle + 1];
+        model.live.lfoPhases[1] = 0.7f;
+        model.live.sources[1] = glides[cycle + 1];
         view.poll();
     }
     check(renderer.save(view, dir / "17a-random-sweep.png"), "render a running random LFO's own cycles, scrolling");
@@ -1065,29 +1084,42 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         }
         return false;
     };
-    check(lineIn(cardX(0) + 27.0f) && lineIn(cardX(0) + 26.0f + 0.05f * 125.0f),
+    check(lineIn(cardX(1) + 27.0f) && lineIn(cardX(1) + 26.0f + 0.05f * 125.0f),
           "a running random LFO's line reaches the left edge of its display");
     // Between snapshots the line scrolls on at the LFO's rate; run past the end of the cycle before a snapshot brings
     // the next one, it waits there with the dot on the glide's end rather than jump back to the start of the same
     // cycle, and so it does when a snapshot's phase has wrapped round ahead of its glide.
-    const Point held{cardX(0) + 26.0f + 125.0f, 688.0f - 0.7f * 18.0f}; // the right end, at the glide's end
+    const Point held{cardX(1) + 26.0f + 125.0f, 688.0f - 0.7f * 18.0f}; // the right end, at the glide's end
     auto dotAt = [&](Point p) {
         const uint32_t color = renderer.pixel(p);
         return (color >> 16 & 255) > 190 && (color >> 8 & 255) > 190 && (color & 255) > 190;
     };
-    model.live.lfoPhases[0] = 0.98f;
-    model.live.lfoRates[0] = 2.0f;
+    model.live.lfoPhases[1] = 0.98f;
+    model.live.lfoRates[1] = 2.0f;
     model.live.age = 0.05f; // a tenth of a cycle on
     view.poll();
     const bool waits = renderer.save(view, dir / "17a2-random-cycle-end.png") && dotAt(held);
-    model.live.lfoPhases[0] = 0.02f;
-    model.live.lfoRates[0] = 0.0f;
+    model.live.lfoPhases[1] = 0.02f;
+    model.live.lfoRates[1] = 0.0f;
     model.live.age = 0.0f;
     view.poll();
     const bool stays = renderer.save(view, dir / "17a2-random-cycle-end.png") && dotAt(held);
     check(waits && stays, "a running random LFO's dot waits at the end of its cycle for the next one");
+    // Unsynced at 0 Hz, it stands still, holding a value for each note: a line across its display at the value the
+    // newest voice holds, the live dot at its right end (read off the rendered pixels), and no Phase knob on its card.
+    model.set(paramIndex(1, SourceParam::Sync), 0.0);
+    model.set(paramIndex(1, SourceParam::Rate), 0.0);
+    model.live.sources[1] = -0.5f;
+    model.live.lfoTo[1] = -0.5f;
+    view.poll();
+    const bool heldShot = renderer.save(view, dir / "17a3-random-held.png");
+    const float heldY = 688.0f + 0.5f * 18.0f;
+    check(heldShot && dotAt({cardX(1) + 26.0f + 125.0f, heldY}) && lineIn(cardX(1) + 30.0f) &&
+              lineIn(cardX(1) + 90.0f),
+          "a Random source at 0 Hz shows the value the newest voice holds, as a line across its display");
     model.live = Telemetry{};
     view.poll();
+    click(view, sourceRemove(1)); // the LFO alone again, for what follows
 
     // A card lists no modulations: the button under its display counts them and shows them in the MODS view, where
     // LFO 1's first row is the top one (its middle at y 154). There a row's number takes a typed depth, its depth
@@ -1290,10 +1322,11 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Organ), "the list picks Organ");
     view.undo();
 
-    // The full-size shape editor (from a Custom LFO's widened card) spans the inspector, which it hides: no operator
-    // tab or knob where they were. Its grid: a step up across is 24 lines, and Ctrl snaps a point to them.
-    click(view, shapeButton(0));
-    click(view, shapeItem(0, LfoShape::Custom));
+    // The full-size shape editor (from a Curve source's widened card) spans the inspector, which it hides: no
+    // operator tab or knob where they were. Its grid: a step up across is 24 lines, and Ctrl snaps a point to them.
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Curve));
+    view.poll();
+    click(view, lfoDisplay(0));
     click(view, wideButton(0, 2));
     const double fineBefore = model.value(paramIndex(0, OpParam::Phase));
     drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
@@ -3026,8 +3059,9 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, at);
         return off && model.value(sourceEnabledIndex(lfo)) == 1.0;
     };
-    click(view, shapeButton(0));
-    click(view, shapeItem(0, LfoShape::Custom));
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Curve));
+    view.poll();
+    click(view, lfoDisplay(0));
     const bool widened = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
     click(view, wideButton(0, 0));
     const bool normal = switches(sourcePower(1), 1);
@@ -3039,9 +3073,8 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool button = renderer.save(view, dir / "10d0-lfo-card-widen-button.png") && switches(sourcePower(1), 1);
     click(view, {cardX(0) + kCardW - 78.0f, 574.0f});
     const bool byButton = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
-    check(widened && normal && again && button && byButton &&
-              model.value(paramIndex(0, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom),
-          "picking Custom widens an LFO's card, and so do a click on its display and its widen button");
+    check(widened && normal && again && button && byButton,
+          "a click on a Curve source's display widens its card, and so does its widen button");
     // The inspector stays: its Phase knob turns while the shape shows.
     const double fineBefore = model.value(paramIndex(0, OpParam::Phase));
     drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
@@ -3126,10 +3159,12 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     check(stepsOn && stepped && stepsShot && snapOn && snapped && free && !model.layout().shapeSnap,
           "Steps draws a step with a plain click, and Snap snaps a point to the grid unless Ctrl is held");
 
-    // Copy and Paste: LFO 1's shape into LFO 3, whose card, widened, takes LFO 1's back to its size.
+    // Copy and Paste: Curve 1's shape into the Curve source in place 2, whose card, widened, takes Curve 1's back to its
+    // size.
     click(view, lfoTool(0, 4));
-    click(view, shapeButton(3));
-    click(view, shapeItem(3, LfoShape::Custom));
+    model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Curve));
+    view.poll();
+    click(view, lfoDisplay(3));
     const float wideCard = 2.0f; // with LFO 1's card back to its size, LFO 3's is the third, widened
     click(view, lfoTool(wideCard, 5));
     bool same = model.value(shapeCountIndex(2)) == model.value(count);
@@ -3138,7 +3173,7 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
             same = same && pointValue(2, point, field) == pointValue(0, point, field);
     view.undo();
     const bool oneWide = switches(sourcePower(1), 1) && switches(powerAt(2, 2.0f), 2);
-    check(same && oneWide, "Copy and Paste take a shape from one LFO to another, one card widened at a time");
+    check(same && oneWide, "Copy and Paste take a shape from one Curve source to another, one card widened at a time");
 
     // The full-size editor: the inspector hidden; its collapse button goes back into the card, still widened.
     click(view, wideButton(wideCard, 2));
@@ -3165,17 +3200,12 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     check(covered && greyed && bigShot && back && restored && kept,
           "the full-size editor greys the widened card's editor out until it closes, by its done button or a tab, "
           "and the card stays widened while the panel collapses");
-    // Back to its size: by its collapse button; widened again, by another shape; Custom again widens it.
+    // Back to its size by its collapse button; its display widens it again.
     click(view, wideButton(wideCard, 0));
     const bool collapsed = switches(sourcePower(2), 2);
     click(view, lfoDisplay(2));
-    click(view, shapeButton(2));
-    click(view, shapeItem(2, LfoShape::Sine));
-    const bool otherShape = switches(sourcePower(2), 2);
-    click(view, shapeButton(2));
-    click(view, shapeItem(2, LfoShape::Custom));
-    check(collapsed && otherShape && switches(powerAt(2, 2.0f), 2),
-          "a widened card goes back to its size by its button, or another shape, and Custom widens it again");
+    check(collapsed && switches(powerAt(2, 2.0f), 2),
+          "a widened card goes back to its size by its button, and its display widens it again");
 }
 
 // Slots past the 16 the chain had at first: one at the chain's start folds by a bit of its own, and moved by its
@@ -7118,11 +7148,10 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 // each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
 // modulations at all, the columns' names show above the button.
 // + SOURCE in the title row opens the list of source types under it (the count of places taken beside it), which
-// adds a Random and a MIDI source, each a card of its own: Random with no knobs,
+// adds a Random and a MIDI source, each a card of its own: Random as a random LFO's,
 // MIDI with its input's list button (where an LFO's shape is: from x 16 of the card, 122 px wide, at y 536 + 42) and
 // right of it its controller (at x 172 of the card, turned up a notch by the wheel, while its input is a controller)
-// and Slew (at x 228). The list opens under the button, an entry 22 px from y 604 + 4: CC, Pressure, Slide. Each
-// lists in the MODS view's source menu under Note & MIDI.
+// and Slew (at x 228). The list opens under the button, an entry 22 px from y 604 + 4: CC, Pressure, Slide.
 void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -7173,29 +7202,71 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
               onPressure && onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
 
-    // A Random card's Unipolar | Bipolar, centered under what it does (level with an LFO's clock modes, 30.5 px each,
-    // at y 564 + 72): unipolar to begin with, Bipolar lit by a click (read off the rendered pixels, clear of its icon),
-    // Unipolar again by the other; each an undo step.
+    // A Random card's Unipolar | Bipolar, where an LFO's shape list is (from x 16 of the card, 122 px wide, at y 564 +
+    // 42, 22 px high), each half of it: bipolar to begin with, Unipolar lit by a click (read off the rendered pixels,
+    // clear of its icon), Bipolar again by the other; each an undo step.
     {
         auto polarity = [](int bipolar) {
-            return Point{cardX(0) + 0.5f * kCardW + 30.5f * (static_cast<float>(bipolar) - 0.5f), 564.0f + 72.0f + 8.0f};
+            return Point{cardX(0) + 16.0f + 61.0f * (static_cast<float>(bipolar) + 0.5f), 564.0f + 42.0f + 11.0f};
         };
         const int bipolarParam = paramIndex(0, SourceParam::Bipolar);
-        const Point clearOfIcon{polarity(1).x - 11.0f, polarity(1).y + 5.0f};
-        const bool startsUnipolar = model.value(bipolarParam) == 0.0;
+        const Point clearOfIcon{polarity(0).x - 20.0f, polarity(0).y + 6.0f};
+        const bool startsBipolar = model.value(bipolarParam) == 1.0;
         view.mouseMove({600.0f, 328.0f}, {});
-        renderer.save(view, dir / "11j-random-unipolar.png");
+        renderer.save(view, dir / "11j-random-bipolar.png");
         const uint32_t unlit = renderer.pixel(clearOfIcon);
-        click(view, polarity(1));
-        const bool bipolar = model.value(bipolarParam) == 1.0;
-        view.mouseMove({600.0f, 328.0f}, {});
-        const bool polarShot = renderer.save(view, dir / "11j-random-bipolar.png");
-        const bool lit = renderer.pixel(clearOfIcon) != unlit;
         click(view, polarity(0));
         const bool unipolar = model.value(bipolarParam) == 0.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool polarShot = renderer.save(view, dir / "11j-random-unipolar.png");
+        const bool lit = renderer.pixel(clearOfIcon) != unlit;
+        click(view, polarity(1));
+        const bool bipolar = model.value(bipolarParam) == 1.0;
         view.undo();
-        check(startsUnipolar && bipolar && polarShot && lit && unipolar && model.value(bipolarParam) == 1.0,
+        check(startsBipolar && unipolar && polarShot && lit && bipolar && model.value(bipolarParam) == 0.0,
               "a Random card's Unipolar | Bipolar switch sets its polarity, undoably");
+    }
+
+    // A Curve source, an LFO of a drawn shape, from the list (second, after LFO): unipolar to begin with, its card
+    // widened to draw its shape there (its power switch where a widened card's is), and its Unipolar | Bipolar where an
+    // LFO's shape list is, setting its Unipolar, undoably.
+    {
+        FakeController fresh;
+        View curveView(fresh);
+        click(curveView, detail::sourceMenuButton().center());
+        curveView.mouseMove(sourceMenuEntry(SourceType::Curve), {});
+        const bool listShot = renderer.save(curveView, dir / "11k-source-menu-curve.png");
+        click(curveView, sourceMenuEntry(SourceType::Curve));
+        const int unipolarParam = paramIndex(0, SourceParam::Unipolar);
+        const bool added = fresh.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Curve) &&
+                           fresh.value(unipolarParam) == 1.0;
+        const Point widePower = detail::sourcePower(0, detail::kWideSource).center();
+        click(curveView, widePower);
+        const bool wide = fresh.value(sourceEnabledIndex(0)) == 0.0;
+        click(curveView, widePower);
+        curveView.mouseMove({600.0f, 328.0f}, {});
+        const bool shot = renderer.save(curveView, dir / "11l-curve-source.png");
+        click(curveView, {cardX(0) + 16.0f + 61.0f * 1.5f, 564.0f + 42.0f + 11.0f}); // Bipolar
+        const bool bipolar = fresh.value(unipolarParam) == 0.0;
+        curveView.undo();
+        check(listShot && added && wide && shot && bipolar && fresh.value(unipolarParam) == 1.0,
+              "+ SOURCE adds a Curve source, unipolar and widened to draw its shape, its polarity set by its switch");
+        // Folded, its name down the strip is CRV and its number, four lines and nothing after them (read off the
+        // rendered pixels), as a Random card's RND.
+        click(curveView, detail::cardFold(detail::sourceCard(0, detail::kWideSource)).center());
+        curveView.mouseMove({600.0f, 328.0f}, {});
+        const bool foldShot = renderer.save(curveView, dir / "11m-curve-folded.png");
+        const float strip = cardX(0), top = 564.0f;
+        auto inked = [&](int line) {
+            const uint32_t card = renderer.pixel({strip + 4.0f, top + 150.0f});
+            for (float y = top + 104.0f + line * 13.0f + 1.0f; y < top + 104.0f + (line + 1) * 13.0f; y += 1.0f)
+                for (float x = strip + 8.0f; x < strip + 40.0f; x += 1.0f)
+                    if (renderer.pixel({x, y}) != card)
+                        return true;
+            return false;
+        };
+        check(foldShot && inked(0) && inked(1) && inked(2) && !inked(3) && inked(4) && !inked(5),
+              "a folded Curve card shows CRV and its number, which fit the strip");
     }
 }
 
@@ -9370,16 +9441,16 @@ void run(const std::filesystem::path &dir, float scale) {
     check(scrolledBack && fxChain(model) == std::vector<int>{1, 2, 0, 3, 4},
           "dragging the scrollbar scrolls the chain back");
 
-    // A freeform LFO 2: picking Custom widens its card, whose full-size button opens its
+    // LFO 2's place made a Curve source: a click on its display widens its card, whose full-size button opens its
     // shape over the routing panel. The default shape is a triangle, with points at (0, -1) and (0.5, 1).
-    click(view, shapeButton(2));
-    click(view, shapeItem(2, LfoShape::Custom));
+    model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Curve));
+    view.poll();
+    click(view, lfoDisplay(2));
     click(view, wideButton(2, 2));
     const int count = shapeCountIndex(2);
     auto pointValue = [&](int point, PointField field) { return model.value(shapePointIndex(2, point, field)); };
-    check(std::lround(model.value(paramIndex(2, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom) &&
-              model.value(count) == 2.0 && pointValue(0, PointField::Y) == -1.0 && pointValue(1, PointField::X) == 0.5,
-          "the Custom button gives LFO 2 a freeform shape, a triangle to begin with");
+    check(model.value(count) == 2.0 && pointValue(0, PointField::Y) == -1.0 && pointValue(1, PointField::X) == 0.5,
+          "a Curve source has a freeform shape, a triangle to begin with");
     view.doubleClick(shapeAt(0.75, -0.4), {});
     check(model.value(count) == 3.0 && std::abs(pointValue(2, PointField::X) - 0.75) < 0.01 &&
               std::abs(pointValue(2, PointField::Y) + 0.4) < 0.01 && pointValue(1, PointField::X) == 0.5,
@@ -9537,10 +9608,10 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({sourceGrip(1).x + 280.0f, 588.0f}, {});
     check(renderer.save(view, dir / "11a-source-reorder.png"), "render a source card being dragged");
     view.mouseUp({sourceGrip(1).x + 280.0f, 588.0f}, {});
-    check(shown(model) == std::vector<int>{0, 2, 1, 3, 4} && nameOf(model, 2) == trf(Str::SourceNameLfo, {"2"}),
+    check(shown(model) == std::vector<int>{0, 2, 1, 3, 4} && nameOf(model, 2) == trf(Str::SourceNameCurve, {"1"}),
           "dragging a card's title moves that source along");
 
-    // Duplicate LFO 2 from its title's menu: the copy, with its settings and shape but none of its targets, follows it.
+    // Duplicate Curve 1 from its title's menu: the copy, with its settings and shape but none of its targets, follows it.
     model.sets.clear();
     for (const MenuItem &item : view.contextMenu(sourceGrip(1)))
         if (item.label == tr(Str::MenuDuplicate))
@@ -9558,8 +9629,8 @@ void run(const std::filesystem::path &dir, float scale) {
                   sameFields(model, shapeCountIndex(5), shapeCountIndex(2), kShapeParamCount) &&
                   setLast(model, paramIndex(5, SourceParam::Type), kSourceParamCount, paramIndex(5, SourceParam::Type)) &&
                   slotTarget(model.value(slotTargetIndex(2, 0))) == paramIndex(GlobalParam::Pan) && noTargets &&
-                  model.value(paramIndex(5, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom) &&
-                  nameOf(model, 5) == trf(Str::SourceNameLfo, {"3"}),
+                  model.value(paramIndex(5, SourceParam::Type)) == static_cast<double>(SourceType::Curve) &&
+                  nameOf(model, 5) == trf(Str::SourceNameCurve, {"2"}),
               "Duplicate copies a source in right after it, without its targets");
     }
 

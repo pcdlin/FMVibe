@@ -224,9 +224,9 @@ fmvibe_options(fmvibe-uishot)
 # Both keep whole engines or editors (models and views) on the stack, a few at a time, which an unoptimized
 # build doesn't overlap: room for them beyond Windows' default megabyte. The quality test's effects checks hold a
 # dozen effects (about 300 KB each, the graph's buffers) and twice as many param sets in one function, which even
-# an optimized MSVC build doesn't overlap.
+# an optimized MSVC build doesn't overlap: main()'s frame and the effects checks' together come to over 32 MB.
 if (MSVC)
-    target_link_options(fmvibe-quality PRIVATE /STACK:33554432)
+    target_link_options(fmvibe-quality PRIVATE /STACK:67108864)
     target_link_options(fmvibe-uishot PRIVATE /STACK:8388608)
 endif()
 add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
