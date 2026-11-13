@@ -74,6 +74,8 @@ inline float nodeTabDivider(int group) {
     const int first = group == 1 ? kOps : kOps + kFilters;
     return nodeTabRect(first).x - 0.5f * (kNodeTabGroupGap + 1.0f);
 }
+// The page below the tabs, title and switch, dimmed while its node is off.
+constexpr Rect kInspectorPage{kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f};
 // The page's title row under the tabs: the node's letter, then its summary; the switches at its right end.
 constexpr Rect kTitleRow{kInspector.x + 16.0f, kInspector.y + 37.0f, kInspector.w - 32.0f, 20.0f};
 constexpr float kTitleLetterW = 16.0f;

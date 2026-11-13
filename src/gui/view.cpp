@@ -3252,6 +3252,16 @@ void View::paint(Canvas &c, Rect area) {
         paintVelocitySource(c, keyboardTop(controller_.layout().sourcesCollapsed));
         paintSources(c);
     }
+    // A switched-off card's displays are dimmed under an overlay of its own face, which leaves the face as it is: as
+    // though drawn at kDimOpacity. Its widgets, and every other dimmed one, are drawn at that opacity as they go.
+    const std::vector<DimArea> dimmed = dimmedAreas();
+    for (const DimArea &d : dimmed) {
+        if (d.face.a <= 0.0f)
+            continue; // the inspector's page dims itself (paintInspector())
+        c.pushClip(d.clip);
+        c.fillRect(d.area, d.face.alpha(1.0f - kDimOpacity), kRadiusCard - 1.0f);
+        c.popClip();
+    }
     // The open lists (of effects, curves, EQ shapes, waves) go over everything else, the dimmed cards included.
     auto paintWidgets = [&](bool lists) {
         for (const Widget &w : list) {
@@ -3265,9 +3275,13 @@ void View::paint(Canvas &c, Rect area) {
                 continue;
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);
+            // A list open over a dimmed card is not dimmed with it.
+            const bool dim = lists ? (w.disabled || w.faint) : widgetDimmed(w, dimmed);
+            if (dim)
+                c.pushLayer({0.0f, 0.0f}, kDimOpacity, w.rect.inset(-kWidgetReach));
             paintWidget(c, w);
-            if (w.disabled || w.faint) // dimmed as a switched-off node's page is, in the face of what it is on
-                c.fillRect(w.rect.inset(-1.0f), (w.faint ? cardFaceUnder(w) : kPanel).alpha(0.6f), kRadiusControl + 1.0f);
+            if (dim)
+                c.popLayer();
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
@@ -3282,34 +3296,9 @@ void View::paint(Canvas &c, Rect area) {
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
-    // A switched-off source's card is dimmed below its title row (a folded one's name is already dim).
-    c.pushClip(sourceCardClip());
-    for (int s : sources()) {
-        const float card = cardOf(s);
-        if (card == kOffScreen || sourceOn(s) || sourceFolded(s))
-            continue;
-        const Rect p = sourceCard(card, sourceSpan(s));
-        c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kPanel.alpha(0.6f), kRadiusCard - 1.0f);
-    }
-    c.popClip();
-    // So is a switched-off effect's.
-    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxGraph()) {
-        if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots &&
-                                               value(paramIndex(node, FxParam::Enabled)) < 0.5) {
-            const Rect p = fxInspector(node);
-            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), kRadiusCard - 1.0f);
-        }
-    } else if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
+    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && !fxGraph()) {
         c.pushClip(fxCardClip());
         const FxRow row = fxRowShown();
-        for (const FxRowCard &card : row.cards) {
-            const float pos = card.place - fxScroll();
-            if (!onScreen(pos, kVisibleFx, card.span) || value(paramIndex(card.slot, FxParam::Enabled)) >= 0.5 ||
-                fxFolded(card.slot))
-                continue;
-            const Rect p = fxCard(pos, card.span);
-            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), kRadiusCard - 1.0f);
-        }
         // The card or container carried, faint where it would land until it is let go of; and the cards of a band a
         // container shows that its join doesn't let through, the other band soloed.
         const FxLine line = fxLineShown();
@@ -3334,10 +3323,6 @@ void View::paint(Canvas &c, Rect area) {
         }
         c.popClip();
     }
-    // And the inspector's page while its operator, filter or shaper is off, below the tabs, summary and switch.
-    if (!inspectorCovered() && !nodeOn(controller_.layout().selectedNode))
-        c.fillRect({kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f},
-                   kPanel.alpha(0.6f), kRadiusPanel - 1.0f);
     paintWidgets(true);
     // The card being dragged: where it would land only its outline, and a faint image of it under the mouse wherever
     // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container, or
@@ -4329,10 +4314,9 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         const Rect cab = ampCabDisplay(card);
         c.fillRect(cab, kDisplayColor, kRadiusCard);
         paintAmpCab(c, cab, slot);
-        if (value(paramIndex(slot, FxParam::AmpCabOn)) < 0.5)
-            c.fillRect(cab, kCardColor.alpha(0.6f), kRadiusCard);
-        if (!on)
-            c.fillRect(cab, kPanel.alpha(0.55f), kRadiusCard);
+        // Dimmed as its controls are (switched off, the whole card's body is dimmed instead, see dimmedAreas()).
+        if (on && value(paramIndex(slot, FxParam::AmpCabOn)) < 0.5)
+            c.fillRect(cab, cardFace(fx, on).alpha(1.0f - kDimOpacity), kRadiusCard);
         const float x = ampDivider(card);
         c.line({x, display.y}, {x, card.bottom() - 12.0f}, kBorder, 1.0f);
         break;
@@ -4350,8 +4334,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         c.line({card.x + 14.0f + width, y}, {mdRmsButton(card).x - 6.0f, y}, kBorder, 1.0f);
         c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, kTextSmall, on ? fx : kDim, Align::Left, true);
     }
-    if (!on)
-        c.fillRect(display, kPanel.alpha(0.55f), kRadiusCard); // dimmed while switched off
+    // Switched off, its body is dimmed with its widgets (see dimmedAreas()).
 }
 
 void View::paintShapeEditor(Canvas &c, int shape) {
@@ -5813,11 +5796,25 @@ void View::paintInspector(Canvas &c) {
     // The title row leaves room for the on/off switch at the right.
     Rect summaryRect{kTitleRow.x, kTitleRow.y, kInspector.w - 84.0f, kTitleRow.h};
     const char *dot = "  \xC2\xB7  ";
+    // While the node is off, the page under its title is drawn dimmed (its widgets are too, see dimmedAreas()).
+    struct PageDim {
+        Canvas &c;
+        bool on;
+        PageDim(Canvas &canvas, bool dim) : c(canvas), on(dim) {
+            if (on)
+                c.pushLayer({0.0f, 0.0f}, kDimOpacity, kInspectorPage);
+        }
+        ~PageDim() {
+            if (on)
+                c.popLayer();
+        }
+    };
 
     if (isShaperNode(node)) {
         const int shaper = shaperOfNode(node);
         paintPageTitle(c, node, summaryRect, clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode)))),
                        boxRoutes(node));
+        const PageDim page(c, !nodeOn(node));
         paintShaperPage(c, shaper);
         return;
     }
@@ -5854,6 +5851,7 @@ void View::paintInspector(Canvas &c) {
         if (!feeds.empty())
             summary += dot + trf(Str::SummaryTo, {feeds});
         paintPageTitle(c, node, summaryRect, head, summary);
+        const PageDim page(c, !nodeOn(node));
         // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
         // the shown one's accent sits on, and the display under them.
         c.line({kInspector.x + 16.0f, kOpRuleY}, {kInspector.right() - 16.0f, kOpRuleY}, kBorder, 1.0f);
@@ -5890,6 +5888,7 @@ void View::paintInspector(Canvas &c) {
         head += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
                 " dB";
     paintPageTitle(c, node, summaryRect, head, boxRoutes(node));
+    const PageDim page(c, !nodeOn(node));
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),
@@ -6611,7 +6610,8 @@ void View::paintLfoCard(Canvas &c, float card, int lfo) {
     // While the full-size editor has the shape, this row is greyed out like the rest of the card's editor (whose
     // widgets are dimmed as disabled ones are).
     if (shapeEditing() == lfo)
-        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h}, kPanel.alpha(0.6f), kRadiusMark);
+        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h},
+                   cardFace(kSourceColors[lfo], sourceOn(lfo)).alpha(1.0f - kDimOpacity), kRadiusMark);
 }
 
 void View::paintSources(Canvas &c) {
@@ -8535,11 +8535,9 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
+    // A macro's knob in its handle's color. While it modulates nothing it is faint like the handle, and an LFO's Phase
+    // while notes don't start the LFO there: dimmed as a whole, as every dimmed widget is (knobIdle()).
     const int macro = macroOf(w.param);
-    // An LFO's Phase is faint too while notes don't start the LFO there.
-    const bool idle = (macro >= 0 && !sourceLive(kMaxSources + macro)) ||
-                      (isLfoPhase(w.param) && !lfoPhaseUsed(sourceOf(w.param)));
     // A join's band levels in their bands' colors (the high band's wire takes its first input).
     const int sum = fxSumOfLevel(w.param);
     const int levelOf = sum < 0 ? -1
@@ -8578,7 +8576,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
     // out on a card tinted with it as the plain track doesn't.
     // Modulated, it keeps them: a modulation ring in a color like its own is told apart from it instead (ringColor()).
-    const Color arc = own.alpha(idle ? 0.3f : 1.0f);
+    const Color arc = own;
     const Color track = look.flat ? own.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack);
     c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, track, 3.5f);
     c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
@@ -8646,7 +8644,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     } else {
         const Rect label{w.rect.x - 14.0f, w.rect.y + w.rect.w + 2.0f, w.rect.w + 28.0f, 16.0f};
         c.text(label, focused || !w.label ? shown : std::string(w.label), kTextLabel,
-               focused ? kText : (idle ? kFaint : kDim));
+               focused ? kText : kDim);
     }
 }
 
@@ -10821,17 +10819,72 @@ void View::paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, boo
         c.strokeRect(card, dragged ? color : (on ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
 }
 
-// The face of the card a widget is on, as paintCardFace() fills it: the cards' color, in a flat theme tinted with its
-// effect's or its source's color (faintly while that is off).
+// A card's face, as paintCardFace() fills it: the cards' color, in a flat theme tinted with `color` (faintly while off).
+Color View::cardFace(Color color, bool on) const {
+    return look.flat ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
+}
+
+// The face of the card a widget is on: its effect's or its source's card's.
 Color View::cardFaceUnder(const Widget &w) const {
-    if (!look.flat || w.param < 0)
+    if (w.param < 0)
         return kCardColor;
     if (const int slot = fxSlotOf(w.param); slot >= 0)
-        return mix(kCardColor, fxTypeColor(fxSlotType(slot)),
-                   look.cardTint * (value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? 1.0f : 0.4f));
+        return cardFace(fxTypeColor(fxSlotType(slot)), value(paramIndex(slot, FxParam::Enabled)) >= 0.5);
     if (const int source = sourceOf(w.param); source >= 0 && source < kMaxSources)
-        return mix(kCardColor, kSourceColors[source], look.cardTint * (sourceOn(source) ? 1.0f : 0.4f));
+        return cardFace(kSourceColors[source], sourceOn(source));
     return kCardColor;
+}
+
+std::vector<View::DimArea> View::dimmedAreas() const {
+    std::vector<DimArea> areas;
+    auto body = [](Rect p) { return Rect{p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}; };
+    // A switched-off source's card below its title row (a folded one's name is already dim).
+    if (!controller_.layout().sourcesCollapsed)
+        for (int s : sources()) {
+            const float card = cardOf(s);
+            if (card == kOffScreen || sourceOn(s) || sourceFolded(s))
+                continue;
+            areas.push_back({body(sourceCard(card, sourceSpan(s))), cardFace(kSourceColors[s], false), sourceCardClip()});
+        }
+    // So is a switched-off effect's, in the effects graph's inspector or along the row.
+    auto effect = [&](int slot, Rect p, Rect clip) {
+        areas.push_back({body(p), cardFace(fxTypeColor(fxSlotType(slot)), false), clip});
+    };
+    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxGraph()) {
+        if (const int node = fxSelectedNode();
+            node >= 0 && node < kFxSlots && value(paramIndex(node, FxParam::Enabled)) < 0.5)
+            effect(node, fxInspector(node), fxInspector(node));
+    } else if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
+        for (const FxRowCard &card : fxRowShown().cards) {
+            const float pos = card.place - fxScroll();
+            if (onScreen(pos, kVisibleFx, card.span) && value(paramIndex(card.slot, FxParam::Enabled)) < 0.5 &&
+                !fxFolded(card.slot))
+                effect(card.slot, fxCard(pos, card.span), fxCardClip());
+        }
+    }
+    // And the inspector's page while its operator, filter or shaper is off, below the tabs, title and switch.
+    if (!inspectorCovered() && !nodeOn(controller_.layout().selectedNode))
+        areas.push_back({kInspectorPage, Color{0.0f, 0.0f, 0.0f, 0.0f}, kInspectorPage});
+    return areas;
+}
+
+// A macro's knob while it modulates nothing, and an LFO's Phase while notes don't start the LFO there: faint, as the
+// macro's handle is, though they still turn.
+bool View::knobIdle(const Widget &w) const {
+    if (w.kind != Kind::Knob || w.param < 0)
+        return false;
+    const int macro = macroOf(w.param);
+    return (macro >= 0 && !sourceLive(kMaxSources + macro)) ||
+           (isLfoPhase(w.param) && !lfoPhaseUsed(sourceOf(w.param)));
+}
+
+// Whether a widget is drawn dimmed: one that takes no input, one that does nothing for now, an idle knob, or one in a
+// dimmed area.
+bool View::widgetDimmed(const Widget &w, const std::vector<DimArea> &areas) const {
+    if (w.disabled || w.faint || knobIdle(w))
+        return true;
+    const Point m = w.rect.center();
+    return std::any_of(areas.begin(), areas.end(), [&](const DimArea &a) { return a.area.contains(m); });
 }
 
 std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
