@@ -142,7 +142,7 @@ std::vector<int> shownSources(const UiLayout &layout, const Get &get) {
     return shown;
 }
 
-// What the editor and the host's remote pages call a source: "LFO 2", "Env 1", "Random 1" or "MIDI 1",
+// What the editor and the host's remote pages call a source: "LFO 2", "Env 1", "Random 1", "MIDI 1" or "Follower 1",
 // numbered by type in the order the sources show, a macro's name, "Note" or "Mod Wheel".
 template <class Get>
 std::string sourceName(const UiLayout &layout, const Get &get, int source) {
@@ -167,6 +167,7 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
                      : type == SourceType::Random   ? Str::SourceNameRandom
                      : type == SourceType::Midi     ? Str::SourceNameMidi
                      : type == SourceType::Curve    ? Str::SourceNameCurve
+                     : type == SourceType::Follower ? Str::SourceNameFollower
                                                     : Str::SourceNameLfo;
     return trf(name, {std::to_string(number)});
 }

@@ -93,7 +93,7 @@ struct Telemetry {
     // range (what its depth bar shows); 0 for the slots no voice runs: the macros' and the mod wheel's, which the
     // editor works out itself.
     std::array<float, kAllSources * kSlots> slotOffset{};
-    std::array<float, kMaxSources> sources{};      // LFO outputs (-1..1), envelope levels (0..1)
+    std::array<float, kMaxSources> sources{};      // LFO outputs (-1..1), envelope, MIDI and Follower levels (0..1)
     // Where modulation takes each macro's knob, against its set value (with the host's modulation for every voice):
     // the newest voice's, or with none what every voice shares (the macros' and the mod wheel's slots on it).
     std::array<float, kMacros> macroOffset{};
@@ -322,6 +322,16 @@ private:
         double cycle = 0.0;   // an anchored one's cycle since the song's start, whole: Random steps as it changes
     };
 
+    // A Follower source in a voice (see SourceType::Follower): what it puts out, 0..1, and what the voice's samples at
+    // its input came to since the sources last ran, at the voice's own rate; and its Low Cut's high-pass, a channel each.
+    struct Follower {
+        double out = 0.0;
+        double peak = 0.0;  // the loudest sample
+        double sumSq = 0.0; // and their squares summed (a stereo one's channels averaged)
+        uint32_t frames = 0;
+        std::array<std::array<double, 2>, 2> cut{}; // [channel][the SVF's two states]
+    };
+
     // One LFO/envelope slot's contribution to a param, in plain units.
     struct SlotMod {
         int index;
@@ -376,6 +386,7 @@ private:
         double slide = 0.5;     // its note's slide, 0..1, resting in the middle
         bool newRandom = false; // (re)started: its random LFOs take a new value in its next block
         std::array<double, kMaxSources> follow{}; // what Midi sources put out, 0..1
+        std::array<Follower, kMaxSources> followers{}; // what Follower sources hear and put out
         double fmScale = 0.0;   // ramped, like the output gains and levels
         Levels levels{};
         double gainL = 0.0;

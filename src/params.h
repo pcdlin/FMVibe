@@ -161,9 +161,18 @@ enum class ShaperParam {
 // CC 74 on an MPE member channel), resting in the middle.
 // It follows that through Slew, a time constant (at its least, 1 ms, all but at once). Both are unipolar unless
 // their Bipolar is on, which swings their depths across the set value as a bipolar LFO's (see sourceBipolar()).
-enum class SourceType { None, Lfo, Env, Random, Midi, Curve, Count };
+// Follower, added last, is an envelope follower: per voice, it follows how loud the voice's own audio is at the input
+// its FollowInput picks (see FollowInput), through Attack and Release (an envelope's fields, its times there), times
+// its FollowGain, held to 0..1. It measures each block's peak (or, with FollowRms, its RMS, times sqrt(2) so a sine
+// reads alike) at the voice's own rate, after a 12 dB high-pass at FollowLowCut (none at its bottom), and moves toward
+// it once a block, at the host rate: it hears the block before. Unipolar unless its Bipolar is on, as Random and Midi.
+enum class SourceType { None, Lfo, Env, Random, Midi, Curve, Follower, Count };
 // What a Midi source follows. Stored in projects by number: only append.
 enum class MidiInput { Cc, Pressure, Slide, Count };
+// What a Follower source follows: the voice's sum that goes on to the effects (OUT), an operator's output (after its
+// envelope, before its Pan and Out), or a filter's or a shaper's (after its Mix, before its Out). Stored in projects by
+// number: only append.
+enum class FollowInput { Out, OpA, OpB, OpC, OpD, OpE, OpF, Filter1, Filter2, Shaper1, Shaper2, Count };
 // After Type and Enabled come kSlots (target, amount) pairs. A slot's target
 // param holds the id + 1 of the param it modulates (0 = unused); its amount is
 // -1..1 of that param's range. A synced LFO runs at a note value (Division) of
@@ -216,6 +225,11 @@ enum class SourceParam {
     Bipolar,   // both's
     MidiInput, // Midi's (see MidiInput)
     Anchor,    // an LFO's (see lfoAnchored())
+    // A Follower's (see SourceType), which also uses Attack, Release and Bipolar.
+    FollowInput,  // see FollowInput
+    FollowGain,   // dB
+    FollowRms,    // off: peak
+    FollowLowCut, // the high-pass in front of it: 0 is off, else on the cutoff curve (see followLowCutHz())
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -700,6 +714,8 @@ constexpr int kMaxDisperserStages = 64;
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
 constexpr double kMaxUtilityMonoBass = 500.0;  // Hz, the top of the utility's Mono Bass knob
+constexpr double kMaxFollowLowCut = 5000.0;    // Hz, the top of a Follower source's Low Cut knob
+constexpr double kMinFollowGainDb = -12.0, kMaxFollowGainDb = 36.0; // a Follower source's Gain
 // The utility's Gain knob (0..1) as a gain: its cube, scaled so the top is kMaxUtilityGainDb, so 0 is silence, the
 // middle about -6 dB and 0.63 0 dB (where it starts), the knob turning evenly through what is heard.
 // utilityGainNorm() is the knob for a gain.
@@ -959,7 +975,15 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::MidiInput:
         return t == SourceType::Midi;
     case SourceParam::Bipolar:
-        return t == SourceType::Random || t == SourceType::Midi;
+        return t == SourceType::Random || t == SourceType::Midi || t == SourceType::Follower;
+    case SourceParam::Attack:
+    case SourceParam::Release:
+        return t == SourceType::Env || t == SourceType::Follower;
+    case SourceParam::FollowInput:
+    case SourceParam::FollowGain:
+    case SourceParam::FollowRms:
+    case SourceParam::FollowLowCut:
+        return t == SourceType::Follower;
     default:
         return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
     }
@@ -1578,6 +1602,8 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::MidiInput)) == 3432 &&
                   idOfIndex(paramIndex(0, SourceParam::Anchor)) == 2833 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Anchor)) == 3433 &&
+                  idOfIndex(paramIndex(0, SourceParam::FollowInput)) == 2834 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::FollowLowCut)) == 3437 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");
@@ -1721,8 +1747,15 @@ static_assert(numberedInOrder({AmpMic::Dynamic, AmpMic::Condenser, AmpMic::Ribbo
               "AmpMic is stored by number: only append");
 static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Slide, MidiInput::Count}),
               "MidiInput is stored by number: only append");
+static_assert(numberedInOrder({FollowInput::Out, FollowInput::OpA, FollowInput::OpB, FollowInput::OpC, FollowInput::OpD,
+                               FollowInput::OpE, FollowInput::OpF, FollowInput::Filter1, FollowInput::Filter2,
+                               FollowInput::Shaper1, FollowInput::Shaper2, FollowInput::Count}),
+              "FollowInput is stored by number: only append");
+static_assert(static_cast<int>(FollowInput::OpA) == 1 && static_cast<int>(FollowInput::Filter1) == 1 + kOps &&
+              static_cast<int>(FollowInput::Shaper1) == 1 + kOps + kFilters &&
+              static_cast<int>(FollowInput::Count) == 1 + kOps + kFilters + kShapers);
 static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Random,
-                               SourceType::Midi, SourceType::Curve, SourceType::Count}),
+                               SourceType::Midi, SourceType::Curve, SourceType::Follower, SourceType::Count}),
               "SourceType is stored by number: only append");
 static_assert(numberedInOrder({SlotAuxParam::Aux, SlotAuxParam::Amount, SlotAuxParam::Count}),
               "SlotAuxParam is stored by number: only append");
@@ -1807,6 +1840,8 @@ inline double cutoffFromNorm(double x) { return kMinCutoff * std::pow(kMaxCutoff
 inline double normFromCutoff(double hz) { return std::log(hz / kMinCutoff) / std::log(kMaxCutoff / kMinCutoff); }
 // The utility's Mono Bass knob: off at its bottom, else on the cutoff curve, up to kMaxUtilityMonoBass.
 inline double utilityMonoBassHz(double norm) { return norm <= 0.0 ? 0.0 : cutoffFromNorm(norm); }
+// A Follower's Low Cut, likewise: off at its bottom, else on the cutoff curve, up to kMaxFollowLowCut.
+inline double followLowCutHz(double norm) { return norm <= 0.0 ? 0.0 : cutoffFromNorm(norm); }
 // A split's crossovers in Hz from its Low and High params, High kept a third of an octave above Low, as the three-band
 // dynamics' are.
 inline std::array<double, 2> splitCrossovers(double lowNorm, double highNorm) {
@@ -2343,6 +2378,7 @@ enum class ParamKind {
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
     OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
+    FollowInput,  // stepped: what a Follower source follows (see FollowInput)
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2636,6 +2672,7 @@ const char *ampCabName(AmpCab cab);
 const char *ampMicName(AmpMic mic);
 const char *routeModeName(RouteMode mode);
 const char *midiInputName(MidiInput input);
+const char *followInputName(FollowInput input);
 const char *sourceTypeName(SourceType type);
 const char *fxName(FxType fx);
 

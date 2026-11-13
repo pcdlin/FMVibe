@@ -63,9 +63,14 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
                             Str::FxUtility,   Str::FxChorus};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
-                                    Str::SourceMidi,  Str::SourceCurve};
+                                    Str::SourceMidi,  Str::SourceCurve, Str::SourceFollower};
 constexpr Str kMidiInputNames[] = {Str::MidiInputCc, Str::MidiInputPressure, Str::MidiInputSlide};
 static_assert(std::size(kMidiInputNames) == static_cast<size_t>(MidiInput::Count));
+constexpr Str kFollowInputNames[] = {Str::FollowInputOut,     Str::FollowInputA,       Str::FollowInputB,
+                                     Str::FollowInputC,       Str::FollowInputD,       Str::FollowInputE,
+                                     Str::FollowInputF,       Str::FollowInputFilter1, Str::FollowInputFilter2,
+                                     Str::FollowInputShaper1, Str::FollowInputShaper2};
+static_assert(std::size(kFollowInputNames) == static_cast<size_t>(FollowInput::Count));
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
 // A drawn shaper curve's points as it starts, (x, y, curve) each: an S, flat at the ends, steep through the middle.
 constexpr double kClipCurveDefaults[3][3] = {{0.0, -1.0, 0.35}, {0.5, 0.0, -0.35}, {1.0, 1.0, 0.0}};
@@ -162,6 +167,7 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::FilterSlope || kind == ParamKind::Toggle || kind == ParamKind::SyncDivision ||
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
+            kind == ParamKind::FollowInput ||
             kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
             kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp)
             flags |= CLAP_PARAM_IS_ENUM;
@@ -876,6 +882,14 @@ void buildTable(ParamTable &t) {
         field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
               static_cast<double>(MidiInput::Count) - 1.0, 0.0);
         field(SourceParam::Anchor, tr(Str::ParamAnchor), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        // A Follower's: the voice's OUT, at its level as it is, by its peaks, nothing cut. Its Attack and Release are
+        // an envelope's; the editor adds one with them at 5 ms and 150 ms (see addSource()).
+        field(SourceParam::FollowInput, tr(Str::ParamInput), ParamKind::FollowInput, 0.0,
+              static_cast<double>(FollowInput::Count) - 1.0, 0.0);
+        field(SourceParam::FollowGain, tr(Str::ParamGain), ParamKind::Decibel, kMinFollowGainDb, kMaxFollowGainDb, 0.0);
+        field(SourceParam::FollowRms, tr(Str::ParamRms), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        field(SourceParam::FollowLowCut, tr(Str::ParamLowCut), ParamKind::CutoffOrOff, 0.0,
+              normFromCutoff(kMaxFollowLowCut), 0.0);
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.
@@ -1018,6 +1032,10 @@ const char *midiInputName(MidiInput input) {
     return nameAt(kMidiInputNames, static_cast<double>(input));
 }
 
+const char *followInputName(FollowInput input) {
+    return nameAt(kFollowInputNames, static_cast<double>(input));
+}
+
 const char *fxName(FxType fx) {
     return nameAt(kFxNames, static_cast<double>(fx));
 }
@@ -1101,7 +1119,8 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::FxPosition || kind == ParamKind::FxPort || kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
-           kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
+           kind == ParamKind::MidiInput || kind == ParamKind::FollowInput || kind == ParamKind::RouteMode ||
+           kind == ParamKind::AmpModel ||
            kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
            kind == ParamKind::OpWarp;
 }
@@ -1299,6 +1318,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::MidiInput:
         std::snprintf(out, capacity, "%s", nameAt(kMidiInputNames, value));
         break;
+    case ParamKind::FollowInput:
+        std::snprintf(out, capacity, "%s", nameAt(kFollowInputNames, value));
+        break;
     case ParamKind::FxOrder:
         std::snprintf(out, capacity, "%s", fxOrderName(value).c_str());
         break;
@@ -1391,6 +1413,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::AmpCab       ? findName(kAmpCabNames, text)
                       : def.kind == ParamKind::AmpMic       ? findName(kAmpMicNames, text)
                       : def.kind == ParamKind::MidiInput    ? findName(kMidiInputNames, text)
+                      : def.kind == ParamKind::FollowInput  ? findName(kFollowInputNames, text)
                       : def.kind == ParamKind::RouteMode    ? findName(kRouteModeNames, text)
                                                             : -1;
     if (named >= 0) {
@@ -1622,6 +1645,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::AmpCab:
     case ParamKind::AmpMic:
     case ParamKind::MidiInput:
+    case ParamKind::FollowInput:
     case ParamKind::RouteMode:
     case ParamKind::FxOrder:
     case ParamKind::FxPosition:

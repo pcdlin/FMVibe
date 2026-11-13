@@ -480,7 +480,7 @@ View::MenuNode View::cascadeCategories() const {
                  others = category(tr(Str::CascadeNoteMidi));
         for (int source : sources())
             (runsLfo(sourceTypeOf(source))             ? lfos // Random among them, a random LFO
-             : sourceTypeOf(source) == SourceType::Env ? envs
+             : sourceTypeOf(source) == SourceType::Env || sourceTypeOf(source) == SourceType::Follower ? envs
                                                        : others)
                 .children.push_back(sourcePick(source));
         keep(std::move(lfos));

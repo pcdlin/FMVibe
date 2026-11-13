@@ -1797,6 +1797,27 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             collectSlots(s, out, out, out - 0.5, p[paramIndex(s, SourceParam::Bipolar)] >= 0.5);
             continue;
         }
+        if (type == SourceType::Follower) {
+            // How loud its input was over the last block (a new note's first block heard nothing yet), times its
+            // Gain, which it moves toward through Attack while that is louder and Release while quieter: the host's
+            // frames that block took, whatever the oversampling.
+            Follower &f = v.followers[s];
+            double level = 0.0;
+            if (f.frames > 0)
+                level = p[paramIndex(s, SourceParam::FollowRms)] >= 0.5 ? std::sqrt(2.0 * f.sumSq / f.frames) : f.peak;
+            level = std::clamp(level * std::pow(10.0, p[paramIndex(s, SourceParam::FollowGain)] / 20.0), 0.0, 1.0);
+            const double time =
+                envTimeFromNorm(p[paramIndex(s, level > f.out ? SourceParam::Attack : SourceParam::Release)]);
+            const double heard = f.frames > 0 ? static_cast<double>(f.frames) / oversampling_ : hostFrames;
+            f.out = time <= 0.0 ? level : level + (f.out - level) * std::exp(-heard / (time * sampleRate_));
+            if (f.out < 1e-20) // no denormals as it falls toward silence (WebAssembly doesn't flush them)
+                f.out = 0.0;
+            f.peak = 0.0;
+            f.sumSq = 0.0;
+            f.frames = 0;
+            collectSlots(s, f.out, f.out, f.out - 0.5, p[paramIndex(s, SourceParam::Bipolar)] >= 0.5);
+            continue;
+        }
         Envelope &env = v.modEnvs[s];
         collectSlots(s, env.level(), env.level(), env.level() - 0.5, p[paramIndex(s, SourceParam::EnvBipolar)] >= 0.5);
         const std::array<double, 8> times{
@@ -2483,6 +2504,41 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         wave[i] = opShapes[i] == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(opShapes[i], highest);
     }
 
+    // The Follower sources that are on, and what each hears: an operator's, a filter's or a shaper's output (mono), or
+    // the voice's OUT (both channels, `in` null), through a 12 dB high-pass at its Low Cut where it has one (a TPT
+    // state-variable filter, as Cytomic's).
+    struct FollowTap {
+        Follower *f;
+        const double *in;
+        bool cut;
+        double k, a1, a2, a3;
+    };
+    std::array<FollowTap, kMaxSources> followTaps;
+    int followCount = 0;
+    for (int src = 0; src < kMaxSources; ++src) {
+        if (sourceType(p[paramIndex(src, SourceParam::Type)]) != SourceType::Follower || p[sourceEnabledIndex(src)] < 0.5)
+            continue;
+        const int input = stepped(p[paramIndex(src, SourceParam::FollowInput)], static_cast<int>(FollowInput::Count) - 1);
+        FollowTap &t = followTaps[followCount++];
+        t.f = &v.followers[src];
+        const int at = input - static_cast<int>(FollowInput::OpA);
+        t.in = input == static_cast<int>(FollowInput::Out) ? nullptr
+               : at < kOps                                  ? &v.ops[at].out
+               : at < kOps + kFilters                       ? &v.filterOut[at - kOps]
+                                                            : &v.shaperOut[at - kOps - kFilters];
+        const double hz = followLowCutHz(p[paramIndex(src, SourceParam::FollowLowCut)]);
+        t.cut = hz > 0.0 && hz < 0.45 * rate_;
+        if (!t.cut) {
+            t.f->cut = {};
+            continue;
+        }
+        const double g = std::tan(std::numbers::pi * hz / rate_);
+        t.k = std::numbers::sqrt2;
+        t.a1 = 1.0 / (1.0 + g * (g + t.k));
+        t.a2 = g * t.a1;
+        t.a3 = g * t.a2;
+    }
+
     Levels &level = v.levels;
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
@@ -2716,6 +2772,35 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         blockPeak = std::max({blockPeak, std::abs(mix[0]), std::abs(mix[1])});
         left[s] += mix[0] * v.gainL * v.fade;
         right[s] += mix[1] * v.gainR * v.fade;
+        for (int k = 0; k < followCount; ++k) {
+            FollowTap &t = followTaps[k];
+            const int channels = t.in ? 1 : 2;
+            double peak = 0.0, sq = 0.0;
+            for (int c = 0; c < channels; ++c) {
+                double x = t.in ? *t.in : mix[c];
+                if (t.cut) {
+                    std::array<double, 2> &ic = t.f->cut[c];
+                    const double v3 = x - ic[1];
+                    const double v1 = t.a1 * ic[0] + t.a2 * v3;
+                    const double v2 = ic[1] + t.a2 * ic[0] + t.a3 * v3;
+                    ic[0] = 2.0 * v1 - ic[0];
+                    ic[1] = 2.0 * v2 - ic[1];
+                    x = x - t.k * v1 - v2;
+                }
+                peak = std::max(peak, std::abs(x));
+                sq += x * x;
+            }
+            t.f->peak = std::max(t.f->peak, peak);
+            t.f->sumSq += sq / channels;
+        }
+    }
+    for (int k = 0; k < followCount; ++k) {
+        FollowTap &t = followTaps[k];
+        t.f->frames += frames;
+        for (std::array<double, 2> &ic : t.f->cut) // no denormals as it rings out
+            for (double &state : ic)
+                if (std::abs(state) < 1e-20)
+                    state = 0.0;
     }
     for (int i = 0; i < kOps; ++i)
         if (opOn[i] && !noise[i])
