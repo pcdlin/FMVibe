@@ -2439,23 +2439,19 @@ std::vector<View::Widget> View::widgets() const {
     // Inspector: tabs, then the selected operator, filter or shaper. The FX view covers it.
     const size_t inspectorStart = list.size();
     const int node = controller_.layout().selectedNode;
-    const float tabsX = kInspector.x + 16.0f;
-    for (int i = 0; i < kNodes; ++i) // the operators', the filters' and the shapers', a little apart
-        add(Kind::NodeTab,
-            {tabsX + i * 25.0f + (isBoxNode(i) ? 6.0f : 0.0f) + (isShaperNode(i) ? 6.0f : 0.0f), kInspector.y + 9.0f,
-             24.0f, 22.0f},
-            -1, i);
+    for (int i = 0; i < kNodes; ++i) // the operators', the filters' and the shapers', in three groups
+        add(Kind::NodeTab, nodeTabRect(i), -1, i);
     add(Kind::Toggle, {kInspector.right() - 16.0f - 26.0f, kInspector.y + 37.0f, 26.0f, 19.0f}, enabledParam(node));
     auto knobRow = [&](const int (&params)[5], const char *const (&labels)[5]) {
         for (int i = 0; i < 5; ++i)
             if (params[i] >= 0)
                 knob(params[i], {kInspector.x + 34.0f + i * 58.0f, kInspector.y + 110.0f}, 34.0f, labels[i]);
     };
+    // An operator's block: the left column's two places (-2, -1), then the right column's four (see opKnobCenter()).
     auto opKnobRow = [&](const int (&params)[6], const char *const (&labels)[6]) {
-        const float step = (kInspector.w - 32.0f) / 6.0f;
         for (int i = 0; i < 6; ++i)
             if (params[i] >= 0)
-                knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 110.0f}, 32.0f, labels[i]);
+                knob(params[i], opKnobCenter(i - 2), kOpKnobD, labels[i]);
     };
     const Str envLabels[] = {Str::LabelAttack, Str::LabelHold, Str::LabelDecay, Str::LabelSustain, Str::LabelRelease};
     // What feeds a filter or shaper, from the other nodes that are on.
@@ -2494,10 +2490,12 @@ std::vector<View::Widget> View::widgets() const {
         inputKnobs(node);
     } else if (node < kOps) {
         const int op = node;
-        // Pills a little apart, each on its own, as the lens draws its rows of buttons.
+        // One segmented row, the list's button last in it.
+        const size_t waves = list.size();
         for (int b = 0; b + 1 < kWaveButtons; ++b)
             add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
         add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
+        merge(waves);
         // The tabs, a noise operator's without the scope, then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
@@ -2508,7 +2506,7 @@ std::vector<View::Widget> View::widgets() const {
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
         if (isNoise(op)) {
-            // Its slope and stereo spread take the place of the pitch knobs; the unison row shows the spectrum. Noise
+            // Its slope and stereo spread take the Ratio readout's place; the unison row shows the spectrum. Noise
             // has no cycle to start, so no Phase.
             const int params[] = {paramIndex(op, OpParam::NoiseSlope), paramIndex(op, OpParam::UnisonSpread), -1, -1,
                                   -1, paramIndex(op, OpParam::Pan)};
@@ -2547,7 +2545,7 @@ std::vector<View::Widget> View::widgets() const {
             const float step = (kInspector.w - 32.0f) / 4.0f;
             if (tab == InspectorTab::Unison)
                 for (int i = 0; i < 4; ++i)
-                    knob(unison[i], {kInspector.x + 16.0f + step * (i + 0.5f), kUnisonKnobsY}, 34.0f,
+                    knob(unison[i], {kInspector.x + 16.0f + step * (i + 0.5f), kUnisonKnobsY}, kOpKnobD,
                          tr(unisonLabels[i]));
         }
         if (tab == InspectorTab::Inputs) {
@@ -2585,7 +2583,7 @@ std::vector<View::Widget> View::widgets() const {
             for (int m = 0; m < static_cast<int>(OpWarp::Count); ++m)
                 add(Kind::Choice, warpButton(m), paramIndex(op, OpParam::Warp), op, m);
             merge(buttons);
-            knob(paramIndex(op, OpParam::WarpAmount), kWarpAmountKnob, 30.0f, tr(Str::LabelAmount));
+            knob(paramIndex(op, OpParam::WarpAmount), kWarpAmountKnob, kOpKnobD, tr(Str::LabelAmount));
             add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         }
         if (tab == InspectorTab::Envelope) {
@@ -2593,7 +2591,7 @@ std::vector<View::Widget> View::widgets() const {
             const int ahdsr[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
             const float step = (kInspector.w - 32.0f) / 5.0f;
             for (int i = 0; i < 5; ++i)
-                knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 322.0f}, 30.0f,
+                knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kOpControlsY}, kOpKnobD,
                      tr(envLabels[i]));
         }
     } else {
@@ -5807,18 +5805,26 @@ void View::paintInspector(Canvas &c) {
         if (outlined())
             c.polyline(side, 3, edge, 1.0f);
     }
-    // Leaves room for the on/off switch at the right.
-    Rect summaryRect{kInspector.x + 16.0f, kInspector.y + 38.0f, kInspector.w - 84.0f, 18.0f};
+    // The tabs' groups, a hairline between two.
+    for (int group = 1; group <= 2; ++group) {
+        const float x = nodeTabDivider(group);
+        c.line({x, kInspector.y + 13.0f}, {x, kInspector.y + 27.0f}, kBorder, 1.0f);
+    }
+    // The title row leaves room for the on/off switch at the right.
+    Rect summaryRect{kTitleRow.x, kTitleRow.y, kInspector.w - 84.0f, kTitleRow.h};
     const char *dot = "  \xC2\xB7  ";
 
     if (isShaperNode(node)) {
-        paintShaperPage(c, shaperOfNode(node), summaryRect);
+        const int shaper = shaperOfNode(node);
+        paintPageTitle(c, node, summaryRect, clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode)))),
+                       boxRoutes(node));
+        paintShaperPage(c, shaper);
         return;
     }
     if (node < kOps) {
         const int op = node;
         const double ratio = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
-        std::string summary = std::string(kNodeNames[op]) + dot;
+        std::string head, summary;
         summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
         if (isCustomWave(op))
             summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's edit button, left of that
@@ -5826,10 +5832,11 @@ void View::paintInspector(Canvas &c) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
             formatParam(slopeParam, value(slopeParam), slope, sizeof(slope));
-            summary += waveName(OpWave::Noise) + (dot + std::string(slope));
+            head = waveName(OpWave::Noise);
+            summary = dot + std::string(slope);
         } else {
-            summary += waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))))) +
-                       (dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio)));
+            head = waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))));
+            summary = dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio));
         }
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
@@ -5846,11 +5853,15 @@ void View::paintInspector(Canvas &c) {
                 feeds += (feeds.empty() ? "" : ", ") + std::string(kNodeNames[to]);
         if (!feeds.empty())
             summary += dot + trf(Str::SummaryTo, {feeds});
-        c.text(summaryRect, summary, kTextBody, kDim, Align::Left);
-        // The tabs' line, which the shown one's accent sits on.
-        c.line({kInspector.x + 16.0f, kOpTabsY + kOpTabH}, {kInspector.right() - 16.0f, kOpTabsY + kOpTabH}, kBorder,
-               1.0f);
-        switch (opTabShown(op)) {
+        paintPageTitle(c, node, summaryRect, head, summary);
+        // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
+        // the shown one's accent sits on, and the display under them.
+        c.line({kInspector.x + 16.0f, kOpRuleY}, {kInspector.right() - 16.0f, kOpRuleY}, kBorder, 1.0f);
+        const InspectorTab shown = opTabShown(op);
+        const Rect well = shown == InspectorTab::Inputs ? kOpWellTall : kOpWell;
+        c.fillRect(well, kDisplayColor, kRadiusCard);
+        c.line({well.x, kOpTabsY + kOpTabH - 0.5f}, {well.right(), kOpTabsY + kOpTabH - 0.5f}, kBorder, 1.0f);
+        switch (shown) {
         case InspectorTab::Unison:
             if (isNoise(op))
                 paintNoiseSlope(c, kNoiseRect, op);
@@ -5874,11 +5885,11 @@ void View::paintInspector(Canvas &c) {
 
     const int filter = node - kOps;
     const auto type = static_cast<FilterType>(std::lround(value(paramIndex(filter, FilterParam::Type))));
-    std::string summary = std::string(kNodeNames[node]) + dot + filterTypeName(type);
+    std::string head = filterTypeName(type);
     if (hasSlope(type))
-        summary += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
-                   " dB";
-    c.text(summaryRect, summary + boxRoutes(node), kTextBody, kDim, Align::Left);
+        head += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
+                " dB";
+    paintPageTitle(c, node, summaryRect, head, boxRoutes(node));
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),
@@ -5914,10 +5925,20 @@ std::string View::boxRoutes(int node) const {
     return text;
 }
 
-void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
-    const std::string summary = std::string(kNodeNames[kOps + kFilters + shaper]) + "  \xC2\xB7  " +
-                                clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode))));
-    c.text(summaryRect, summary + boxRoutes(kOps + kFilters + shaper), kTextBody, kDim, Align::Left);
+// A page's title: the node's letter in its color at the heading's size, then the summary's head (an operator's wave,
+// a filter's type, a shaper's curve) in full text and the rest dimmed, cut off at r's right end.
+void View::paintPageTitle(Canvas &c, int node, Rect r, const std::string &head, const std::string &rest) {
+    const char *const letter = kNodeNames[node];
+    const float letterW = std::ceil(c.textWidth(letter, kTextHeading, true)) + 8.0f;
+    c.text({r.x, r.y, letterW, r.h}, letter, kTextHeading, nodeColor(node), Align::Left, true);
+    const Rect text{r.x + letterW, r.y, std::max(r.w - letterW, 0.0f), r.h};
+    const float headW = std::min(std::ceil(c.textWidth(head, kTextBody)) + 1.0f, text.w);
+    c.text({text.x, text.y, headW, text.h}, head, kTextBody, kText, Align::Left);
+    if (text.w > headW)
+        c.text({text.x + headW, text.y, text.w - headW, text.h}, rest, kTextBody, kDim, Align::Left);
+}
+
+void View::paintShaperPage(Canvas &c, int shaper) {
     c.fillRect(kShaperDisplay, kDisplayColor, kRadiusCard);
     paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
     c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
@@ -7050,8 +7071,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveButton: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, 0.5f * w.rect.h);
-        const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
+        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, kRadiusControl); // a part of the waves' row
+        const std::vector<Point> points =
+            waveIcon(static_cast<OpWave>(w.b), {w.rect.x + 6.0f, w.rect.y + 7.0f, w.rect.w - 12.0f, w.rect.h - 14.0f});
         c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
         break;
     }
@@ -7310,12 +7332,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
         const bool selected = isMoreWave(wave);
         const bool lit = hovered || waveMenu_ == w.a;
-        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, 0.5f * w.rect.h);
+        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, kRadiusControl); // the last part of the waves' row
         if (selected) {
-            const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
+            const Rect icon{w.rect.x + 4.0f, w.rect.y + 7.0f, w.rect.w - 15.0f, w.rect.h - 14.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
             c.polyline(points.data(), points.size(), litInk(kAccent), 1.5f);
-            const Point m{w.rect.right() - 8.0f, w.rect.center().y};
+            const Point m{w.rect.right() - 6.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.0f, m.y - 1.5f}, {m.x, m.y + 1.5f}, {m.x + 3.0f, m.y - 1.5f}};
             c.polyline(chevron, 3, look.flat ? litInk(kText) : lit ? kText : kDim, 1.2f);
         } else {

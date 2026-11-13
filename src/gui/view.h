@@ -1302,7 +1302,8 @@ private:
     void paintShifter(Canvas &c, Rect r, int slot);
     void paintInspector(Canvas &c);
     // A shaper's page in the inspector: its summary in `summary`, its transfer curve, and the label over its inputs.
-    void paintShaperPage(Canvas &c, int shaper, Rect summary);
+    void paintShaperPage(Canvas &c, int shaper);
+    void paintPageTitle(Canvas &c, int node, Rect r, const std::string &head, const std::string &rest);
     std::string boxRoutes(int node) const;
     void paintSources(Canvas &c);
     void paintSource(Canvas &c, float card, int source);

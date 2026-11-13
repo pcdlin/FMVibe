@@ -1226,21 +1226,23 @@ one may have changed since it last did.
   soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 % (in Spectrum
   and Porcelain, as their cards, on its shadow alone, without an outline); while
   the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
-  and S2 pick what it shows; tabs of switched-off nodes are
+  and S2, in three groups with a hairline between two, pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
   of their node's color. A dot in a tab's top right corner says the
   node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes
   into it). Clicking the
   selected tab switches it off, or on again (its
-  tooltip says which). Under the tabs, a summary line sums the node up in short: its letter, then an operator's
-  wave, ratio, unison copies (×4) and where it goes ("A · Saw · 1.20 · ×4 · to F1"), or a filter's type and slope,
-  or a shaper's curve, and what feeds them, where they go and the operators they modulate. The power switch next
-  to it does the same as clicking the selected tab. While the node is off, its page is dimmed below the summary
+  tooltip says which). Under the tabs, the page's title: the node's letter, at the heading's size in its color,
+  then a summary line that sums the node up in short: an operator's wave, ratio, unison copies (×4) and where it
+  goes ("A Saw · 1.20 · ×4 · to F1"), or a filter's type and slope, or a shaper's curve, and what feeds them, where
+  they go and the operators they modulate; the wave, type or curve in full text, the rest dimmed. The power switch
+  next to it does the same as clicking the selected tab. While the node is off, its page is dimmed below the summary
   line; its knobs still work.
-  - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,
-    Organ, Vowel and Custom (picked,
-    one of these shows on that button); the Ratio readout, then pitch, detune, phase and pan knobs. The Ratio
-    readout takes the first two knobs' places: four digits of a 7-segment display (88.88, the tens dark below 10),
+  - Operators: the operator's sound in one block. At its left, as tall as two rows, the Ratio readout; at its right,
+    the waves as one segmented row of buttons, the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine,
+    Alt Sine, Organ, Vowel and Custom (picked, one of these shows on that button), and under them the pitch, detune,
+    phase and pan knobs, their labels on the Ratio readout's line. The Ratio readout is four digits of a 7-segment
+    display (88.88, the tens dark below 10),
     each its own handle. A digit dragged up or down steps by its own place (tens 10, ones 1, tenths 0.1, hundredths
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
     the digit under the mouse, and a double-click resets it and the digits below it to those of 1.00 (on the ones, 23.47 becomes 21.00). The digit under the
@@ -1258,15 +1260,16 @@ one may have changed since it last did.
     ratio. Switched off, the ratio, Pitch and Detune count again as they were. While the wave is Custom,
     an edit button (a pencil, the same as a Curve source's and a drawn shaper curve's), left of the keyboard, opens
     the operator's partial editor (lit while it is open; a second click closes it, as does picking another operator, filter or shaper in the
-    inspector). Under the knobs, tabs pick what
-    the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
-    as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
-    handle over a tab opens it, so its knobs can take the drop:
+    inspector). Under the block, past a line across the page, a well: tabs along its top edge pick what the
+    display under them shows, and the tab's controls sit in a row under the well (INPUTS, which has none, takes the
+    well down to the lens's bottom). The tab is the same for every operator and saved with the project (a preset
+    leaves it as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged
+    source's handle over a tab opens it, so its knobs can take the drop:
     - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does.
-    - **UNISON**: the unison knobs and Rnd Phase, and a display of where the copies sit (left/right by spread,
-      up/down by detune).
+    - **UNISON**: a display of where the copies sit (left/right by spread, up/down by detune), and the unison knobs
+      and Rnd Phase under it.
     - **WARP**: the operator's scope, its warp and its note sync. Its display is a scope: the operator's output in
       the newest voice as it plays, with its unison copies together and everything that moves it (the FM it gets,
       its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output. It
@@ -1291,7 +1294,7 @@ one may have changed since it last did.
       so. The rows sit 30 px apart, room for a modulated depth's dots under it; past the six the tab holds, they
       scroll, by the wheel over them, by dragging with the middle button held, or by the scrollbar at their right.
 
-    A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is
+    A noise operator shows Slope and Spread in the Ratio readout's place, and no Pitch, Detune or Phase; its first tab is
     **SPECTRUM**, its spectrum against white, pink and brown, and it has no WARP tab (picked, it shows its
     envelope).
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
