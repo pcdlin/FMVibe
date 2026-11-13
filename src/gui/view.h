@@ -1128,12 +1128,14 @@ private:
     // The changes that put a new point at (x, y) among the others, the later ones moving up a place.
     std::vector<std::pair<int, double>> insertShapePoint(int shape, double x, double y) const;
     // A symmetric shaper's curve (see ClipCurve): only its right half is edited, the left drawn as its mirror. Its
-    // points left of the middle are hidden, and so are the bends that start there; a click on that half counts as one
-    // on its mirror image. Switched on in the editor, the curve gets a point in the middle, which then stays there.
+    // points left of the middle are hidden, and so are the bends that start there; a click on that half does nothing.
+    // Switched on in the editor, the curve gets a point in the middle, which then stays there.
     bool curveSymmetric(int shape) const;
     bool pointShown(int shape, int point) const;
     bool middlePoint(int shape, int point) const;
-    Point unmirrored(int shape, Point p) const;
+    bool inMirroredHalf(int shape, Point p) const;
+    // The big editor's symmetric switch, for a shaper's Custom curve: left of its Points | Steps.
+    Rect shapeSymButton() const;
     void switchSymmetric(int param);
     void switchFixed(int op);
     void flipSwitch(int param); // as a click on its switch flips it

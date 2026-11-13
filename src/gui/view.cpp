@@ -1925,6 +1925,8 @@ std::vector<View::Widget> View::widgets() const {
             if (mode == 1)
                 merge(list.size() - 2);
         }
+        if (isClipCurve(editing) || isShaperCurve(editing)) // a Custom curve's symmetric switch, as on its card or page
+            add(Kind::Toggle, shapeSymButton(), shaperParams(editing - kMaxSources).symmetric);
         if (isNoteCurve(editing)) { // the range across, in the title row, after the title, close together
             const char *const labels[] = {tr(Str::LabelLow), tr(Str::LabelHigh)};
             const int range[] = {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)};
@@ -4534,7 +4536,9 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    const Rect below{r.x, r.bottom() + 10.0f, shapeGridButton(0, 0).x - 12.0f - r.x, 16.0f};
+    // (A voice shaper's editor has its switches there too, left of the grid's controls.)
+    const float end = isClipCurve(shape) ? shapeGridButton(0, 0).x : shapeSymButton().x;
+    const Rect below{r.x, r.bottom() + 10.0f, end - 12.0f - r.x, 16.0f};
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         const std::string in = number("%+.2f", 2.0 * shapePointX(shape, focus->b) - 1.0);
         const std::string out = number("%+.2f", value(shapeIndex(shape, focus->b, PointField::Y)));
@@ -9722,7 +9726,8 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::ShapeStep: // drawn again into the shape as it was, where the mouse is; where it doesn't fit, it stays
-        addShapeStep(w.a, unmirrored(w.a, p), drag_.snap, drag_.shapeBefore);
+        if (!inMirroredHalf(w.a, p)) // held over the mirrored half, the step stays where it was
+            addShapeStep(w.a, p, drag_.snap, drag_.shapeBefore);
         break;
     case DragKind::Partials: {
         // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
@@ -9944,6 +9949,9 @@ void View::mouseDown(Point p, Modifiers mods) {
         startTyping(w);
         return;
     }
+    // A symmetric curve's left half only mirrors its right one: a click there does nothing.
+    if (w.kind == Kind::ShapeArea && inMirroredHalf(w.a, p))
+        return;
     if (drawsStep(w, mods)) {
         // Held, the step follows the mouse, up and down and from column to column, as one undo step.
         const int shape = w.a;
@@ -9952,7 +9960,7 @@ void View::mouseDown(Point p, Modifiers mods) {
             before.push_back(value(shapeBase(shape) + f));
         controller_.beginStep();
         const bool snap = shapeSnaps(shape, mods.ctrl);
-        if (!addShapeStep(shape, unmirrored(shape, p), snap, before)) {
+        if (!addShapeStep(shape, p, snap, before)) {
             controller_.endStep();
             flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
             return;
@@ -11347,7 +11355,8 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     }
     if (hit && hit->kind == Kind::ShapeArea) {
-        addShapePoint(hit->a, unmirrored(hit->a, p));
+        if (!inMirroredHalf(hit->a, p)) // the mirrored half takes no points
+            addShapePoint(hit->a, p);
         return;
     }
     if (hit && hit->kind == Kind::ShapePoint) {

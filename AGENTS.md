@@ -473,8 +473,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor;
   - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
-    mirrored left half adding a point on the right, the middle point refusing to be deleted, and the switch
-    undoing with its point;
+    mirrored left half doing nothing, the middle point refusing to be deleted, and the switch
+    undoing with its point; the big curve editor's SYM (a shaper effect's and a voice shaper's) switching, its
+    mirrored half taking neither a double-click nor a Shift+click's step, undone off again;
   - dragging the filter response handle, the filter's Mix knob (where Out was) moving its response and undone
     putting it back (read off the rendered pixels), switching between the graph and matrix views (the tab shown opening its
     panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell: undone, its

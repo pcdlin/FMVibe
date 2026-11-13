@@ -1180,8 +1180,10 @@ one may have changed since it last did.
     effects' (the inspector stays hidden), its plot closer to square, with input across and output up; its first
     and last points stay at the ends. While the shaper is symmetric, only the curve's right half is edited, in
     the editor and in the card alike: the left half is drawn as its mirror (behind a veil in the editor) with faint
-    rings for the points it mirrors, the points left of the middle are hidden, and a click there counts as one on
-    its mirror image. Switching Symmetric on in the editor gives the curve a point in the middle if it has none,
+    rings for the points it mirrors, the points left of the middle are hidden, and a click there does nothing (no
+    point added, no step drawn; a step held across the middle stays where it last was on the right). The editor has
+    its own **SYM** switch, left of Points | Steps (in the title row for a shaper effect, under the plot for a voice
+    shaper), as the card and the shaper's page do. Switching Symmetric on gives the curve a point in the middle if it has none,
     which then stays there: it only moves up and down, and can't be deleted (a step drawn across it keeps it, at the step's height). The note source's curve opens over the routing panel from its display in the
     keyboard strip (a second click closes it): the notes from Low to High across, the Cs among them named under
     the plot, and what the source puts out up, from nothing at the bottom to all of it at the top, with a dot

@@ -83,6 +83,11 @@ Rect View::shapeModeButton(int mode) const {
     return mode == 2 ? snap : Rect{snap.x - 8.0f - (2 - mode) * 68.0f, snap.y, 68.0f, snap.h};
 }
 
+Rect View::shapeSymButton() const {
+    const Rect points = shapeModeButton(0);
+    return {points.x - 8.0f - 44.0f, points.y, 44.0f, points.h};
+}
+
 // A little room above and below the full swing, so its points can be grabbed: 12 px, less in a card.
 static float shapeReach(Rect area) {
     return area.h * 0.5f - std::min(12.0f, area.h * 0.06f);
@@ -238,11 +243,8 @@ bool View::middlePoint(int shape, int point) const {
     return curveSymmetric(shape) && std::abs(shapePointX(shape, point) - 0.5) < kOnMiddle;
 }
 
-Point View::unmirrored(int shape, Point p) const {
-    if (!curveSymmetric(shape) || shapeXAt(shape, p) >= 0.5)
-        return p;
-    const Point middle = shapeAt(shape, 0.5, 0.0);
-    return {2.0f * middle.x - p.x, 2.0f * middle.y - p.y};
+bool View::inMirroredHalf(int shape, Point p) const {
+    return curveSymmetric(shape) && shapeXAt(shape, p) < 0.5;
 }
 
 // Flips a shaper's Symmetric; switched on, its curve gets a point in the middle, where the curve is, if it has none

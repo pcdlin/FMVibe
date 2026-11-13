@@ -3064,6 +3064,24 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kShaperEdit);
     view.doubleClick(noteCurveAt(0.25, 0.5), {});
     const bool added = model.value(shaperCurveCountIndex(shaper)) == 4.0;
+    {
+        // The big editor has the SYM switch too, left of its Points | Steps; on, the curve's left half takes no
+        // clicks: a double-click there adds no point, a Shift+click draws no step. Undone, SYM goes off again.
+        const Point sym{detail::kRouting.x + 366.0f, detail::kRouting.y + detail::kRouting.h - 18.0f};
+        const int count = shaperCurveCountIndex(shaper);
+        const double before = model.value(count);
+        click(view, sym);
+        const bool on = at(ShaperParam::Symmetric) == 1.0;
+        const double points = model.value(count);
+        view.doubleClick(noteCurveAt(0.2, 0.3), {});
+        click(view, noteCurveAt(0.3, -0.4), {true, false});
+        const bool ignored = model.value(count) == points;
+        view.mouseMove(noteCurveAt(0.2, 0.3), {});
+        const bool shot = renderer.save(view, dir / "30c-shaper-editor-sym.png");
+        view.undo();
+        check(on && ignored && shot && at(ShaperParam::Symmetric) == 0.0 && model.value(count) == before,
+              "the big curve editor's SYM switches, and its mirrored half takes no clicks");
+    }
     const double driveThen = at(ShaperParam::Drive);
     drag(view, shaperKnob(0), {shaperKnob(0).x, shaperKnob(0).y - 20.0f});
     const bool pageStays = at(ShaperParam::Drive) > driveThen;
@@ -9340,6 +9358,23 @@ void run(const std::filesystem::path &dir, float scale) {
         check(snapped && !model.layout().shapeSnap, "Snap snaps a shaper curve's points in its big editor");
     }
     {
+        // SYM, in its title row left of Points | Steps, switches the curve symmetric here too; its left half then
+        // takes no clicks, a double-click or a Shift+click there doing nothing.
+        const int count = clipCurveCountIndex(0), symmetric = paramIndex(0, FxParam::ShaperSymmetric);
+        const double before = model.value(count);
+        click(view, {536.0f, 158.0f});
+        const bool on = model.value(symmetric) == 1.0;
+        const double points = model.value(count);
+        view.doubleClick(clipAt(0.2, 0.4), {});
+        click(view, clipAt(0.1, -0.6), {true, false});
+        const bool ignored = model.value(count) == points;
+        view.mouseMove(clipAt(0.2, 0.4), {});
+        const bool shot = renderer.save(view, dir / "8c-clip-curve-sym.png");
+        view.undo();
+        check(on && ignored && shot && model.value(symmetric) == 0.0 && model.value(count) == before,
+              "the big curve editor's SYM switches, and its mirrored half takes no clicks");
+    }
+    {
         // Shift+click draws steps here too, as many as on an LFO's shape: one in every column of a grid of 32.
         const int grid = model.layout().shapeGridX;
         model.layout().shapeGridX = 32;
@@ -9377,8 +9412,8 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(0, FxParam::ShaperSymmetric)) == 0.0, "the shaper's SYM is hidden but for Custom");
     {
         // For a Custom curve, SYM shows left of LINK, the two centered together: switched on, it puts a point in the middle of a drawn curve that has none there, and
-        // the curve's left half follows the right one: a double-click there adds the mirror image of a point on the
-        // right, and the middle point can't be deleted. Undone, the middle point goes with the switch.
+        // the curve's left half follows the right one and takes no clicks: a double-click there adds nothing, and the
+        // middle point can't be deleted. Undone, the middle point goes with the switch.
         const int mode = paramIndex(0, FxParam::ShaperMode), symmetric = paramIndex(0, FxParam::ShaperSymmetric);
         const int count = clipCurveCountIndex(0);
         auto point = [&](int p, PointField field) { return model.value(shapeFieldIndex(count, p, field)); };
@@ -9390,14 +9425,12 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool middled = model.value(symmetric) == 1.0 && model.value(count) == 6.0 &&
                              std::abs(point(2, PointField::X) - 0.5) < 1e-9;
         view.doubleClick(cardAt(0.15, -0.3), {});
-        const bool mirroredPoint = model.value(count) == 7.0 && std::abs(point(5, PointField::X) - 0.85) < 0.01 &&
-                                   std::abs(point(5, PointField::Y) - 0.3) < 0.03;
+        const bool leftIgnored = model.value(count) == 6.0;
         view.doubleClick(cardAt(0.5, point(2, PointField::Y)), {});
         view.mouseMove(cardAt(0.85, 0.3), {});
-        check(middled && mirroredPoint && model.value(count) == 7.0 &&
+        check(middled && leftIgnored && model.value(count) == 6.0 &&
                   renderer.save(view, dir / "8g-clip-symmetric.png"),
-              "the shaper's SYM puts a point in the middle, and the curve's left half mirrors its right");
-        view.undo();
+              "the shaper's SYM puts a point in the middle, and the curve's mirrored left half takes no clicks");
         view.undo();
         model.set(thirdX, thirdWas);
         model.set(mode, static_cast<double>(ClipMode::Asymmetric));
