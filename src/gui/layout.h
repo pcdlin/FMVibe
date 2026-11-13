@@ -162,29 +162,34 @@ constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w
 constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpDisplay.h - kOpTabsY};
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
 constexpr float kOpControlsY = kOpDisplay.y + kOpDisplay.h + 25.0f; // the controls' knobs' centers
-// Which tabs an operator has: a plain wave's, a noise operator's, a Wavetable operator's (its TABLE tab too) or a
-// Sample operator's (its SAMPLE tab in WARP's place).
+// Which tabs an operator has: a plain wave's, a noise operator's, a Wavetable operator's (its TABLE tab, which holds
+// its warp, in WARP's place) or a Sample operator's (its SAMPLE tab in WARP's place).
 enum class OpTabs { Plain, Noise, Table, Sample };
 inline Rect opTab(int tab, OpTabs tabs = OpTabs::Plain) {
     // UNISON, ENVELOPE, SCOPE, INPUTS, WARP, SOURCE by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS, a
     // quarter of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it
     // opens WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS, a
-    // third each. A Wavetable operator's are ENVELOPE, UNISON, TABLE, WARP and INPUTS, a fifth each; a Sample operator's
-    // ENVELOPE, UNISON, SAMPLE and INPUTS, a quarter each.
+    // third each. A Wavetable operator's are ENVELOPE, UNISON, TABLE and INPUTS, and a Sample operator's ENVELOPE,
+    // UNISON, SAMPLE and INPUTS, a quarter each.
     constexpr int kPlace[] = {1, 0, 2, 3, 2, 2}, kNoisePlace[] = {1, 0, 2, 2, 2, 2};
-    constexpr int kTablePlace[] = {1, 0, 3, 4, 3, 2}, kSamplePlace[] = {1, 0, 2, 3, 2, 2};
+    constexpr int kDataPlace[] = {1, 0, 2, 3, 2, 2};
     static_assert(std::size(kPlace) == static_cast<size_t>(InspectorTab::Count));
-    const int *places = tabs == OpTabs::Noise ? kNoisePlace
-                        : tabs == OpTabs::Table ? kTablePlace
-                        : tabs == OpTabs::Sample ? kSamplePlace
-                                                 : kPlace;
-    const float count = tabs == OpTabs::Noise ? 3.0f : tabs == OpTabs::Table ? 5.0f : 4.0f;
+    const int *places = tabs == OpTabs::Noise                               ? kNoisePlace
+                        : tabs == OpTabs::Table || tabs == OpTabs::Sample ? kDataPlace
+                                                                            : kPlace;
+    const float count = tabs == OpTabs::Noise ? 3.0f : 4.0f;
     const float w = (kOpWell.w - 8.0f) / count;
     return {kOpWell.x + 4.0f + places[tab] * w, kOpTabsY, w, kOpTabH};
 }
-// The TABLE tab: its display, Position's knob in the middle of the row under it. The SAMPLE tab: its display with the
-// ROOT readout in its top right corner, then LOOP and MODE, each a row of three, under it, named under them.
-constexpr Point kTablePosKnob{kInspector.x + 0.5f * kInspector.w, 0.0f}; // y: kOpControlsY
+// The TABLE tab: its display, then along the row under it Position's knob, the warps' buttons (a little narrower than
+// on the WARP tab), the warp's Amount knob and the NOTE (note sync) switch, as the WARP tab has them. The SAMPLE tab:
+// its display with the ROOT readout in its top right corner, then LOOP and MODE, each a row of three, under it, named
+// under them.
+constexpr Point kTablePosKnob{kInspector.x + 34.0f, 0.0f}; // y: kOpControlsY
+inline Rect tableWarpButton(int warp) {
+    return {kInspector.x + 56.0f + warp * 24.0f, kOpControlsY - 11.0f, 24.0f, 22.0f};
+}
+constexpr Point kTableWarpAmountKnob{kInspector.x + 216.0f, kOpControlsY};
 inline Rect sampleRootBox(Rect display) { return {display.right() - 6.0f - 56.0f, display.y + 4.0f, 56.0f, 16.0f}; }
 inline Rect sampleLoopButton(int choice, float y) {
     return {kInspector.x + 16.0f + choice * 42.0f, y - 10.0f, 42.0f, 20.0f};

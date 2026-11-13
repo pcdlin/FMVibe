@@ -6,6 +6,7 @@
 #include "icons.h"
 #include "layout.h"
 #include "theme.h"
+#include "warp.h"
 
 #include <algorithm>
 #include <cmath>
@@ -131,6 +132,14 @@ void View::opDataWidgets(std::vector<Widget> &list, int op, InspectorTab tab) co
         add(Kind::TableDisplay, kOpDisplay, paramIndex(op, OpParam::TablePos), op);
         add(Kind::Knob, knobRect({kTablePosKnob.x, kOpControlsY}, kOpKnobD), paramIndex(op, OpParam::TablePos)).label =
             tr(Str::LabelPosition);
+        // Its warp, as the WARP tab of a plain wave has it: the warps' buttons, the amount and note sync.
+        const size_t warps = list.size();
+        for (int m = 0; m < static_cast<int>(OpWarp::Count); ++m)
+            add(Kind::Choice, tableWarpButton(m), paramIndex(op, OpParam::Warp), op, m);
+        mergeButtons(list, warps);
+        add(Kind::Knob, knobRect(kTableWarpAmountKnob, kOpKnobD), paramIndex(op, OpParam::WarpAmount)).label =
+            tr(Str::LabelAmount);
+        add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         return;
     }
     if (!sample)
@@ -380,7 +389,8 @@ bool View::paintDataWidget(Canvas &c, const Widget &w, bool hovered, bool active
     }
 }
 
-void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float position, Color color) {
+void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float position, Color color, OpWarp warp,
+                           double amount) {
     const int frames = table.frames;
     if (frames <= 0 || table.pcm.size() < static_cast<size_t>(frames) * FrameTable::kFrameSize)
         return;
@@ -389,20 +399,28 @@ void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, flo
     const float width = r.w - depthX - 12.0f, amp = (r.h - depthY - 14.0f) * 0.45f;
     const float baseX = r.x + 6.0f, baseY = r.bottom() - 7.0f - amp;
     constexpr int kPoints = 96;
-    auto frameAt = [&](double f, float t, Color ink, float thickness) {
+    // A frame read through coefs: the frames behind plainly, the one played as the operator's warp reads it.
+    auto frameAt = [&](double f, float t, Color ink, float thickness, const WarpCoefs &coefs) {
         // By the table's key and frames (a file previewed, under the key 0, apart from Basic Shapes by its frames' count).
         const std::vector<double> key = {static_cast<double>(Curve::TableFrame), static_cast<double>(table.key),
                                          static_cast<double>(frames), static_cast<double>(table.pcm[0]),
-                                         static_cast<double>(table.pcm[table.pcm.size() / 2]), f, r.x, r.y, r.w, r.h};
+                                         static_cast<double>(table.pcm[table.pcm.size() / 2]), f, r.x, r.y, r.w, r.h,
+                                         static_cast<double>(coefs.mode), coefs.a, coefs.b, coefs.c};
         const std::vector<Point> points = curves_.get(key, [&] {
             std::vector<Point> p(kPoints + 1);
             const int a = std::clamp(static_cast<int>(f), 0, frames - 1), b = std::min(a + 1, frames - 1);
             const float blend = static_cast<float>(f - a);
             const float *x = &table.pcm[static_cast<size_t>(a) * FrameTable::kFrameSize];
             const float *y = &table.pcm[static_cast<size_t>(b) * FrameTable::kFrameSize];
+            constexpr int kSize = FrameTable::kFrameSize;
             for (int i = 0; i <= kPoints; ++i) {
-                const int s = std::min(i * FrameTable::kFrameSize / kPoints, FrameTable::kFrameSize - 1);
-                const float v = x[s] * (1.0f - blend) + y[s] * blend;
+                double at = coefs.mode == OpWarp::Off ? static_cast<double>(i) / kPoints
+                                                      : warpPhase(coefs, static_cast<double>(i) / kPoints);
+                at = (at - std::floor(at)) * kSize;
+                const int s = std::min(static_cast<int>(at), kSize - 1), s1 = (s + 1) % kSize;
+                const float frac = static_cast<float>(at - s);
+                const float xa = x[s] + (x[s1] - x[s]) * frac, ya = y[s] + (y[s1] - y[s]) * frac;
+                const float v = xa * (1.0f - blend) + ya * blend;
                 p[i] = {static_cast<float>(i) / kPoints * width, -v * amp};
             }
             return p;
@@ -417,11 +435,11 @@ void View::paintTableStack(Canvas &c, Rect r, const OpData &table, int most, flo
     for (int j = shown - 1; j >= 0; --j) { // the back first, fainter
         const double f = shown > 1 ? std::round(static_cast<double>(j) * (frames - 1) / (shown - 1)) : 0.0;
         const float t = frames > 1 ? static_cast<float>(f / (frames - 1)) : 0.0f;
-        frameAt(f, t, color.alpha(0.12f + 0.38f * (1.0f - t)), 1.0f);
+        frameAt(f, t, color.alpha(0.12f + 0.38f * (1.0f - t)), 1.0f, WarpCoefs{});
     }
     if (position >= 0.0f) { // the frame played, lit at its depth
         const double f = std::clamp(position, 0.0f, 1.0f) * (frames - 1);
-        frameAt(f, frames > 1 ? static_cast<float>(f / (frames - 1)) : 0.0f, color, 2.0f);
+        frameAt(f, frames > 1 ? static_cast<float>(f / (frames - 1)) : 0.0f, color, 2.0f, warpCoefs(warp, amount));
     }
 }
 
@@ -440,7 +458,7 @@ void View::paintTableTab(Canvas &c, Rect r, int op) {
                              ? telemetry_.opTablePos[op]
                              : std::clamp(knob + telemetry_.modOffset[pos], 0.0f, 1.0f);
     const Rect stack{r.x + 4.0f, r.y + 6.0f, r.w - 30.0f, r.h - 10.0f};
-    paintTableStack(c, stack, *d, 32, played, kAccent);
+    paintTableStack(c, stack, *d, 32, played, kAccent, opWarp(op), value(paramIndex(op, OpParam::WarpAmount)));
     // The depth axis along the right: the knob's value ringed, each modulation's reach a band in its source's color as
     // the knob's rings draw it (faint while its source is off or it is bypassed, wider while its depth handle is under
     // the mouse), the frame played a diamond.

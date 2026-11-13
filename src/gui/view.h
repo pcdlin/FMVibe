@@ -1325,7 +1325,9 @@ private:
     void paintTableBrowser(Canvas &c);
     // A table's frames in a stack seen from the side, the front one first, up to `most`, the frame at `position` lit
     // (none for a position below 0).
-    void paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float position, Color color);
+    // A table's frames as a stack, the frame at position (0..1, or none below 0) lit, read through warp at mount.
+    void paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float position, Color color,
+                         OpWarp warp = OpWarp::Off, double amount = 0.0);
     // A press on one of their widgets: false for a kind that isn't theirs.
     bool dataPress(const Widget &w, Point p, Modifiers mods);
     void dataDrag(Point p, bool alt);

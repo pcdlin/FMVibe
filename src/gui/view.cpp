@@ -2581,14 +2581,14 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
             merge(waves);
         }
-        // The tabs, a noise operator's without the scope, a sample's without WARP, a table's and a sample's with their
-        // own, then what the shown one holds.
+        // The tabs, a noise operator's without the scope, a table's and a sample's with their own in WARP's place (a
+        // table's holding its warp), then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
         const auto tabs = static_cast<OpTabs>(opTabsOf(op));
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
             if (const auto shown = static_cast<InspectorTab>(t);
                 shown != InspectorTab::Scope &&
-                !(shown == InspectorTab::Warp && (tabs == OpTabs::Noise || tabs == OpTabs::Sample)) &&
+                !(shown == InspectorTab::Warp && tabs != OpTabs::Plain) &&
                 !(shown == InspectorTab::Source && tabs != OpTabs::Table && tabs != OpTabs::Sample))
                 add(Kind::OpTab, opTab(t, tabs), -1, t);
         opDataWidgets(list, op, tab);
@@ -6212,10 +6212,10 @@ void View::paintInputs(Canvas &c, int op) {
 InspectorTab View::opTabShown(int op) const {
     const InspectorTab tab = controller_.layout().opTab;
     const bool data = isTableOp(op) || isSampleOp(op);
-    // A sample has no WARP: its SAMPLE tab is in WARP's place. An operator without a table or a sample, its envelope
-    // in the TABLE or SAMPLE tab's.
+    // A table or a sample has no WARP: its TABLE or SAMPLE tab is in WARP's place (a table's with its warp). An
+    // operator without a table or a sample, its envelope in the TABLE or SAMPLE tab's.
     if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WARP tab
-        return isNoise(op) ? InspectorTab::Envelope : isSampleOp(op) ? InspectorTab::Source : InspectorTab::Warp;
+        return isNoise(op) ? InspectorTab::Envelope : data ? InspectorTab::Source : InspectorTab::Warp;
     if (tab == InspectorTab::Source && !data)
         return InspectorTab::Envelope;
     return tab;
@@ -6233,6 +6233,8 @@ bool View::opTabModulated(int op, InspectorTab tab) const {
     }
     if (tab == InspectorTab::Warp && !isNoise(op))
         params = {paramIndex(op, OpParam::WarpAmount)};
+    if (tab == InspectorTab::Source && isTableOp(op)) // Position, and the warp's amount beside it
+        params = {paramIndex(op, OpParam::TablePos), paramIndex(op, OpParam::WarpAmount)};
     for (const Assignment &m : assignments())
         if (std::find(params.begin(), params.end(), m.target) != params.end())
             return true;

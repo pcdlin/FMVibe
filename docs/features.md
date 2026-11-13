@@ -1328,14 +1328,16 @@ one may have changed since it last did.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
-    - **TABLE** (a Wavetable operator's, between UNISON and WARP; picking TABLE, or importing a table, opens it): the
-      table's frames as a stack seen from a little above and to the side, the first at the front, the frame Position
-      plays lit in the accent over them, and Position in % at the top left. Along the right, a depth axis: the knob's
+    - **TABLE** (a Wavetable operator's, in WARP's place: it has no WARP tab, and no scope; picking TABLE, or
+      importing a table, opens it, and a layout left on WARP shows it): the table's frames as a stack seen from a
+      little above and to the side, the first at the front, the frame Position plays lit in the accent over them,
+      drawn as the warp reads it (not as note sync restarts it), and Position in % at the top left. Along the right, a depth axis: the knob's
       value ringed, each modulation's reach as a band in its source's color, as the Position knob's rings draw it (faint
       while the source is off or the modulation bypassed, wider while its depth handle is under the mouse), and the
       frame the newest voice plays as a diamond (with no
       note, the knob's value with its modulation). Dragged up and down, the display sets Position, as the
-      **Position** knob under it does.
+      **Position** knob under it does. Along the row under it, after Position, the warp as the WARP tab has it: the
+      warps' buttons, its **Amount** and **NOTE** (note sync).
     - **SAMPLE** (a Sample operator's, in WARP's place): the sample's waveform, its name at the top left and its
       **ROOT** at the top right (dragged up and down, or typed after a double-click: a note name or number). Over its upper
       part the loop's brackets, Loop Start's and Loop End's handles (Alt+drag puts them on zero crossings), the loop

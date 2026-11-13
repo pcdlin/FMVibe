@@ -7749,8 +7749,15 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
               detail::kOpDisplay.y == lens.y + 194.0f && detail::kOpControlsY == lens.y + 315.0f &&
               detail::kOpControlsY + 0.5f * detail::kOpKnobD + 18.0f <= lens.bottom() - 10.0f &&
               detail::kOpWellTall.bottom() <= lens.bottom() &&
-              detail::opTab(static_cast<int>(InspectorTab::Inputs), detail::OpTabs::Table).right() <= detail::kOpWell.right() + 0.5f,
-          "the operator's block makes room for the source switch, its well and controls inside the lens, five tabs fitting");
+              detail::opTab(static_cast<int>(InspectorTab::Inputs), detail::OpTabs::Table).right() <= detail::kOpWell.right() + 0.5f &&
+              detail::opTab(static_cast<int>(InspectorTab::Warp), detail::OpTabs::Table).x ==
+                  detail::opTab(static_cast<int>(InspectorTab::Source), detail::OpTabs::Table).x &&
+              detail::kTablePosKnob.x + 0.5f * detail::kOpKnobD < detail::tableWarpButton(0).x &&
+              detail::tableWarpButton(static_cast<int>(OpWarp::Count) - 1).right() <
+                  detail::kTableWarpAmountKnob.x - 0.5f * detail::kOpKnobD &&
+              detail::kTableWarpAmountKnob.x + 0.5f * detail::kOpKnobD < detail::kSyncButton.x,
+          "the operator's block makes room for the source switch, its well and controls inside the lens; a Wavetable "
+          "operator's four tabs fit, its TABLE tab in WARP's place, and Position, the warps, Amount and NOTE along its row");
     renderer.save(view, dir / "wt-0-saw.png");
     const uint32_t below = renderer.pixel({lens.center().x, lens.bottom() + 3.0f});
 
@@ -7846,6 +7853,43 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(slotTargetIndex(2, 0), 0.0);
         model.set(slotAmountIndex(2, 0), 0.0);
         model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::None));
+    }
+
+    // The warp is on the TABLE tab, where a Wavetable operator has no WARP tab (nor a scope): its buttons pick the warp,
+    // its knob the amount and NOTE note sync, each an undo step, and the played frame is drawn as the warp reads it
+    // (read off the rendered pixels). A layout left on WARP shows the TABLE tab.
+    {
+        const int warp = paramIndex(0, OpParam::Warp), amount = paramIndex(0, OpParam::WarpAmount),
+                  sync = paramIndex(0, OpParam::Sync);
+        model.set(position, 0.0);
+        model.ui.opTab = InspectorTab::Warp;
+        view.poll();
+        const Point away{lens.center().x, lens.y + 40.0f};
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "wt-4c-warp-plain.png");
+        const std::vector<uint32_t> plain = strip();
+        const bool noScope = model.scopeOp == -1;
+        click(view, detail::tableWarpButton(static_cast<int>(OpWarp::Squeeze)).center());
+        const bool picked = std::lround(model.value(warp)) == static_cast<long>(OpWarp::Squeeze);
+        const Point knobAt = detail::kTableWarpAmountKnob;
+        drag(view, knobAt, {knobAt.x, knobAt.y - 40.0f});
+        const bool turned = model.value(amount) > 0.05;
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "wt-4d-warp-squeezed.png");
+        const bool drawn = strip() != plain;
+        click(view, detail::kSyncButton.center());
+        const bool synced = model.value(sync) >= 0.5;
+        view.undo(); // NOTE
+        view.undo(); // the amount
+        view.undo(); // the warp
+        const bool undone = model.value(sync) < 0.5 && model.value(amount) == 0.0 &&
+                            std::lround(model.value(warp)) == static_cast<long>(OpWarp::Off);
+        std::printf("      TABLE tab's warp: no scope %d, picked %d, turned %d, drawn %d, NOTE %d, undone %d\n", noScope,
+                    picked, turned, drawn, synced, undone);
+        check(noScope && picked && turned && drawn && synced && undone,
+              "a Wavetable operator's TABLE tab holds its warp (no WARP tab, no scope): the buttons, Amount and NOTE "
+              "each an undo step, the played frame drawn as the warp reads it");
+        model.ui.opTab = InspectorTab::Source;
     }
 
     // Importing a Serum table: one undo step that sets the table and opens its tab; undone, the factory table again.

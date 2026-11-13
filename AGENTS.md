@@ -669,11 +669,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
     text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
   - an operator's source switch: the block making room for it, the knobs, the well and the controls' labels inside
-    the lens and a Wavetable's five tabs fitting; TABLE making the operator a Wavetable and opening its tab, WAVE
+    the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place) with Position, the warps, Amount
+    and NOTE along its row; TABLE making the operator a Wavetable and opening its tab, WAVE
     bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
     picker opening the table browser, a row picking a table, Done closing it and the steps going through the tables;
     Position's knob turning and the lit frame in the stack moving with it, and a modulated Position's band on the
-    depth axis in the color of the knob's ring (both read off the rendered pixels); a table
+    depth axis in the color of the knob's ring (both read off the rendered pixels); the warp on the TABLE tab, a
+    layout left on WARP showing it and asking for no scope, its buttons, Amount and NOTE each an undo step and the
+    played frame drawn warped (read off the rendered pixels); a table
     imported, undone back to the factory table and redone, its data kept while the history names it; the browser's
     Import file... opening the file dialog;
   - the table browser over a library of made-up folders: a folder's table loading from its row, the preview drawing
