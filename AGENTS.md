@@ -491,8 +491,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a switched-off band's handle pressed switching it on, undoably, and
     its shape's list (the third band's inside the card) picking the shape, a notch's handle moving only across, and
     its Amount knob setting the whole EQ's amount;
-  - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
-    off the rendered pixels), and the attack's below 1 ms, to 0.5 ms and to 0 ms, drawn as a vertical line (read off
+  - dragging an envelope's handles, pushed past the display's end too, where the envelope zooms out poll by poll
+    to stay inside as the segment grows (read off the rendered pixels), its zoom held while the mouse stays over the
+    display and easing back to filling it once the mouse leaves (read off the rendered pixels), and the attack's below 1 ms, to 0.5 ms and to 0 ms, drawn as a vertical line (read off
     the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
     over the curve (read off the rendered pixels);
   - an operator page's ENVELOPE, UNISON and WARP tabs: a line across the envelope at the newest voice's level,

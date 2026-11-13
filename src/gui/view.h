@@ -411,7 +411,6 @@ private:
         bool leftNode = false; // a route being dragged has been well clear of the node it comes from
         bool fine = false;
         bool snap = false; // shape points snap to a grid
-        float envScale = 0.0f; // an envelope's zoom, held while one of its handles is dragged
         bool step = false; // an undo step is open until the drag ends (moving nodes or cards)
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
@@ -1236,9 +1235,18 @@ private:
     void startTyping(const Widget &w);
     // Where the value being typed shows, over the number it replaces.
     Rect typingField() const;
-    // Pixels per unit of normalized time: what fills the display, or while a drag of its handles goes on, what it
-    // was when the drag began, as long as the envelope still fits.
+    // Pixels per unit of normalized time: what fills the display, or while its zoom is held (see envZoom_), the held
+    // zoom, as long as the envelope still fits.
     float envScale(int env) const;
+    // The envelope whose attack, hold, decay or release param `index` is, or -1.
+    static int envOfTime(int index);
+    // A drag holding an envelope's zoom: one of its handles, or one of its times' knobs.
+    int envDragged() const;
+    // The held zoom goes back to filling the display (see envZoom_) once the mouse is at `p`, clear of it.
+    void envZoomLeft(Point p);
+    // Each poll: a dragged handle pushed past where the envelope's end meets the display's zooms it out, its segment
+    // growing under the mouse; a zoom let go eases back to filling the display. Whether either moved it.
+    bool envZoomStep();
     void applyDrag(Point p);
     // Ends the drag going on: its gestures and undo step, a key it plays, the bend wheel it holds. When the button
     // goes up, after what letting go does; or when its button-up never came, at the next press.
@@ -1477,6 +1485,16 @@ private:
     bool widgetDimmed(const Widget &w, const std::vector<DimArea> &areas) const;
     void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown);
     Drag drag_;
+    // An envelope's zoom, held from when one of its handles or one of its times' knobs is grabbed: while the drag goes
+    // on, and after it while the mouse stays over its display, so the handles stay where they were put. Once the mouse
+    // is clear of it, the zoom eases back to filling the display (`easing`). Only ever as far in as fits the envelope
+    // (see envScale()). env -1: none held.
+    struct EnvZoom {
+        int env = -1;
+        float scale = 0.0f;
+        bool easing = false;
+    };
+    EnvZoom envZoom_;
     // What the last press hit, as it went down, and where: a double-click after it goes with it.
     std::optional<Widget> pressed_;
     Point pressPoint_{-1000.0f, -1000.0f};

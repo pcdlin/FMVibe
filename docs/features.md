@@ -1302,10 +1302,14 @@ one may have changed since it last did.
     (release). The release starts at the sustain level's point: the sustain has no length of its own, lasting as
     long as the key is held, so the display gives it none. The small dot halfway along the attack, decay and release bends that segment (drag up or down,
     double-click to straighten it, to 0 %). A hovered or dragged handle's values show at the display's top right,
-    over the curve. The display always zooms to fit the whole envelope across its width, so the handles of
-    short segments stay apart; the zoom holds still while a handle is dragged, so it stays under the mouse, until
-    the envelope would run past the display's end: then it zooms out to keep all of it in, the handle at the end,
-    and dragging on lengthens the segment further. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
+    over the curve. At rest the display zooms to fit the whole envelope across its width, so the handles of
+    short segments stay apart. Once a handle, or one of the envelope's time knobs, is dragged, the zoom holds still:
+    while the drag goes on, and after it as long as the mouse stays over the display, so a handle stays where it
+    was put and the others don't move. A handle stops where the envelope's end meets the display's end; pushed on
+    past there, the display zooms out a little at a time, the further past the faster, and the segment grows with
+    the handle still at the end. A knob turned so far that the envelope would run past the end zooms it out to keep
+    all of it in. Once the mouse leaves the display, the zoom eases back to filling it over a few tenths of a
+    second. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
   - Shapers: the summary (its curve, what feeds it, the filters it feeds, whether it goes out and the operators it
     modulates, as a filter's has), its curve's list with the link switch beside it, and for a Custom curve the
     symmetric one between them (as on the shaper effect's card), the Drive, Output and Mix knobs, centered under them
