@@ -1142,7 +1142,9 @@ one may have changed since it last did.
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has
   ended, as the effects' key tracking keeps it; a high note's span holds a whole multiple of two periods, at least half
   a millisecond). Its spans follow one another at that pitch, so a sound that repeats with the note stands still
-  whatever its wave, and a new note starts them over from where it starts; silence shows as a flat line. Its points
+  whatever its wave, and a new note starts them over from where it starts; silence shows as a flat line. A low note's
+  spans, coming more than 15 ms apart, blend one into the next over the time between them, so the trace moves smoothly
+  a span behind rather than jumping a span at a time. Its points
   fall between samples, and are taken band-limited from the 16 samples around them, so a wave dense with high
   partials looks the same wherever the samples fall in it. The trace is
   drawn to a level that follows its peaks, up at once and down to a third in about 300 ms, so a level moving from
@@ -1220,7 +1222,8 @@ one may have changed since it last did.
       is drawn at its level, between dashed lines at full scale, its level in dB in the top left corner: following
       its peaks as the header's output scope does, up at once and down slowly, so it doesn't flicker. A slow
       operator, whose cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left
-      of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
+      of the last span faint after it; one whose spans come more than 15 ms apart blends each span into the next, as
+      the output scope does. With no note playing, the wave's plain shape shows faintly. The audio thread
       captures only while the tab is shown.
 
     A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is

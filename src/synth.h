@@ -82,6 +82,10 @@ constexpr int kOutScopeBins = 128;
 constexpr int kOutScopePeriods = 2;
 constexpr double kOutScopeMinSpan = 0.0005;
 constexpr int kOutScopeTaps = 16; // the samples each point is interpolated from (see Synth::OutScopeCapture)
+// A scope whose whole spans come further apart than this, in seconds (a low note's), shows each span blending into
+// the next over the time between them, rather than one span at a time: it moves at every snapshot the editor takes,
+// a span behind. Spans that come quicker show as they are.
+constexpr double kScopeBlendSpan = 0.015;
 
 struct Telemetry {
     std::array<float, kModulatedCount> modOffset{}; // LFO/envelope modulation, in plain units
@@ -628,9 +632,41 @@ private:
     std::array<double, 2> outPeak_{};
     double clipHold_ = 0.0;
     void meterOutput(const float *left, const float *right, uint32_t frames);
+    // A scope's spans blending one into the next (see kScopeBlendSpan): what the telemetry shows moves from `from`
+    // to the span published last over as long as that span took to come, so it reaches it about as the next one
+    // comes. Should one come sooner, the blend goes on from where it stood, so what shows never jumps.
+    template <int Bins> struct ScopeBlend {
+        std::array<float, Bins> from{};
+        int64_t since = 0; // samples since the last span was published
+        int64_t span = 0;  // samples the blend takes (0: none, the last span showing as it is)
+        // How far the blend has gone, 0..1.
+        double done() const { return span > 0 ? std::min(1.0, static_cast<double>(since) / span) : 1.0; }
+        // A new span is about to replace `frame` (its first `bins`); `slow` samples apart, spans blend.
+        void publish(const std::array<float, Bins> &frame, int bins, bool had, int64_t slow) {
+            if (had && since >= slow) {
+                const float t = static_cast<float>(done());
+                for (int bin = 0; bin < bins; ++bin)
+                    from[bin] += (frame[bin] - from[bin]) * t;
+                span = since;
+            } else {
+                span = 0;
+            }
+            since = 0;
+        }
+        // What shows of `frame` now, into `out`.
+        template <class Out> void show(const std::array<float, Bins> &frame, int bins, Out &out) const {
+            const float t = static_cast<float>(done());
+            if (t >= 1.0f)
+                std::copy_n(frame.begin(), bins, out.begin());
+            else
+                for (int bin = 0; bin < bins; ++bin)
+                    out[bin] = from[bin] + (frame[bin] - from[bin]) * t;
+        }
+    };
     // The scope (see Telemetry::scope): each sample of the operator goes in at its copy 0's phase, which FM doesn't
     // move, so a span starts where a cycle does and stands still under FM; the points between two samples are drawn
-    // in between them. A span is published whole once it is full.
+    // in between them. A span is published whole once it is full, and blends in from the one before (see
+    // ScopeBlend).
     struct ScopeCapture {
         int op = -1;
         int cycles = 2;
@@ -648,6 +684,7 @@ private:
         int64_t rest = 0;       // samples still to let go by before the next span is filled
         std::array<float, kScopeBins> filling{};
         std::array<float, kScopeBins> frame{};
+        ScopeBlend<kScopeBins> blend;
     };
     ScopeCapture scope_;
     const Voice *scopeVoice_ = nullptr; // the voice whose operator the scope takes, this control block
@@ -666,6 +703,7 @@ private:
         int newest = 0;
         std::array<float, kOutScopeBins> filling{};
         std::array<float, kOutScopeBins> frame{};
+        ScopeBlend<kOutScopeBins> blend;
     };
     OutScopeCapture outScope_;
     void captureOutput(const float *left, const float *right, uint32_t frames);

@@ -274,12 +274,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     transport is stopped, and a random one stepping as the transport passes a cycle;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
-    at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, and a high operator's
-    (a cycle of 4.5 samples) for little more than the voice costs;
+    at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, a low note's (an A0's)
+    standing still while held and, let go of, blending each span into the next, moving at every snapshot in small
+    steps, and a high operator's (a cycle of 4.5 samples) for little more than the voice costs;
   - the header's output scope capturing nothing until the synth analyzes for the editor, then two periods of the
     note, standing still from one span to the next: a sine, a wave crossing 0 many times a period, one repeating
-    every other period and a high note's over more periods; falling silent with the output, and nothing once
-    switched off;
+    every other period and a high note's over more periods; a low note's blending each span into the next, as the
+    operator scope's does; falling silent with the output, and nothing once switched off;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's

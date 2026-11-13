@@ -2419,6 +2419,57 @@ void bendTelemetryChecks() {
           "the telemetry tells where the bend stands, the host's MIDI bend and modulation on top of the param as set");
 }
 
+// How a low note's scope moves as the note is let go of, from a snapshot every 8 ms (as the plugin takes them for the
+// editor) over two and a half of its spans: whether it held still while the note did, how many snapshots were the same
+// as the one before, and the largest step of its peak from one snapshot to the next, as a share of how far the peak
+// fell. Blending each span into the next, it moves at every snapshot in small steps; a span at a time, it would stand
+// still for most of them, then jump.
+struct ScopeMotion {
+    bool heldStill = false;
+    int repeats = 0;
+    double largestStep = 1.0;
+};
+template <class Span> ScopeMotion lowNoteMotion(Engine &e, Telemetry &t, const Span &span) {
+    auto take = [&] {
+        e.synth().telemetry(t);
+        const auto values = span(t);
+        return std::vector<float>(values.begin(), values.end());
+    };
+    auto peakOf = [](const std::vector<float> &values) {
+        float peak = 0.0f;
+        for (float v : values)
+            peak = std::max(peak, std::abs(v));
+        return static_cast<double>(peak);
+    };
+    e.p[paramIndex(0, OpParam::Release)] = normFromEnvTime(2.0);
+    e.noteOn(21); // A0, 27.5 Hz: two cycles take 73 ms
+    e.render(9600);
+    ScopeMotion motion;
+    const std::vector<float> held = take();
+    e.render(kBlock * 3 + 7);
+    const std::vector<float> later = take();
+    double most = 0.0;
+    for (size_t bin = 0; bin < held.size(); ++bin)
+        most = std::max(most, static_cast<double>(std::abs(later[bin] - held[bin])));
+    motion.heldStill = !held.empty() && peakOf(held) > 0.1 && most < 0.02 * peakOf(held);
+    e.noteOff(21);
+    std::vector<double> peaks;
+    std::vector<float> last = take();
+    for (int snapshot = 0; snapshot < 24; ++snapshot) {
+        e.render(384);
+        std::vector<float> now = take();
+        motion.repeats += now == last;
+        peaks.push_back(peakOf(now));
+        last = std::move(now);
+    }
+    const double drop = peaks.front() - peaks.back();
+    double largest = 0.0;
+    for (size_t k = 1; k < peaks.size(); ++k)
+        largest = std::max(largest, std::abs(peaks[k] - peaks[k - 1]));
+    motion.largestStep = drop > 0.0 ? largest / drop : 1.0;
+    return motion;
+}
+
 // The scope: an operator's output, phase-locked to it, captured only while asked for.
 void scopeChecks() {
     std::printf("scope:\n");
@@ -2505,6 +2556,21 @@ void scopeChecks() {
     std::printf("      a square: %.4f like one; a low note's span filled %.2f of the way\n", squareLike, cursor);
     check(squareLike > 0.95 && cursor > 0.0f && cursor < 1.0f && telemetry->scopeBins == 0,
           "the scope takes a square's shape, shows a slow span as it fills, and stops when not asked");
+
+    // A low note's span, quicker than a slow one, blends into the next.
+    {
+        Engine low(2);
+        low.synth().setScope(0, 2);
+        const ScopeMotion motion = lowNoteMotion(low, *telemetry, [](const Telemetry &t) {
+            return std::span<const float>(t.scope.data(), static_cast<size_t>(t.scopeBins));
+        });
+        std::printf("      an A0 let go of: %d of 24 snapshots as the one before, its peak's largest step %.3f of its "
+                    "fall\n",
+                    motion.repeats, motion.largestStep);
+        check(motion.heldStill && motion.repeats == 0 && motion.largestStep < 0.2,
+              "a low note's scope stands still while held, and blends each span into the next, moving at every "
+              "snapshot");
+    }
 
     // A high operator, a cycle of 4.5 samples (24 x A4 at 1x): the scope still shows a sine, standing still (but
     // for the lines between samples moving a little with where the samples fall in the cycle), and costs little more
@@ -2648,6 +2714,20 @@ void outScopeChecks() {
         }
         std::printf("      a 7 kHz note: moving by %.4f of its peak\n", peak > 0.0 ? most / peak : 1.0);
         check(peak > 0.1 && most < 0.03 * peak, "a high note's output scope stands still, over more periods");
+    }
+
+    // A low note's spans blend one into the next.
+    {
+        Engine low(2);
+        low.synth().setAnalyzing(true);
+        const ScopeMotion motion = lowNoteMotion(
+            low, *telemetry, [](const Telemetry &t) { return std::span<const float>(t.outScope.data(), t.outScope.size()); });
+        std::printf("      an A0 let go of: %d of 24 snapshots as the one before, its peak's largest step %.3f of its "
+                    "fall\n",
+                    motion.repeats, motion.largestStep);
+        check(motion.heldStill && motion.repeats == 0 && motion.largestStep < 0.2,
+              "a low note's output scope stands still while held, and blends each span into the next, moving at every "
+              "snapshot");
     }
 
     // Let go of, the note fades to silence, which the scope takes too; switched off, it shows nothing.
