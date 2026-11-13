@@ -321,6 +321,25 @@ private:
         // The warp it plays (see warp.h) and its amount, which goes to 0 before the warp changes to another one.
         OpWarp warp = OpWarp::Off;
         double warpNow = 0.0;
+    };
+
+    // What a Sample operator plays this block (see renderBlock()): the level its copies read and how its playheads move.
+    struct SampleRead {
+        const SampleMips *mips = nullptr;
+        int level = 0;
+        double scale = 1.0;       // the level's samples a level-0 sample: 2^-level
+        double stepScale = 0.0;   // level-0 samples a sample, for each cycle a sample its increment says
+        double pmScale = 0.0;     // level-0 samples for a cycle of phase modulation: a period of its root
+        double maxStep = 0.0;     // the most a copy moves a sample, either way
+        double length = 0.0;      // level-0 samples
+        double loopFrom = 0.0, loopTo = 0.0; // its loop, level-0 samples; none if loopTo <= loopFrom
+        double fade = 0.0;        // the loop's crossfade, level-0 samples before its end
+        double endFade = 0.0;     // a fade into its end, level-0 samples, where it plays out
+        bool pingPong = false;
+    };
+    // A Wavetable or Sample operator's own state, kept apart from Operator (in Voice::plays), so the plain operators'
+    // data is laid out as it was: grown by this, the voices' loops ran slower in the plugins' MSVC build.
+    struct PlayState {
         // A Wavetable operator's Position, moving to each block's a sample at a time.
         double posNow = 0.0;
         bool posKnown = false;
@@ -334,6 +353,11 @@ private:
         bool leftLoop = false;     // let go of in Sustain or One-Shot: its copies play on past the loop to the end
         bool oneShot = false;      // a One-Shot sample with data, whose envelope letting go of the key leaves alone
         bool finished = false;     // a sample that has played to its end: its envelope is stopped, it is silent
+        // This block's: a table's level and its Position's step and target, a sample's reading. Here rather than in
+        // renderBlock()'s frame, which grown by them made the plain loops slower in MSVC's build.
+        int tableLevel = 0;
+        double posStep = 0.0, posTarget = 0.0;
+        SampleRead read{};
     };
 
     struct Lfo {
@@ -450,6 +474,7 @@ private:
         std::array<uint16_t, kVoiceParamCount> modded{};
         int moddedCount = 0;
         std::bitset<kVoiceParamCount> modSet;
+        std::array<PlayState, kOps> plays{}; // the operators' (see PlayState)
     };
 
     struct HeldNote {
@@ -528,24 +553,18 @@ private:
                                  const UnisonGains *gains, bool sides, const std::array<double, kMaxUnison> &syncIncStep,
                                  double warpStep);
     // A Wavetable operator's sample, neither synced nor warped: as the plain loop's, through its frames.
-    static OpSample tableSample(Operator &op, const FrameTable &table, int level, double posStep, double offset,
-                                double factor, int copies, const UnisonGains *gains, bool sides);
-    // What a Sample operator plays this block (see renderBlock()): the level its copies read and how its playheads move.
-    struct SampleRead {
-        const SampleMips *mips = nullptr;
-        int level = 0;
-        double scale = 1.0;       // the level's samples a level-0 sample: 2^-level
-        double stepScale = 0.0;   // level-0 samples a sample, for each cycle a sample its increment says
-        double pmScale = 0.0;     // level-0 samples for a cycle of phase modulation: a period of its root
-        double maxStep = 0.0;     // the most a copy moves a sample, either way
-        double length = 0.0;      // level-0 samples
-        double loopFrom = 0.0, loopTo = 0.0; // its loop, level-0 samples; none if loopTo <= loopFrom
-        double fade = 0.0;        // the loop's crossfade, level-0 samples before its end
-        double endFade = 0.0;     // a fade into its end, level-0 samples, where it plays out
-        bool pingPong = false;
-    };
-    static OpSample sampleSample(Operator &op, const SampleRead &read, double offset, double factor, int copies,
-                                 const UnisonGains *gains, bool sides);
+    static OpSample tableSample(Operator &op, PlayState &play, const FrameTable &table, double offset, double factor,
+                                int copies, const UnisonGains *gains, bool sides);
+    static OpSample sampleSample(Operator &op, PlayState &play, const SampleRead &read, double offset, double factor,
+                                 int copies, const UnisonGains *gains, bool sides);
+    // A Sample operator's reading for this block (`data` null for an operator playing none, which only lets go of a
+    // One-Shot it was), and its copies started over for a new note.
+    void prepareSample(Voice &v, Operator &op, PlayState &play, int i, const double *p, const OpData *data,
+                       double highest, int copies) const;
+    // The sample of an operator renderBlock() doesn't read in its plain loops: synced, warped, a table or a sample.
+    OpSample specialSample(Operator &op, PlayState &play, int i, const float *wave, bool warped, bool table,
+                           bool sample, double offset, double factor, int copies, const UnisonGains *gains, bool sides,
+                           const std::array<double, kMaxUnison> &syncIncStep, double warpStep) const;
     // Brings the filters' block down to the host rate and measures it.
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
     // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.
