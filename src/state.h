@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -70,5 +71,19 @@ Settings readSettings(const clap_istream_t *stream);
 bool writePresetChunk(const clap_ostream_t *stream, bool edited, const std::string &file);
 // False when the state doesn't say which preset it was.
 bool readPresetChunk(const clap_istream_t *stream, std::string &file, bool &edited);
+
+// The DATA chunk: the tables and samples the patch's Wavetable and Sample operators play from their own data (see
+// OpParam::Table), each as it is stored (see OpData), so a project or preset plays them on any machine. It comes last:
+// in the host's state after the preset chunk, in a preset file after the layout. An older build stops reading before
+// it, and plays those operators as Vowel. Its layout: magic, chunk version (1), entry count, then each entry: its
+// bytes after this count (so a reader can skip a kind it doesn't know), key, kind, rate, frame size, frames (a table's)
+// or samples (a sample's), root (a float), loop start and end, sample format (1 int16, 2 float32), the name's length
+// and its UTF-8 bytes (at most 255), the samples, then the origin's and the format tag's lengths and bytes. Every field
+// a 32-bit little-endian word but the names and samples.
+struct OpData;
+bool writeDataChunk(const clap_ostream_t *stream, const std::vector<const OpData *> &data);
+// The entries it holds, as stored (not built: see buildOpData()). False when the stream holds no DATA chunk next; a
+// chunk cut short keeps the entries that came whole, and an entry that doesn't hold together is left out.
+bool readDataChunk(const clap_istream_t *stream, std::vector<std::shared_ptr<OpData>> &out);
 
 } // namespace fmvibe

@@ -61,6 +61,16 @@ class FMVibeProcessor extends AudioWorkletProcessor {
       case 'buffer':
         this.spare.push(message.buffer);
         break;
+      case 'data': { // a Wavetable or Sample operator's data, built here between blocks
+        const floats = message.floats;
+        const at = this.dsp.dsp_data_buffer(floats.length); // may grow the memory: the view after it
+        new Float32Array(this.dsp.memory.buffer, at, floats.length).set(floats);
+        this.dsp.dsp_data(message.key, message.kind, message.rate, message.frames, message.root);
+        break;
+      }
+      case 'dataRelease':
+        this.dsp.dsp_data_release(message.key);
+        break;
     }
   }
 

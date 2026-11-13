@@ -970,10 +970,10 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
 
     // Typing values: a double-click on a knob's number opens a field, Enter sets what it reads as.
-    doubleClick(view, {kOpPhaseKnob.x, 266.0f});
+    doubleClick(view, {kOpPhaseKnob.x, kOpPhaseKnob.y + 20.0f}); // its number, under it
     const bool typingOn = view.typing();
     type(view, "50");
-    view.mouseMove({kOpPhaseKnob.x, 266.0f}, {});
+    view.mouseMove({kOpPhaseKnob.x, kOpPhaseKnob.y + 20.0f}, {});
     check(typingOn && renderer.save(view, dir / "16-typing.png"), "render a value being typed");
     view.typeKey(View::Key::Enter);
     check(!view.typing() && std::abs(model.value(opPhase) - 0.5) < 1e-9, "a typed value sets the knob");
@@ -6264,10 +6264,10 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
               pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 5.0f, depth.y - 2.0f) != top,
           "an INPUTS row's modulated depth has its handles under it and its ranges just above it, its number as it was");
 
-    // The sixth row's depth is F1's; two notches down over the names, the eighth's, the feedback's, is there.
-    const Point sixth{depth.center().x, depth.center().y + 5.0f * 30.0f};
+    // The fifth row's depth is F1's; three notches down over the names, the eighth's, the feedback's, is there.
+    const Point sixth{depth.center().x, depth.center().y + 4.0f * 30.0f};
     const float names = detail::inputsName(detail::kInputsTop).center().x;
-    view.wheel({names, detail::kInputsTop + 18.0f}, -2.0f, {});
+    view.wheel({names, detail::kInputsTop + 18.0f}, -3.0f, {});
     view.poll();
     const bool scrolledShot = renderer.save(view, dir / "5n-op-inputs-scrolled.png");
     drag(view, sixth, {sixth.x, sixth.y - 20.0f});
@@ -6280,10 +6280,10 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, depth.center(), {depth.center().x, depth.center().y - 20.0f});
     const bool back = model.value(detail::routeParam(1, 0)) > 0.5;
     view.undo();
-    // Dragged up 60 px with the middle button over the names, the rows follow: the feedback's is the sixth again.
+    // Dragged up 90 px with the middle button over the names, the rows follow: the feedback's is the fifth again.
     view.middleDown({names, detail::kInputsTop + 108.0f});
-    view.mouseMove({names, detail::kInputsTop + 48.0f}, {});
-    view.middleUp({names, detail::kInputsTop + 48.0f});
+    view.mouseMove({names, detail::kInputsTop + 18.0f}, {});
+    view.middleUp({names, detail::kInputsTop + 18.0f});
     drag(view, sixth, {sixth.x, sixth.y - 20.0f});
     const bool panned = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
     check(scrolledShot && feedback && back && panned,

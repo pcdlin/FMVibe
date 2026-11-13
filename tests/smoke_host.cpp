@@ -35,6 +35,8 @@ void check(bool ok, const char *what) {
 
 // The sizes the editor asked the host for (gui's request_resize).
 std::vector<std::pair<uint32_t, uint32_t>> resizeRequests;
+// The plugin asked for on_main_thread(): the blocks run it after them, as a host's main thread would soon.
+bool callbackRequested = false;
 
 const clap_host_gui_t kHostGui = {
     [](const clap_host_t *) {}, // resize_hints_changed
@@ -59,7 +61,7 @@ const clap_host_t kHost = {
     },
     [](const clap_host_t *) { ++restartRequests; },
     [](const clap_host_t *) { ++processRequests; },
-    [](const clap_host_t *) {}, // request_callback
+    [](const clap_host_t *) { callbackRequested = true; }, // request_callback: on_main_thread() after the block
 };
 
 struct InputEvents {
@@ -492,6 +494,10 @@ int main(int argc, char **argv) {
     auto runBlock = [&](std::vector<const clap_event_header_t *> events = {}) {
         in.events = std::move(events);
         status = plugin->process(plugin, &proc);
+        if (callbackRequested) { // a Wavetable operator's table to build, say
+            callbackRequested = false;
+            plugin->on_main_thread(plugin);
+        }
         if (status == CLAP_PROCESS_ERROR)
             return NAN;
         float peak = 0.0f;
@@ -967,6 +973,8 @@ int main(int argc, char **argv) {
     // Operator waves.
     bool wavesSound = true;
     for (int w = 0; w < static_cast<int>(OpWave::Count); ++w) {
+        if (static_cast<OpWave>(w) == OpWave::Sample)
+            continue; // with no sample, silent (the samples' checks below play one)
         const float peak = peakOf(play({.wave = static_cast<OpWave>(w)}));
         if (!(peak > 0.05f && peak < 1.0f)) {
             std::printf("      wave %d: peak %g\n", w, peak);
@@ -4550,6 +4558,8 @@ int main(int argc, char **argv) {
         for (int split = 0; split < kFxSplits; ++split)
             layout.push_back(static_cast<float>(split % 2 == 0)); // the band each split shows, some the high one
         layout.push_back(5.0f);                                   // splits' containers folded
+        for (int op = 0; op < kOps; ++op) // the wave each operator's source switch goes back to
+            layout.push_back(static_cast<float>(op % 4));
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

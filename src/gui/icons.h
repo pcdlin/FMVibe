@@ -55,6 +55,7 @@ namespace fmvibe::gui::detail {
 enum class Curve {
     Filter = 1, ParamEq, Sweep, Driven, Drawn, Shaper, LfoEditor, ClipEditor, NoteEditor, NoteExact, Partials, Lfo,
     Envelope, Eq, LfoIcon, WaveIcon, ModeIcon, FilterIcon, PeqIcon, PolarityIcon, VelocityEditor, RouteIcon, WarpIcon,
+    TableFrame, SampleWave,
 };
 inline std::vector<double> curveKey(Curve curve, Rect r) {
     return {static_cast<double>(curve), r.x, r.y, r.w, r.h};

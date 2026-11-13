@@ -9,11 +9,14 @@
 #endif
 
 #include <commdlg.h>
+#include <shellapi.h>
 #include <shobjidl.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,6 +31,8 @@ constexpr UINT kPollMs = 15; // about 60 frames a second: Windows timers tick ev
 constexpr uint32_t kMinWidth = 600;
 constexpr uint32_t kMaxWidth = 3600;
 constexpr UINT kPresetMessage = WM_APP + 1; // posted, so the dialog opens after the mouse gesture ends
+constexpr UINT kImportMessage = WM_APP + 2; // likewise, a table or sample to import: the operator, then its kind
+constexpr UINT kFolderMessage = WM_APP + 3; // and a folder to add to the wavetable library
 
 int liveEditors = 0;
 
@@ -343,6 +348,12 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     case kPresetMessage:
         browsePreset(wParam != 0);
+        return 0;
+    case kImportMessage:
+        browseOperatorFile(static_cast<int>(wParam), static_cast<DataKind>(lParam));
+        return 0;
+    case kFolderMessage:
+        browseTableFolder();
         return 0;
     case WM_MOUSEMOVE: {
         if (!trackingLeave_) {
@@ -786,9 +797,16 @@ namespace {
 // The shell's file dialog, opened in `folder` every time. (An OPENFILENAME's initial folder gives way to the folder the
 // host's last file dialog was left in, whatever plugin opened it.) The path picked, empty if the user cancels; nullopt
 // where the dialog can't run on this thread (COM set up for another apartment, say), for the older one instead.
+// The file types a dialog offers: each its name and its pattern ("*.fmv"), and the extension a saved file takes.
+struct FileTypes {
+    std::vector<std::pair<std::wstring, std::wstring>> types;
+    std::wstring extension;
+};
+
+// With `pickFolder`, the folder picker (FOS_PICKFOLDERS) instead, which `types` don't apply to.
 std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::wstring &folder, const std::wstring &name,
-                                            const std::wstring &title, const std::wstring &presets,
-                                            const std::wstring &all) {
+                                            const std::wstring &title, const FileTypes &types,
+                                            bool pickFolder = false) {
     const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     if (FAILED(com))
         return std::nullopt;
@@ -799,14 +817,19 @@ std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::ws
     if (FAILED(CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
                                 IID_PPV_ARGS(&dialog))))
         return std::nullopt;
-    const COMDLG_FILTERSPEC types[] = {{presets.c_str(), L"*.fmv"}, {all.c_str(), L"*.*"}};
-    dialog->SetFileTypes(2, types);
-    dialog->SetDefaultExtension(L"fmv");
+    if (!pickFolder) {
+        std::vector<COMDLG_FILTERSPEC> specs;
+        for (const auto &[label, pattern] : types.types)
+            specs.push_back({label.c_str(), pattern.c_str()});
+        dialog->SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
+        if (!types.extension.empty())
+            dialog->SetDefaultExtension(types.extension.c_str());
+    }
     dialog->SetTitle(title.c_str());
     FILEOPENDIALOGOPTIONS options = 0;
     dialog->GetOptions(&options);
     options |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR |
-               (save ? FOS_OVERWRITEPROMPT : FOS_FILEMUSTEXIST);
+               (pickFolder ? FOS_PICKFOLDERS : save ? FOS_OVERWRITEPROMPT : FOS_FILEMUSTEXIST);
     dialog->SetOptions(options);
     if (!folder.empty()) {
         IShellItem *start = nullptr;
@@ -843,7 +866,8 @@ void Editor::browsePreset(bool save) {
     const std::wstring name = save && controller_.presetIndex() >= 0 ? widen(controller_.presetName()) : std::wstring();
     const std::wstring title = widen(tr(save ? Str::DialogSavePreset : Str::DialogLoadPreset));
     const std::wstring presets = widen(tr(Str::DialogPresetFiles)), all = widen(tr(Str::DialogAllFiles));
-    std::optional<std::wstring> picked = shellFileDialog(hwnd_, save, folder, name, title, presets, all);
+    std::optional<std::wstring> picked =
+        shellFileDialog(hwnd_, save, folder, name, title, {{{presets, L"*.fmv"}, {all, L"*.*"}}, L"fmv"});
     if (!guard.alive())
         return;
     if (!picked) { // the older dialog, which starts there unless the host's last dialog was left elsewhere
@@ -876,6 +900,64 @@ void Editor::browsePreset(bool save) {
     }
     if (guard.alive())
         invalidate();
+}
+
+void Editor::chooseOperatorFile(int op, DataKind kind) {
+    if (hwnd_)
+        PostMessageW(hwnd_, kImportMessage, static_cast<WPARAM>(op), static_cast<LPARAM>(kind));
+}
+
+void Editor::chooseTableFolder() {
+    if (hwnd_)
+        PostMessageW(hwnd_, kFolderMessage, 0, 0);
+}
+
+void Editor::browseOperatorFile(int op, DataKind kind) {
+    const ModalGuard guard(alive_);
+    const std::wstring title = widen(tr(kind == DataKind::Table ? Str::DialogImportTable : Str::DialogImportSample));
+    const std::wstring types = widen(tr(Str::DialogTableFiles)), all = widen(tr(Str::DialogAllFiles));
+    std::optional<std::wstring> picked = shellFileDialog(
+        hwnd_, false, lastImportFolder_, L"", title, {{{types, L"*.wav;*.flac;*.wt;*.vitaltable"}, {all, L"*.*"}}, L""});
+    if (!guard.alive() || !picked || picked->empty())
+        return;
+    lastImportFolder_ = std::filesystem::path(*picked).parent_path().wstring();
+    std::vector<uint8_t> bytes;
+    {
+        std::ifstream in(std::filesystem::path(*picked), std::ios::binary);
+        in.seekg(0, std::ios::end);
+        const std::streamoff size = in.tellg();
+        if (in && size > 0 && size < (std::streamoff{512} << 20)) {
+            in.seekg(0);
+            bytes.resize(static_cast<size_t>(size));
+            in.read(reinterpret_cast<char *>(bytes.data()), size);
+        }
+    }
+    const std::u8string name = std::filesystem::path(*picked).filename().u8string();
+    const std::string said = controller_.importOperatorData(
+        op, kind, bytes, std::string(reinterpret_cast<const char *>(name.data()), name.size()));
+    if (!guard.alive())
+        return;
+    if (!said.empty())
+        MessageBoxW(hwnd_, widen(said).c_str(), L"FMVibe", MB_ICONWARNING);
+    invalidate();
+}
+
+void Editor::browseTableFolder() {
+    const ModalGuard guard(alive_);
+    TableLibrary *library = controller_.tableLibrary();
+    std::optional<std::wstring> picked =
+        shellFileDialog(hwnd_, false, L"", L"", widen(tr(Str::DialogAddFolder)), {}, true);
+    if (!guard.alive() || !picked || picked->empty() || !library)
+        return;
+    const std::u8string path = std::filesystem::path(*picked).u8string();
+    const int source = library->addFolder(std::string(reinterpret_cast<const char *>(path.data()), path.size()));
+    controller_.tableFoldersChanged();
+    view_.showTableSource(source);
+    invalidate();
+}
+
+void showFolder(const std::string &utf8) {
+    ShellExecuteW(nullptr, L"open", widen(utf8).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void Editor::contextMenu(int x, int y) {

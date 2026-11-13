@@ -85,6 +85,8 @@ async function startAudio() {
     audio = {context, node};
     if (scopeAsked)
       send(scopeAsked);
+    for (const message of dataHeld.values()) // the tables and samples imported before the sound started
+      sendData(message);
     window.fmvibe = {context, node, ui}; // for poking around in the console
     if (context.state === 'suspended')
       await context.resume();
@@ -125,8 +127,77 @@ function showToast(text) {
   toastTimer = setTimeout(() => toast.classList.remove('shown'), 4500);
 }
 
+// The Wavetable and Sample operators' data the editor sent, by key, kept to send again once the sound starts (and
+// for as long as the editor holds it: patches aren't saved, so imports last until the page reloads).
+const dataHeld = new Map();
+function sendData(message) {
+  const floats = message.floats.slice();
+  send({...message, floats}, [floats.buffer]);
+}
+
+// Reads a file the user picked into the editor's buffers: its bytes, then its name (or path, for a folder's).
+async function giveFile(file, name) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  ui.HEAPU8.set(bytes, ui._ui_file_buffer(bytes.length));
+  const utf8 = new TextEncoder().encode(name);
+  ui.HEAPU8.set(utf8, ui._ui_name_buffer(utf8.length));
+}
+
+const TABLE_EXTENSIONS = ['.wav', '.flac', '.wt', '.vitaltable'];
+
+// A hidden file input, opened at once (the click that asked for it lets it open), handing what is picked to `took`.
+function pickFiles(folder, took) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = TABLE_EXTENSIONS.join(',');
+  if (folder) {
+    input.webkitdirectory = true;
+    input.multiple = true;
+  }
+  input.addEventListener('change', () => took([...input.files]));
+  input.click();
+}
+
 // What the editor asks of the page (ui.cpp's js_* functions).
 const host = {
+  data(key, kind, rate, frames, root, floats) {
+    const message = {type: 'data', key, kind, rate, frames, root, floats};
+    dataHeld.set(key, message);
+    sendData(message);
+  },
+  dataRelease(key) {
+    dataHeld.delete(key);
+    send({type: 'dataRelease', key});
+  },
+  chooseFile(op, kind) {
+    pickFiles(false, async (files) => {
+      if (files.length === 0)
+        return;
+      await giveFile(files[0], files[0].name);
+      ui._ui_import(op, kind);
+      dirty = true;
+    });
+  },
+  // A folder's tables, listed in the table browser for the session (the page keeps no paths). A browser that can't
+  // pick folders picks the files themselves.
+  chooseFolder() {
+    pickFiles('webkitdirectory' in HTMLInputElement.prototype, async (files) => {
+      const tables = files.filter((f) => TABLE_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext)));
+      if (tables.length === 0)
+        return;
+      const path = (f) => f.webkitRelativePath || f.name;
+      const top = path(tables[0]).split('/')[0];
+      for (const file of tables.slice(0, 2000)) {
+        const parts = path(file).split('/');
+        await giveFile(file, parts.length > 1 ? parts.slice(1).join('/') : parts[0]);
+        ui._ui_folder_file();
+      }
+      const utf8 = new TextEncoder().encode(top);
+      ui.HEAPU8.set(utf8, ui._ui_name_buffer(utf8.length));
+      ui._ui_folder_end();
+      dirty = true;
+    });
+  },
   param(index, value) {
     if (!audio)
       return; // the values sent at the start will hold it

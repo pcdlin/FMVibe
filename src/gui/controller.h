@@ -1,12 +1,15 @@
 #pragma once
 
+#include "../opdata.h"
 #include "../params.h"
 #include "../synth.h"
+#include "../tables/library.h"
 #include "../uistrings.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -23,8 +26,9 @@ enum class RoutingView { Graph, Matrix, Fx, Mods };
 // the page (Envelope, Unison, Warp, Inputs) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note
 // sync); Scope, which had a tab of its own, shows it too, so a layout saved on it opens WARP. A noise operator shows
 // its spectrum in Unison's place, and its envelope in Warp's (noise has no cycle to show, warp or sync).
-// Stored in the layout by number: only append.
-enum class InspectorTab { Unison, Envelope, Scope, Inputs, Warp, Count };
+// Source, added later, is a Wavetable operator's TABLE tab and a Sample operator's SAMPLE tab (see layout.h's
+// opTab()); another operator shows its envelope there. Stored in the layout by number: only append.
+enum class InspectorTab { Unison, Envelope, Scope, Inputs, Warp, Source, Count };
 
 // How many of the operator's cycles the scope shows across.
 constexpr int kScopeCycleChoices[] = {1, 2, 4};
@@ -95,6 +99,9 @@ struct UiLayout {
     std::array<int, kFxSplits> splitBand{};
     // The splits' containers in the row folded to a narrow strip, a bit each; saved with the patch, but not undone.
     uint32_t splitsFolded = 0;
+    // The wave each operator's source switch goes back to on WAVE, from TABLE or SAMPLE: the last plain wave it had
+    // (Sine to begin with). Part of the patch, like the node places.
+    std::array<int, kOps> plainWave{};
 };
 
 // What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, which panels are
@@ -325,6 +332,39 @@ public:
     virtual double tempo() const { return kDefaultTempo; }
     virtual void setTempo(double) {}
 
+    // The tables and samples the Wavetable and Sample operators play (see DataStore), by key: a factory table is made
+    // as it is first asked for; null for a key the patch doesn't hold.
+    DataStore &data() { return data_; }
+    const DataStore &data() const { return data_; }
+    const OpData *opData(uint32_t key) { return data_.get(key).get(); }
+    // Imports a file's bytes as operator `op`'s table or sample (a file that only reads as a sample, as a sample), read
+    // as readTableFile() does with `frameSize` for a table whose chunks give none: one undo step that sets its wave,
+    // its Table or Sample, and a sample's root and loop from its smpl chunk, and opens its tab. `origin` is where the
+    // table browser found it, if there. "" if it went in, else what to tell the user.
+    std::string importOperatorData(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name,
+                                   const std::string &origin = {}, int frameSize = 0);
+    // Sets operator `op`'s table to `key` (a factory table's number, or the patch's), and its wave to Wavetable: one
+    // undo step.
+    void pickTable(int op, uint32_t key);
+    // Lets the data store go of what neither the params nor the undo history name, and registers what the params play.
+    // The edits do this themselves; the plugin calls it after a state loads, and when the audio thread asks for data.
+    void refreshData();
+    // Asks the window for a file dialog to import a table or a sample into operator `op` (see importOperatorData()).
+    virtual void chooseOperatorFile(int, DataKind) {}
+    // The wavetable library the table browser lists (made when first asked for), null where there is none.
+    virtual TableLibrary *tableLibrary() { return nullptr; }
+    // Asks the window for a folder dialog, and adds the folder picked to the library: the source to show, or -1.
+    virtual void chooseTableFolder() {}
+    // The library's folders changed (added, renamed, removed, their frame size): the settings file keeps them.
+    virtual void tableFoldersChanged() {}
+    // Shows a library folder in the system's file browser.
+    virtual void showTableFolder(int) {}
+
+protected:
+    // The audio thread's render count, and whether it renders nothing now (see DataStore::keep()).
+    virtual uint64_t dataBlocks() const { return 0; }
+    virtual bool dataIdle() const { return true; }
+
 protected:
     // What beginEdit(), setValue() and endEdit() do besides keeping the history: undo and redo
     // set values through these too.
@@ -352,7 +392,11 @@ private:
     // Where the other crossover goes for `index` set to `value`: pushed a third of an octave past it, or as it is.
     double pushedCrossover(int index, double value) const;
     void apply(const UndoStep &step, bool forward);
+    // Before param `index` takes `value`: the data it names (a Table or Sample, or a wave switched to one, or an
+    // operator switched on) is registered for the audio thread first.
+    void beforeSet(int index, double value);
 
+    DataStore data_;
     std::vector<UndoStep> undo_; // oldest first
     std::vector<UndoStep> redo_; // the step undone last at the back
     UndoStep open_;

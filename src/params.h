@@ -105,6 +105,24 @@ enum class OpParam {
                                     // at Phase each cycle of the note's pitch; see OpSync)
     Warp,                           // one of OpWarp, by number: how its wave's cycle is read (see warpPhase())
     WarpAmount,                     // -1..1, 0 (every warp's plain wave) to begin with
+    // The Wavetable and Sample waves' (see OpWave). TablePos is where along a table's frames it plays, 0..1, smoothed
+    // per sample. Table and Sample are data keys: Table below kUserDataBase a factory table (FactoryTable), from it the
+    // patch's own data (its DATA chunk, see state.h); Sample 0 for none. They are kept apart, so switching between the
+    // two waves keeps both. SampleStart is where a note starts it, a share of its length; SampleRoot the note (MIDI
+    // numbering, fractions tuning it) it plays at its own speed. LoopMode (SampleLoop) runs it between LoopStart and
+    // LoopEnd (shares of its length, taken in order, read at each wrap), LoopFade crossfading up to half the loop;
+    // SampleMode (see SampleMode) says how a note's end and the sample's end end it. Ids past the 50th field go on from
+    // 38000 (see kSplitSections).
+    TablePos,
+    Table,
+    Sample,
+    SampleStart,
+    SampleRoot,
+    LoopMode,
+    LoopStart,
+    LoopEnd,
+    LoopFade,
+    SampleMode,
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -304,8 +322,43 @@ enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 // Stored in projects by number: only append.
 // Custom is a wave drawn from partials: see partialLevelIndex(). Alt Sine is a sine at twice the rate for the first
 // half of the cycle and silence for the second, like the classic FM chips'; Organ a stack of drawbar harmonics; Vowel
-// a buzz through two formant peaks, an "ah".
-enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise, Custom, AltSine, Organ, Vowel, Count };
+// a buzz through two formant peaks, an "ah". Wavetable scans a table of frames (OpParam::Table, at TablePos); Sample
+// plays recorded audio at the note's pitch (OpParam::Sample). The editor picks those two with its source switch rather
+// than among the waves. An older build loads either as Vowel, the last wave it knows.
+enum class OpWave {
+    Sine,
+    Triangle,
+    Saw,
+    Square,
+    Pulse,
+    HalfSine,
+    AbsSine,
+    Noise,
+    Custom,
+    AltSine,
+    Organ,
+    Vowel,
+    Wavetable,
+    Sample,
+    Count
+};
+// Whether a wave reads the patch's data (a table or a sample) rather than a single cycle of its own.
+constexpr bool isDataWave(OpWave wave) { return wave == OpWave::Wavetable || wave == OpWave::Sample; }
+// The tables FMVibe generates itself (see tables.h), by number: a Table key below kUserDataBase. Stored by number: only
+// append, and a generator, once released, is never changed.
+enum class FactoryTable { BasicShapes, Pwm, HarmonicBuild, FmSweep, SyncSweep, ResonantSweep, Vowels, Fold, OddEven, Count };
+constexpr uint32_t kFactoryTables = static_cast<uint32_t>(FactoryTable::Count);
+// Keys of the patch's own data start here: a 31-bit hash of its content (see opdata.h).
+constexpr uint32_t kUserDataBase = 1u << 16;
+// How a Sample operator loops (OpParam::LoopMode): not at all, from its loop's start to its end again and again, or
+// back and forth between them. Stored by number: only append.
+enum class SampleLoop { Off, Forward, PingPong, Count };
+// How a Sample operator plays a note (OpParam::SampleMode). Gate: as any operator, its envelope released with the key,
+// a loop playing on through the release. Sustain: as Gate, but once the key is let go it leaves its loop and plays on
+// to its end. OneShot: letting go of the key doesn't release its envelope; it plays on to its end (leaving a loop then,
+// as Sustain does). In each, a sample that plays to its end with no loop ends the operator, and a voice whose operators
+// that are heard have all ended ends. Stored by number: only append.
+enum class SampleMode { Gate, Sustain, OneShot, Count };
 // What an operator's Sync restarts its wave with: nothing, or the note's pitch. Stored by number: only append (an
 // operator to sync to could come after Note).
 enum class OpSync { Off, Note, Count };
@@ -1295,7 +1348,6 @@ struct Section {
 
 constexpr Section kSections[] = {
     {0, 1, kGlobalCount, 0, 100},
-    {kOpBase, kOps, kOpParamCount, 100, 50},
     {kMatrixBase, kOps, kOps, 400, 10},
     {kFilterModBase, kFilters, kOps, 500, 10},
     {kFilterBase, kFilters, kFilterParamCount, 800, 20},
@@ -1358,6 +1410,8 @@ struct SplitSection {
 };
 
 constexpr SplitSection kSplitSections[] = {
+    // Operators: their first 50 fields from 100 on, 50 an operator; the fields past those from 38000 on, likewise.
+    {kOpBase, kOps, kOpParamCount, {{50, 100, 50}, {kRestFields, 38000, 50}}},
     // Effect slots: the fields added once the 80 had run out, those added once the next 20 had too, those added once
     // the next 40 had, and those added once the next 20 had. The slots past the kFirstFxSlots the chain had at first
     // have every field in a range of their own.
@@ -1547,8 +1601,18 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 &&
                   idOfIndex(paramIndex(0, OpParam::Sync)) == 131 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 &&
+                  idOfIndex(paramIndex(0, OpParam::TablePos)) == 134 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::TablePos)) == 384 &&
+                  idOfIndex(paramIndex(0, OpParam::SampleMode)) == 143 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 393 && kOpParamCount <= 50,
               "operator param ids moved");
+// The operators' fields past the 50th, should more come, go on from 38000, 50 an operator: free ids, past the highest
+// that was ever in use (37000 and a little).
+static_assert(ids::kSplitSections[0].firstIndex == kOpBase && ids::kSplitSections[0].ranges[0].fields == 50 &&
+                  ids::kSplitSections[0].ranges[0].base == 100 && ids::kSplitSections[0].ranges[0].stride == 50 &&
+                  ids::kSplitSections[0].ranges[1].base == 38000 && ids::kSplitSections[0].ranges[1].stride == 50,
+              "the operators' id ranges moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
 static_assert(idOfIndex(filterModIndex(0, 0)) == 500 && idOfIndex(filterModIndex(kFilters - 1, kOps - 1)) == 515,
@@ -1697,8 +1761,16 @@ constexpr bool numberedInOrder(std::initializer_list<E> members) { // each membe
 }
 static_assert(numberedInOrder({OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Pulse,
                                OpWave::HalfSine, OpWave::AbsSine, OpWave::Noise, OpWave::Custom, OpWave::AltSine,
-                               OpWave::Organ, OpWave::Vowel, OpWave::Count}),
+                               OpWave::Organ, OpWave::Vowel, OpWave::Wavetable, OpWave::Sample, OpWave::Count}),
               "OpWave is stored by number: only append");
+static_assert(numberedInOrder({FactoryTable::BasicShapes, FactoryTable::Pwm, FactoryTable::HarmonicBuild,
+                               FactoryTable::FmSweep, FactoryTable::SyncSweep, FactoryTable::ResonantSweep,
+                               FactoryTable::Vowels, FactoryTable::Fold, FactoryTable::OddEven, FactoryTable::Count}),
+              "FactoryTable is stored by number: only append");
+static_assert(numberedInOrder({SampleLoop::Off, SampleLoop::Forward, SampleLoop::PingPong, SampleLoop::Count}),
+              "SampleLoop is stored by number: only append");
+static_assert(numberedInOrder({SampleMode::Gate, SampleMode::Sustain, SampleMode::OneShot, SampleMode::Count}),
+              "SampleMode is stored by number: only append");
 static_assert(numberedInOrder({OpSync::Off, OpSync::Note, OpSync::Count}), "OpSync is stored by number: only append");
 static_assert(numberedInOrder({OpWarp::Off, OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps,
                                OpWarp::Sync, OpWarp::Count}),
@@ -2343,6 +2415,9 @@ enum class ParamKind {
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
     OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
+    DataKey,      // stepped: a Wavetable or Sample operator's data (see OpParam::Table), set in the editor, hidden
+    SampleLoop,   // stepped: how a Sample operator loops (see SampleLoop)
+    SampleMode,   // stepped: how a Sample operator plays a note (see SampleMode)
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2625,6 +2700,38 @@ bool parseParam(int index, const char *text, double *out);
 const char *lfoShapeName(LfoShape shape);
 const char *waveName(OpWave wave);
 const char *warpName(OpWarp warp);
+const char *factoryTableName(int table);
+const char *sampleLoopName(SampleLoop loop);
+const char *sampleModeName(SampleMode mode);
+// A Table or Sample param's value as the key it holds (see OpParam::Table): whole, from 0 up.
+inline uint32_t dataKey(double value) {
+    return std::isfinite(value) && value > 0.0 ? static_cast<uint32_t>(std::min(std::round(value), 4294967295.0)) : 0u;
+}
+// The most a data key param holds.
+constexpr double kMaxDataKey = 4294967295.0;
+inline SampleLoop sampleLoop(double value) {
+    return static_cast<SampleLoop>(std::clamp(std::lround(value), 0L, static_cast<long>(SampleLoop::Count) - 1L));
+}
+inline SampleMode sampleMode(double value) {
+    return static_cast<SampleMode>(std::clamp(std::lround(value), 0L, static_cast<long>(SampleMode::Count) - 1L));
+}
+inline OpWave opWave(double value) {
+    return static_cast<OpWave>(std::clamp(std::lround(value), 0L, static_cast<long>(OpWave::Count) - 1L));
+}
+// Whether param `index` is an operator's Table or Sample: a data key (see OpParam::Table).
+constexpr bool isDataKeyParam(int index) {
+    if (index < kOpBase || index >= kOpBase + kOps * kOpParamCount)
+        return false;
+    const int field = (index - kOpBase) % kOpParamCount;
+    return field == static_cast<int>(OpParam::Table) || field == static_cast<int>(OpParam::Sample);
+}
+// The operator whose Wave param `index` is, or -1.
+constexpr int waveParamOp(int index) {
+    return index >= kOpBase && index < kOpBase + kOps * kOpParamCount &&
+                   (index - kOpBase) % kOpParamCount == static_cast<int>(OpParam::Wave)
+               ? (index - kOpBase) / kOpParamCount
+               : -1;
+}
 const char *filterTypeName(FilterType type);
 const char *filterTypeShortName(FilterType type);
 const char *divisionName(int division);

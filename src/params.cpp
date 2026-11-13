@@ -20,8 +20,17 @@ constexpr Str kLfoShapeNames[] = {Str::LfoSine,   Str::LfoTriangle, Str::LfoSaw,
 static_assert(std::size(kLfoShapeNames) == static_cast<size_t>(LfoShape::Count));
 constexpr Str kWaveNames[] = {Str::WaveSine,     Str::WaveTriangle, Str::WaveSaw,     Str::WaveSquare,
                               Str::WavePulse,    Str::WaveHalfSine, Str::WaveAbsSine, Str::WaveNoise,
-                              Str::WaveCustom,   Str::WaveAltSine,  Str::WaveOrgan,   Str::WaveVowel};
+                              Str::WaveCustom,   Str::WaveAltSine,  Str::WaveOrgan,   Str::WaveVowel,
+                              Str::WaveWavetable, Str::WaveSample};
 static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
+constexpr Str kFactoryTableNames[] = {Str::TableBasicShapes,   Str::TablePwm,    Str::TableHarmonicBuild,
+                                      Str::TableFmSweep,       Str::TableSyncSweep, Str::TableResonantSweep,
+                                      Str::TableVowels,        Str::TableFold,   Str::TableOddEven};
+static_assert(std::size(kFactoryTableNames) == static_cast<size_t>(FactoryTable::Count));
+constexpr Str kSampleLoopNames[] = {Str::LoopOff, Str::LoopForward, Str::LoopPingPong};
+static_assert(std::size(kSampleLoopNames) == static_cast<size_t>(SampleLoop::Count));
+constexpr Str kSampleModeNames[] = {Str::ModeGate, Str::ModeSustain, Str::ModeOneShot};
+static_assert(std::size(kSampleModeNames) == static_cast<size_t>(SampleMode::Count));
 constexpr Str kWarpNames[] = {Str::WarpOff,   Str::WarpBend,  Str::WarpSqueeze,
                               Str::WarpPulse, Str::WarpSteps, Str::WarpSync};
 static_assert(std::size(kWarpNames) == static_cast<size_t>(OpWarp::Count));
@@ -144,12 +153,14 @@ void buildTable(ParamTable &t) {
         // hostParamCount()).
         const bool shape = kind == ParamKind::ShapeCount || kind == ParamKind::ShapePoint ||
                            kind == ParamKind::SlotBypass || kind == ParamKind::SlotAux;
+        // A Wavetable or Sample operator's data key names what the patch holds: set in the editor, as wiring is.
         const bool wiring = kind == ParamKind::ModTarget || kind == ParamKind::FxType ||
                             kind == ParamKind::SourceType || kind == ParamKind::FxOrder ||
-                            kind == ParamKind::FxPosition || kind == ParamKind::FxPort;
+                            kind == ParamKind::FxPosition || kind == ParamKind::FxPort || kind == ParamKind::DataKey;
         clap_param_info_flags flags = wiring || kind == ParamKind::VoiceCount || shape ? 0u : CLAP_PARAM_IS_AUTOMATABLE;
         // The chain order is set by dragging the cards; hosts can't do anything useful with it.
-        if (shape || kind == ParamKind::FxOrder || kind == ParamKind::FxPosition || kind == ParamKind::FxPort)
+        if (shape || kind == ParamKind::FxOrder || kind == ParamKind::FxPosition || kind == ParamKind::FxPort ||
+            kind == ParamKind::DataKey)
             flags |= CLAP_PARAM_IS_HIDDEN;
         if (isStepped(kind))
             flags |= CLAP_PARAM_IS_STEPPED;
@@ -163,7 +174,8 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
             kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
-            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp)
+            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp ||
+            kind == ParamKind::SampleLoop || kind == ParamKind::SampleMode)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -331,6 +343,32 @@ void buildTable(ParamTable &t) {
             static_cast<double>(OpWarp::Count) - 1.0, 0.0);
         add(paramIndex(op, OpParam::WarpAmount), name + " " + tr(Str::ParamWarpAmount), module,
             ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        // The Wavetable and Sample waves': hosts are given Position and Start; the rest is the editor's, as the Custom
+        // wave's partials are (the root and the loop's points modulated there too). A table starts as Basic Shapes, at
+        // its first frame; a sample as none, played whole, at C4, without a loop.
+        add(paramIndex(op, OpParam::TablePos), name + " " + tr(Str::ParamTablePos), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
+        add(paramIndex(op, OpParam::Table), name + " " + tr(Str::ParamTable), module, ParamKind::DataKey, 0.0,
+            kMaxDataKey, 0.0);
+        add(paramIndex(op, OpParam::Sample), name + " " + tr(Str::ParamSample), module, ParamKind::DataKey, 0.0,
+            kMaxDataKey, 0.0);
+        add(paramIndex(op, OpParam::SampleStart), name + " " + tr(Str::ParamSampleStart), module, ParamKind::Percent,
+            0.0, 1.0, 0.0);
+        add(paramIndex(op, OpParam::SampleRoot), name + " " + tr(Str::ParamSampleRoot), module, ParamKind::NotePitch,
+            0.0, 127.0, 60.0);
+        add(paramIndex(op, OpParam::LoopMode), name + " " + tr(Str::ParamLoopMode), module, ParamKind::SampleLoop, 0.0,
+            static_cast<double>(SampleLoop::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::LoopStart), name + " " + tr(Str::ParamLoopStart), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
+        add(paramIndex(op, OpParam::LoopEnd), name + " " + tr(Str::ParamLoopEnd), module, ParamKind::Percent, 0.0, 1.0,
+            1.0);
+        add(paramIndex(op, OpParam::LoopFade), name + " " + tr(Str::ParamLoopFade), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
+        add(paramIndex(op, OpParam::SampleMode), name + " " + tr(Str::ParamSampleMode), module, ParamKind::SampleMode,
+            0.0, static_cast<double>(SampleMode::Count) - 1.0, 0.0);
+        for (const OpParam hidden : {OpParam::SampleRoot, OpParam::LoopMode, OpParam::LoopStart, OpParam::LoopEnd,
+                                     OpParam::LoopFade, OpParam::SampleMode})
+            t[paramIndex(op, hidden)].flags |= CLAP_PARAM_IS_HIDDEN;
         // The Custom wave starts as a sine: the first partial alone, of 32.
         add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,
             kPartialCounts[0], kPartials, kDefaultPartials);
@@ -966,6 +1004,18 @@ const char *warpName(OpWarp warp) {
     return nameAt(kWarpNames, static_cast<double>(warp));
 }
 
+const char *factoryTableName(int table) {
+    return nameAt(kFactoryTableNames, static_cast<double>(table));
+}
+
+const char *sampleLoopName(SampleLoop loop) {
+    return nameAt(kSampleLoopNames, static_cast<double>(loop));
+}
+
+const char *sampleModeName(SampleMode mode) {
+    return nameAt(kSampleModeNames, static_cast<double>(mode));
+}
+
 const char *filterTypeName(FilterType type) {
     return nameAt(kFilterTypeNames, static_cast<double>(type));
 }
@@ -1103,7 +1153,8 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
            kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
-           kind == ParamKind::OpWarp;
+           kind == ParamKind::OpWarp || kind == ParamKind::DataKey || kind == ParamKind::SampleLoop ||
+           kind == ParamKind::SampleMode;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1242,6 +1293,19 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::OpWarp:
         std::snprintf(out, capacity, "%s", nameAt(kWarpNames, value));
         break;
+    case ParamKind::SampleLoop:
+        std::snprintf(out, capacity, "%s", nameAt(kSampleLoopNames, value));
+        break;
+    case ParamKind::SampleMode:
+        std::snprintf(out, capacity, "%s", nameAt(kSampleModeNames, value));
+        break;
+    case ParamKind::DataKey: // a factory table by its name, else the key (0 a sample's none)
+        if (const uint32_t key = dataKey(value);
+            paramTable()[index].name.ends_with(tr(Str::ParamTable)) && key < kFactoryTables)
+            std::snprintf(out, capacity, "%s", nameAt(kFactoryTableNames, static_cast<double>(key)));
+        else
+            std::snprintf(out, capacity, "%.0f", static_cast<double>(key));
+        break;
     case ParamKind::FilterType:
         std::snprintf(out, capacity, "%s", nameAt(kFilterTypeNames, value));
         break;
@@ -1378,6 +1442,9 @@ bool parseParam(int index, const char *text, double *out) {
     const int named = def.kind == ParamKind::LfoShape       ? findName(kLfoShapeNames, text)
                       : def.kind == ParamKind::OpWave       ? findName(kWaveNames, text)
                       : def.kind == ParamKind::OpWarp       ? findName(kWarpNames, text)
+                      : def.kind == ParamKind::SampleLoop   ? findName(kSampleLoopNames, text)
+                      : def.kind == ParamKind::SampleMode   ? findName(kSampleModeNames, text)
+                      : def.kind == ParamKind::DataKey      ? findName(kFactoryTableNames, text)
                       : def.kind == ParamKind::FilterType   ? std::max(findName(kFilterTypeNames, text),
                                                                        findName(kFilterTypeShortNames, text))
                       : def.kind == ParamKind::SyncDivision ? findName(kDivisionNames, text)
@@ -1630,6 +1697,9 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::SourceType:
     case ParamKind::SlotAux:
     case ParamKind::ShapeCount:
+    case ParamKind::DataKey:
+    case ParamKind::SampleLoop:
+    case ParamKind::SampleMode:
         value = std::round(value);
         break;
     case ParamKind::ShapePoint:

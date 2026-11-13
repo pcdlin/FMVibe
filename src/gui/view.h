@@ -81,6 +81,8 @@ public:
     // Takes the latest telemetry, so a frame painted between polls animates from
     // where the audio is now rather than from the last poll.
     void refreshTelemetry() { controller_.telemetry(telemetry_); }
+    // The table browser shows the library's source `source` (a folder just added).
+    void showTableSource(int source);
 
     // True if what the editor shows changed: what is under the mouse, or what a drag moves. A move that changes
     // neither needs no paint.
@@ -332,6 +334,22 @@ private:
         FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
         FxBoxAdd,     // a = lane (1 the high band, 2 the low band, 3 the middle band), b = item: a container's dashed
                       // card, for the list
+        // A Wavetable or Sample operator's (see tableview.cpp).
+        SourceSwitch, // a = op, b = 0 WAVE, 1 TABLE, 2 SAMPLE: a segment of the switch over the waves' row
+        TableStep,    // a = op, b = -1 or 1: steps to the table before or after the one played, in its source
+        TablePicker,  // a = op: the table's name; opens the table browser
+        SamplePicker, // a = op: the sample's name; opens the table browser, picking a sample
+        DataImport,   // a = op, b = DataKind: the import button, and the dashed card of a Sample operator with none
+        TableDisplay, // param = its Position, a = op: the TABLE tab's display; dragged up and down, Position
+        SampleHandle, // param, a = op, b = which (0 Start, 1 Loop Start, 2 Loop End, 3 Loop Fade): dragged across
+        SampleRoot,   // param = its Root, a = op: the ROOT readout, dragged up and down or typed
+        TbSource,     // a = source (-2 Factory, -1 In this patch, else the library's): picks it; right-click its menu
+        TbAddFolder,  // + Add folder...
+        TbGroup,      // a = its row: a subfolder's header, which folds it
+        TbRow,        // a = its row in the list: loads it into the operator
+        TbScroll,     // the list's area, which the wheel scrolls
+        TbDone,       // closes the browser, keeping what was picked
+        TbImport,     // Import file...: the file dialog
     };
 
     // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
@@ -399,6 +417,7 @@ private:
         Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
         UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
+        SampleHandle,  // a handle on a Sample operator's display, across (with Alt, a loop's onto zero crossings)
     };
 
     struct Drag {
@@ -456,7 +475,7 @@ private:
         std::vector<std::string> words() const;
         static bool holds(std::string_view text, const std::vector<std::string> &words);
     };
-    enum class Field { Browser, ModsFilter, CascadeSearch };
+    enum class Field { Browser, ModsFilter, CascadeSearch, Tables };
 
     struct Assignment {
         int source;
@@ -1277,6 +1296,57 @@ private:
     void paintShapeGridControls(Canvas &c);
     // The partial editor: an operator's Custom wave, over the routing panel while the shape editor isn't.
     int partialEditing() const;
+
+    // --- Wavetable and Sample operators (tableview.cpp): the source switch and the pickers on an operator's page, its
+    // TABLE and SAMPLE tabs, and the table browser over the routing panel.
+    // A row of the table browser's list: a subfolder's header, or a table (or sample) of the source shown.
+    struct TbRow {
+        bool header = false;
+        int source = -2;         // -2 Factory, -1 In this patch, else the library's
+        int entry = -1;          // the library source's entry
+        uint32_t key = 0;        // a factory table's or the patch's
+        std::string name, group, tag;
+        int frames = 0;
+        bool sample = false, guessed = false;
+        ReadError error = ReadError::None;
+    };
+    bool isTableOp(int op) const;
+    bool isSampleOp(int op) const;
+    int opTabsOf(int op) const; // which tabs it has: a detail::OpTabs, by number
+    // What the operator's page adds for its source and its TABLE or SAMPLE tab, into `list`.
+    void opDataWidgets(std::vector<Widget> &list, int op, InspectorTab tab) const;
+    void tableBrowserWidgets(std::vector<Widget> &list) const;
+    // The widgets' faces (see paintWidget()); false for a kind that isn't theirs.
+    bool paintDataWidget(Canvas &c, const Widget &w, bool hovered, bool active);
+    void paintTableTab(Canvas &c, Rect r, int op);
+    void paintSampleTab(Canvas &c, Rect r, int op);
+    void paintTableBrowser(Canvas &c);
+    // A table's frames in a stack seen from the side, the front one first, up to `most`, the frame at `position` lit
+    // (none for a position below 0).
+    void paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float position, Color color);
+    // A press on one of their widgets: false for a kind that isn't theirs.
+    bool dataPress(const Widget &w, Point p, Modifiers mods);
+    void dataDrag(Point p, bool alt);
+    bool dataDoubleClick(const Widget &w);
+    bool dataWheel(Point p, float steps);
+    void tablesKey(Key key);
+    std::vector<MenuItem> tbSourceMenu(int source);
+    bool tbMenuCommand(int command);
+    // The operator whose table or sample the browser picks, or -1.
+    int tableBrowsing() const { return tableBrowser_ >= 0 && shapeEditing() < 0 ? tableBrowser_ : -1; }
+    void openTableBrowser(int op, DataKind kind);
+    void closeTableBrowser(bool keep);
+    std::vector<TbRow> tbRows() const;
+    void pickTbRow(const TbRow &row);
+    float tbEnd() const; // how many rows the list scrolls past at most
+    // The data a row holds (read from its file for a library's, kept for a while): null where it can't be read.
+    std::shared_ptr<const OpData> tbData(const TbRow &row) const;
+    void stepTable(int op, int dir);
+    void switchSource(int op, int source);
+    std::string dataName(int op) const; // the table's or sample's name, as its picker shows it
+    std::string dataTip(const Widget &w) const; // their widgets' tooltips, "" for none
+    int tbMenuSource_ = -1; // the library's source whose menu is open
+    TableLibrary *library() const { return controller_.tableLibrary(); }
     int partialsShown(int op) const; // how many partials its Custom wave plays, and the editor shows
     void paintPartialEditor(Canvas &c, int op);
     // A shaper's transfer curve, or its drawn curve to edit: an effect slot's or (unit kFxSlots + shaper) a voice shaper's.
@@ -1512,6 +1582,20 @@ private:
     int shapeEditor_ = -1;                   // the LFO whose shape the routing panel shows, or -1
     int wideLfo_ = -1;                       // the LFO whose card is widened (see wideLfo()), or -1
     int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
+    // The table browser (see tableBrowsing()): the operator it picks for and what it picks, the source it shows, how far
+    // its list is scrolled, the row picked with the keys, the subfolders folded, and what the operator played as it
+    // opened (its wave and its table or sample), which Escape goes back to.
+    int tableBrowser_ = -1;
+    DataKind tbKind_ = DataKind::Table;
+    int tbSource_ = -2;
+    float tbScroll_ = 0.0f;
+    int tbPick_ = -1;
+    std::vector<std::string> tbFolded_;
+    double tbOpenWave_ = 0.0, tbOpenKey_ = 0.0;
+    bool tbChanged_ = false; // something was picked since it opened
+    TextField tablesSearch_;
+    // The data the browser read from the library's files: the last few, by source and path.
+    mutable std::vector<std::pair<std::string, std::shared_ptr<const OpData>>> tbRead_;
     std::mt19937 random_{std::random_device{}()}; // the partial editor's dice
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     float fxScroll_ = 0.0f;                  // how many effect cards are scrolled past, before clamping

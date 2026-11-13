@@ -33,6 +33,7 @@ add_library(fmvibe-core STATIC
     src/gui/routing.cpp
     src/gui/routing.h
     src/gui/shapes.cpp
+    src/gui/tableview.cpp
     src/gui/theme.cpp
     src/gui/theme.h
     src/gui/view.cpp
@@ -42,10 +43,16 @@ add_library(fmvibe-core STATIC
     src/sharedtelemetry.h
     src/state.cpp
     src/state.h
+    src/tables/flac.cpp
+    src/tables/library.cpp
+    src/tables/library.h
+    src/tables/readers.cpp
+    src/tables/readers.h
 )
 target_include_directories(fmvibe-core PUBLIC src)
 target_compile_definitions(fmvibe-core PUBLIC FMVIBE_CAIRO)
-target_link_libraries(fmvibe-core PUBLIC clap PkgConfig::CAIRO)
+find_package(Threads REQUIRED)
+target_link_libraries(fmvibe-core PUBLIC clap PkgConfig::CAIRO Threads::Threads)
 fmvibe_options(fmvibe-core)
 
 enable_testing()

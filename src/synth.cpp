@@ -61,6 +61,10 @@ constexpr double kVoiceLevel = 0.25118864315095801;
 // past unity, and so do shapers feeding each other or themselves with little of their Mix; held here, the loop stays
 // finite.
 constexpr double kLoopLimit = 8.0;
+// A Sample operator's loop shorter than this many of its samples is none, and the fade into its end where it plays
+// out, in seconds of it.
+constexpr double kMinSampleLoop = 64.0;
+constexpr double kSampleEndFade = 0.002;
 
 class SineTable {
 public:
@@ -490,9 +494,12 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     startFromChannel(v);
     if (retrigger) {
         v.newRandom = true;
-        // Envelopes restart from their current level, so there's no click.
-        for (Operator &op : v.ops)
+        // Envelopes restart from their current level, so there's no click; samples start over at their Start. Legato,
+        // they play on.
+        for (Operator &op : v.ops) {
             op.env.start();
+            op.restartSample = true;
+        }
         for (Envelope &env : v.modEnvs)
             env.start();
         for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds (standing still, takes a new one)
@@ -515,7 +522,8 @@ void Synth::startFromChannel(Voice &v) const {
 void Synth::releaseVoice(Voice &v) {
     v.released = true;
     for (Operator &op : v.ops)
-        op.env.release();
+        if (!op.oneShot) // a One-Shot sample plays on to its end, and its envelope stops there
+            op.env.release();
     for (Envelope &env : v.modEnvs)
         env.release();
 }
@@ -679,9 +687,35 @@ void Synth::applyMacros(const ParamValues &params) {
     }
 }
 
+void Synth::resolveData(const ParamValues &params) {
+    for (int op = 0; op < kOps; ++op) {
+        opTable_[op] = opSampleData_[op] = nullptr;
+        const OpWave wave = opWave(params[paramIndex(op, OpParam::Wave)]);
+        if (!isDataWave(wave) || params[paramIndex(op, OpParam::Enabled)] < 0.5)
+            continue;
+        const bool table = wave == OpWave::Wavetable;
+        const uint32_t key = dataKey(params[paramIndex(op, table ? OpParam::Table : OpParam::Sample)]);
+        if (!table && key == 0)
+            continue; // no sample: silent
+        const OpData *data = registry_.find(key);
+        if (!data || data->kind != (table ? DataKind::Table : DataKind::Sample) ||
+            (table ? data->table.frames <= 0 : data->sample.levels <= 0)) {
+            if (!data)
+                registry_.noteMissing(key); // the main thread builds it, if it can
+            continue;
+        }
+        (table ? opTable_ : opSampleData_)[op] = data;
+    }
+    for (int op = 0; op < kOps; ++op) {
+        opTableKnown_[op] = opTable_[op] != nullptr;
+        opSampleLength_[op] = opSampleData_[op] ? static_cast<double>(opSampleData_[op]->frames) : 0.0;
+    }
+}
+
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
     std::fill_n(left, frames, 0.0f);
     std::fill_n(right, frames, 0.0f);
+    resolveData(params);
     bendSet_ = params[paramIndex(GlobalParam::PitchBend)];
     // What follows from the params and the host's modulation for every voice alone, worked out again only when one
     // of them may have changed since the last render(): a block split by events renders many times over. A few that
@@ -812,6 +846,10 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         songSeconds_ += frames / sampleRate_;
         songBeats_ += frames / sampleRate_ * tempo_ / 60.0;
     }
+    // Done with the data looked up above: the main thread may free what it took away during this render().
+    opTable_ = {};
+    opSampleData_ = {};
+    registry_.renderDone();
 }
 
 void Synth::shareAll(const ParamValues &params) {
@@ -1243,6 +1281,8 @@ void Synth::telemetry(Telemetry &out) const {
         out.scopeBins = total;
         out.scopeCursor = filling ? static_cast<float>(scope_.next) / static_cast<float>(total) : -1.0f;
     }
+    out.opTablePos.fill(-1.0f);
+    out.opSamplePos.fill(-1.0f);
     out.tempo = static_cast<float>(tempo_);
     out.fxPitch = static_cast<float>(fxPitch_);
     out.outPeak = {static_cast<float>(outPeak_[0]), static_cast<float>(outPeak_[1])};
@@ -1336,6 +1376,14 @@ void Synth::telemetry(Telemetry &out) const {
         out.opLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
+        const Operator &op = newest->ops[i];
+        // From what the last render() noted, not the data itself, which the main thread may have freed since.
+        if (op.posKnown && opTableKnown_[i])
+            out.opTablePos[i] = static_cast<float>(op.posNow);
+        if (opSampleLength_[i] > 0.0 && !op.restartSample)
+            out.opSamplePos[i] = op.ended[0] || op.finished
+                                     ? 1.0f
+                                     : static_cast<float>(std::clamp(op.heads[0] / opSampleLength_[i], 0.0, 1.0));
     }
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);
@@ -1484,17 +1532,19 @@ namespace {
 struct WarpBends {
     double now = 0.0, next = 0.0;
 };
+// The wave is read through `reader` (see Synth::CycleReader), a Wavetable operator's frames too.
+template <class Reader>
 #ifdef _MSC_VER
 __declspec(noinline)
 #else
 __attribute__((noinline))
 #endif
-WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float *table, double cycle, double stretch,
+WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const Reader &reader, double cycle, double stretch,
                     double step) {
     WarpBends out;
     const double by = step * kinks.perCycle; // how far it goes, in stretches
     auto slopeAt = [&](double at, double span) { // the wave's, in its units a cycle
-        return (WaveTables::read(table, at + span) - WaveTables::read(table, at - span)) / (2.0 * span);
+        return (reader.read(at + span) - reader.read(at - span)) / (2.0 * span);
     };
     auto smooth = [&](int o, double ahead) {
         const double until = ahead / by; // of a sample, to the bend
@@ -1504,8 +1554,7 @@ WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float 
             // sync's restart does (polyBLEP), and its slope with it (polyBLAMP), at the same speed on either side.
             const double span = 0.5 * std::abs(step) * coefs.a;
             const double end = coefs.b, start = 0.0;
-            const double jump =
-                (WaveTables::read(table, start) - WaveTables::read(table, end)) * (step > 0.0 ? 1.0 : -1.0);
+            const double jump = (reader.read(start) - reader.read(end)) * (step > 0.0 ? 1.0 : -1.0);
             const double bend = coefs.a * std::abs(step) * (slopeAt(start, span) - slopeAt(end, span));
             out.now += jump * 0.5 * after * after + bend * after * after * after / 6.0;
             out.next += -jump * 0.5 * until * until + bend * until * until * until / 6.0;
@@ -1539,12 +1588,13 @@ WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float 
 } // namespace
 
 // Each copy read through its warp, and restarted by its master.
+template <class Reader>
 #ifdef _MSC_VER
 __declspec(noinline)
 #else
 __attribute__((noinline))
 #endif
-Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
+Synth::OpSample Synth::warpedSample(Operator &op, const Reader &table, double offset, double factor, int copies,
                                     const UnisonGains *gains, bool sides,
                                     const std::array<double, kMaxUnison> &syncIncStep, double warpStep) {
     OpSample out;
@@ -1552,16 +1602,14 @@ Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double off
     const bool warping = coefs.mode != OpWarp::Off;
     const WarpKinks kinks = warpKinks(coefs);
     auto read = [&](double phase) {
-        return warping ? WaveTables::readCycle(table, warpPhase(coefs, phase - std::floor(phase)))
-                       : static_cast<double>(WaveTables::read(table, phase));
+        return warping ? table.readCycle(warpPhase(coefs, phase - std::floor(phase)))
+                       : static_cast<double>(table.read(phase));
     };
     bool carrying = false;
     for (int k = 0; k < copies; ++k) {
         const double here = op.phases[k] + offset;
         const double cycle = here - std::floor(here); // where along its cycle it is, 0..1
-        double x =
-            (warping ? WaveTables::readCycle(table, warpPhase(coefs, cycle)) : WaveTables::read(table, here)) +
-            op.syncCarry[k];
+        double x = (warping ? table.readCycle(warpPhase(coefs, cycle)) : table.read(here)) + op.syncCarry[k];
         op.syncCarry[k] = 0.0;
         const double advance = factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
         op.phases[k] += advance;
@@ -1620,6 +1668,98 @@ Synth::OpSample Synth::warpedSample(Operator &op, const float *table, double off
     }
     op.carrying = carrying;
     op.warpNow += warpStep;
+    return out;
+}
+
+// As the plain loops in renderBlock(), each copy reading the two frames about the Position, which moves on a step.
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+Synth::OpSample Synth::tableSample(Operator &op, const FrameTable &table, int level, double posStep, double offset,
+                                   double factor, int copies, const UnisonGains *gains, bool sides) {
+    OpSample out;
+    const FrameReader reader = frameReader(table, level, op.posNow);
+    op.posNow += posStep;
+    for (int k = 0; k < copies; ++k) {
+        const double x = reader.read(op.phases[k] + offset);
+        out.mono += x;
+        if (sides) {
+            out.l += x * gains->gainL[k];
+            out.r += x * gains->gainR[k];
+        }
+        op.phases[k] += factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+        if (op.phases[k] >= 1.0)
+            op.phases[k] -= 1.0;
+        else if (op.phases[k] < 0.0)
+            op.phases[k] += 1.0;
+    }
+    return out;
+}
+
+// Each copy read where it plays (moved by phase modulation a period of the root a cycle), crossfading into its loop's
+// start over the loop's last stretch, then moved on at its speed (scaled by frequency modulation, through 0 too):
+// round its loop, or on to its end, where it fades out and stops. Backward, it stops at the sample's start.
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+Synth::OpSample Synth::sampleSample(Operator &op, const SampleRead &r, double offset, double factor, int copies,
+                                    const UnisonGains *gains, bool sides) {
+    OpSample out;
+    const float *x = r.mips->at(r.level);
+    const double last = static_cast<double>(r.mips->levelLength(r.level) - 1);
+    auto at = [&](double pos) { return hermite(x, std::clamp(pos * r.scale, 0.0, last)); };
+    const double shift = offset * r.pmScale;
+    const double loopLength = r.loopTo - r.loopFrom;
+    const bool loops = loopLength > 0.0 && !op.leftLoop;
+    bool all = true;
+    for (int k = 0; k < copies; ++k) {
+        if (op.ended[k])
+            continue;
+        all = false;
+        double pos = op.heads[k];
+        double y = at(pos + shift);
+        const bool inLoop = loops && op.looping[k];
+        if (inLoop && !r.pingPong && r.fade > 0.0 && pos > r.loopTo - r.fade) {
+            // The loop's last stretch fades into what comes after its start, equal power, so it wraps there unheard.
+            const double t = std::clamp((pos - (r.loopTo - r.fade)) / r.fade, 0.0, 1.0);
+            y = y * std::cos(t * 0.5 * std::numbers::pi) + at(pos - loopLength + shift) * std::sin(t * 0.5 * std::numbers::pi);
+        } else if (!inLoop && r.endFade > 0.0 && op.ways[k] > 0.0f && pos > r.length - 1.0 - r.endFade) {
+            y *= std::clamp((r.length - 1.0 - pos) / r.endFade, 0.0, 1.0);
+        }
+        out.mono += y;
+        if (sides) {
+            out.l += y * gains->gainL[k];
+            out.r += y * gains->gainR[k];
+        }
+        const double step = std::clamp(op.incNow[k] * r.stepScale * factor, -r.maxStep, r.maxStep);
+        pos += step * op.ways[k];
+        if (loops && !op.looping[k] && pos >= r.loopFrom && pos < r.loopTo)
+            op.looping[k] = 1; // a copy that started before its loop joins it as it comes in
+        if (loops && op.looping[k]) {
+            if (r.pingPong) {
+                if (pos >= r.loopTo) {
+                    pos = std::max(r.loopFrom, 2.0 * r.loopTo - pos);
+                    op.ways[k] = -op.ways[k];
+                } else if (pos < r.loopFrom) {
+                    pos = std::min(r.loopTo, 2.0 * r.loopFrom - pos);
+                    op.ways[k] = -op.ways[k];
+                }
+            } else if (pos >= r.loopTo || pos < r.loopFrom) {
+                pos = r.loopFrom + (pos - r.loopFrom) - std::floor((pos - r.loopFrom) / loopLength) * loopLength;
+            }
+        } else if (pos >= r.length - 1.0) {
+            op.ended[k] = 1; // played to its end
+        } else if (pos < 0.0) {
+            pos = 0.0;
+        }
+        op.heads[k] = pos;
+    }
+    if (all)
+        op.finished = true;
     return out;
 }
 
@@ -2019,6 +2159,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // smoothing over, take a loop of their own (see warpedSample()). The masters' increments move like the copies' do.
     std::array<bool, kOps> warped{};
     std::array<double, kOps> warpStep{};
+    // Wavetable and Sample operators with their data (see resolveData()), which take a loop of their own as the warped
+    // ones do (`special` covers the three): a table's level and its Position's step and target, a sample's reading.
+    std::array<bool, kOps> special{}, tableOp{}, sampleOp{};
+    std::array<int, kOps> tableLevel{};
+    std::array<double, kOps> posStep{}, posTarget{};
+    std::array<SampleRead, kOps> sampleRead{};
     std::array<std::array<double, kMaxUnison>, kOps> syncIncStep;
     std::array<const UnisonGains *, kOps> copyGains;
     // Switched-off operators and filters are skipped and route nothing.
@@ -2064,6 +2210,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const auto shape = static_cast<OpWave>(
             stepped(p[paramIndex(i, OpParam::Wave)], static_cast<int>(OpWave::Count) - 1));
         noise[i] = shape == OpWave::Noise;
+        // A Wavetable or Sample operator without its data yet (or with no sample) reads WaveTables' silent table for its
+        // wave, as a plain one.
+        const OpData *const tableData = shape == OpWave::Wavetable ? opTable_[i] : nullptr;
+        const OpData *const sampleData = shape == OpWave::Sample ? opSampleData_[i] : nullptr;
+        tableOp[i] = tableData != nullptr;
+        sampleOp[i] = sampleData != nullptr;
 
         const std::array<double, 8> times{
             p[paramIndex(i, OpParam::Attack)],      p[paramIndex(i, OpParam::Hold)],
@@ -2102,9 +2254,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // first takes its amount down to 0 (the plain wave, whatever the warp), then switches and takes it up again.
         double squeeze = 1.0; // how much faster the warp reads the wave at its steepest, for the table
         {
-            const auto want = noise[i] ? OpWarp::Off
-                                       : static_cast<OpWarp>(stepped(p[paramIndex(i, OpParam::Warp)],
-                                                                      static_cast<int>(OpWarp::Count) - 1));
+            const auto want = noise[i] || sampleOp[i] ? OpWarp::Off
+                                                      : static_cast<OpWarp>(stepped(p[paramIndex(i, OpParam::Warp)],
+                                                                                     static_cast<int>(OpWarp::Count) - 1));
             const double amount =
                 want == OpWarp::Off ? 0.0 : std::clamp(p[paramIndex(i, OpParam::WarpAmount)], -1.0, 1.0);
             if (starting) {
@@ -2128,21 +2280,76 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 squeeze = warpSqueeze(op.warp, std::max(std::abs(op.warpNow), std::abs(to)));
         }
         // Sync to the note: switched on, a master starts a cycle of the note there.
-        const bool syncing = !noise[i] && p[paramIndex(i, OpParam::Sync)] >= 0.5;
+        const bool syncing = !noise[i] && !sampleOp[i] && p[paramIndex(i, OpParam::Sync)] >= 0.5;
         if (syncing && !op.syncOn) {
             op.syncPhases.fill(0.0);
             op.syncKnown = false;
         }
         op.syncOn = syncing;
-        if (noise[i]) { // noise has no cycle: what a sync carried is let go, and the warp with it
+        if (noise[i] || sampleOp[i]) { // noise has no cycle, nor a sample: what a sync carried is let go, the warp too
             op.carrying = false;
             op.warp = OpWarp::Off;
             op.warpNow = 0.0;
         }
         warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying;
+        special[i] = warped[i] || tableOp[i] || sampleOp[i];
 
         // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
         const double highest = (copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc) * squeeze;
+        // A table's Position moves to the block's over its length, as the increments do, from where it is.
+        if (tableOp[i]) {
+            tableLevel[i] = FrameTable::level(highest);
+            posTarget[i] = std::clamp(p[paramIndex(i, OpParam::TablePos)], 0.0, 1.0);
+            if (starting || !op.posKnown)
+                op.posNow = posTarget[i];
+            posStep[i] = (posTarget[i] - op.posNow) / static_cast<double>(std::max<uint32_t>(frames, 1));
+        }
+        op.posKnown = tableOp[i];
+        // A sample: its root's speed, the level its highest copy reads, its loop as set now; its copies start over
+        // for a new note or a retrigger, at Start, each up to Phase Random's share of 50 ms on from it.
+        const SampleMode mode = sampleMode(p[paramIndex(i, OpParam::SampleMode)]);
+        if (v.released && op.oneShot && !(sampleOp[i] && mode == SampleMode::OneShot))
+            op.env.release(); // no longer a One-Shot sample: it releases as any other operator
+        op.oneShot = sampleOp[i] && mode == SampleMode::OneShot;
+        if (sampleOp[i]) {
+            SampleRead &r = sampleRead[i];
+            r.mips = &sampleData->sample;
+            const double rootHz = 440.0 * std::exp2((std::clamp(p[paramIndex(i, OpParam::SampleRoot)], 0.0, 127.0) - 69.0) / 12.0);
+            r.stepScale = r.pmScale = sampleData->rate / rootHz;
+            r.level = r.mips->level(highest * r.stepScale);
+            r.scale = 1.0 / static_cast<double>(int64_t{1} << r.level);
+            r.maxStep = static_cast<double>(int64_t{1} << r.mips->levels);
+            r.length = static_cast<double>(sampleData->frames);
+            const SampleLoop loop = sampleLoop(p[paramIndex(i, OpParam::LoopMode)]);
+            const double a = std::clamp(p[paramIndex(i, OpParam::LoopStart)], 0.0, 1.0) * (r.length - 1.0);
+            const double b = std::clamp(p[paramIndex(i, OpParam::LoopEnd)], 0.0, 1.0) * (r.length - 1.0);
+            r.loopFrom = std::min(a, b);
+            r.loopTo = std::max(a, b);
+            if (loop == SampleLoop::Off || r.loopTo - r.loopFrom < kMinSampleLoop)
+                r.loopFrom = r.loopTo = 0.0;
+            r.pingPong = loop == SampleLoop::PingPong;
+            r.fade = std::clamp(p[paramIndex(i, OpParam::LoopFade)], 0.0, 1.0) * 0.5 * (r.loopTo - r.loopFrom);
+            r.endFade = kSampleEndFade * sampleData->rate;
+            if (op.restartSample) {
+                const double start = std::clamp(p[paramIndex(i, OpParam::SampleStart)], 0.0, 1.0) * (r.length - 1.0);
+                const double scatter =
+                    std::clamp(p[paramIndex(i, OpParam::PhaseRandom)], 0.0, 1.0) * 0.05 * sampleData->rate;
+                for (int k = 0; k < kMaxUnison; ++k) {
+                    const double later = k < copies[i] && scatter > 0.0 ? scatter * 0.5 * (nextRandom(v.rng) + 1.0) : 0.0;
+                    op.heads[k] = std::min(start + later, r.length - 1.0);
+                    op.ways[k] = 1.0f;
+                    op.looping[k] = op.heads[k] >= r.loopFrom && op.heads[k] < r.loopTo ? 1 : 0;
+                    op.ended[k] = 0;
+                }
+                op.finished = false;
+                op.leftLoop = false;
+                op.restartSample = false;
+            }
+            if (v.released && mode != SampleMode::Gate && !op.leftLoop) { // it leaves its loop, playing on forward
+                op.leftLoop = true;
+                op.ways.fill(1.0f);
+            }
+        }
         if (shape == OpWave::Custom)
             customWaves_[i].build(); // its tables follow its partials once a voice plays it
         wave[i] = shape == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(shape, highest);
@@ -2481,6 +2688,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                   target.shaperIndex[r.shapers[k]][i]);
         const double highest = std::min(highestInc[i] * (std::exp2(std::min(ex, 16.0)) + lin), 0.5);
         wave[i] = opShapes[i] == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(opShapes[i], highest);
+        if (tableOp[i])
+            tableLevel[i] = FrameTable::level(highest);
+        if (sampleOp[i]) {
+            SampleRead &sr = sampleRead[i];
+            sr.level = sr.mips->level(highest * sr.stepScale);
+            sr.scale = 1.0 / static_cast<double>(int64_t{1} << sr.level);
+        }
     }
 
     Levels &level = v.levels;
@@ -2565,12 +2779,25 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // A synced operator's scope follows the note's cycles, which its own restart with.
             const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;
-            if (warped[i]) {
-                // Synced or warped (see Operator): in a function of its own, so the plain loops below are as they were.
-                const OpSample out =
-                    warpedSample(op, wave[i], offset, factor, copies[i], copyGains[i],
-                                 route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i],
-                                 warpStep[i]);
+            if (special[i]) {
+                // Synced or warped (see Operator), a table or a sample: in functions of their own, so the plain loops
+                // below are as they were.
+                const bool sides = route.out || route.sendCount > 0 || route.shaperSendCount > 0;
+                OpSample out;
+                if (sampleOp[i]) {
+                    out = sampleSample(op, sampleRead[i], offset, factor, copies[i], copyGains[i], sides);
+                } else if (tableOp[i] && warped[i]) {
+                    const FrameReader reader = frameReader(opTable_[i]->table, tableLevel[i], op.posNow);
+                    op.posNow += posStep[i];
+                    out = warpedSample(op, reader, offset, factor, copies[i], copyGains[i], sides, syncIncStep[i],
+                                       warpStep[i]);
+                } else if (tableOp[i]) {
+                    out = tableSample(op, opTable_[i]->table, tableLevel[i], posStep[i], offset, factor, copies[i],
+                                      copyGains[i], sides);
+                } else {
+                    out = warpedSample(op, CycleReader{wave[i]}, offset, factor, copies[i], copyGains[i], sides,
+                                       syncIncStep[i], warpStep[i]);
+                }
                 mono = out.mono;
                 l = out.l;
                 r = out.r;
@@ -2717,10 +2944,16 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         left[s] += mix[0] * v.gainL * v.fade;
         right[s] += mix[1] * v.gainR * v.fade;
     }
-    for (int i = 0; i < kOps; ++i)
+    for (int i = 0; i < kOps; ++i) {
         if (opOn[i] && !noise[i])
             for (int k = 0; k < copies[i]; ++k)
                 v.ops[i].incNow[k] = copy[i]->inc[k];
+        if (opOn[i] && tableOp[i])
+            v.ops[i].posNow = posTarget[i];
+        // A sample played to its end: its envelope stops, so the voice can end without waiting for its release.
+        if (opOn[i] && sampleOp[i] && v.ops[i].finished && !v.ops[i].env.idle())
+            v.ops[i].env.stop();
+    }
     bool filtersHeard = false; // whether a filter heard has put out anything within a comb line
     for (int f = 0; f < kFilters; ++f)
         if (filterOn[f]) {
@@ -2738,6 +2971,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // one ends when its fade is done.
     bool sounding = false;
     double peak = 0.0;
+    // Whether every operator heard is a sample that has played to its end: the voice is over, its key down or not.
+    bool anyHeard = false, allFinished = true;
     for (int i = 0; i < kOps; ++i) {
         double heard = target.out[i];
         for (int f = 0; f < kFilters; ++f)
@@ -2746,6 +2981,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             heard = std::max(heard, target.shaperSend[i][sh]);
         if (heard <= 0.0)
             continue;
+        anyHeard = true;
+        allFinished = allFinished && sampleOp[i] && v.ops[i].finished;
         sounding = sounding || !v.ops[i].env.idle();
         // An operator still rising counts at its attack's top, so a slow attack isn't stolen for being quiet yet.
         peak = std::max(peak, (v.ops[i].env.rising() ? 1.0 : v.ops[i].env.level()) * heard);
@@ -2754,6 +2991,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     v.tail = v.released && !sounding;
     if (v.fading && v.fade <= 0.0)
         endVoice(v);
+    else if (!v.released && !v.fading && anyHeard && allFinished && blockPeak < kVoiceQuietFloor && !filtersHeard)
+        endVoice(v); // its samples have all played out with the key still down: its note is over
     else if (v.released && !sounding && blockPeak < kVoiceQuietFloor && !filtersHeard) {
         if (modEnvReleasing(v, params))
             v.silent = true; // its sound is over, but not its modulation

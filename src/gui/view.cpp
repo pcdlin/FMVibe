@@ -1945,6 +1945,8 @@ std::vector<View::Widget> View::widgets() const {
             const Point c = shapePointPos(editing, point);
             add(Kind::ShapePoint, {c.x - 7.0f, c.y - 7.0f, 14.0f, 14.0f}, -1, editing, point);
         }
+    } else if (tableBrowsing() >= 0) {
+        tableBrowserWidgets(list);
     } else if (partials >= 0) {
         add(Kind::ShapeDone, shapeDone());
         add(Kind::PartialReset, shapeReset(), -1, partials);
@@ -2569,18 +2571,26 @@ std::vector<View::Widget> View::widgets() const {
         inputKnobs(node);
     } else if (node < kOps) {
         const int op = node;
-        // One segmented row, the list's button last in it.
-        const size_t waves = list.size();
-        for (int b = 0; b + 1 < kWaveButtons; ++b)
-            add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
-        add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
-        merge(waves);
-        // The tabs, a noise operator's without the scope, then what the shown one holds.
+        // A wave of its own: one segmented row, the list's button last in it. A table or a sample: their pickers (see
+        // opDataWidgets()), under the source switch.
+        if (!isTableOp(op) && !isSampleOp(op)) {
+            const size_t waves = list.size();
+            for (int b = 0; b + 1 < kWaveButtons; ++b)
+                add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
+            add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
+            merge(waves);
+        }
+        // The tabs, a noise operator's without the scope, a sample's without WARP, a table's and a sample's with their
+        // own, then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
+        const auto tabs = static_cast<OpTabs>(opTabsOf(op));
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
             if (const auto shown = static_cast<InspectorTab>(t);
-                shown != InspectorTab::Scope && (!isNoise(op) || shown != InspectorTab::Warp))
-                add(Kind::OpTab, opTab(t, isNoise(op)), -1, t);
+                shown != InspectorTab::Scope &&
+                !(shown == InspectorTab::Warp && (tabs == OpTabs::Noise || tabs == OpTabs::Sample)) &&
+                !(shown == InspectorTab::Source && tabs != OpTabs::Table && tabs != OpTabs::Sample))
+                add(Kind::OpTab, opTab(t, tabs), -1, t);
+        opDataWidgets(list, op, tab);
         if (tab == InspectorTab::Warp)
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
@@ -2608,8 +2618,11 @@ std::vector<View::Widget> View::widgets() const {
                                           tr(Str::LabelPan)};
             const size_t row = list.size();
             opKnobRow(params, labels);
+            // A sample has no cycle to start at Phase: Start takes its place, and its knob is dimmed, as Fixed dims
+            // Pitch and Detune.
             for (size_t i = row; i < list.size(); ++i)
-                list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
+                list[i].disabled = (fixed && (list[i].param == params[2] || list[i].param == params[3])) ||
+                                   (isSampleOp(op) && list[i].param == params[4]);
             if (!fixed) {
                 add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kOpLabelY + 17.0f - kRatioBox.y},
                     paramIndex(op, OpParam::Ratio));
@@ -3103,7 +3116,7 @@ std::vector<View::Widget> View::widgets() const {
     }
     // A route's list of modes, under the mode's part of its label's pill, while the graph shows that route.
     if (const int from = routeModeFrom(listMenu_), to = routeModeTo(listMenu_);
-        from >= 0 && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 &&
+        from >= 0 && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 && tableBrowsing() < 0 &&
         nodeOn(from) && nodeOn(to) && wired(routeParam(from, to)) && rerouting() != routeParam(from, to)) {
         Rect idle;
         for (const auto &[param, rect] : routeLabels())
@@ -3307,6 +3320,8 @@ void View::paint(Canvas &c, Rect area) {
         paintHeader(c);
     if (shapeEditing() >= 0)
         paintShapeEditor(c, shapeEditing());
+    else if (tableBrowsing() >= 0 && panelsShown)
+        paintTableBrowser(c);
     else if (partialEditing() >= 0)
         paintPartialEditor(c, partialEditing());
     else if (panelsShown) switch (controller_.layout().view) {
@@ -3592,7 +3607,7 @@ void View::paintPanels(Canvas &c) {
         // The panel under the tabs, while its first tab is the one shown, has that corner square (see Kind::ViewTab),
         // so its shadow is too there: round elsewhere, square beside the corner, and above it only the tab's.
         const bool firstShown = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
-                                partialEditing() < 0;
+                                partialEditing() < 0 && tableBrowsing() < 0;
         for (const Rect &p : panels) {
             if (!firstShown || p.x != kFxPanel.x || p.y != kFxPanel.y) {
                 shadow(p, kPanelRadius);
@@ -3617,7 +3632,7 @@ void View::paintPanels(Canvas &c) {
     }
     // The panel's corner the first tab's side runs down, while it is the one shown, squared here (see Kind::ViewTab),
     // under the inspector's lens, which floats over it.
-    const bool firstTab = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0;
+    const bool firstTab = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 && tableBrowsing() < 0;
     if (firstTab)
         c.fillRect({kFxPanel.x, kFxPanel.y, kPanelRadius, kPanelRadius}, kPanel);
 }
@@ -3925,14 +3940,15 @@ View::RadarLook View::radarLook() const {
 
 // Whether the routing graph shows, with its glow behind it.
 bool View::routingGraphShown() const {
-    return controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0;
+    return controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 &&
+           tableBrowsing() < 0;
 }
 
 // The lens's leader: from the node the inspector shows, while it is in the graph, level across to the lens.
 std::optional<Point> View::lensLeaderStart() const {
     const int node = controller_.layout().selectedNode;
     if (controller_.layout().view != RoutingView::Graph || shapeEditing() >= 0 || partialEditing() >= 0 ||
-        !nodeOn(node))
+        tableBrowsing() >= 0 || !nodeOn(node))
         return std::nullopt;
     const Point center = nodeCenter(node);
     const float extent = (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + kSelectedRing + 2.0f;
@@ -5913,6 +5929,8 @@ void View::paintInspector(Canvas &c) {
         } else {
             head = waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))));
             summary = dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio));
+            if (isTableOp(op) || isSampleOp(op)) // which table or sample, after its source
+                head += dot + dataName(op);
         }
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
@@ -5951,6 +5969,12 @@ void View::paintInspector(Canvas &c) {
         case InspectorTab::Scope:
         case InspectorTab::Warp:
             paintScope(c, kScopeRect, op);
+            break;
+        case InspectorTab::Source:
+            if (isTableOp(op))
+                paintTableTab(c, kOpDisplay, op);
+            else
+                paintSampleTab(c, kOpDisplay, op);
             break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
@@ -6186,8 +6210,13 @@ void View::paintInputs(Canvas &c, int op) {
 
 InspectorTab View::opTabShown(int op) const {
     const InspectorTab tab = controller_.layout().opTab;
+    const bool data = isTableOp(op) || isSampleOp(op);
+    // A sample has no WARP: its SAMPLE tab is in WARP's place. An operator without a table or a sample, its envelope
+    // in the TABLE or SAMPLE tab's.
     if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WARP tab
-        return isNoise(op) ? InspectorTab::Envelope : InspectorTab::Warp;
+        return isNoise(op) ? InspectorTab::Envelope : isSampleOp(op) ? InspectorTab::Source : InspectorTab::Warp;
+    if (tab == InspectorTab::Source && !data)
+        return InspectorTab::Envelope;
     return tab;
 }
 
@@ -6971,6 +7000,8 @@ void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color
 void View::paintWidget(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w);
     const bool active = isActive(w);
+    if (paintDataWidget(c, w, hovered, active)) // a Wavetable or Sample operator's, or the table browser's
+        return;
     switch (w.kind) {
     case Kind::Knob:
         if (isRatioDisplay(w))
@@ -7028,6 +7059,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                ? tr(Str::SwitchStereo)
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
+                           : opOfField(w.param, OpParam::LoopMode) >= 0
+                               ? tr(w.b == 0 ? Str::SwitchLoopOff : w.b == 1 ? Str::SwitchLoopForward : Str::SwitchLoopPingPong)
+                           : opOfField(w.param, OpParam::SampleMode) >= 0
+                               ? tr(w.b == 0 ? Str::SwitchModeGate : w.b == 1 ? Str::SwitchModeSustain : Str::SwitchModeOneShot)
                            : opOfField(w.param, OpParam::Sync) >= 0                     ? tr(Str::SwitchHardSync)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
@@ -7085,7 +7120,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // are their names, with a tab's shape faintly under the mouse. While an editor has the panels (shape, shaper
         // curve or partials), none of them is the one shown.
         const bool selected = controller_.layout().view == static_cast<RoutingView>(w.a) && shapeEditing() < 0 &&
-                              partialEditing() < 0;
+                              partialEditing() < 0 && tableBrowsing() < 0;
         if (selected) {
             if (look.panelShadow > 0.0f) { // its panel's soft shadow, round its top and sides, above the panel only
                 c.pushClip({w.rect.x - 12.0f, w.rect.y - 12.0f, w.rect.w + 24.0f, w.rect.h + 12.0f});
@@ -7115,7 +7150,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
-                             Str::TabInputs, Str::TabWarp};
+                             Str::TabInputs, Str::TabWarp, isSampleOp(op) ? Str::TabSample : Str::TabTable};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
         c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
@@ -8835,6 +8870,15 @@ void View::paintRatio(Canvas &c, const Widget &w) {
 
 // What the play switches do, below the one under the mouse.
 void View::paintTooltip(Canvas &c) {
+    if (hover_ && drag_.kind == DragKind::None) // a Wavetable or Sample operator's widgets, the table browser's
+        if (const std::string tip = dataTip(*hover_); !tip.empty()) {
+            const float width = std::min(std::ceil(c.textWidth(tip, kTextBody)) + 24.0f, View::kWidth - 16.0f);
+            const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
+            const Rect box{x, hover_->rect.bottom() + 6.0f, width, 22.0f};
+            paintMenuPanel(c, box);
+            c.text(box, tip, kTextBody, kText);
+            return;
+        }
     if (!hover_ || drag_.kind != DragKind::None || (cascade_ && modsWide()) ||
         (hover_->kind != Kind::Choice && hover_->kind != Kind::Toggle && hover_->kind != Kind::NodeTab &&
          hover_->kind != Kind::FxRemove && hover_->kind != Kind::SourceRemove &&
@@ -9541,6 +9585,9 @@ void View::applyDrag(Point p) {
         set(paramIndex(GlobalParam::PitchBend), (mid - p.y) / (w.rect.h * 0.5));
         break;
     }
+    case DragKind::SampleHandle:
+        dataDrag(p, drag_.snap);
+        break;
     case DragKind::Value: {
         const ParamDef &def = table_[w.param];
         if (w.kind == Kind::GridCell) // dragging a matrix cell switches on what it joins, in the same step
@@ -9966,6 +10013,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     UiLayout &layout = controller_.layout();
     if (fxGraphPress(w, p)) // the effects graph's own
         return;
+    if (dataPress(w, p, mods)) // a Wavetable or Sample operator's, or the table browser's
+        return;
 
     switch (w.kind) {
     case Kind::Knob:
@@ -10233,16 +10282,21 @@ void View::mouseDown(Point p, Modifiers mods) {
         else if (!nodeOn(w.a))
             edit(enabledParam(w.a), 1.0);
         layout.selectedNode = w.a;
-        if (partialEditor_ != w.a) // another node shown closes the partial editor
+        if (partialEditor_ != w.a) // another node shown closes the partial editor, and the table browser
             partialEditor_ = -1;
+        if (tableBrowser_ != w.a)
+            closeTableBrowser(true);
         break;
     case Kind::NodeGhost: // into the graph where it was, and into the inspector
         edit(enabledParam(w.a), 1.0);
         layout.selectedNode = w.a;
         if (partialEditor_ != w.a)
             partialEditor_ = -1;
+        if (tableBrowser_ != w.a)
+            closeTableBrowser(true);
         break;
     case Kind::ViewTab:
+        closeTableBrowser(true);
         showView(static_cast<RoutingView>(w.a));
         break;
     case Kind::OpTab:
@@ -10714,6 +10768,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::PeqPoint:
     case DragKind::AmpMic:
     case DragKind::UtilityHandle:
+    case DragKind::SampleHandle:
     case DragKind::DynGrip:
     case DragKind::ShapePoint:
     case DragKind::ShapeCurve:
@@ -10824,6 +10879,7 @@ void View::finishDrag() {
     case DragKind::ModWheel:
     case DragKind::SplitPoint:
     case DragKind::UtilityHandle:
+    case DragKind::SampleHandle:
         controller_.endEdit(w.param);
         break;
     case DragKind::PeqPoint:
@@ -11276,10 +11332,13 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (paired && !(hit && pressed_ && hit->same(*pressed_)) &&
         !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
         return;
+    if (hit && dataDoubleClick(*hit)) // a sample's handle back where it starts, its root typed
+        return;
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
-                hit->kind == Kind::ShapeTool || drawsStep(*hit, mods))) {
+                hit->kind == Kind::ShapeTool || hit->kind == Kind::TableStep || hit->kind == Kind::TbRow ||
+                drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
         // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
         mouseDown(p, mods);
@@ -11430,6 +11489,8 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     menuLive_ = false;
     endTyping(true);
     if (settingsOpen_ || confirm_ >= 0) // a dialog over everything: nothing behind it scrolls or turns
+        return;
+    if (dataWheel(p, steps)) // the table browser's list
         return;
     if (browserOpen_) { // three rows a notch
         const int rows = static_cast<int>(browserRows().size());
@@ -11632,6 +11693,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     const auto hit = hitTest(p);
     if (!hit)
         return items;
+    if (hit->kind == Kind::TbSource) // a folder of wavetables
+        return tbSourceMenu(hit->a);
     if ((hit->kind == Kind::FxNode && hit->a >= kFxSlots) || hit->kind == Kind::FxBoxGrip) { // a split or a join
         menuFx_ = hit->a;
         items.push_back({7, tr(Str::MenuRemove)});
@@ -11814,6 +11877,8 @@ std::string View::bypassLabel(int source, int slot) const {
 void View::menuCommand(int command) {
     if (!menuLive_) // what the menu was opened on may have changed or gone since
         return;
+    if (tbMenuCommand(command))
+        return;
     if (command == 1 && menuParam_ >= 0) {
         edit(menuParam_, resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {
@@ -11961,6 +12026,9 @@ void View::typeKey(Key key, bool shift) {
         case Field::CascadeSearch:
             cascadeKey(key);
             break;
+        case Field::Tables:
+            tablesKey(key);
+            break;
         }
         return;
     }
@@ -12081,6 +12149,15 @@ void View::endTyping(bool commit) {
         }
         return;
     }
+    if (t.widget.kind == Kind::TbSource) { // a folder of wavetables' new name; emptied, it keeps the old one
+        const size_t start = t.text.find_first_not_of(' ');
+        TableLibrary *lib = library();
+        if (commit && start != std::string::npos && lib) {
+            lib->renameFolder(t.widget.a, t.text.substr(start, t.text.find_last_not_of(' ') - start + 1).substr(0, 64));
+            controller_.tableFoldersChanged();
+        }
+        return;
+    }
     if (t.widget.kind == Kind::TempoBox) { // a number of BPM ("bpm" after it allowed), held to the range
         const char *text = t.text.c_str();
         char *end = nullptr;
@@ -12138,9 +12215,14 @@ CursorKind View::cursor() const {
     case Kind::ShapeCurve:
     case Kind::EnvCurve:
     case Kind::TempoBox:
+    case Kind::TableDisplay:
+    case Kind::SampleRoot:
         return CursorKind::Vertical;
     case Kind::SplitPoint:
+    case Kind::SampleHandle:
         return CursorKind::Horizontal;
+    case Kind::TbScroll:
+        return CursorKind::Arrow;
     case Kind::ShapeArea:
     case Kind::SettingsBackdrop:
     case Kind::ConfirmBackdrop:

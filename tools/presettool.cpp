@@ -44,6 +44,14 @@ std::string normalize(const std::filesystem::path &path, bool arrange) {
     clap_istream_t in = fileIn(file);
     const bool read = readParams(&in, values);
     gui::UiLayout layout = read ? readLayout(&in) : gui::UiLayout{};
+    // What follows the layout (the DATA chunk of the tables and samples the preset holds) stays as it is.
+    std::vector<unsigned char> rest;
+    for (unsigned char chunk[4096]; read;) {
+        const size_t n = std::fread(chunk, 1, sizeof(chunk), file);
+        rest.insert(rest.end(), chunk, chunk + n);
+        if (n < sizeof(chunk))
+            break;
+    }
     std::fclose(file);
     if (!read)
         return {};
@@ -60,6 +68,7 @@ std::string normalize(const std::filesystem::path &path, bool arrange) {
     clap_ostream_t out = memoryOut(bytes);
     if (!writePatch(&out, values, layout, true))
         return {};
+    bytes.insert(bytes.end(), rest.begin(), rest.end());
     file = openFile(path, "wb");
     if (!file)
         return {};

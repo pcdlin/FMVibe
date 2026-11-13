@@ -3,6 +3,7 @@
 // edits and notes arriving as messages instead of CLAP events. Built as a standalone wasm module, with no
 // Emscripten JS around it, since that doesn't run in a worklet.
 
+#include "opdata.h"
 #include "params.h"
 #include "synth.h"
 
@@ -10,6 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
+#include <vector>
 
 using namespace fmvibe;
 
@@ -27,6 +30,38 @@ int oversampling = 2;
 
 int voiceLimit() {
     return std::clamp(static_cast<int>(std::lround(values[paramIndex(GlobalParam::Voices)])), 1, kMaxVoices);
+}
+
+// The Wavetable and Sample operators' data, by registry entry: what the editor sent over (see dsp_data()), and the
+// factory tables the synth found missing, made here. Everything here runs on the worklet's one thread, between
+// blocks, so data let go of can be freed at once.
+std::array<std::shared_ptr<const OpData>, DataRegistry::kEntries> held;
+std::vector<float> incoming;
+
+void registerData(uint32_t key, std::shared_ptr<const OpData> data) {
+    DataRegistry &registry = synth.registry();
+    int free = -1;
+    for (int i = 0; i < DataRegistry::kEntries; ++i) {
+        if (held[i] && held[i]->key == key) { // in place of what it held
+            registry.set(i, key, data.get());
+            held[i] = std::move(data);
+            return;
+        }
+        if (!held[i] && free < 0)
+            free = i;
+    }
+    if (free < 0)
+        return;
+    registry.set(free, key, data.get());
+    held[free] = std::move(data);
+}
+
+void releaseData(uint32_t key) {
+    for (int i = 0; i < DataRegistry::kEntries; ++i)
+        if (held[i] && held[i]->key == key) {
+            synth.registry().clear(i);
+            held[i].reset();
+        }
 }
 
 void applyPlayMode() {
@@ -99,6 +134,38 @@ EMSCRIPTEN_KEEPALIVE void dsp_render(int frames) {
     applyPlayMode();
     synth.render(left, right, static_cast<uint32_t>(frames), values);
     synth.clearEndedNotes(); // nobody to report them to
+    // A factory table a Wavetable operator found missing is made now, between blocks (a block may drop out meanwhile:
+    // the demo has no other thread); the editor's own data comes over with dsp_data().
+    for (const uint32_t key : synth.registry().takeMissing()) {
+        if (key < kFactoryTables)
+            registerData(key, makeFactoryTable(static_cast<int>(key)));
+        else
+            synth.registry().ignore(key); // until the editor sends it
+    }
+}
+
+// A Wavetable or Sample operator's data from the editor, as the patch stores it: its samples go into the buffer this
+// gives first, then dsp_data() builds it (here, between blocks) and hands it to the synth under its key.
+EMSCRIPTEN_KEEPALIVE float *dsp_data_buffer(int count) {
+    incoming.assign(static_cast<size_t>(std::max(count, 0)), 0.0f);
+    return incoming.data();
+}
+
+EMSCRIPTEN_KEEPALIVE void dsp_data(unsigned key, int kind, unsigned rate, int frames, double root) {
+    auto data = std::make_shared<OpData>();
+    data->key = key;
+    data->kind = kind == static_cast<int>(DataKind::Sample) ? DataKind::Sample : DataKind::Table;
+    data->rate = rate;
+    data->frames = frames;
+    data->root = static_cast<float>(root);
+    data->pcm = std::move(incoming);
+    incoming.clear();
+    buildOpData(*data);
+    registerData(key, std::move(data));
+}
+
+EMSCRIPTEN_KEEPALIVE void dsp_data_release(unsigned key) {
+    releaseData(key);
 }
 
 // The editor's view of the newest voice, taken now; the page sends these bytes over as they are.

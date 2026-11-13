@@ -4,6 +4,7 @@
 #include "envelope.h"
 #include "filter.h"
 #include "noise.h"
+#include "opdata.h"
 #include "oversampler.h"
 #include "params.h"
 #include "wavetable.h"
@@ -111,6 +112,10 @@ struct Telemetry {
     float bendSet = 0.0f;
     float fxPitch = 60.0f; // what the effects' key tracking follows: that pitch, kept once the voice has ended
     float age = 0.0f;                           // seconds since the audio thread took this snapshot
+    // A Wavetable operator's Position as it plays (0..1, smoothed), and a Sample operator's first copy's place in its
+    // sample (0..1 of its length), in the newest voice; -1 for an operator that plays neither.
+    std::array<float, kOps> opTablePos{};
+    std::array<float, kOps> opSamplePos{};
     std::array<float, kOps> opLevels{};         // operator envelope (the editor scales it by the Out)
     std::array<float, kOps> opEnvLevels{};      // operator envelope alone (0..1)
     // Where each operator's and mod envelope is, see Envelope::position(); -1 idle (or not an envelope).
@@ -275,6 +280,11 @@ public:
     std::span<const NoteRef> endedNotes() const { return ended_; }
     void clearEndedNotes() { ended_.clear(); }
 
+    // Where the main thread hands the Wavetable and Sample operators their data (see DataStore): each render() looks
+    // up the keys the params name there, and counts itself done at its end.
+    DataRegistry &registry() { return registry_; }
+    const DataRegistry &registry() const { return registry_; }
+
 private:
     // An operator's unison copies: each one's phase increment, and apart from those, which follow its pitch, their
     // stereo gains, which follow only the spread and the number of copies (see renderBlock()).
@@ -311,6 +321,19 @@ private:
         // The warp it plays (see warp.h) and its amount, which goes to 0 before the warp changes to another one.
         OpWarp warp = OpWarp::Off;
         double warpNow = 0.0;
+        // A Wavetable operator's Position, moving to each block's a sample at a time.
+        double posNow = 0.0;
+        bool posKnown = false;
+        // A Sample operator's copies: where each plays (in the sample's own samples) and which way (a ping-pong loop
+        // turns them round), whether it is in its loop yet and whether it has played to its end.
+        std::array<double, kMaxUnison> heads{};
+        std::array<float, kMaxUnison> ways{};
+        std::array<uint8_t, kMaxUnison> looping{};
+        std::array<uint8_t, kMaxUnison> ended{};
+        bool restartSample = true; // its copies start over at Start in its next block: a new note, or a retrigger
+        bool leftLoop = false;     // let go of in Sustain or One-Shot: its copies play on past the loop to the end
+        bool oneShot = false;      // a One-Shot sample with data, whose envelope letting go of the key leaves alone
+        bool finished = false;     // a sample that has played to its end: its envelope is stopped, it is silent
     };
 
     struct Lfo {
@@ -467,9 +490,62 @@ private:
     struct OpSample {
         double mono = 0.0, l = 0.0, r = 0.0;
     };
-    static OpSample warpedSample(Operator &op, const float *table, double offset, double factor, int copies,
+    // How a warped or synced operator reads its wave (see warpedSample()): a single cycle, or a Wavetable operator's
+    // two frames about its Position, blended.
+    struct CycleReader {
+        const float *table;
+        float read(double phase) const { return WaveTables::read(table, phase); }
+        float readCycle(double phase) const { return WaveTables::readCycle(table, phase); }
+    };
+    struct FrameReader {
+        const float *a, *b; // the frames either side of the Position, at the level played
+        float t;             // how far toward b: a's alone at 0, b's alone at 1
+        int size;            // their samples a cycle (a power of two)
+        float one(const float *x, double phase) const {
+            const double p = (phase - std::floor(phase)) * size;
+            const int i = std::min(static_cast<int>(p), size - 1) & (size - 1);
+            return x[i] + (x[i + 1] - x[i]) * static_cast<float>(p - i);
+        }
+        float oneCycle(const float *x, double phase) const {
+            const double p = phase * size;
+            const int i = std::clamp(static_cast<int>(p), 0, size - 1);
+            return x[i] + (x[i + 1] - x[i]) * static_cast<float>(p - i);
+        }
+        // Weighted rather than stepped from a toward b, so either end plays its frame as it is, bit for bit.
+        float read(double phase) const { return one(a, phase) * (1.0f - t) + one(b, phase) * t; }
+        float readCycle(double phase) const { return oneCycle(a, phase) * (1.0f - t) + oneCycle(b, phase) * t; }
+    };
+    // A Wavetable operator's frames at `level` for its Position now (0..1).
+    static FrameReader frameReader(const FrameTable &table, int level, double position) {
+        const int frames = table.frames;
+        const double at = std::clamp(position, 0.0, 1.0) * (frames - 1);
+        const int a = frames > 1 ? std::min(static_cast<int>(at), frames - 2) : 0;
+        return {table.frame(level, a), table.frame(level, frames > 1 ? a + 1 : a),
+                frames > 1 ? static_cast<float>(at - a) : 0.0f, FrameTable::levelSize(level)};
+    }
+    template <class Reader>
+    static OpSample warpedSample(Operator &op, const Reader &reader, double offset, double factor, int copies,
                                  const UnisonGains *gains, bool sides, const std::array<double, kMaxUnison> &syncIncStep,
                                  double warpStep);
+    // A Wavetable operator's sample, neither synced nor warped: as the plain loop's, through its frames.
+    static OpSample tableSample(Operator &op, const FrameTable &table, int level, double posStep, double offset,
+                                double factor, int copies, const UnisonGains *gains, bool sides);
+    // What a Sample operator plays this block (see renderBlock()): the level its copies read and how its playheads move.
+    struct SampleRead {
+        const SampleMips *mips = nullptr;
+        int level = 0;
+        double scale = 1.0;       // the level's samples a level-0 sample: 2^-level
+        double stepScale = 0.0;   // level-0 samples a sample, for each cycle a sample its increment says
+        double pmScale = 0.0;     // level-0 samples for a cycle of phase modulation: a period of its root
+        double maxStep = 0.0;     // the most a copy moves a sample, either way
+        double length = 0.0;      // level-0 samples
+        double loopFrom = 0.0, loopTo = 0.0; // its loop, level-0 samples; none if loopTo <= loopFrom
+        double fade = 0.0;        // the loop's crossfade, level-0 samples before its end
+        double endFade = 0.0;     // a fade into its end, level-0 samples, where it plays out
+        bool pingPong = false;
+    };
+    static OpSample sampleSample(Operator &op, const SampleRead &read, double offset, double factor, int copies,
+                                 const UnisonGains *gains, bool sides);
     // Brings the filters' block down to the host rate and measures it.
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
     // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.
@@ -483,6 +559,15 @@ private:
 
     const ParamTable &table_;
     const WaveTables &waves_;
+    DataRegistry registry_;
+    // Each operator's table and sample this render(), as the registry has them (see resolveData()): null for none, or
+    // for a key not registered yet, which plays nothing until it is.
+    std::array<const OpData *, kOps> opTable_{};
+    std::array<const OpData *, kOps> opSampleData_{};
+    // What the telemetry shows of them, kept apart from the data, which may be freed once render() is over.
+    std::array<bool, kOps> opTableKnown_{};
+    std::array<double, kOps> opSampleLength_{};
+    void resolveData(const ParamValues &params);
     std::array<CustomWave, kOps> customWaves_; // each operator's Custom wave, built from its partials as they change
     // How each route into an operator acts on it (see RouteMode), [from node][to operator], read once a render: these
     // params are stepped, past the ones voices read, and feedback is always Phase.

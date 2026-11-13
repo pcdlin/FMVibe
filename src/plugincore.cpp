@@ -36,9 +36,57 @@ PluginCore::PluginCore() {
     readUserSettings();
     if (userSettings.zoom >= 0.5)
         layout_.zoom = static_cast<float>(userSettings.zoom);
+    // The Wavetable and Sample operators' data reaches the audio thread through the synth's registry.
+    data().attach(&synth_.registry());
+    refreshData(); // operator A's table (Basic Shapes), should it be switched to Wavetable
 }
 
-PluginCore::~PluginCore() = default;
+PluginCore::~PluginCore() {
+    // The registry's pointers go with the data: nothing renders any more.
+    data().attach(nullptr);
+}
+
+void PluginCore::onMainThread() {
+    sectionsChanged();
+    dataAsked_.store(false);
+    for (const uint32_t key : synth_.registry().takeMissing())
+        if (!data().ensure(key))
+            synth_.registry().ignore(key); // a key the patch doesn't hold: its operator stays silent
+    refreshData();
+}
+
+void PluginCore::chooseOperatorFile(int op, DataKind kind) {
+    if (editor_)
+        editor_->chooseOperatorFile(op, kind);
+}
+
+TableLibrary *PluginCore::tableLibrary() {
+    if (!library_) {
+        const std::string folder = userSettingsFolder();
+        library_ = std::make_unique<TableLibrary>(folder.empty() ? std::string() : folder + "/tables-cache.bin");
+        readUserSettings();
+        library_->setFolders(userSettings.tableFolders);
+    }
+    return library_.get();
+}
+
+void PluginCore::chooseTableFolder() {
+    if (editor_)
+        editor_->chooseTableFolder();
+}
+
+void PluginCore::tableFoldersChanged() {
+    if (!library_)
+        return;
+    readUserSettings();
+    userSettings.tableFolders = library_->folders();
+    writeUserSettings();
+}
+
+void PluginCore::showTableFolder(int source) {
+    if (library_ && source >= 0 && source < static_cast<int>(library_->sources().size()))
+        gui::showFolder(library_->sources()[source].folder.path);
+}
 
 void PluginCore::layoutChanged() {
     sectionsChanged(); // the sources' order
@@ -135,6 +183,7 @@ void PluginCore::setMpeBendRange(int semitones) {
 }
 
 void PluginCore::beginBlock() {
+    inBlock_.store(true);
     // Filter and delay tails decay into denormals, which are slow; flush them to zero.
     csr_ = _mm_getcsr();
     _mm_setcsr(csr_ | 0x8040); // flush-to-zero and denormals-are-zero
@@ -181,6 +230,11 @@ void PluginCore::endBlock() {
     }
     telemetryOpen_ = open;
     _mm_setcsr(csr_);
+    // A Wavetable or Sample operator's data wasn't there (a factory table not built yet, a host's value): the main
+    // thread builds and registers it, if it can.
+    if (synth_.registry().anyMissing() && !dataAsked_.exchange(true))
+        hostRequestCallback();
+    inBlock_.store(false);
 }
 
 // Main thread: the virtual keyboard. The host may be asleep, so ask it to run us.
@@ -310,17 +364,33 @@ void PluginCore::setIdleLfosShown(bool shown) {
         hostRequestProcess();
 }
 
+namespace {
+
+// The data keys the params name, an operator's table and sample each.
+std::vector<uint32_t> namedKeys(const ParamValues &values) {
+    std::vector<uint32_t> keys;
+    for (int op = 0; op < kOps; ++op)
+        for (const OpParam p : {OpParam::Table, OpParam::Sample})
+            keys.push_back(dataKey(values[paramIndex(op, p)]));
+    return keys;
+}
+
+} // namespace
+
 bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
     const auto values = std::make_unique<ParamValues>();
     valuesInto(*values);
     if (!writePatch(stream, *values, layout_))
         return false;
-    if (!settings)
-        return true;
-    if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load()}))
-        return false;
-    // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
-    return writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile())));
+    if (settings) {
+        if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load()}))
+            return false;
+        // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
+        if (!writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile()))))
+            return false;
+    }
+    // Last, the tables and samples the params name that the patch holds itself (not the factory tables).
+    return writeDataChunk(stream, data().named(namedKeys(*values)));
 }
 
 bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
@@ -328,6 +398,32 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     ParamValues &loaded = *read;
     if (!readParams(stream, loaded))
         return false;
+    // The editor layout is optional; whatever is missing keeps its default.
+    const gui::UiLayout layout = readLayout(stream);
+    // The settings and the preset are optional too: a project saved before them gets the defaults.
+    Settings stored;
+    std::string preset;
+    bool edited = false, hasPreset = false;
+    if (settings) {
+        stored = readSettings(stream);
+        hasPreset = readPresetChunk(stream, preset, edited);
+    }
+    // The tables and samples, built and registered before the params naming them are stored, so the audio thread's
+    // first block with them finds them.
+    std::vector<std::shared_ptr<OpData>> entries;
+    readDataChunk(stream, entries);
+    for (std::shared_ptr<OpData> &entry : entries) {
+        buildOpData(*entry);
+        data().put(std::move(entry));
+    }
+    for (int op = 0; op < kOps; ++op) {
+        const OpWave wave = opWave(loaded[paramIndex(op, OpParam::Wave)]);
+        if (wave == OpWave::Wavetable)
+            data().ensure(dataKey(loaded[paramIndex(op, OpParam::Table)]));
+        else if (wave == OpWave::Sample && dataKey(loaded[paramIndex(op, OpParam::Sample)]) != 0)
+            data().ensure(dataKey(loaded[paramIndex(op, OpParam::Sample)]));
+    }
+
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(loaded[i]);
     valuesChanged();
@@ -338,8 +434,6 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     voiceLimitChanged();
     hostVoicesChanged();
 
-    // The editor layout is optional; whatever is missing keeps its default.
-    const gui::UiLayout layout = readLayout(stream);
     // A preset leaves the editor as it is (its size, the modulation panel, the shape grid) from the start,
     // so its window isn't resized to the preset's and back.
     const gui::UiLayout before = layout_;
@@ -347,18 +441,14 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     if (!settings)
         keepEditorLayout(before);
 
-    // The settings are optional too: a project saved before them gets the defaults.
     if (settings) {
-        const Settings stored = readSettings(stream);
         oversampling_.store(stored.oversampling);
         mpe_.store(stored.mpe);
         mpeBendRange_.store(stored.mpeBendRange);
         restartIfNeeded();
 
         // Which preset it was. Without that, it shows Init, changed unless it is Init.
-        std::string preset;
-        bool edited = false;
-        if (readPresetChunk(stream, preset, edited)) {
+        if (hasPreset) {
             // Save writes the patch over the preset named here, so a project names only a preset file: any other
             // path (a project made by hand, say) shows as an edited patch with no preset.
             std::wstring file = widePath(preset);
