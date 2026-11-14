@@ -1351,7 +1351,8 @@ one may have changed since it last did.
       Off an arrow running into a stop, Forward a circling arrow between the loop's brackets and Ping-Pong a two-way
       arrow between them; MODE's Gate a square pulse (the sample sounds while the key is down), Sustain a pulse with a
       tail (it leaves its loop once let go of and plays on to its end) and One-Shot a pluck (it plays to its end
-      whatever the key does). Between them, the reverse switch (a pluck turned round, swelling to a sudden end) plays
+      whatever the key does). Between them, the reverse switch (a mirror, a wedge on one side of its dashed line and its reflection on the
+      other) plays
       the sample back to front, as though its file were reversed: the waveform is drawn turned round, and Start, the
       loop's points and the playhead stay shares of it as it plays. With no sample, a dashed card in the
       display's place opens the file dialog. A file the dialog would offer (WAV, FLAC, `.wt`, `.vitaltable`), dragged in

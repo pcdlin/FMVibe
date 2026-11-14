@@ -370,12 +370,12 @@ void sampleModeIcon(Canvas &c, Point m, SampleMode mode, Color color) {
 }
 
 void sampleReverseIcon(Canvas &c, Point m, Color color) {
-    const float base = m.y + 3.5f, top = m.y - 4.5f;
-    std::vector<Point> points = {{m.x - 10.0f, base}};
-    quadratic(points, {m.x - 10.0f, base}, {m.x + 6.0f, base}, {m.x + 8.0f, top});
-    points.push_back({m.x + 8.0f, base});
-    points.push_back({m.x + 10.0f, base});
-    c.polyline(points.data(), points.size(), color, 1.4f);
+    c.line({m.x, m.y - 6.0f}, {m.x, m.y + 6.0f}, color.alpha(0.6f), 1.0f, true); // the mirror
+    for (const float side : {-1.0f, 1.0f}) { // a wedge, and its reflection, faint
+        const Point wedge[] = {{m.x + side * 2.0f, m.y - 4.5f}, {m.x + side * 2.0f, m.y + 4.5f},
+                               {m.x + side * 9.0f, m.y + 4.5f}, {m.x + side * 2.0f, m.y - 4.5f}};
+        c.polyline(wedge, 4, side > 0.0f ? color : color.alpha(0.55f), 1.4f);
+    }
 }
 
 void polaritySign(Canvas &c, Point m, bool minus, Color color) {

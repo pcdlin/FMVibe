@@ -95,7 +95,7 @@ void sampleLoopIcon(Canvas &c, Point m, SampleLoop loop, Color color);
 // How a Sample operator plays a note, about 20 x 8 around `m`: Gate a square pulse, Sustain a pulse with a tail after
 // it, One-Shot a pluck.
 void sampleModeIcon(Canvas &c, Point m, SampleMode mode, Color color);
-// A sample played back to front: One-Shot's pluck turned round, swelling to a sudden end.
+// A sample played back to front: a mirror, a wedge on one side of it and its reflection faintly on the other.
 void sampleReverseIcon(Canvas &c, Point m, Color color);
 // A plus, or a minus: the phaser's and flanger's polarity.
 void polaritySign(Canvas &c, Point m, bool minus, Color color);
