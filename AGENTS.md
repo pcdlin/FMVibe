@@ -219,7 +219,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     it ran (its points and polarity kept), a version 12 state's as saved; and a version 12 state's depth on an
     operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
     saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
-    Alternate, the pan a new operator starts with;
+    Alternate, the pan a new operator starts with; and a version 13 state's depth on a source's Division loading
+    26/28 as deep, as it grew two note values slower, a version 14 state's as saved;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -289,7 +290,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (in single frames too) no rougher than the sound before, after or the plain wave between, and an LFO on
     Squeeze's amount and on a synced operator's ratio leaving only the note's harmonics and their sidebands;
   - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
-    not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
+    not (a one-shot not anchored), synced down to 8/1 (a cycle every eight bars, 4/1D's number as it was),
+    following it through a block split into pieces, running on from there while the
     transport is stopped, and a Random source anchored running free and one-shot retriggering;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
@@ -1039,7 +1041,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 13: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 14: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1059,7 +1061,10 @@ itself.
   with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`); before version 13,
   a modulation's depth on an operator's Unison Detune loads scaled by `kRetiredMaxUnisonDetune / kMaxUnisonDetune`,
   since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
-  its copies played), followed by the editor layout:
+  its copies played; before version 14, a modulation's depth on a source's Division loads scaled by
+  `kRetiredSourceDivisionSteps / kSourceDivisionSteps`, since it now reaches two note values slower, 8/1T and 8/1,
+  numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values), followed by the editor
+  layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

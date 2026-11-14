@@ -64,7 +64,10 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    depths on it load half as deep, to swing it as far as they did. And the unison copies' Unison Pan, new with it,
 //    is Alternate to begin with: an earlier state, which has none, loads Ramp, its copies from left to right as they
 //    played.
-constexpr uint32_t kStateVersion = 13;
+// 14: A source's synced Division reaches two note values slower, 8/1T and 8/1 (-1 and -2, see kSlowestDivision), so
+//    its stored values keep their note values, but an earlier state's depths on it load smaller (by 26 steps over
+//    28), to step it as far as they did.
+constexpr uint32_t kStateVersion = 14;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -603,6 +606,13 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                     detune = detune || target == paramIndex(op, OpParam::UnisonDetune);
                 if (detune)
                     loaded[slotAmountIndex(source, slot)] *= kRetiredMaxUnisonDetune / kMaxUnisonDetune;
+            }
+    if (header[1] < 14) // as far as they stepped a source's Division: it reached from 4/1D (0) up only
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                if (target >= 0 && modulatedInSteps(target))
+                    loaded[slotAmountIndex(source, slot)] *= kRetiredSourceDivisionSteps / kSourceDivisionSteps;
             }
     if (header[1] < 8) { // the chain's order onto its places
         const int retired = paramIndex(GlobalParam::RetiredFxOrder);

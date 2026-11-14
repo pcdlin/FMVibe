@@ -1922,14 +1922,21 @@ inline double normFromRatio(double ratio) {
 // The ratio as the editor shows and sets it: in hundredths, 50 to 6400.
 inline long ratioHundredths(double norm) { return std::clamp(std::lround(ratioFromNorm(norm) * 100.0), 50L, 6400L); }
 
-// Note values for tempo sync, from 4/1 dotted down to a 1/64 triplet, slowest
-// first. Stored in projects by number.
+// Note values for tempo sync, from 4/1 dotted (0) down to a 1/64 triplet (kDivisions - 1), slowest first. Stored in
+// projects by number. The sources' synced rates also reach two slower ones, 8/1 (eight bars, kSlowestDivision) and
+// 8/1T, numbered -2 and -1 so that the numbers stored before them keep their note values; the effects' start at 0.
 constexpr int kDivisions = 27;
+constexpr int kSlowestDivision = -2;
+// Before state version 14, the sources' Division reached from 0 up only, so a modulation's depth on it loads scaled
+// (see readParams()).
+constexpr double kRetiredSourceDivisionSteps = kDivisions - 1.0;
+constexpr double kSourceDivisionSteps = kDivisions - 1.0 - kSlowestDivision;
 // Length of a division in quarter notes: each power of two comes dotted, straight and as a triplet.
 inline double divisionBeats(int division) {
     constexpr double kFactors[] = {1.5, 1.0, 2.0 / 3.0};
-    division = division < 0 ? 0 : (division >= kDivisions ? kDivisions - 1 : division);
-    return 16.0 / static_cast<double>(1 << (division / 3)) * kFactors[division % 3];
+    division = division < kSlowestDivision ? kSlowestDivision : (division >= kDivisions ? kDivisions - 1 : division);
+    const int from8 = division + 3; // from 8/1 dotted, which is -3
+    return 32.0 / static_cast<double>(1 << (from8 / 3)) * kFactors[from8 % 3];
 }
 inline double divisionSeconds(double division, double tempo) {
     return divisionBeats(static_cast<int>(std::lround(division))) * 60.0 / tempo;

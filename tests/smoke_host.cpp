@@ -1657,15 +1657,15 @@ int main(int argc, char **argv) {
         std::printf("      synced square LFO at 0.35 s: %.3f at 120 bpm, %.3f at 60 bpm\n", fast, slow);
         check(early == 0.0f && fast > 0.1f && slow == 0.0f, "a synced LFO follows the host tempo");
 
-        // Modulated, its note value moves in steps: a macro at 10 % of the 27 values takes 1/4 to 1/8 turned up (2.6
-        // steps, rounded to 3), where 0.35 s in falls in the muted half of its third cycle, and turned a little (0.4
-        // of a step) leaves it at 1/4, still sounding. Host modulation does the same.
+        // Modulated, its note value moves in steps: a macro at 10 % of the 29 values (8/1 to 1/64T) takes 1/4 to 1/8
+        // turned up (2.8 steps, rounded to 3), where 0.35 s in falls in the muted half of its third cycle, and turned a
+        // little (0.4 of a step) leaves it at 1/4, still sounding. Host modulation does the same.
         const int division = paramIndex(0, SourceParam::Division);
         setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(division)},
                    {slotAmountIndex(kMaxSources, 0), 0.1},
                    {paramIndex(0, MacroParam::Value), 1.0}});
         const float eighth = levelAt(120.0, 0.35);
-        setParams({{paramIndex(0, MacroParam::Value), 0.4 / 2.6}});
+        setParams({{paramIndex(0, MacroParam::Value), 0.4 / 2.8}});
         const float withinStep = levelAt(120.0, 0.35);
         setParams({{slotTargetIndex(kMaxSources, 0), 0.0},
                    {slotAmountIndex(kMaxSources, 0), 0.0},

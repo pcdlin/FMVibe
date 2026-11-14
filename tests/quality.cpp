@@ -3322,6 +3322,40 @@ void unisonModeChecks() {
                   olderPan == static_cast<double>(UniPan::Ramp) && nowPan == static_cast<double>(UniPan::Alternate),
               "Unison Pan starts on Alternate, and a version 12 state loads Ramp, as its copies played");
     }
+    {
+        // A source's Division reaches 8/1 since version 14, two steps below 4/1D: a version 13 state's depth on it (on
+        // Mod 3's) loads 26/28 as deep, stepping it as far as it did, and its value as saved, a version 14 state's
+        // depth as saved too. A depth on its Rate loads as saved.
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(2, SourceParam::Division)] = 7.0; // 1/1
+        p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(2, SourceParam::Division));
+        p[slotAmountIndex(0, 0)] = 0.28;
+        p[slotTargetIndex(0, 1)] = slotTargetValue(paramIndex(2, SourceParam::Rate)); // not Division: as saved
+        p[slotAmountIndex(0, 1)] = 0.28;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto loadedAt = [&bytes](uint32_t version) { // the two depths and the Division, as saved by that version
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            const bool read = readParams(&in, loaded);
+            return std::tuple(read ? loaded[slotAmountIndex(0, 0)] : -1.0, loaded[slotAmountIndex(0, 1)],
+                              loaded[paramIndex(2, SourceParam::Division)]);
+        };
+        const auto [older, olderRate, olderDivision] = loadedAt(13);
+        const auto [now, nowRate, nowDivision] = loadedAt(14);
+        std::printf("      a depth of 0.28 on a source's Division: %.4f from a version 13 state, %.4f from 14\n", older,
+                    now);
+        auto near = [](double a, double b) { return std::abs(a - b) < 1e-12; };
+        check(near(older, 0.26) && olderRate == 0.28 && olderDivision == 7.0 && now == 0.28 && nowRate == 0.28 &&
+                  nowDivision == 7.0,
+              "a version 13 state's depth on a source's Division loads 26/28 as deep, a version 14 state's as saved");
+    }
 
     // An A4's copies at 100 cents: what each one plays where, from a sine's lines.
     auto level = [](const std::vector<float> &signal, double hz) { // the loudest bin near it, in dB
@@ -3782,6 +3816,20 @@ int main() {
                     "%.4f\n", atBeat, offset, later, free, oneShot);
         check(near(atBeat, 0.25) && near(offset, 0.75) && near(later, 0.6) && near(free, 0.1) && oneShot < 0.01,
               "an anchored LFO stands where the transport puts it, from its Phase, synced or not; a one-shot doesn't");
+
+        // Its slowest note values, below the effects' 4/1D: at beat 40, an 8/1 (32 beats, eight bars) is a quarter into
+        // its second cycle, an 8/1T (21 1/3 beats) seven eighths, and a 4/1D (24 beats) two thirds, as it was.
+        auto atDivision = [&](double division) {
+            return phaseAt(40.0, [division](Engine &e) { e.p[paramIndex(0, SourceParam::Division)] = division; });
+        };
+        const double eightBars = atDivision(kSlowestDivision), eightTriplet = atDivision(kSlowestDivision + 1.0),
+                     sixBars = atDivision(0.0);
+        std::printf("      at beat 40: %.4f at 8/1, %.4f at 8/1T, %.4f at 4/1D\n", eightBars, eightTriplet, sixBars);
+        check(near(eightBars, 0.25) && near(eightTriplet, 0.875) && near(sixBars, 2.0 / 3.0) &&
+                  paramTable()[paramIndex(0, SourceParam::Division)].min == kSlowestDivision &&
+                  divisionName(kSlowestDivision) == std::string("8/1") && divisionName(-1) == std::string("8/1T") &&
+                  divisionName(0) == std::string("4/1D"),
+              "a synced LFO reaches down to 8/1, a cycle every eight bars, its numbers from 4/1D on as they were");
 
         // 0.1 s from the song's start, rendered in blocks of 480 and in pieces of 7, the transport set once: both at
         // a fifth of a cycle. Then stopped: on from there, another fifth a tenth of a second later.

@@ -38,11 +38,12 @@ const char *const kFilterSlopeNames[] = {"6 dB/oct", "12 dB/oct", "18 dB/oct", "
 static_assert(std::size(kFilterSlopeNames) == static_cast<size_t>(kFilterSlopes));
 static_assert(std::size(kFilterTypeNames) == static_cast<size_t>(FilterType::Count));
 static_assert(std::size(kFilterTypeShortNames) == static_cast<size_t>(FilterType::Count));
-const char *const kDivisionNames[] = {"4/1D",  "4/1",  "4/1T",  "2/1D",  "2/1",  "2/1T",  "1/1D",
-                                      "1/1",   "1/1T", "1/2D",  "1/2",   "1/2T", "1/4D",  "1/4",
-                                      "1/4T",  "1/8D", "1/8",   "1/8T",  "1/16D", "1/16", "1/16T",
-                                      "1/32D", "1/32", "1/32T", "1/64D", "1/64",  "1/64T"};
-static_assert(std::size(kDivisionNames) == static_cast<size_t>(kDivisions));
+// From kSlowestDivision: a division's name is at its number - kSlowestDivision.
+const char *const kDivisionNames[] = {"8/1",   "8/1T",  "4/1D",  "4/1",  "4/1T",  "2/1D",  "2/1",  "2/1T",
+                                      "1/1D",  "1/1",   "1/1T",  "1/2D", "1/2",   "1/2T",  "1/4D", "1/4",
+                                      "1/4T",  "1/8D",  "1/8",   "1/8T", "1/16D", "1/16",  "1/16T", "1/32D",
+                                      "1/32",  "1/32T", "1/64D", "1/64", "1/64T"};
+static_assert(std::size(kDivisionNames) == static_cast<size_t>(kDivisions - kSlowestDivision));
 constexpr Str kClipModeNames[] = {Str::ClipHard,   Str::ClipSoft,     Str::ClipAsymmetric, Str::ClipCubic,
                                   Str::ClipGentle, Str::ClipSineFold, Str::ClipFold,       Str::ClipCustom};
 static_assert(std::size(kClipModeNames) == static_cast<size_t>(ClipMode::Count));
@@ -862,7 +863,8 @@ void buildTable(ParamTable &t) {
         field(SourceParam::Rate, tr(Str::ParamRate), ParamKind::SweepRate, 0.0, 1.0, normFromRate(2.0));
         field(SourceParam::Sync, tr(Str::ParamSync), ParamKind::Toggle, 0.0, 1.0,
             1.0); // an LFO starts on quarter notes
-        field(SourceParam::Division, tr(Str::ParamDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kQuarter);
+        field(SourceParam::Division, tr(Str::ParamDivision), ParamKind::SyncDivision, kSlowestDivision,
+              kDivisions - 1.0, kQuarter); // down to 8/1, where the effects stop at 4/1D
         field(SourceParam::Free, tr(Str::ParamFree), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::Unipolar, tr(Str::ParamUnipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::OneShot, tr(Str::ParamOneShot), ParamKind::Toggle, 0.0, 1.0, 0.0);
@@ -997,7 +999,7 @@ const char *filterTypeShortName(FilterType type) {
 }
 
 const char *divisionName(int division) {
-    return nameAt(kDivisionNames, division);
+    return nameAt(kDivisionNames, division - kSlowestDivision);
 }
 
 const char *lfoShapeName(LfoShape shape) {
@@ -1285,7 +1287,7 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     }
     case ParamKind::SyncDivision:
-        std::snprintf(out, capacity, "%s", nameAt(kDivisionNames, value));
+        std::snprintf(out, capacity, "%s", nameAt(kDivisionNames, value - kSlowestDivision));
         break;
     case ParamKind::ClipMode:
         std::snprintf(out, capacity, "%s", nameAt(kClipModeNames, value));
@@ -1410,7 +1412,6 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::UniPan       ? findName(kUniPanNames, text)
                       : def.kind == ParamKind::FilterType   ? std::max(findName(kFilterTypeNames, text),
                                                                        findName(kFilterTypeShortNames, text))
-                      : def.kind == ParamKind::SyncDivision ? findName(kDivisionNames, text)
                       : def.kind == ParamKind::ClipMode     ? findName(kClipModeNames, text)
                       : def.kind == ParamKind::FxType       ? findName(kFxNames, text)
                       : def.kind == ParamKind::SourceType   ? findName(kSourceTypeNames, text)
@@ -1451,8 +1452,13 @@ bool parseParam(int index, const char *text, double *out) {
         *out = -1.0;
         return true;
     }
-    if (def.kind == ParamKind::SyncDivision)
-        return false; // names only: "1/4" would otherwise read as the number 1
+    if (def.kind == ParamKind::SyncDivision) { // names only: "1/4" would otherwise read as the number 1
+        const int found = findName(kDivisionNames, text);
+        if (found < 0 || found + kSlowestDivision < def.min) // the effects' stop at 4/1D
+            return false;
+        *out = found + kSlowestDivision;
+        return true;
+    }
     if (def.kind == ParamKind::FxOrder)
         return parseFxOrder(text, out);
     if (def.kind == ParamKind::FxPort) { // a port's name
