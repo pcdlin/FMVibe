@@ -2,6 +2,7 @@
 
 #include "layout.h"
 #include "theme.h"
+#include "../unison.h"
 #include "../warp.h"
 
 #include <algorithm>
@@ -336,6 +337,20 @@ void warpIcon(Canvas &c, Rect r, OpWarp warp, Color color) {
         return line;
     });
     c.polyline(points.data(), points.size(), color, 1.3f);
+}
+
+void uniCurveIcon(Canvas &c, Point m, UniCurve curve, Color color) {
+    const UnisonSpreadOut at = unisonSpread(5, curve, UniPan::Ramp, 0.0, 3u, 0); // Random's: one such spread
+    for (int k = 0; k < 5; ++k) {
+        const float x = std::round(m.x + static_cast<float>(at.detune[k]) * 6.0f) + 0.5f;
+        c.line({x, m.y - 4.5f}, {x, m.y + 4.5f}, k == 2 && curve != UniCurve::Random ? color : color.alpha(0.8f), 1.3f);
+    }
+}
+
+void uniPanIcon(Canvas &c, Point m, UniPan pan, Color color) {
+    const UnisonSpreadOut at = unisonSpread(5, UniCurve::Linear, pan, 0.0, 5u, 0);
+    for (int k = 0; k < 5; ++k)
+        c.fillCircle({m.x + static_cast<float>(at.pan[k]) * 6.0f, m.y + 5.0f - 2.5f * k}, 1.5f, color);
 }
 
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale) {

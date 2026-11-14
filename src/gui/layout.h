@@ -180,9 +180,18 @@ inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0
 inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
 // Envelope: the curve, its knobs under the well.
 constexpr Rect kOpEnvRect = kOpDisplay;
-// Unison: where the copies sit, its knobs under the well.
+// Unison: where the copies sit, over a row of buttons along the well's bottom (how they spread in pitch, then, past a
+// rule, where they sit across), its knobs under the well.
 constexpr float kUnisonKnobsY = kOpControlsY;
-constexpr Rect kUnisonRect = kOpDisplay;
+constexpr float kUnisonButtonsH = 28.0f; // the row, at the display's bottom
+constexpr Rect kUnisonRect{kOpDisplay.x, kOpDisplay.y, kOpDisplay.w, kOpDisplay.h - kUnisonButtonsH};
+inline Rect uniCurveButton(int curve) {
+    return {kOpDisplay.x + 6.0f + curve * 26.0f, kOpDisplay.bottom() - kUnisonButtonsH + 2.0f, 26.0f, 22.0f};
+}
+constexpr float kUniRuleX = kOpDisplay.x + 6.0f + 4 * 26.0f + 8.0f; // between the curves and the pans
+inline Rect uniPanButton(int pan) {
+    return {kUniRuleX + 8.0f + pan * 26.0f, kOpDisplay.bottom() - kUnisonButtonsH + 2.0f, 26.0f, 22.0f};
+}
 // A noise operator's spectrum, in Unison's place.
 constexpr Rect kNoiseRect = kOpDisplay;
 inline Rect scopeCycleButton(int choice) {

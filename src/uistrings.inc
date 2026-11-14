@@ -37,6 +37,15 @@ STR(WarpPulse, "Pulse")
 STR(WarpSteps, "Steps")
 STR(WarpSync, "Sync") // the wave played several times through each cycle, cut off at its end
 
+// How an operator's unison copies spread in pitch (its Unison Curve), and where they sit (its Unison Pan), in the host.
+STR(UniCurveLinear, "Linear")
+STR(UniCurveCenter, "Center")
+STR(UniCurveSupersaw, "Supersaw")
+STR(UniCurveRandom, "Random")
+STR(UniPanRamp, "Ramp")
+STR(UniPanAlternate, "Alternate")
+STR(UniPanRandom, "Random")
+
 STR(FilterLowPass, "Low-pass")
 STR(FilterHighPass, "High-pass")
 STR(FilterBandPass, "Band-pass")
@@ -219,6 +228,9 @@ STR(ParamUnison, "Unison")
 STR(ParamUnisonDetune, "Unison Detune")
 STR(ParamUnisonSpread, "Unison Spread")
 STR(ParamPhaseRandom, "Phase Random")
+STR(ParamUnisonCurve, "Unison Curve")
+STR(ParamUnisonPan, "Unison Pan")
+STR(ParamUnisonBlend, "Unison Blend")
 STR(ParamNoiseSlope, "Noise Slope")
 STR(ParamFixed, "Fixed") // the operator plays a fixed frequency instead of following the note
 STR(ParamFixedFreq, "Fixed Freq")
@@ -580,9 +592,8 @@ STR(LabelSlope, "Slope")
 STR(LabelMult, "Mult") // a fixed operator's knob in Fine's place, Freq in Ratio's
 STR(LabelDetune, "Detune")
 STR(LabelUnison, "Unison")
-STR(LabelUniDetune, "Uni Detune")
-STR(LabelUniSpread, "Uni Spread")
 STR(LabelRndPhase, "Rnd Phase")
+STR(LabelBlend, "Blend") // the unison copies' Blend: the outer ones turned down
 STR(LabelSmooth, "Smooth")
 STR(LabelChaos, "Chaos")
 STR(LabelPhase, "Phase")
@@ -754,6 +765,13 @@ STR(TipWarpSqueeze, "Squeeze")
 STR(TipWarpPulse, "Pulse")
 STR(TipWarpSteps, "Steps")
 STR(TipWarpSync, "Sync")
+STR(TipUniCurveLinear, "Copies spread evenly in pitch") // the UNISON tab's buttons
+STR(TipUniCurveCenter, "Copies bunched about the pitch")
+STR(TipUniCurveSupersaw, "Supersaw spacing")
+STR(TipUniCurveRandom, "Random detune")
+STR(TipUniPanRamp, "Left to right as the pitch rises")
+STR(TipUniPanAlternate, "Copies next in pitch on opposite sides")
+STR(TipUniPanRandom, "Random places")
 STR(SummarySync, "note sync") // on an operator's summary line, while it is synced to the note
 STR(TipFixedOn, "Fixed pitch on. Click to track keys")
 

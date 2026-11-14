@@ -7,8 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, warp, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult
-  lists, and the state layout are
+- Parameter ids, the wave, warp, unison curve and pan, filter type, effect type, source type, amp model, cabinet,
+  mic and fixed Mult lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -216,7 +216,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     from 60 dB to 80, a version 10 state's as saved; and a version 10 state's Random source loading as one standing
     still at 0 Hz and its LFO with the retired Random shape as a Random source running as it ran, a version 11
     state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
-    it ran (its points and polarity kept), a version 12 state's as saved;
+    it ran (its points and polarity kept), a version 12 state's as saved; and a version 12 state's depth on an
+    operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
+    saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
+    Alternate, the pan a new operator starts with;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -300,6 +303,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a host's automation and modulation splitting blocks into pieces as they move params (some chosen, the rest any
     param that can be modulated, wiring too): the synth told param by param which changed playing sample for sample
     as one working everything out again for every piece;
+  - the unison modes: Linear and Ramp spreading the copies evenly, to the bit, as unison always did; Center
+    bunching them about the pitch, Supersaw spacing seven as a supersaw does, Random putting one in each stretch of
+    the detune (the same through a note, new for another), Alternate putting copies next in pitch on opposite sides
+    and Random pan dealing them the even places; and on an A4, Center's inner copies nearer the pitch than Linear's,
+    Alternate's lowest copy on the other side from Ramp's, and full Blend taking the outermost copy 20 dB under the
+    middle one, in what a modulator's carrier plays too;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -518,6 +527,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
+  - the UNISON tab starting on Alternate, its buttons picking the copies' curve (Supersaw) and pan (Ramp) and its
+    Blend knob, each an undo step, the display's lowest copy moving from the right to the left (read off the rendered
+    pixels), and a pan button's tooltip;
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes
@@ -884,6 +896,7 @@ breakpoints in `src/` then hit.
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
 | `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
 | `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
 | `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
@@ -943,7 +956,7 @@ itself.
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
-  Sync, Warp and Warp Amount; the
+  Sync, Warp, Warp Amount, Unison Curve, Unison Pan and Unison Blend; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -979,8 +992,8 @@ itself.
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`) and
-  warp (`OpWarp`) lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
+  warp (`OpWarp`), unison curve (`UniCurve`) and unison pan (`UniPan`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -1001,7 +1014,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,280 of the 19,623 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,298 of the 19,641 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
@@ -1026,7 +1039,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 12: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 13: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1043,8 +1056,10 @@ itself.
   than -60; before version 11, a Random source, which then took a value for each note, loads unsynced at 0 Hz (the
   LFO fields it now uses otherwise at their defaults), standing still and taking one for each note, and an LFO with
   the retired Random shape as a Random source running as it ran (`loadRandomSources()`); before version 12, an LFO
-  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`)), followed by the
-  editor layout:
+  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`); before version 13,
+  a modulation's depth on an operator's Unison Detune loads scaled by `kRetiredMaxUnisonDetune / kMaxUnisonDetune`,
+  since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
+  its copies played), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
