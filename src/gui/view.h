@@ -876,6 +876,8 @@ public:
     // reaches, and its pixels for the strength and accent it was filled with last.
     struct RadarGlow {
         Rect area;
+        Rect panel;   // what it is drawn in, the corners rounded
+        Point center; // where it spreads from
         float scale = 0.0f;
         std::vector<float> distance; // each pixel's from OUT
         std::vector<float> cover;    // how much of it is in the panel, at its rounded corners
@@ -885,8 +887,13 @@ public:
         Color accent{};
     };
 
+    // The effects graph's backdrop, under its nodes and wires in `area`: the routing graph's glow and orbit rings, spreading
+    // from its OUT at `out`.
+    void paintFxBackdrop(Canvas &c, Rect area, Point out);
+
 private:
     RadarGlow radarGlow_;
+    RadarGlow fxRadarGlow_; // the same behind the effects graph
     std::array<float, kNodes> nodeGlow_{};               // what the routing graph shows of each node's halo, following it
     std::vector<std::pair<int, float>> wireAmounts_;     // and of each wire's amount, by route
     float nodeGlowTarget(int node) const;

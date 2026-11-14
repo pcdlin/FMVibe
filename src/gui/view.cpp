@@ -1579,7 +1579,8 @@ bool View::poll() {
         const RadarLook before = radarLook();
         radarLevel_ = follow(radarLevel_, sentOutLevel(t));
         const RadarLook after = radarLook();
-        if (routingGraphShown() && (after.strength != before.strength || after.reach != before.reach))
+        if ((routingGraphShown() || (fxWide() && fxGraph())) &&
+            (after.strength != before.strength || after.reach != before.reach))
             in(kFxPanel);
     }
     // Phasers, flangers, choruses and wideners sweep while the audio runs.
@@ -3784,11 +3785,16 @@ namespace {
 // rounded up or down by an 8x8 ordered dither: the glow is so faint that it spans a few levels of each channel, which
 // would otherwise show as rings.
 constexpr float kRadarReach = 520.0f; // at the loudest, the outermost ring's
-void shapeRadarGlow(View::RadarGlow &glow, float scale) {
+// The same behind the effects graph, from its OUT, over a box less tall: its rings closer together.
+constexpr float kFxRadarShare = 0.6f;
+void shapeRadarGlow(View::RadarGlow &glow, float scale, Rect panel = kFxPanel, Point center = kOutCore,
+                    float corner = kPanelRadius, float reach = kRadarReach) {
     scale = std::clamp(scale, 0.25f, 3.0f);
-    const float left = std::max(kFxPanel.x, kOutCore.x - kRadarReach), top = std::max(kFxPanel.y, kOutCore.y - kRadarReach);
-    const float right = std::min(kFxPanel.right(), kOutCore.x + kRadarReach),
-                bottom = std::min(kFxPanel.bottom(), kOutCore.y + kRadarReach);
+    glow.panel = panel;
+    glow.center = center;
+    const float left = std::max(panel.x, center.x - reach), top = std::max(panel.y, center.y - reach);
+    const float right = std::max(left + 1.0f, std::min(panel.right(), center.x + reach)),
+                bottom = std::max(top + 1.0f, std::min(panel.bottom(), center.y + reach));
     glow.area = {left, top, right - left, bottom - top};
     glow.scale = scale;
     const int w = static_cast<int>(std::ceil(glow.area.w * scale)), h = static_cast<int>(std::ceil(glow.area.h * scale));
@@ -3800,17 +3806,16 @@ void shapeRadarGlow(View::RadarGlow &glow, float scale) {
     glow.cover.assign(count, 1.0f);
     glow.strength = -1.0f; // filled again
     const float sx = glow.area.w / static_cast<float>(w), sy = glow.area.h / static_cast<float>(h); // logical a pixel
-    constexpr float kCorner = kPanelRadius;
     for (int y = 0; y < h; ++y) {
         const float ly = glow.area.y + (static_cast<float>(y) + 0.5f) * sy;
-        const float dy = std::max({kFxPanel.y + kCorner - ly, ly - (kFxPanel.bottom() - kCorner), 0.0f});
+        const float dy = std::max({panel.y + corner - ly, ly - (panel.bottom() - corner), 0.0f});
         for (int x = 0; x < w; ++x) {
             const float lx = glow.area.x + (static_cast<float>(x) + 0.5f) * sx;
-            const float dx = std::max({kFxPanel.x + kCorner - lx, lx - (kFxPanel.right() - kCorner), 0.0f});
+            const float dx = std::max({panel.x + corner - lx, lx - (panel.right() - corner), 0.0f});
             const size_t at = static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x);
-            glow.distance[at] = std::hypot(lx - kOutCore.x, ly - kOutCore.y);
+            glow.distance[at] = std::hypot(lx - center.x, ly - center.y);
             if (dx > 0.0f && dy > 0.0f)
-                glow.cover[at] = std::clamp((kCorner - std::hypot(dx, dy)) / sx + 0.5f, 0.0f, 1.0f);
+                glow.cover[at] = std::clamp((corner - std::hypot(dx, dy)) / sx + 0.5f, 0.0f, 1.0f);
         }
     }
 }
@@ -3880,6 +3885,31 @@ void paintOutCore(Canvas &c, bool target) {
            kPanel, Align::Center, true);
 }
 } // namespace
+
+// The effects graph's backdrop: the routing graph's, its glow as strong and as loud, spreading from the graph's OUT over
+// its box (whose corners it keeps round), with its rings, closer together as the box is less tall. Its distances
+// are worked out again as OUT moves (the graph scrolled, or gliding), the box changes or the editor is zoomed.
+void View::paintFxBackdrop(Canvas &c, Rect area, Point out) {
+    const float scale = std::clamp(c.deviceScale(), 0.25f, 3.0f);
+    out = {std::round(out.x), std::round(out.y)};
+    RadarLook glow = radarLook();
+    glow.strength *= 1.5f; // from a smaller OUT, so it shows as much
+    const float reach = glow.reach;
+    auto same = [](Rect a, Rect b) { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; };
+    if (glow.strength > 0.0f) {
+        if (std::abs(scale - fxRadarGlow_.scale) > 1e-3f || !same(area, fxRadarGlow_.panel) || out.x != fxRadarGlow_.center.x ||
+            out.y != fxRadarGlow_.center.y)
+            shapeRadarGlow(fxRadarGlow_, scale, area, out, kRadiusCard);
+        if (glow.strength != fxRadarGlow_.strength || reach != fxRadarGlow_.reach || kAccent.r != fxRadarGlow_.accent.r ||
+            kAccent.g != fxRadarGlow_.accent.g || kAccent.b != fxRadarGlow_.accent.b)
+            fillRadarGlow(fxRadarGlow_, glow.strength, reach, kAccent);
+        c.image(fxRadarGlow_.image, fxRadarGlow_.area);
+    }
+    // On the box's darker ground, fainter than the routing graph's, to stand out from it as much.
+    c.strokeCircle(out, 180.0f * kFxRadarShare, mix(kDisplayColor, kBorder, 0.6f), 1.0f);
+    c.strokeCircle(out, 340.0f * kFxRadarShare, mix(kDisplayColor, kBorder, 0.42f), 1.0f);
+    c.strokeCircle(out, 500.0f * kFxRadarShare, mix(kDisplayColor, kBorder, 0.27f), 1.0f);
+}
 
 // How strongly a routing node's halo lights up, 0 to 1, which nodeGlow_ follows: an operator's as brightly as its
 // envelope and the routes that take it to the output let it through, where modulation takes them now, so a route an LFO

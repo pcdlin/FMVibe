@@ -1016,7 +1016,11 @@ one may have changed since it last did.
     (the Param EQ's, the 3-band dynamics') takes some of its room. The graph scrolls as far as it needs beside the
     widest card, so picking a node never moves it: scrolled to its end beside a narrow card, a little room shows
     after OUT. Its hint at the top right reads "click node: edit · drag
-    node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
+    node: move · click wire: insert". Behind it, as behind the routing graph, the accent glows from OUT (one and a
+    half times as strong, from the smaller box, with the same loudness, reach and Glow setting, its distances worked
+    out again as OUT moves) inside its box's rounded corners, and three orbit rings go round OUT, closer together
+    (108, 204 and 300 px out) and fainter on the box's darker ground; they move with OUT as the graph scrolls. The
+    graph's nodes sit on a fixed grid, a column each, and
     wire themselves: wires, grey along the main line, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). A wire from one row to another runs level as
     far as it can and bends S-shaped only within the gap between two columns' nodes, so it never crosses a node: out
