@@ -89,6 +89,14 @@ void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale = 1.0f);
+// A Sample operator's loop, about 20 x 10 around `m`: Off an arrow running into a stop, Forward a circling arrow
+// between the loop's brackets, Ping-Pong a two-way arrow between them.
+void sampleLoopIcon(Canvas &c, Point m, SampleLoop loop, Color color);
+// How a Sample operator plays a note, about 20 x 8 around `m`: Gate a square pulse, Sustain a pulse with a tail after
+// it, One-Shot a pluck.
+void sampleModeIcon(Canvas &c, Point m, SampleMode mode, Color color);
+// A sample played back to front: One-Shot's pluck turned round, swelling to a sudden end.
+void sampleReverseIcon(Canvas &c, Point m, Color color);
 // A plus, or a minus: the phaser's and flanger's polarity.
 void polaritySign(Canvas &c, Point m, bool minus, Color color);
 // How a route acts on the operator it goes into, about 10 x 10 around `m` (times `scale`): Phase a phi (a ring with a stroke through

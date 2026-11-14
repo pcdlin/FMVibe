@@ -290,7 +290,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - Sample operators: one three octaves above its root 60 dB clean of aliasing at 2x (no worse oversampled further);
     a forward and a ping-pong loop off whole cycles, and a loop an LFO moves, not clicking; a One-Shot sample, and a
     Gate one with no loop, ending its voice at its end with the key down, Sustain leaving its loop once let go and
-    playing to its end, where Gate loops on; Linear FM through zero staying finite and within the sample; and where
+    playing to its end, where Gate loops on; a sample silent then a sine playing the sine first once reversed, and a
+    reversed One-Shot one still ending its voice; Linear FM through zero staying finite and within the sample; and where
     the newest voice plays its table and its sample reaching the editor through `SharedTelemetry`, as the plugin
     hands it; and a recording of middle C played on middle C at its own pitch (within a cent, at every oversampling
     factor), its Root where a new Sample operator starts it;
@@ -694,7 +695,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
     does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
     loop's end dragged, each an undo step, a double-click putting one back; LOOP and
-    MODE picking; the newest voice's playhead (read off the rendered pixels); Phase dimmed, not turning; and a file
+    MODE picking, their icons named in tooltips, and the reverse switch between them turning the waveform round (read
+    off the rendered pixels), undoably; the newest voice's playhead (read off the rendered pixels); Phase dimmed, not turning; and a file
     dragged in from outside lighting the display (or the dashed card) while held there (read off the rendered pixels), not a
     knob nor a plain wave's page, and dropped there imported into the operator, undoably, while one dropped on a knob
     is refused.
@@ -1008,7 +1010,7 @@ itself.
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
   Sync, Warp and Warp Amount, then TablePos, Table, Sample, SampleStart, SampleRoot, LoopMode, LoopStart, LoopEnd,
-  LoopFade and SampleMode, the 35th to 44th fields; past the 50th, an operator's fields go at 38000 + 50·op, as
+  LoopFade, SampleMode and SampleReverse, the 35th to 45th fields; past the 50th, an operator's fields go at 38000 + 50·op, as
   `ids::kSplitSections` has it; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
@@ -1068,10 +1070,10 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,292 of the 19,683 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,292 of the 19,689 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, a Sample operator's
-  root, loop and mode, the chain's retired order, the feedback's route modes and the retired fields), the operators'
+  root, loop, mode and reverse, the chain's retired order, the feedback's route modes and the retired fields), the operators'
   Table and Sample (wiring, as a slot's target is), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires) and the source places' own fields (a place's slot
   depths are listed, whatever it holds). Nothing hosts

@@ -7049,10 +7049,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                ? tr(Str::SwitchStereo)
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
-                           : opOfField(w.param, OpParam::LoopMode) >= 0
-                               ? tr(w.b == 0 ? Str::SwitchLoopOff : w.b == 1 ? Str::SwitchLoopForward : Str::SwitchLoopPingPong)
-                           : opOfField(w.param, OpParam::SampleMode) >= 0
-                               ? tr(w.b == 0 ? Str::SwitchModeGate : w.b == 1 ? Str::SwitchModeSustain : Str::SwitchModeOneShot)
                            : opOfField(w.param, OpParam::Sync) >= 0                     ? tr(Str::SwitchHardSync)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
@@ -7076,6 +7072,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             powerIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else if (modeChoice)
             routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::LoopMode) >= 0) // a Sample operator's loop and how it plays, as icons
+            sampleLoopIcon(c, w.rect.center(), sampleLoop(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::SampleMode) >= 0)
+            sampleModeIcon(c, w.rect.center(), sampleMode(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::SampleReverse) >= 0)
+            sampleReverseIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
             warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
                      on ? litInk(color) : (hovered ? kText : kDim));
@@ -9094,6 +9096,12 @@ void View::paintTooltip(Canvas &c) {
         static_assert(std::size(tips) == static_cast<size_t>(OpWarp::Count));
         text = tr(tips[std::clamp(hover_->b, 0, static_cast<int>(OpWarp::Count) - 1)]);
     }
+    else if (opOfField(param, OpParam::LoopMode) >= 0 && hover_->kind == Kind::Choice)
+        text = sampleLoopName(sampleLoop(hover_->b));
+    else if (opOfField(param, OpParam::SampleMode) >= 0 && hover_->kind == Kind::Choice)
+        text = sampleModeName(sampleMode(hover_->b));
+    else if (opOfField(param, OpParam::SampleReverse) >= 0)
+        text = tr(Str::TipSampleReverse);
     else if (isSourcePower(param))
         text = tr(Str::TipSourcePower);
     else if (param == paramIndex(GlobalParam::Mono))

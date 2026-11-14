@@ -257,6 +257,7 @@ STR(ParamLoopStart, "Loop Start")
 STR(ParamLoopEnd, "Loop End")
 STR(ParamLoopFade, "Loop Fade")
 STR(ParamSampleMode, "Sample Mode")
+STR(ParamSampleReverse, "Reverse")
 STR(ParamPartials, "Partials") // how many the Custom wave plays
 STR(ParamPartial, "Partial {1}")
 STR(ParamLevel, "Level")
@@ -513,12 +514,6 @@ STR(SourceSample, "SAMPLE")
 STR(LabelRoot, "ROOT") // the note a sample plays at its own speed
 STR(LabelLoop, "LOOP")
 STR(LabelMode, "MODE")
-STR(SwitchLoopOff, "Off") // a Sample operator's loop, on its buttons
-STR(SwitchLoopForward, "Fwd")
-STR(SwitchLoopPingPong, "Ping")
-STR(SwitchModeGate, "Gate") // how it plays a note, on its buttons
-STR(SwitchModeSustain, "Sus")
-STR(SwitchModeOneShot, "1-Shot")
 STR(SampleNone, "No sample")
 STR(SampleImportCard, "Import a .wav file")
 STR(TableMissing, "Table not found") // a key the patch doesn't hold (a host's value)
@@ -993,6 +988,7 @@ STR(TipSampleStart, "Start · Double-click: reset")
 STR(TipLoopStart, "Loop start · Alt+drag: zero crossings")
 STR(TipLoopEnd, "Loop end · Alt+drag: zero crossings")
 STR(TipLoopFade, "Loop crossfade")
+STR(TipSampleReverse, "Reverse: play the sample back to front")
 STR(TipSampleRoot, "Root: the note it plays at its own speed")
 
 // --- The editor: right-click menus

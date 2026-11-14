@@ -8248,6 +8248,39 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(paramIndex(1, OpParam::SampleMode)) == static_cast<double>(SampleMode::OneShot),
           "LOOP and MODE pick the sample's loop and how it plays");
     renderer.save(view, dir / "wt-14-sample-loop.png");
+    // Their buttons show icons, named in their tooltips; the reverse switch between them plays the sample back to
+    // front, its waveform drawn turned round (read off the rendered pixels: the decaying tone loud at the left, then at
+    // the right), one undo step.
+    {
+        view.mouseMove(detail::sampleLoopButton(1, detail::kOpControlsY).center(), {});
+        check(renderer.save(view, dir / "wt-14a-loop-tip.png"), "render a loop button's tooltip");
+        view.mouseMove(detail::sampleReverseButton(detail::kOpControlsY).center(), {});
+        check(renderer.save(view, dir / "wt-14b-reverse-tip.png"), "render the reverse switch's tooltip");
+        view.mouseMove({600.0f, 328.0f}, {});
+        const Rect wave = sampleArea();
+        // How much of a column near either end the waveform fills, by its pixels unlike the column's middle line's.
+        auto filled = [&](float x) {
+            int count = 0;
+            const uint32_t back = renderer.pixel({x, wave.y + 2.0f});
+            for (float y = wave.y + 2.0f; y < wave.bottom() - 2.0f; y += 1.0f)
+                count += renderer.pixel({x, y}) != back ? 1 : 0;
+            return count;
+        };
+        renderer.save(view, dir / "wt-14c-forward.png");
+        const float left = wave.x + 0.12f * wave.w, right = wave.x + 0.88f * wave.w;
+        const int fwdLeft = filled(left), fwdRight = filled(right);
+        const int reverse = paramIndex(1, OpParam::SampleReverse);
+        click(view, detail::sampleReverseButton(detail::kOpControlsY).center());
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool reversed = model.value(reverse) == 1.0;
+        renderer.save(view, dir / "wt-14d-reversed.png");
+        const int revLeft = filled(left), revRight = filled(right);
+        view.undo();
+        std::printf("      the waveform's columns near its ends filled: %d and %d forward, %d and %d reversed\n", fwdLeft,
+                    fwdRight, revLeft, revRight);
+        check(reversed && model.value(reverse) == 0.0 && fwdLeft > fwdRight + 10 && revRight > revLeft + 10,
+              "the reverse switch plays a sample back to front, its waveform turned round, undoably");
+    }
     // The playhead, from the telemetry (read off the rendered pixels).
     const Point at{area.x + 0.5f * area.w, area.y + 3.0f};
     const uint32_t without = renderer.pixel(at);

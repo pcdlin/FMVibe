@@ -366,8 +366,10 @@ void buildTable(ParamTable &t) {
             1.0, 0.0);
         add(paramIndex(op, OpParam::SampleMode), name + " " + tr(Str::ParamSampleMode), module, ParamKind::SampleMode,
             0.0, static_cast<double>(SampleMode::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::SampleReverse), name + " " + tr(Str::ParamSampleReverse), module,
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
         for (const OpParam hidden : {OpParam::SampleRoot, OpParam::LoopMode, OpParam::LoopStart, OpParam::LoopEnd,
-                                     OpParam::LoopFade, OpParam::SampleMode})
+                                     OpParam::LoopFade, OpParam::SampleMode, OpParam::SampleReverse})
             t[paramIndex(op, hidden)].flags |= CLAP_PARAM_IS_HIDDEN;
         // The Custom wave starts as a sine: the first partial alone, of 32.
         add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,

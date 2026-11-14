@@ -3591,6 +3591,46 @@ void sampleChecks(const int (&factors)[4]) {
     check(sustain >= 10 && sustain < 30 && gateLoop < 0,
           "Sustain leaves its loop once let go of and plays to its end, where Gate loops on through its release");
 
+    // Reverse: a sample silent for its first half and a sine for its second plays the sine first, then silence, and
+    // a One-Shot one still ends its voice at its end (its start, as recorded).
+    {
+        auto halves = [](bool reverse, double &first, double &second, int &endedAt) {
+            DataEngine d(2);
+            std::vector<float> pcm(9600, 0.0f);
+            for (size_t i = pcm.size() / 2; i < pcm.size(); ++i)
+                pcm[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * 441.0 * i / 48000.0));
+            d.sample(sampleData(kUserDataBase + 24, pcm, 48000, 69.0f));
+            d.e.p[paramIndex(0, OpParam::SampleMode)] = static_cast<double>(SampleMode::OneShot);
+            d.e.p[paramIndex(0, OpParam::SampleReverse)] = reverse ? 1.0 : 0.0;
+            d.e.noteOn(69);
+            auto rms = [](const std::vector<float> &x) {
+                double sum = 0.0;
+                for (const float v : x)
+                    sum += static_cast<double>(v) * v;
+                return std::sqrt(sum / static_cast<double>(x.size()));
+            };
+            first = rms(d.e.render(3600));   // 0 to 75 ms
+            d.e.render(2400);
+            second = rms(d.e.render(3000));  // 125 to 187.5 ms
+            endedAt = -1;
+            for (int block = 0; block < 100 && endedAt < 0; ++block) {
+                d.e.render(kBlock);
+                if (!d.e.synth().endedNotes().empty())
+                    endedAt = block;
+            }
+        };
+        double fwdFirst = 0.0, fwdSecond = 0.0, revFirst = 0.0, revSecond = 0.0;
+        int fwdEnd = 0, revEnd = 0;
+        halves(false, fwdFirst, fwdSecond, fwdEnd);
+        halves(true, revFirst, revSecond, revEnd);
+        std::printf("      a sample silent then a sine: forward %.3f then %.3f, reversed %.3f then %.3f; ended at block "
+                    "%d and %d after\n",
+                    fwdFirst, fwdSecond, revFirst, revSecond, fwdEnd, revEnd);
+        check(fwdSecond > 0.01 && fwdFirst < 0.01 * fwdSecond && revFirst > 0.01 && revSecond < 0.01 * revFirst &&
+                  revEnd >= 0 && revEnd < 25,
+              "a reversed sample plays back to front, and ends its voice at its end");
+    }
+
     // Linear FM through zero, deep: the playhead runs backward too, and stays within the sample.
     {
         DataEngine d(2);

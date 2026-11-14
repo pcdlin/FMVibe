@@ -336,6 +336,7 @@ private:
         double fade = 0.0;        // the loop's crossfade, level-0 samples before its end
         double endFade = 0.0;     // a fade into its end, level-0 samples, where it plays out
         bool pingPong = false;
+        bool reverse = false;     // read back to front: a position p reads the sample at length - 1 - p
     };
     // A Wavetable or Sample operator's own state, kept apart from Operator (in Voice::plays), so the plain operators'
     // data is laid out as it was: grown by this, the voices' loops ran slower in the plugins' MSVC build.

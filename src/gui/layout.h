@@ -187,14 +187,17 @@ inline Rect opTab(int tab, OpTabs tabs = OpTabs::Plain) {
 // The TABLE tab: its display, which is Position's control, then along the row under it the warps' buttons, the warp's
 // Amount knob and the NOTE (note sync) switch, where the WARP tab has them (warpButton(), kWarpAmountKnob,
 // kSyncButton). The SAMPLE tab: its display with the ROOT readout in its top right corner, then LOOP and MODE, each a
-// row of three, under it, named under them.
+// row of three, under it, named under them, and the reverse switch between them.
 inline Rect sampleRootBox(Rect display) { return {display.right() - 6.0f - 56.0f, display.y + 4.0f, 56.0f, 16.0f}; }
+constexpr float kSampleChoiceW = 36.0f;
 inline Rect sampleLoopButton(int choice, float y) {
-    return {kInspector.x + 16.0f + choice * 42.0f, y - 10.0f, 42.0f, 20.0f};
+    return {kInspector.x + 16.0f + choice * kSampleChoiceW, y - 10.0f, kSampleChoiceW, 20.0f};
 }
 inline Rect sampleModeButton(int choice, float y) {
-    return {kInspector.x + kInspector.w - 16.0f - (3 - choice) * 42.0f, y - 10.0f, 42.0f, 20.0f};
+    return {kInspector.x + kInspector.w - 16.0f - (3 - choice) * kSampleChoiceW, y - 10.0f, kSampleChoiceW, 20.0f};
 }
+// The REVERSE switch between them, in the middle.
+inline Rect sampleReverseButton(float y) { return {kInspector.x + 0.5f * kInspector.w - 15.0f, y - 10.0f, 30.0f, 20.0f}; }
 // Wave: its display (the scope; with no note, the operator's cycles as its warp reads them, or the note's when
 // synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the NOTE
 // (note sync) switch along the row under it.

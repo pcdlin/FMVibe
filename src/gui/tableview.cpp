@@ -186,6 +186,7 @@ void View::opDataWidgets(std::vector<Widget> &list, int op, InspectorTab tab) co
     for (int m = 0; m < 3; ++m)
         add(Kind::Choice, sampleModeButton(m, kOpControlsY), paramIndex(op, OpParam::SampleMode), op, m);
     mergeButtons(list, modes);
+    add(Kind::Toggle, sampleReverseButton(kOpControlsY), paramIndex(op, OpParam::SampleReverse), op);
 }
 
 // --- Painting.
@@ -545,8 +546,10 @@ void View::paintSampleTab(Canvas &c, Rect r, int op) {
         }
     }
     // The waveform: each pixel column's lowest and highest, from its peaks.
+    // Reversed, back to front: as it plays, Start, the loop and the playhead's shares along it as they are.
+    const bool reversed = value(paramIndex(op, OpParam::SampleReverse)) >= 0.5;
     const std::vector<double> key2 = {static_cast<double>(Curve::SampleWave), static_cast<double>(d->key), area.x,
-                                      area.y, area.w, area.h};
+                                      area.y, area.w, area.h, reversed ? 1.0 : 0.0};
     const std::vector<Point> outline = curves_.get(key2, [&] {
         const int columns = std::max(static_cast<int>(area.w), 2);
         std::vector<Point> top, bottom;
@@ -558,7 +561,7 @@ void View::paintSampleTab(Canvas &c, Rect r, int op) {
                 lo2 = std::min(lo2, d->peakMin[k]);
                 hi2 = std::max(hi2, d->peakMax[k]);
             }
-            const float px = area.x + (i + 0.5f) * area.w / columns;
+            const float px = area.x + ((reversed ? columns - 1 - i : i) + 0.5f) * area.w / columns;
             top.push_back({px, area.center().y - hi2 * area.h * 0.48f});
             bottom.push_back({px, area.center().y - lo2 * area.h * 0.48f - 0.5f});
         }
@@ -574,10 +577,10 @@ void View::paintSampleTab(Canvas &c, Rect r, int op) {
     }
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 80.0f, 14.0f}, d->name, kTextSmall, kDim, Align::Left);
     // The loop's and the mode's names, under their buttons.
-    c.text({sampleLoopButton(0, kOpControlsY).x, kOpControlsY + 11.0f, 126.0f, 12.0f}, tr(Str::LabelLoop), kTextSmall,
-           kFaint, Align::Center, true);
-    c.text({sampleModeButton(0, kOpControlsY).x, kOpControlsY + 11.0f, 126.0f, 12.0f}, tr(Str::LabelMode), kTextSmall,
-           kFaint, Align::Center, true);
+    c.text({sampleLoopButton(0, kOpControlsY).x, kOpControlsY + 11.0f, 3.0f * kSampleChoiceW, 12.0f}, tr(Str::LabelLoop),
+           kTextSmall, kFaint, Align::Center, true);
+    c.text({sampleModeButton(0, kOpControlsY).x, kOpControlsY + 11.0f, 3.0f * kSampleChoiceW, 12.0f}, tr(Str::LabelMode),
+           kTextSmall, kFaint, Align::Center, true);
 }
 
 // --- The table browser.

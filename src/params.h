@@ -111,8 +111,9 @@ enum class OpParam {
     // two waves keeps both. SampleStart is where a note starts it, a share of its length; SampleRoot the note (MIDI
     // numbering, fractions tuning it) it plays at its own speed. LoopMode (SampleLoop) runs it between LoopStart and
     // LoopEnd (shares of its length, taken in order, read at each wrap), LoopFade crossfading up to half the loop;
-    // SampleMode (see SampleMode) says how a note's end and the sample's end end it. Ids past the 50th field go on from
-    // 38000 (see kSplitSections).
+    // SampleMode (see SampleMode) says how a note's end and the sample's end end it. SampleReverse (a switch) plays it
+    // back to front, as though its file were reversed: Start, the loop and where it plays are shares of it played so.
+    // Ids past the 50th field go on from 38000 (see kSplitSections).
     TablePos,
     Table,
     Sample,
@@ -123,6 +124,7 @@ enum class OpParam {
     LoopEnd,
     LoopFade,
     SampleMode,
+    SampleReverse,
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -1605,7 +1607,9 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(0, OpParam::TablePos)) == 134 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::TablePos)) == 384 &&
                   idOfIndex(paramIndex(0, OpParam::SampleMode)) == 143 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 393 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 393 &&
+                  idOfIndex(paramIndex(0, OpParam::SampleReverse)) == 144 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleReverse)) == 394 && kOpParamCount <= 50,
               "operator param ids moved");
 // The operators' fields past the 50th, should more come, go on from 38000, 50 an operator: free ids, past the highest
 // that was ever in use (37000 and a little).

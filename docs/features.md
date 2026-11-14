@@ -1347,7 +1347,13 @@ one may have changed since it last did.
       part the loop's brackets, Loop Start's and Loop End's handles (Alt+drag puts them on zero crossings), the loop
       shaded faintly and its fade a ramp up to its end, with the fade's handle on it; along its foot Start's tab. Each
       drag is an undo step and a double-click puts a handle back. A line shows where the newest voice's first copy
-      plays. Under it **LOOP** (Off, Fwd, Ping) and **MODE** (Gate, Sus, 1-Shot). With no sample, a dashed card in the
+      plays. Under it **LOOP** and **MODE**, each three buttons drawn as icons and named in their tooltips: LOOP's
+      Off an arrow running into a stop, Forward a circling arrow between the loop's brackets and Ping-Pong a two-way
+      arrow between them; MODE's Gate a square pulse (the sample sounds while the key is down), Sustain a pulse with a
+      tail (it leaves its loop once let go of and plays on to its end) and One-Shot a pluck (it plays to its end
+      whatever the key does). Between them, the reverse switch (a pluck turned round, swelling to a sudden end) plays
+      the sample back to front, as though its file were reversed: the waveform is drawn turned round, and Start, the
+      loop's points and the playhead stay shares of it as it plays. With no sample, a dashed card in the
       display's place opens the file dialog. A file the dialog would offer (WAV, FLAC, `.wt`, `.vitaltable`), dragged in
       from the system's file browser or a host's, can be dropped on the display (or the dashed card): while it is held
       there the display is lit in the accent and ringed, and dropped, it is imported as the dialog would import it,

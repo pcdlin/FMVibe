@@ -295,6 +295,89 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) 
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
+namespace {
+
+// An open arrowhead at `tip`, pointing along (dx, dy).
+void arrowhead(Canvas &c, Point tip, float dx, float dy, Color color, float size = 3.2f) {
+    const float length = std::hypot(dx, dy);
+    if (length <= 0.0f)
+        return;
+    dx /= length;
+    dy /= length;
+    const float cs = std::cos(0.75f), sn = std::sin(0.75f); // the barbs 43 degrees off the shaft
+    const Point barbs[] = {{tip.x - size * (dx * cs - dy * sn), tip.y - size * (dy * cs + dx * sn)},
+                           tip,
+                           {tip.x - size * (dx * cs + dy * sn), tip.y - size * (dy * cs - dx * sn)}};
+    c.polyline(barbs, 3, color, 1.4f);
+}
+
+// A quadratic curve's points from `a` through `control` to `b`, after those already in `points`.
+void quadratic(std::vector<Point> &points, Point a, Point control, Point b) {
+    for (int i = 1; i <= 16; ++i) {
+        const float t = i / 16.0f, u = 1.0f - t;
+        points.push_back({u * u * a.x + 2.0f * u * t * control.x + t * t * b.x,
+                          u * u * a.y + 2.0f * u * t * control.y + t * t * b.y});
+    }
+}
+
+} // namespace
+
+void sampleLoopIcon(Canvas &c, Point m, SampleLoop loop, Color color) {
+    if (loop == SampleLoop::Off) { // through to the end, once
+        c.line({m.x - 9.0f, m.y}, {m.x + 6.5f, m.y}, color, 1.4f);
+        arrowhead(c, {m.x + 7.0f, m.y}, 1.0f, 0.0f, color);
+        c.line({m.x + 9.5f, m.y - 4.0f}, {m.x + 9.5f, m.y + 4.0f}, color, 1.4f);
+        return;
+    }
+    for (const float side : {-1.0f, 1.0f}) { // the loop's brackets
+        const Point bracket[] = {{m.x + side * 7.0f, m.y - 4.5f},
+                                 {m.x + side * 9.0f, m.y - 4.5f},
+                                 {m.x + side * 9.0f, m.y + 4.5f},
+                                 {m.x + side * 7.0f, m.y + 4.5f}};
+        c.polyline(bracket, 4, color, 1.4f);
+    }
+    if (loop == SampleLoop::Forward) { // round and round, over the top from left to right
+        std::vector<Point> arc;
+        const float rx = 4.2f, ry = 3.4f, cy = m.y + 0.6f;
+        for (int i = 0; i <= 20; ++i) {
+            const float t = (kPi + 0.55f) - i * (kPi + 1.1f) / 20.0f;
+            arc.push_back({m.x + rx * std::cos(t), cy - ry * std::sin(t)});
+        }
+        c.polyline(arc.data(), arc.size(), color, 1.4f);
+        const float t = -0.55f;
+        arrowhead(c, arc.back(), rx * std::sin(t), ry * std::cos(t), color, 2.8f);
+        return;
+    }
+    c.line({m.x - 4.5f, m.y}, {m.x + 4.5f, m.y}, color, 1.4f); // there and back
+    arrowhead(c, {m.x + 5.0f, m.y}, 1.0f, 0.0f, color, 2.8f);
+    arrowhead(c, {m.x - 5.0f, m.y}, -1.0f, 0.0f, color, 2.8f);
+}
+
+void sampleModeIcon(Canvas &c, Point m, SampleMode mode, Color color) {
+    std::vector<Point> points;
+    const float base = m.y + 3.5f, top = m.y - 3.5f;
+    if (mode == SampleMode::Gate) { // as long as the key is down
+        points = {{m.x - 10.0f, base}, {m.x - 7.0f, base}, {m.x - 7.0f, top},
+                  {m.x + 5.0f, top},   {m.x + 5.0f, base}, {m.x + 10.0f, base}};
+    } else if (mode == SampleMode::Sustain) { // held, then on to its end
+        points = {{m.x - 10.0f, base}, {m.x - 7.0f, base}, {m.x - 7.0f, top}, {m.x, top}};
+        quadratic(points, {m.x, top}, {m.x + 3.0f, base}, {m.x + 10.0f, base});
+    } else { // struck, and left to ring out
+        points = {{m.x - 10.0f, base}, {m.x - 8.0f, base}, {m.x - 8.0f, top - 1.0f}};
+        quadratic(points, {m.x - 8.0f, top - 1.0f}, {m.x - 6.0f, base}, {m.x + 10.0f, base});
+    }
+    c.polyline(points.data(), points.size(), color, 1.4f);
+}
+
+void sampleReverseIcon(Canvas &c, Point m, Color color) {
+    const float base = m.y + 3.5f, top = m.y - 4.5f;
+    std::vector<Point> points = {{m.x - 10.0f, base}};
+    quadratic(points, {m.x - 10.0f, base}, {m.x + 6.0f, base}, {m.x + 8.0f, top});
+    points.push_back({m.x + 8.0f, base});
+    points.push_back({m.x + 10.0f, base});
+    c.polyline(points.data(), points.size(), color, 1.4f);
+}
+
 void polaritySign(Canvas &c, Point m, bool minus, Color color) {
     c.line({m.x - 4.5f, m.y}, {m.x + 4.5f, m.y}, color, 1.6f);
     if (!minus)

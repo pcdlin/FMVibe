@@ -1700,7 +1700,8 @@ Synth::OpSample Synth::tableSample(Operator &op, PlayState &play, const FrameTab
 
 // Each copy read where it plays (moved by phase modulation a period of the root a cycle), crossfading into its loop's
 // start over the loop's last stretch, then moved on at its speed (scaled by frequency modulation, through 0 too):
-// round its loop, or on to its end, where it fades out and stops. Backward, it stops at the sample's start.
+// round its loop, or on to its end, where it fades out and stops. Backward, it stops at the sample's start. Reversed,
+// the positions are the same, read from the sample's end.
 #ifdef _MSC_VER
 __declspec(noinline)
 #else
@@ -1711,7 +1712,8 @@ Synth::OpSample Synth::sampleSample(Operator &op, PlayState &play, const SampleR
     OpSample out;
     const float *x = r.mips->at(r.level);
     const double last = static_cast<double>(r.mips->levelLength(r.level) - 1);
-    auto at = [&](double pos) { return hermite(x, std::clamp(pos * r.scale, 0.0, last)); };
+    const double flip = r.length - 1.0;
+    auto at = [&](double pos) { return hermite(x, std::clamp((r.reverse ? flip - pos : pos) * r.scale, 0.0, last)); };
     const double shift = offset * r.pmScale;
     const double loopLength = r.loopTo - r.loopFrom;
     const bool loops = loopLength > 0.0 && !play.leftLoop;
@@ -1795,6 +1797,7 @@ void Synth::prepareSample(Voice &v, Operator &op, PlayState &play, int i, const 
     if (loop == SampleLoop::Off || r.loopTo - r.loopFrom < kMinSampleLoop)
         r.loopFrom = r.loopTo = 0.0;
     r.pingPong = loop == SampleLoop::PingPong;
+    r.reverse = p[paramIndex(i, OpParam::SampleReverse)] >= 0.5;
     r.fade = std::clamp(p[paramIndex(i, OpParam::LoopFade)], 0.0, 1.0) * 0.5 * (r.loopTo - r.loopFrom);
     r.endFade = kSampleEndFade * data->rate;
     if (play.restartSample) {
