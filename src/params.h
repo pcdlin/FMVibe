@@ -134,7 +134,8 @@ enum class FilterParam {
 // filter), modulates operators like an
 // operator does (Mods, one per operator) and goes straight to the output by Out, like an operator (Output is
 // its level after the curve). Symmetric mirrors a Custom curve's upper half onto its lower one (see ClipCurve).
-// Shapers, one per shaper, feed the shapers, itself among them (see shaperShaperIndex()).
+// Shapers, one per shaper, feed the shapers, itself among them (see shaperShaperIndex()). Stack is how many times
+// the Stack curve runs in a row (1 to kMaxShaperStack, see ClipCurve::stages).
 // Stored in projects by number: only append.
 enum class ShaperParam {
     Enabled,
@@ -148,7 +149,8 @@ enum class ShaperParam {
     Out = Mods + kOps,
     Symmetric,
     Shapers,
-    Count = Shapers + kShapers
+    Stack = Shapers + kShapers,
+    Count
 };
 // Modulation sources: LFOs and mod envelopes. Like the effect slots, each of
 // the kMaxSources places holds a source of either type, or none, and has the
@@ -374,8 +376,12 @@ enum class FxType {
 };
 // Stored in projects by number: only append. Cubic is x - x^3/3 scaled to reach 1 at 1;
 // Gentle is x / (1 + |x|), which never quite gets there; the folds fold back what goes
-// past 1, smoothly (Sine Fold) or in straight lines (Fold); Custom is a drawn curve.
-enum class ClipMode { Hard, Soft, Asymmetric, Cubic, Gentle, SineFold, Fold, Custom, Count };
+// past 1, smoothly (Sine Fold) or in straight lines (Fold); Custom is a drawn curve. Stack is a soft curve biased off
+// its middle, run as a few gain stages in a row, each with a high-pass before it (see ClipCurve::stages and
+// StackStage); the editor lists it before Custom (kClipModesOffered).
+enum class ClipMode { Hard, Soft, Asymmetric, Cubic, Gentle, SineFold, Fold, Custom, Stack, Count };
+// How many Stack stages a shaper's Stack can run in a row, each driven by its Drive.
+constexpr int kMaxShaperStack = 8;
 // A parametric EQ band's shape: a bell, a shelf, a 12 dB per octave cut (where Q is the resonance and the gain does
 // nothing) or a notch (where Q sets the width and the gain does nothing). Stored in projects by number: only append.
 enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Notch, Count };
@@ -639,6 +645,8 @@ enum class FxParam {
     ChorusSpread,
     ChorusMix,
     ChorusVoices,
+    // The shaper's Stack curve run this many times in a row (1 to kMaxShaperStack), as ShaperParam::Stack.
+    ShaperStack,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -1088,6 +1096,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::AmpModel, FxParam::AmpOversampling, FxType::Amp},
     {FxParam::UtilityGain, FxParam::UtilityMonoBass, FxType::Utility},
     {FxParam::ChorusRate, FxParam::ChorusVoices, FxType::Chorus},
+    {FxParam::ShaperStack, FxParam::ShaperStack, FxType::Shaper},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1163,19 +1172,19 @@ constexpr int clipCurveCountIndex(int slot) { return kClipCurveBase + slot * kSh
 // (0..kFxSlots - 1), or kFxSlots + a voice shaper; its fields, `curve` being its drawn curve's point count.
 constexpr int kShaperUnits = kFxSlots + kShapers;
 struct ShaperParams {
-    int mode, drive, output, mix, link, curve, symmetric;
+    int mode, drive, output, mix, link, curve, symmetric, stack;
 };
 constexpr ShaperParams shaperParams(int unit) {
     if (unit < kFxSlots)
         return {paramIndex(unit, FxParam::ShaperMode),  paramIndex(unit, FxParam::ShaperDrive),
                 paramIndex(unit, FxParam::ShaperOutput), paramIndex(unit, FxParam::ShaperMix),
                 paramIndex(unit, FxParam::ShaperLink),   clipCurveCountIndex(unit),
-                paramIndex(unit, FxParam::ShaperSymmetric)};
+                paramIndex(unit, FxParam::ShaperSymmetric), paramIndex(unit, FxParam::ShaperStack)};
     const int shaper = unit - kFxSlots;
     return {paramIndex(shaper, ShaperParam::Mode),   paramIndex(shaper, ShaperParam::Drive),
             paramIndex(shaper, ShaperParam::Output), paramIndex(shaper, ShaperParam::Mix),
             paramIndex(shaper, ShaperParam::Link),   shaperCurveCountIndex(shaper),
-            paramIndex(shaper, ShaperParam::Symmetric)};
+            paramIndex(shaper, ShaperParam::Symmetric), paramIndex(shaper, ShaperParam::Stack)};
 }
 // Every source's slots can be bypassed: the places' with their own, the others' after the slots' auxes.
 constexpr int slotBypassIndex(int source, int slot) {
@@ -1591,7 +1600,9 @@ static_assert(idOfIndex(paramIndex(0, ShaperParam::Enabled)) == 600 && idOfIndex
                   idOfIndex(shaperModIndex(0, 0)) == 608 && idOfIndex(paramIndex(0, ShaperParam::Out)) == 614 &&
                   idOfIndex(paramIndex(kShapers - 1, ShaperParam::Symmetric)) == 665 &&
                   idOfIndex(shaperShaperIndex(0, 0)) == 616 &&
-                  idOfIndex(shaperShaperIndex(kShapers - 1, kShapers - 1)) == 667,
+                  idOfIndex(shaperShaperIndex(kShapers - 1, kShapers - 1)) == 667 &&
+                  idOfIndex(paramIndex(0, ShaperParam::Stack)) == 618 &&
+                  idOfIndex(paramIndex(kShapers - 1, ShaperParam::Stack)) == 668,
               "shaper param ids moved");
 static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kFirstSlots - 1)) == 3409 &&
@@ -1638,7 +1649,10 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::ChorusVoices)) == 36400 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ChorusVoices)) == 37000 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::ChorusRate)) == 26154 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160 &&
+                  idOfIndex(paramIndex(0, FxParam::ShaperStack)) == 36401 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ShaperStack)) == 37001 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperStack)) == 29161,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1760,7 +1774,8 @@ static_assert(numberedInOrder({LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw
                                LfoShape::Custom, LfoShape::Count}),
               "LfoShape is stored by number: only append");
 static_assert(numberedInOrder({ClipMode::Hard, ClipMode::Soft, ClipMode::Asymmetric, ClipMode::Cubic, ClipMode::Gentle,
-                               ClipMode::SineFold, ClipMode::Fold, ClipMode::Custom, ClipMode::Count}),
+                               ClipMode::SineFold, ClipMode::Fold, ClipMode::Custom, ClipMode::Stack,
+                               ClipMode::Count}),
               "ClipMode is stored by number: only append");
 static_assert(numberedInOrder({PeqType::Peak, PeqType::LowShelf, PeqType::HighShelf, PeqType::LowCut, PeqType::HighCut,
                                PeqType::Notch, PeqType::Count}),

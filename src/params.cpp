@@ -44,7 +44,8 @@ const char *const kDivisionNames[] = {"4/1D",  "4/1",  "4/1T",  "2/1D",  "2/1", 
                                       "1/32D", "1/32", "1/32T", "1/64D", "1/64",  "1/64T"};
 static_assert(std::size(kDivisionNames) == static_cast<size_t>(kDivisions));
 constexpr Str kClipModeNames[] = {Str::ClipHard,   Str::ClipSoft,     Str::ClipAsymmetric, Str::ClipCubic,
-                                  Str::ClipGentle, Str::ClipSineFold, Str::ClipFold,       Str::ClipCustom};
+                                  Str::ClipGentle, Str::ClipSineFold, Str::ClipFold,       Str::ClipCustom,
+                                  Str::ClipStack};
 static_assert(std::size(kClipModeNames) == static_cast<size_t>(ClipMode::Count));
 constexpr Str kPeqTypeNames[] = {Str::PeqPeak,   Str::PeqLowShelf, Str::PeqHighShelf,
                                  Str::PeqLowCut, Str::PeqHighCut,  Str::PeqNotch};
@@ -447,6 +448,8 @@ void buildTable(ParamTable &t) {
             add(shaperShaperIndex(shaper, to),
                 to == shaper ? trf(Str::ParamOpFeedback, {tag}) : tag + " → S" + std::to_string(to + 1),
                 tr(Str::ModuleMatrix), ParamKind::Percent, 0.0, 1.0, 0.0);
+        add(paramIndex(shaper, ShaperParam::Stack), name + " " + tr(Str::ParamStack), module, ParamKind::Count, 1.0,
+            kMaxShaperStack, 1.0);
         const int base = shaperCurveCountIndex(shaper);
         add(base, name + " " + tr(Str::ParamCurve) + " " + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 2.0,
             kMaxShapePoints, 3.0);
@@ -824,6 +827,7 @@ void buildTable(ParamTable &t) {
         fx(FxParam::ChorusMix, tr(Str::ParamChorusMix), ParamKind::Percent, 0.0, 1.0, 0.5);
         fx(FxParam::ChorusVoices, tr(Str::ParamChorusVoices), ParamKind::Count, kMinChorusVoices, kMaxChorusVoices,
            3.0);
+        fx(FxParam::ShaperStack, tr(Str::ParamShaperStack), ParamKind::Count, 1.0, kMaxShaperStack, 1.0);
         // Synced, two bars a sweep.
         fx(FxParam::FlangerSync, tr(Str::ParamFlangerSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::FlangerDivision, tr(Str::ParamFlangerDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,

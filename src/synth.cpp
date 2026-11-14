@@ -2282,12 +2282,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         target.shaperDirect[sh] = shaperEnabled[sh] ? p[paramIndex(sh, ShaperParam::Out)] : 0.0;
         const ShaperParams fields = shaperParams(kFxSlots + sh);
         const ShaperSettings &settings = v.shaperSettings[sh].get(
-            {p[fields.drive], p[fields.mode], p[fields.output], p[fields.link], p[fields.mix], p[fields.symmetric]},
+            {p[fields.drive], p[fields.mode], p[fields.output], p[fields.link], p[fields.mix], p[fields.symmetric],
+             p[fields.stack]},
             [&] { return shaperSettings([&p](int index) { return p[index]; }, fields); });
         target.shaperDrive[sh] = settings.drive;
         target.shaperOutput[sh] = settings.output;
         target.shaperMix[sh] = settings.mix;
+        target.shaperBetween[sh] = settings.between;
         curve[sh] = shaperTables_[sh].curve(settings.mode, settings.symmetric);
+        curve[sh].stack(settings.stack, rate_);
         block[sh] = clipNeedsBlocker(settings.mode);
     }
 
@@ -2708,7 +2711,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             std::array<double, 2> y{};
             for (int c = 0; c < channels; ++c) // as the shaper effect runs (see Effects::runShaper())
                 y[c] = v.shapers[sh][c].run(curve[sh], toShaper[sh][c], level.shaperDrive[sh], level.shaperOutput[sh],
-                                            level.shaperMix[sh], block[sh], pole);
+                                            level.shaperMix[sh], block[sh], pole, level.shaperBetween[sh]);
             if (!stereo)
                 y[1] = y[0];
             v.shaperOut[sh] = 0.5 * (y[0] + y[1]);

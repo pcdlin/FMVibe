@@ -171,9 +171,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings
   out too; when they come back, or its type or slope takes up a stage it left out, that starts from silence.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
-  voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
-  effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
-  (off), and run by the same code: anti-aliased the same way, a drawn curve gliding to moved points and its level at the middle taken out the same way, with the same DC blocker after the uneven and drawn curves. Any operator,
+  voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, Stack, or a Custom curve drawn
+  like the effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with),
+  Symmetric (off) and, for the Stack curve, Stack (1 to begin with), and run by the same code: anti-aliased the same way, a drawn curve gliding to moved points and its level at the middle taken out the same way, with the same DC blocker after the uneven and drawn curves. Any operator,
   filter or shaper can be sent into a shaper (`A → S1`, `F1 → S1`, `S1 → S2`), a shaper into itself too (`S1
   Feedback`), and a shaper's output feeds the filters (`S1 → F1`), for
   distortion into a filter or a filter's sound distorted, and modulates operators the way an operator does
@@ -398,7 +398,23 @@ What the plugin does and how its editor works, in full. Building and installing 
     its lower one, so the input below 0 is shaped as the input above it, upside down: only the right half drawn
     counts (a curve that doesn't pass through the middle jumps there, and is 0 right at the middle, so silence
     stays silent). The switch shows only while the curve is
-    Custom, and the other curves ignore it. The curves are anti-aliased (first-order antiderivative), so
+    Custom, and the other curves ignore it. **Stack**, after Fold and before Custom in the list, is a soft curve (tanh) biased off its
+    middle, as a tube stage is: it saturates gradually, passes what is quiet at its level, and its lower half reaches
+    further than its upper half (to −1.25 and 0.83), which adds even harmonics and an offset that grows as it is
+    driven harder. It runs as a gain stage of a pedal does, a high-pass at 20 Hz before the drive like the capacitor
+    between two stages, and nothing rounding its top off: each stage lifts back what its anti-aliasing's average takes
+    off the top, and the shaper effect runs the stages at twice the host rate (the voices' run at their
+    oversampling), so stacked eight high at 0 dB, quiet sines to 15 kHz come out within half a dB of their level. The
+    DC blocker follows. Its **Stack** knob (1–8, 1 to begin with), after Drive, where it shows only for the Stack curve, runs
+    that many stages in a row, each driven by Drive and brought back down after it by as much as Link would (whether
+    Link is on or not), so a stack plays about as that many linked shapers in a row; the DC blocker, Output (linked
+    or not) and Mix come once, after the last, as the stages' high-passes take out what the stages before them put
+    off the middle. Stacked high, it gets denser rather than louder, and its low end thumps: the offset each stage
+    puts out moves the next stage's high-pass, which the stages after it drive, and what the high-passes still hold
+    as a note ends rings on a moment past it as a low thump (stacked eight high at full drive, about half a second
+    above −60 dB) before it stops (what a high-pass puts out is taken 10⁻⁹ toward 0 before it is driven, so nothing
+    far below hearing is brought up for ever). The display draws the stages' curves one after another, with the
+    gain between them, without their filters. The curves are anti-aliased (first-order antiderivative), each Stack stage too, so
     high drive stays clean without oversampling, though folding at the highest drives gets duller for it.
   - **Amp**: a guitar amp, then a speaker cabinet heard through a mic. **Model** picks the amp: its preamp stages
     (each a coupling high-pass, a gain, a curve with a bias whose lower side is softer, which adds even harmonics, and
@@ -1771,7 +1787,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,298 of FMVibe's 19,641 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,300 of FMVibe's 19,675 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

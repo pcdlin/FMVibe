@@ -240,6 +240,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again
     once the reverb has rung out bringing back nothing of the tail before;
   - a shaper effect switched off, its drawn curve changed and on again playing the new curve from its start;
+  - the Stack curve: a stack of three playing about as three linked shapers of one stage in a row (far nearer
+    them than one stage), one stage passing a quiet sine at its level and saturating a loud tone unevenly, a stack of
+    eight passing quiet sines from 1 to 15 kHz within a dB (no low-pass, the top lifted back), a stack of
+    eight at full drive ringing on past a note longer than one stage does and then stopping (the effects too), and
+    thumping far more between 10 and 60 Hz after the note, the stack turned up and down under a note in single frames
+    staying finite and within the curve's reach, and a voice's shaper stacked eight high ending with its voice;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
@@ -481,6 +487,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor;
+  - a shaper's Stack curve, between Fold and Custom in its list, on its page and on the shaper effect's card,
+    showing its Stack knob after Drive, turned in whole stages, undoably, and the wheel over the list's button
+    stepping along the list's order;
   - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
     mirrored left half doing nothing, the middle point refusing to be deleted, and the switch
     undoing with its point; the big curve editor's SYM (a shaper effect's and a voice shaper's) switching, its
@@ -1014,7 +1023,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,298 of the 19,641 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,300 of the 19,675 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

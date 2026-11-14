@@ -171,6 +171,18 @@ bool isLfoShape(int param) {
     return sourceFieldOf(param) == SourceParam::Shape;
 }
 
+bool isClipMode(int param) {
+    return fxFieldOf(param) == FxParam::ShaperMode || shaperFieldOf(param) == ShaperParam::Mode;
+}
+
+// The value a list's `item`th entry picks: an LFO's shapes and a shaper's curves in the order offered, the others'
+// by number.
+int listItemValue(int param, int item) {
+    return isLfoShape(param)   ? static_cast<int>(kLfoShapesOffered[item])
+           : isClipMode(param) ? static_cast<int>(kClipModesOffered[item])
+                               : item;
+}
+
 // An LFO shape's icon, as its list shows it, in a box about 16 x 10.
 void lfoShapeIcon(Canvas &c, Rect r, LfoShape shape, Color color) {
     const std::vector<Point> points = shapeIcon(shape, r);
@@ -2074,8 +2086,13 @@ std::vector<View::Widget> View::widgets() const {
                 merge(switches);
                 if (custom)
                     drawnCurve(slot, fxDisplayIn(card, type));
-                knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
-                      {tr(Str::LabelDrive), tr(Str::LabelOutput), tr(Str::LabelMix)});
+                if (clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Stack) // and how many stages it runs
+                    knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperStack), at(FxParam::ShaperOutput),
+                           at(FxParam::ShaperMix)},
+                          {tr(Str::LabelDrive), tr(Str::LabelStack), tr(Str::LabelOutput), tr(Str::LabelMix)});
+                else
+                    knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
+                          {tr(Str::LabelDrive), tr(Str::LabelOutput), tr(Str::LabelMix)});
                 break;
             }
             case FxType::Delay: {
@@ -2554,8 +2571,8 @@ std::vector<View::Widget> View::widgets() const {
     };
     if (isShaperNode(node)) {
         // The curve's list and the symmetric and link switches, then drive, output and mix, centered under the display
-        // (what goes straight out is its line to OUT's label); a drawn curve is edited in the display unless its big
-        // editor has it.
+        // (the Stack curve's Stack knob after its drive, the four across), what goes straight out being its line to OUT's label;
+        // a drawn curve is edited in the display unless its big editor has it.
         const int shaper = shaperOfNode(node);
         const bool custom = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom;
         add(Kind::ListButton, shaperModeButton(custom), paramIndex(shaper, ShaperParam::Mode));
@@ -2564,13 +2581,20 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::Toggle, kShaperSymButton, paramIndex(shaper, ShaperParam::Symmetric));
         add(Kind::Toggle, kShaperLinkButton, paramIndex(shaper, ShaperParam::Link));
         merge(switches);
-        const int params[] = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
-                              paramIndex(shaper, ShaperParam::Mix)};
-        const Str labels[] = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix};
+        const bool stacked = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Stack;
+        std::vector<int> params = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
+                                   paramIndex(shaper, ShaperParam::Mix)};
+        std::vector<Str> labels = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix};
+        if (stacked) {
+            params.insert(params.begin() + 1, paramIndex(shaper, ShaperParam::Stack));
+            labels.insert(labels.begin() + 1, Str::LabelStack);
+        }
         const float step = (kInspector.w - 32.0f) / 4.0f; // as far apart as four were, the three in the middle
-        for (int i = 0; i < 3; ++i)
-            knob(params[i], {kInspector.x + 0.5f * kInspector.w + step * (i - 1.0f), kInspector.y + 110.0f}, 34.0f,
-                 tr(labels[i]));
+        const float first = -0.5f * static_cast<float>(params.size() - 1);
+        for (size_t i = 0; i < params.size(); ++i)
+            knob(params[i],
+                 {kInspector.x + 0.5f * kInspector.w + step * (first + static_cast<float>(i)), kInspector.y + 110.0f},
+                 34.0f, tr(labels[i]));
         if (clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom &&
             shapeEditing() != shaperCurve(shaper))
             drawnCurve(kFxSlots + shaper, kShaperDisplay);
@@ -3082,7 +3106,7 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
             for (int item = 0; item < items; ++item)
-                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
         }
     }
     // A split's list of slopes, under its button on its card (in the row's container or the graph's inspector).
@@ -3093,7 +3117,7 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
             for (int item = 0; item < items; ++item)
-                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
         }
     }
     // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
@@ -3104,8 +3128,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
         list.back().clip = sourceListClip();
         for (int item = 0; item < items; ++item) {
-            add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1,
-                isLfoShape(listMenu_) ? static_cast<int>(kLfoShapesOffered[item]) : item);
+            add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1, listItemValue(listMenu_, item));
             list.back().clip = sourceListClip();
         }
     }
@@ -3121,7 +3144,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
         for (int item = 0; item < items; ++item)
-            add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+            add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
     }
     // A route's list of modes, under the mode's part of its label's pill, while the graph shows that route.
     if (const int from = routeModeFrom(listMenu_), to = routeModeTo(listMenu_);
@@ -3137,7 +3160,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
         for (int item = 0; item < items; ++item)
-            add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+            add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
     }
     // The open list of a parametric EQ band's shapes, above its button, while that card is on screen.
     if (peqMenu_ >= 0 && fxWide() && fxSlotType(fxSlotOf(peqMenu_)) == FxType::ParamEq) {
@@ -4850,7 +4873,8 @@ void View::paintShapeGridControls(Canvas &c) {
     c.text({across.right(), across.y, upDown.x - across.right(), across.h}, "\xC3\x97", kTextBody, kFaint);
 }
 
-// Transfer curve: input level across, output up, with the drive, output and mix applied.
+// Transfer curve: input level across, output up, with the drive, output and mix applied (the Stack curve as many
+// times in a row as it is stacked, each driven and brought back down between, without its filters).
 void View::paintShaperCurve(Canvas &c, Rect r, int unit) {
     const Color fx = clipColor(unit);
     const ShaperParams clip = shaperParams(unit);
@@ -4878,9 +4902,17 @@ void View::paintShaperCurve(Canvas &c, Rect r, int unit) {
     const double mix = liveValue(clip.mix);
     auto get = [this](int index) { return value(index); };
     const bool symmetric = curveSymmetric(curve);
-    auto shape = [&](double x) { return shaperCurveValue(get, mode, shapeBase(curve), symmetric, x); };
+    const int stack = mode == ClipMode::Stack ? shaperStack(liveValue(clip.stack)) : 1;
+    const double between = shaperBetween(liveValue(clip.drive));
+    auto shape = [&](double x) {
+        double y = shaperCurveValue(get, mode, shapeBase(curve), symmetric, x);
+        for (int k = 1; k < stack; ++k)
+            y = clipShape(mode, y * between * drive);
+        return y;
+    };
     std::vector<double> key = curveKey(Curve::Shaper, inner);
-    key.insert(key.end(), {static_cast<double>(mode), symmetric ? 1.0 : 0.0, drive, output, mix});
+    key.insert(key.end(), {static_cast<double>(mode), symmetric ? 1.0 : 0.0, drive, output, mix,
+                           static_cast<double>(stack)});
     if (mode == ClipMode::Custom) // a drawn curve whose big editor has its points
         keyShape(key, shapeBase(curve));
     const std::vector<Point> points = curves_.get(key, [&] {
@@ -11639,6 +11671,15 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             at = filterSlope(value(hit->param)) >= slopes[k] ? k : at;
         if (whole != 0)
             edit(hit->param, slopes[std::clamp(at + whole, first, 2)]);
+        return;
+    }
+    if (isClipMode(hit->param)) { // to the next curve along its list, as the wheel turns
+        const auto *first = std::begin(kClipModesOffered), *last = std::end(kClipModesOffered);
+        const ClipMode now = clipMode(value(hit->param));
+        const int at = static_cast<int>(std::find(first, last, now) - first);
+        const int to = std::clamp(at + whole, 0, static_cast<int>(last - first) - 1);
+        if (whole != 0 && kClipModesOffered[to] != now)
+            edit(hit->param, static_cast<double>(kClipModesOffered[to]));
         return;
     }
     if (isLfoShape(hit->param)) { // to the next shape its list offers, as the wheel turns
