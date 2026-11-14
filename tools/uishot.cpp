@@ -3,6 +3,7 @@
 // without a host. Usage: fmvibe-uishot <output-dir> [scale]
 
 #include "factory.h"
+#include "gui/algorithms.h"
 #include "gui/arrange.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
@@ -2666,6 +2667,248 @@ void renderFactoryPresets(const std::filesystem::path &dir, Renderer &renderer) 
     }
     check(clear == static_cast<int>(factoryPresets().size()),
           "every factory preset's routing graph keeps its nodes, wires and labels clear of each other");
+}
+
+// The node places, the routes kept at 0 % and the wires' bends: what an algorithm changes of the layout.
+bool sameRoutingLayout(const UiLayout &a, const UiLayout &b) {
+    return a.nodeX == b.nodeX && a.nodeY == b.nodeY && a.boxX == b.boxX && a.boxY == b.boxY &&
+           a.keptRoutes == b.keptRoutes && a.wireBends == b.wireBends;
+}
+
+// The classic algorithms (kAlgorithms), which View::applyAlgorithm() sets: each on a new patch laid out with no clash
+// (as the factory presets' graphs are counted), the one currentAlgorithm() finds then, and taken back by one undo;
+// then onto a patch of its own, what it keeps, what comes in and what goes with its modulation.
+void checkAlgorithms(const std::filesystem::path &dir, Renderer &renderer) {
+    int clear = 0, known = 0, undone = 0;
+    for (size_t i = 0; i < kAlgorithms.size(); ++i) {
+        const Algorithm &a = kAlgorithms[i];
+        const std::string name = std::to_string(a.ops) + "-op-" + std::to_string(a.number);
+        FakeController model;
+        model.glowLevel = 0.5;
+        View view(model);
+        const ParamValues before = model.values;
+        const UiLayout layoutBefore = model.ui;
+        view.applyAlgorithm(static_cast<int>(i));
+        view.poll();
+        if (view.currentAlgorithm() == static_cast<int>(i))
+            ++known;
+        else
+            std::printf("  algorithm %s: found as %d\n", name.c_str(), view.currentAlgorithm());
+        if (const detail::ArrangeScore score = detail::arrangeScore(model.values, model.ui); score.clashes == 0)
+            ++clear;
+        else
+            std::printf("  algorithm %s: %d clashes in its routing graph\n", name.c_str(), score.clashes);
+        if (i == 0 || i == 4 || i == 23 || i == 31 || i == 32 || i == 37 || i == 40 || i == 42 || i == 45) {
+            view.mouseMove({600.0f, 600.0f}, {});
+            renderer.save(view, dir / ("50-algorithm-" + name + ".png"));
+        }
+        view.undo();
+        if (model.values == before && sameRoutingLayout(model.ui, layoutBefore))
+            ++undone;
+        else
+            std::printf("  algorithm %s: not all taken back by an undo\n", name.c_str());
+    }
+    const int count = static_cast<int>(kAlgorithms.size());
+    check(clear == count, "every algorithm keeps its routing graph's nodes, wires and labels clear of each other");
+    check(known == count, "every algorithm set is the one the operators are found to form");
+    check(undone == count, "one undo takes every algorithm back, params and layout");
+
+    // A patch of its own: A, B, C and F1 on; B into A at 35 %, B's feedback at 30 %, C into A at 55 % as Linear FM with
+    // an LFO on it, A into F1 at 40 % (and going out too), C into F1 at 60 % and F1 out at 80 %.
+    FakeController model;
+    model.glowLevel = 0.5;
+    View view(model);
+    const int f1 = kOps;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(2, OpParam::Enabled), 1.0);
+    model.set(paramIndex(0, FilterParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.35);
+    model.set(matrixIndex(1, 1), 0.30);
+    model.set(matrixIndex(2, 0), 0.55);
+    model.set(detail::routeModeParam(2, 0), static_cast<double>(RouteMode::LinearFm));
+    model.set(detail::routeParam(0, f1), 0.40);
+    model.set(detail::routeParam(2, f1), 0.60);
+    model.set(detail::outParam(f1), 0.80);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(sourceEnabledIndex(0), 1.0);
+    model.set(slotTargetIndex(0, 0), slotTargetValue(matrixIndex(2, 0)));
+    model.ui.keptRoutes = {detail::outParam(0), matrixIndex(1, 0), matrixIndex(1, 1), matrixIndex(2, 0),
+                           detail::routeParam(0, f1), detail::routeParam(2, f1), detail::outParam(f1)};
+    view.poll();
+    const ParamValues before = model.values;
+    const UiLayout layoutBefore = model.ui;
+    check(view.currentAlgorithm() < 0, "a patch that isn't one of the algorithms is found to be none");
+    view.applyAlgorithm(4); // six operators' 5: B into A, D into C, F into E; A, C and E out; F's feedback
+    view.poll();
+    renderer.save(view, dir / "50a-algorithm-onto-patch.png");
+    const double third = 1.0 / std::sqrt(3.0);
+    auto about = [](double v, double want) { return std::abs(v - want) < 1e-9; };
+    bool on = true;
+    for (int op = 0; op < kOps; ++op)
+        on = on && model.value(paramIndex(op, OpParam::Enabled)) == 1.0;
+    check(on && model.value(matrixIndex(1, 0)) == 0.35 && model.value(matrixIndex(3, 2)) == View::kAlgorithmDepth &&
+              model.value(matrixIndex(5, 4)) == View::kAlgorithmDepth &&
+              model.value(matrixIndex(5, 5)) == View::kAlgorithmFeedback,
+          "an algorithm switches its operators on, keeps a route it has as it was and brings in its others");
+    check(model.value(matrixIndex(1, 1)) == 0.0 && model.value(matrixIndex(2, 0)) == 0.0 &&
+              model.value(detail::routeModeParam(2, 0)) == 0.0 && slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
+              std::find(model.ui.keptRoutes.begin(), model.ui.keptRoutes.end(), matrixIndex(2, 0)) ==
+                  model.ui.keptRoutes.end(),
+          "an algorithm disconnects the routes it hasn't, their modes and modulation with them");
+    check(model.value(detail::outParam(0)) == 1.0 && model.value(detail::outParam(2)) == 0.0 &&
+              about(model.value(detail::outParam(4)), third) && model.value(detail::outParam(1)) == 0.0 &&
+              model.value(detail::outParam(3)) == 0.0 && model.value(detail::outParam(5)) == 0.0,
+          "an algorithm's carriers go out (as they did, through a filter too, or at 1 / sqrt(carriers)), the others not");
+    check(model.value(paramIndex(0, FilterParam::Enabled)) == 1.0 && model.value(detail::routeParam(0, f1)) == 0.40 &&
+              model.value(detail::routeParam(2, f1)) == 0.60 && model.value(detail::outParam(f1)) == 0.80 &&
+              model.ui.boxX == layoutBefore.boxX && model.ui.boxY == layoutBefore.boxY,
+          "an algorithm leaves the filters, their places and the sends into them alone");
+    check(view.currentAlgorithm() == 4, "an operator going out through a filter counts as a carrier");
+    view.undo();
+    check(model.values == before && sameRoutingLayout(model.ui, layoutBefore),
+          "one undo brings back the routes, the mode and the LFO an algorithm took away");
+    view.redo();
+    view.applyAlgorithm(32); // four operators' 1: D into C into B into A
+    view.poll();
+    check(model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && model.value(paramIndex(5, OpParam::Enabled)) == 0.0 &&
+              model.value(matrixIndex(5, 4)) == View::kAlgorithmDepth && model.value(detail::outParam(4)) == third,
+          "a four-operator algorithm switches E and F off, leaving their routes and outputs as they were");
+    check(model.value(detail::outParam(2)) == 0.0 && model.value(detail::routeParam(2, f1)) == 0.0 &&
+              model.value(detail::routeParam(0, f1)) == 0.40 && view.currentAlgorithm() == 32,
+          "an operator an algorithm makes a modulator stops going out through a filter, a carrier's send staying");
+    renderer.save(view, dir / "50b-algorithm-four-ops.png");
+}
+
+// The brightest channel of a pixel.
+int levelOf(uint32_t color) {
+    return std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                     static_cast<int>(color & 255)});
+}
+
+// ALGORITHM and its panel: there with ROUTING and MATRIX only; its thumbnails, the one under the mouse named at the
+// panel's foot (read off the rendered pixels), a click setting the operators to it in one undo step and closing it,
+// its number then on the button and its thumbnail lit (read off the rendered pixels); the switch to the four
+// operators' algorithms; and Escape and a click around closing it, changing nothing.
+void checkAlgorithmMenu(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    const Point button = detail::kAlgorithmButton.center();
+    const Rect six = detail::algorithmPanel(32);
+    const Point title{six.x + 260.0f, six.y + 24.0f}; // in the title row, between ALGORITHM and the switch
+    const Point badge{detail::kAlgorithmButton.right() - 34.0f, button.y};
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51-algorithm-closed.png");
+    const uint32_t under = renderer.pixel(title), noBadge = renderer.pixel(badge);
+    click(view, button);
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool openShot = renderer.save(view, dir / "51a-algorithm-panel.png");
+    check(openShot && view.dialogOpen() && renderer.pixel(title) != under,
+          "ALGORITHM opens the panel of algorithms over the graph");
+    // The foot names the thumbnail under the mouse, in the text's color where the hint was dim.
+    const float footY = six.bottom() - 0.5f * (detail::kAlgorithmFootH - 10.0f);
+    const Point footFrom{six.x + detail::kAlgorithmPad, footY}, footTo{six.x + 330.0f, footY};
+    const int hint = levelOf(brightestAlong(renderer, footFrom, footTo));
+    const Point fifth = detail::algorithmCell(32, 4).center();
+    view.mouseMove(fifth, {});
+    const bool hoverShot = renderer.save(view, dir / "51b-algorithm-hover.png");
+    check(hoverShot && levelOf(brightestAlong(renderer, footFrom, footTo)) > hint + 20,
+          "the panel's foot names the algorithm under the mouse");
+    const ParamValues before = model.values;
+    click(view, fifth);
+    view.poll();
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51c-algorithm-picked.png");
+    check(!view.dialogOpen() && view.currentAlgorithm() == 4 && levelOf(renderer.pixel(badge)) != levelOf(noBadge),
+          "a thumbnail sets the operators to its algorithm and closes the panel, its number on ALGORITHM");
+    view.undo();
+    const bool undone = model.values == before;
+    view.redo();
+    check(undone && view.currentAlgorithm() == 4, "picking an algorithm is one undo step");
+    // Open again: the panel shows the six operators' algorithms with the one in force lit.
+    click(view, button);
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51d-algorithm-current.png");
+    const Rect lit = detail::algorithmCell(32, 4), other = detail::algorithmCell(32, 5);
+    const uint32_t litEdge = renderer.pixel({lit.x + 0.5f * lit.w, lit.y + 0.75f});
+    const uint32_t otherEdge = renderer.pixel({other.x + 0.5f * other.w, other.y + 0.75f});
+    check(levelOf(litEdge) > levelOf(otherEdge) + 40, "the panel lights the algorithm the operators form");
+    // Escape closes it; Enter goes on to the host. A click around it closes it too, changing nothing.
+    const bool enterPassed = !view.dialogKey(View::Key::Enter) && view.dialogOpen();
+    const bool escaped = view.dialogKey(View::Key::Escape) && !view.dialogOpen();
+    click(view, button);
+    const ParamValues picked = model.values;
+    click(view, {700.0f, 700.0f});
+    check(enterPassed && escaped && !view.dialogOpen() && model.values == picked,
+          "Escape and a click around the panel close it, changing nothing; Enter goes on to the host");
+    // The Operators switch's 4 shows the four operators' eight, its first a stack of four.
+    click(view, button);
+    click(view, detail::algorithmSetButton(32, 1).center());
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool fourShot = renderer.save(view, dir / "51e-algorithm-four.png");
+    click(view, detail::algorithmCell(8, 0).center());
+    view.poll();
+    check(fourShot && view.currentAlgorithm() == 32 && model.value(paramIndex(4, OpParam::Enabled)) == 0.0,
+          "the Operators switch's 4 shows the four operators' algorithms, which switch E and F off");
+    click(view, button); // opened again on the set of the algorithm in force
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51f-algorithm-four-current.png");
+    const Rect fourLit = detail::algorithmCell(8, 0), fourOther = detail::algorithmCell(8, 1);
+    check(levelOf(renderer.pixel({fourLit.x + 0.5f * fourLit.w, fourLit.y + 0.75f})) >
+              levelOf(renderer.pixel({fourOther.x + 0.5f * fourOther.w, fourOther.y + 0.75f})) + 40,
+          "the panel opens on the four operators' algorithms while one of them is in force");
+    // Its 3 and 2 likewise: two into one, switching D off, and an FM pair, switching C off.
+    click(view, detail::algorithmSetButton(8, 2).center());
+    view.mouseMove(detail::algorithmCell(5, 1).center(), {});
+    const bool threeShot = renderer.save(view, dir / "51f2-algorithm-three.png");
+    click(view, detail::algorithmCell(5, 1).center());
+    view.poll();
+    const bool three = view.currentAlgorithm() == algorithmSetRange(3).first + 1 &&
+                       model.value(paramIndex(3, OpParam::Enabled)) == 0.0 &&
+                       model.value(paramIndex(2, OpParam::Enabled)) == 1.0 && model.value(matrixIndex(2, 0)) > 0.0;
+    click(view, button); // opened on the three operators' set
+    click(view, detail::algorithmSetButton(5, 3).center());
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool twoShot = renderer.save(view, dir / "51f3-algorithm-two.png");
+    click(view, detail::algorithmCell(2, 0).center());
+    view.poll();
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51f4-algorithm-two-picked.png");
+    const bool two = view.currentAlgorithm() == algorithmSetRange(2).first &&
+                     model.value(paramIndex(2, OpParam::Enabled)) == 0.0 && model.value(matrixIndex(1, 0)) > 0.0 &&
+                     model.value(matrixIndex(1, 1)) == View::kAlgorithmFeedback;
+    check(threeShot && three && twoShot && two,
+          "the Operators switch's 3 and 2 show their algorithms, which switch the operators past theirs off");
+    click(view, button); // open again, for what follows
+    // MATRIX has it too, and FX and MODS don't; another view closes it.
+    model.ui.view = RoutingView::Matrix;
+    view.poll();
+    const bool matrixKept = view.dialogOpen();
+    view.dialogKey(View::Key::Escape);
+    click(view, button);
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool matrixShot = renderer.save(view, dir / "51g-algorithm-matrix.png");
+    const bool matrixOpen = view.dialogOpen();
+    model.ui.view = RoutingView::Fx;
+    view.poll();
+    const bool closedByFx = !view.dialogOpen();
+    click(view, button);
+    const bool noneInFx = !view.dialogOpen();
+    model.ui.view = RoutingView::Mods;
+    view.poll();
+    click(view, button);
+    const bool noneInMods = !view.dialogOpen();
+    check(matrixKept && matrixShot && matrixOpen && closedByFx && noneInFx && noneInMods,
+          "ALGORITHM is there with ROUTING and MATRIX, not with FX or MODS, and another view closes its panel");
+    // The panel in Spectrum, glowing, for a look.
+    model.ui.view = RoutingView::Graph;
+    model.themeName = "Spectrum";
+    model.glowLevel = 0.5;
+    view.poll();
+    click(view, button);
+    view.mouseMove(detail::algorithmCell(8, 4).center(), {});
+    renderer.save(view, dir / "51h-algorithm-spectrum.png");
+    view.dialogKey(View::Key::Escape);
 }
 
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
@@ -10116,6 +10359,8 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
     renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
     renderFactoryPresets(dir, renderer);
+    checkAlgorithms(dir, renderer);
+    checkAlgorithmMenu(dir, renderer);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
     testMacroTargets(dir, renderer);

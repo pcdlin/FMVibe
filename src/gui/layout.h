@@ -252,6 +252,35 @@ constexpr Rect kViewTabs[] = {{16.0f, kTopRowY, 96.0f, kViewTabH},
                                {276.0f, kTopRowY, 76.0f, kViewTabH}};
 constexpr float kViewTabRadius = kRadiusCard; // its top corners
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
+// ALGORITHM, at the row's right end over the routing panel's, with ROUTING and MATRIX: it opens the panel of the
+// classic algorithms (kAlgorithms) under it, right-aligned with the routing panel and over the graph or matrix, the
+// inspector left in view. The panel has a title row with a switch between the sets at its right (6 | 4 | 3 | 2, how
+// many operators they use, "Operators" before it), a thumbnail a cell, kAlgorithmCols to a row, and a foot under a
+// line, which names the thumbnail under the mouse.
+constexpr Rect kAlgorithmButton{kRouting.x + kRouting.w - 190.0f, kTopRowY + 4.0f, 190.0f, 24.0f}; // "4-OP 8" fits on it
+constexpr int kAlgorithmCols = 8;
+constexpr float kAlgorithmCellW = 72.0f, kAlgorithmCellH = 58.0f, kAlgorithmGap = 6.0f, kAlgorithmPad = 14.0f;
+constexpr float kAlgorithmTitleH = 36.0f, kAlgorithmFootH = 40.0f;
+constexpr float kAlgorithmPanelW = 2.0f * kAlgorithmPad + kAlgorithmCols * kAlgorithmCellW + (kAlgorithmCols - 1) * kAlgorithmGap;
+inline Rect algorithmPanel(int count) {
+    const int rows = (count + kAlgorithmCols - 1) / kAlgorithmCols;
+    return {kRouting.x + kRouting.w - kAlgorithmPanelW, kPanelsTop + 4.0f, kAlgorithmPanelW,
+            kAlgorithmPad + kAlgorithmTitleH + rows * kAlgorithmCellH + (rows - 1) * kAlgorithmGap + kAlgorithmFootH};
+}
+inline Rect algorithmCell(int count, int i) {
+    const Rect p = algorithmPanel(count);
+    return {p.x + kAlgorithmPad + (i % kAlgorithmCols) * (kAlgorithmCellW + kAlgorithmGap),
+            p.y + kAlgorithmPad + kAlgorithmTitleH + (i / kAlgorithmCols) * (kAlgorithmCellH + kAlgorithmGap),
+            kAlgorithmCellW, kAlgorithmCellH};
+}
+// The switch's button for the set at `set` in kAlgorithmSets (6 first), in the title row at its right; its label
+// goes before the first.
+constexpr int kAlgorithmSetCount = 4;
+inline Rect algorithmSetButton(int count, int set) {
+    constexpr float kW = 32.0f;
+    const Rect p = algorithmPanel(count);
+    return {p.right() - kAlgorithmPad - (kAlgorithmSetCount - set) * kW, p.y + kAlgorithmPad, kW, 22.0f};
+}
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
 constexpr Rect kFxPanel{16.0f, kPanelsTop, kRouting.x + kRouting.w - 16.0f, kRouting.h};

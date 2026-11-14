@@ -477,6 +477,17 @@ STR(ViewRouting, "ROUTING")
 STR(ViewMatrix, "MATRIX")
 STR(ViewFx, "FX")
 STR(ViewMods, "MODS") // every modulation, as a table
+// The button at the right of the view tabs, with ROUTING and MATRIX, and the panel of classic FM algorithms it opens
+STR(ButtonAlgorithm, "ALGORITHM")
+STR(AlgorithmBadgeOps, "{1}-OP {2}") // on the button: the algorithm of fewer than six operators the operators form
+STR(AlgorithmOps, "Operators") // before the panel's switch between the sets: 6 | 4 | 3 | 2, how many they use
+STR(AlgorithmHint, "Apply an operator routing layout. Does not affect shapers or filters.")
+STR(AlgorithmName, "Algorithm {1}") // the panel's foot, for the thumbnail under the mouse, then what follows
+STR(AlgorithmCarriers, "{1} carriers")
+STR(AlgorithmCarrierOne, "1 carrier")
+STR(AlgorithmFeedback, "feedback on {1}") // an operator's letter
+STR(AlgorithmFeedbackLoop, "feedback from {1} into {2}")
+STR(AlgorithmEscape, "Esc closes")
 STR(ModListCount, "{1} modulations") // in a pill's list, after the name of what they modulate
 STR(ModListCountOne, "1 modulation")
 STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
@@ -1037,6 +1048,7 @@ STR(ModsFilterHint, "Filter by source or target")
 STR(ModsMatching, "{1} of {2}") // the rows the filter shows, of all the modulations
 STR(ModsNoMatch, "No modulation matches \"{1}\"")
 STR(TipModsFilter, "Filter modulations")
+STR(TipAlgorithm, "Set the operators to a classic FM algorithm")
 STR(TipModsSource, "Change source")
 STR(TipModsTarget, "Change target")
 STR(TipModsPickSource, "Pick its source") // an empty modulation's

@@ -649,6 +649,19 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - every factory preset's routing graph rendered (in Spectrum, into `presets/`), none with a node on or near
     another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
     other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
+  - every algorithm (`src/gui/algorithms.h`: six operators' 32, four's 8, three's 5 and two's 2, set by
+    `View::applyAlgorithm()`) on a new patch: laid out with
+    no clash as arrange.h counts them, found again as the one the operators form, and taken back, params and
+    layout, by one undo; and onto a patch of its own, a route it has kept at its depth, the others disconnected with
+    their mode and modulation (undone back), a carrier going out through a filter left so and counted as one, the
+    filters and the carriers' sends left alone, and a four-operator one switching E and F off and a modulator's send
+    into a filter that goes out disconnected;
+  - ALGORITHM, at the tabs' row's right with ROUTING and MATRIX (not FX or MODS, another view closing its panel):
+    its panel drawn over the graph, the foot naming the thumbnail under the mouse, a click setting the operators to
+    it in one undo step, closing the panel and putting its number on the button, the one in force lit when it opens
+    again (read off the rendered pixels), the 4 of its Operators switch showing the four operators' eight (the panel
+    opening on them while one is in force), its 3 and 2 theirs, which switch the operators past theirs off, Escape and a click
+    around closing it without a change and Enter left to the host;
   - the title bar's tempo: none for a plugin host, and for a host that lets the editor set it a field (read off the
     rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,

@@ -125,6 +125,18 @@ public:
     // Undo and redo the patch's last edits; not while a drag or typing goes on.
     void undo();
     void redo();
+    // The classic algorithms (kAlgorithms in algorithms.h). applyAlgorithm() sets the operators to the one at `index`,
+    // as one undo step: those it uses on and the others off, its routes among them in (a route it has keeps its depth,
+    // a new one starts at kAlgorithmDepth, its feedback at kAlgorithmFeedback) and theirs not in it disconnected with
+    // their modulation, its carriers going out (one going out already, or through a filter or shaper that does, as it
+    // was; a new one at 1 / sqrt(carriers)) and the others not (their sends into a filter or shaper that goes out
+    // disconnected too), and the operators in its places (see algorithmPlaces()), their wires bowing as new ones do.
+    // Filters, shapers, the carriers' sends into them and every operator's own sound stay as they are.
+    // currentAlgorithm() is the one the operators that are on form now (their routes above 0 % or kept at 0 %,
+    // whatever their depths; one going out through a filter or shaper counting as a carrier), -1 for none.
+    static constexpr double kAlgorithmDepth = 0.5, kAlgorithmFeedback = 0.25;
+    void applyAlgorithm(int index);
+    int currentAlgorithm() const;
 
     // Typing a value, after a double-click on the number a knob or slot shows, or into a text field: the preset
     // browser's search while it is open, the MODS view's filter once clicked, and the search atop a MODS row's target
@@ -143,9 +155,9 @@ public:
     // Commits the value typed, if it reads as one, or drops it.
     void endTyping(bool commit);
     // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
-    // which cancels it or closes the settings. While one is open the window should send it those keys: true if one
-    // was taken.
-    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0; }
+    // which cancels it or closes the settings; the panel of algorithms takes Escape, which closes it. While one is open
+    // the window should send it those keys: true if one was taken.
+    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0 || algorithmMenuOpen_; }
     bool dialogKey(Key key);
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
@@ -157,6 +169,10 @@ private:
         Choice,       // param, b = the value it selects (segmented buttons)
         Toggle,       // param: flips between 0 and 1
         ViewTab,      // a = RoutingView: picks what the panels under the tabs show
+        AlgorithmButton, // ALGORITHM, at the tabs' row's right, with ROUTING and MATRIX: opens the panel of algorithms
+        AlgorithmMenu, // a = 1 on the open panel of algorithms, 0 around it (a click there closes it)
+        AlgorithmSet, // b = 6, 4, 3 or 2: the panel's switch between the sets, by how many operators they use
+        AlgorithmItem, // a = index in kAlgorithms: a thumbnail of the panel; a click sets the operators to it
         OpTab,        // a = InspectorTab: picks what the lower half of an operator's page shows
         ScopeCycles,  // b = how many cycles the scope shows
 
@@ -675,6 +691,8 @@ private:
     // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter or shaper whose sound
     // does.
     bool boxGoesOut(int node) const;
+    // Whether an operator's sound gets to the output through a filter or shaper that is on, which it is sent into.
+    bool outThroughBox(int op) const;
     // Effects. The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
     FxType fxSlotType(int slot) const;
@@ -1536,6 +1554,9 @@ private:
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
+    bool algorithmMenuOpen_ = false; // the panel of algorithms, under ALGORITHM
+    int algorithmOps_ = 6;           // the set it shows: the algorithms of this many operators (see kAlgorithmSets)
+    bool algorithmsShown() const;    // ALGORITHM is there: with ROUTING or MATRIX, no editor over the panels
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open

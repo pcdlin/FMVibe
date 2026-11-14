@@ -1,5 +1,6 @@
 #include "view.h"
 
+#include "algorithms.h"
 #include "fxgraph.h"
 #include "icons.h"
 #include "layout.h"
@@ -13,6 +14,7 @@
 #include "../wavetable.h"
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -421,6 +423,95 @@ void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool ope
     const Point m{r.right() - 13.0f, r.center().y};
     const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
     c.polyline(chevron, 3, pill && !lit && !full ? kDim : ink, 1.5f);
+}
+
+// --- The classic algorithms (algorithms.h): ALGORITHM and its panel's thumbnails.
+
+// An algorithm drawn small in `r`, laid out as the routing graph lays it out (algorithmPlaces()): the carriers in a
+// column at the right, their lines running into OUT, a dot at the right end, what modulates them to their left, each
+// operator a ring of `radius` in its color filled with `ground`, its wires in its color; its feedback a small loop on
+// its top or, back up a stack, a dashed curve under the stack.
+void paintAlgorithm(Canvas &c, Rect r, const Algorithm &a, float radius, Color ground) {
+    const AlgorithmPlaces places = algorithmPlaces(a);
+    constexpr float kCarrierCol = 6.0f;
+    float lowest = kCarrierCol;
+    for (int op = 0; op < a.ops; ++op)
+        lowest = std::min(lowest, places.col[op]);
+    const Point out{r.right() - 4.0f, r.center().y};
+    const float carrierX = r.right() - 18.0f;
+    const float step =
+        lowest < kCarrierCol ? std::min(8.5f, (carrierX - r.x - radius - 1.0f) / (kCarrierCol - lowest)) : 0.0f;
+    auto at = [&](int op) {
+        return Point{carrierX - (kCarrierCol - places.col[op]) * step,
+                     r.y + radius + 3.0f + places.y[op] * (r.h - 2.0f * radius - 6.0f)};
+    };
+    for (int op = 0; op < a.ops; ++op)
+        if (a.carriers >> op & 1)
+            c.line(at(op), out, nodeColor(op).alpha(0.45f), 1.0f);
+    for (int to = 0; to < a.ops; ++to)
+        for (int from = 0; from < a.ops; ++from)
+            if (a.mods[to] >> from & 1)
+                c.line(at(from), at(to), nodeColor(from), 1.3f);
+    if (a.feedbackFrom != a.feedbackTo) {
+        const Point p = at(a.feedbackFrom), q = at(a.feedbackTo);
+        c.curve(p, {0.5f * (p.x + q.x), std::max(p.y, q.y) + 3.0f * radius}, q, nodeColor(a.feedbackFrom), 1.0f, true);
+    }
+    c.fillCircle(out, 3.0f, kAccent);
+    for (int op = 0; op < a.ops; ++op) {
+        c.fillCircle(at(op), radius, ground);
+        c.strokeCircle(at(op), radius, nodeColor(op), 1.4f);
+    }
+    if (a.feedbackFrom == a.feedbackTo) {
+        const Point p = at(a.feedbackFrom);
+        c.strokeCircle({p.x, p.y - radius - 2.4f}, 2.4f, nodeColor(a.feedbackFrom), 1.0f);
+    }
+}
+
+// What the panel's foot says of an algorithm: its number, how many carriers it has and where its feedback is.
+std::string algorithmText(const Algorithm &a) {
+    const int carriers = std::popcount(a.carriers);
+    const char *const from = kNodeNames[a.feedbackFrom], *const to = kNodeNames[a.feedbackTo];
+    return trf(Str::AlgorithmName, {std::to_string(a.number)}) + " \xC2\xB7 " +
+           (carriers == 1 ? tr(Str::AlgorithmCarrierOne) : trf(Str::AlgorithmCarriers, {std::to_string(carriers)})) +
+           " \xC2\xB7 " +
+           (a.feedbackFrom == a.feedbackTo ? trf(Str::AlgorithmFeedback, {from})
+                                           : trf(Str::AlgorithmFeedbackLoop, {from, to}));
+}
+
+// ALGORITHM, drawn as + SOURCE is (paintMenuButton()): a small algorithm's glyph in place of the plus (two operators
+// feeding one that goes out), the name, the algorithm the operators form on a tag in the accent (`badge`, empty for
+// none), then a chevron; lit under the mouse and while its panel is open.
+void paintAlgorithmButton(Canvas &c, Rect r, const std::string &badge, bool hovered, bool open) {
+    const bool lit = hovered || open;
+    const bool pill = look.flat;
+    const Color ink = lit || pill ? kText : kDim;
+    if (pill) {
+        paintPill(c, r, lit);
+    } else {
+        c.fillRect(r, lit ? kAccent.alpha(0.18f) : kRaised, kRadiusControl);
+        c.strokeRect(r, lit ? kAccent.alpha(0.9f) : kBorder, 1.0f, kRadiusControl);
+    }
+    const float x = r.x + 11.0f, y = r.center().y;
+    const Point top{x, y - 4.0f}, bottom{x, y + 4.0f}, carrier{x + 9.0f, y};
+    c.line(top, carrier, ink, 1.0f);
+    c.line(bottom, carrier, ink, 1.0f);
+    c.line(carrier, {carrier.x + 6.0f, y}, ink, 1.0f);
+    const Color fill = pill ? (lit ? mix(kTrack, kAccent, 0.24f) : kTrack) : (lit ? mix(kRaised, kAccent, 0.18f) : kRaised);
+    for (const auto &[p, radius] : {std::pair{top, 2.0f}, std::pair{bottom, 2.0f}, std::pair{carrier, 2.6f}}) {
+        c.fillCircle(p, radius, fill);
+        c.strokeCircle(p, radius, ink, 1.1f);
+    }
+    const float nameX = x + 22.0f;
+    c.text({nameX, r.y - kAddNameLift, 80.0f, r.h}, tr(Str::ButtonAlgorithm), kTextLabel, ink, Align::Left, true);
+    if (!badge.empty()) {
+        const float w = 10.0f + 6.0f * static_cast<float>(badge.size());
+        const Rect tag{r.right() - 26.0f - w, r.y + 5.0f, w, r.h - 10.0f};
+        c.fillRect(tag, kAccent.alpha(0.24f), kRadiusControl);
+        c.text(tag, badge, kTextSmall, lightTheme() ? kText : kAccent, Align::Center, true);
+    }
+    const Point m{r.right() - 13.0f, y};
+    const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
+    c.polyline(chevron, 3, pill && !lit ? kDim : ink, 1.5f);
 }
 
 // A card that adds one, its plus `arm` long each way about `m`: dashed and faint at rest, lit in the accent under the
@@ -838,6 +929,11 @@ float View::scrollLength(ScrollArea area) const {
 
 bool View::fxShadow() const {
     return fxChain().size() < static_cast<size_t>(kFxSlots);
+}
+
+bool View::algorithmsShown() const {
+    const RoutingView view = controller_.layout().view;
+    return (view == RoutingView::Graph || view == RoutingView::Matrix) && shapeEditing() < 0 && partialEditing() < 0;
 }
 
 bool View::sourceMenuShown() const {
@@ -1685,6 +1781,10 @@ bool View::poll() {
         sourceMenuOpen_ = false;
         everywhere = true;
     }
+    if (algorithmMenuOpen_ && !algorithmsShown()) { // ALGORITHM went: another view, an editor over the panels
+        algorithmMenuOpen_ = false;
+        everywhere = true;
+    }
     if (modList_ && !modListPillShown()) { // its pill went: fewer modulations, or what showed it changed
         modList_.reset();
         everywhere = true;
@@ -1911,6 +2011,8 @@ std::vector<View::Widget> View::widgets() const {
     const int editing = shapeEditing();
     for (int v = 0; v < static_cast<int>(std::size(kViewTabs)); ++v)
         add(Kind::ViewTab, kViewTabs[v], -1, v);
+    if (algorithmsShown())
+        add(Kind::AlgorithmButton, kAlgorithmButton);
     const RoutingView view = controller_.layout().view;
     // Switched-off nodes are left out of the graph, and greyed out in the matrix; their tabs switch them back on.
     const int partials = partialEditing();
@@ -3052,6 +3154,22 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::SourceMenu, sourceMenu(at), -1, 1);
         for (const SourceType type : kSourceMenuOrder)
             add(Kind::SourceMenuItem, sourceMenuItem(at, type), -1, static_cast<int>(type));
+    }
+    // The panel of algorithms, under ALGORITHM: the set of its switch, by how many operators they use.
+    if (algorithmMenuOpen_ && algorithmsShown()) {
+        static_assert(std::size(kAlgorithmSets) == kAlgorithmSetCount);
+        const AlgorithmRange shown = algorithmSetRange(algorithmOps_);
+        add(Kind::AlgorithmMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
+        const size_t panel = list.size();
+        add(Kind::AlgorithmMenu, algorithmPanel(shown.count), -1, 1);
+        const size_t sets = list.size();
+        for (int set = 0; set < kAlgorithmSetCount; ++set)
+            add(Kind::AlgorithmSet, algorithmSetButton(shown.count, set), -1, -1, kAlgorithmSets[set]);
+        merge(sets);
+        for (int i = 0; i < shown.count; ++i)
+            add(Kind::AlgorithmItem, algorithmCell(shown.count, i), -1, shown.first + i);
+        for (size_t i = panel; i < list.size(); ++i)
+            list[i].popup = true; // over everything else, as an open list
     }
     if (fxMenuOpen_ && fxWide()) {
         // Opened for the main line (from a + or a wire of the graph, from the row's arrows, its dashed card or ADD
@@ -7784,6 +7902,56 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             paintMenuPanel(c, w.rect);
         }
         break;
+    case Kind::AlgorithmButton: {
+        const int now = currentAlgorithm();
+        std::string badge;
+        if (now >= 0)
+            badge = kAlgorithms[now].ops < kOps ? trf(Str::AlgorithmBadgeOps, {std::to_string(kAlgorithms[now].ops),
+                                                                                std::to_string(kAlgorithms[now].number)})
+                                                : std::to_string(kAlgorithms[now].number);
+        paintAlgorithmButton(c, w.rect, badge, hovered, algorithmMenuOpen_);
+        break;
+    }
+    case Kind::AlgorithmMenu:
+        if (w.a == 1) { // the panel: its title, the switch's label, and its foot naming the thumbnail under the mouse
+            paintMenuPanel(c, w.rect);
+            const float x = w.rect.x + kAlgorithmPad, right = w.rect.right() - kAlgorithmPad;
+            c.text({x, w.rect.y + kAlgorithmPad, 200.0f, 22.0f}, tr(Str::ButtonAlgorithm), kTextLabel, kDim, Align::Left,
+                   true);
+            const Rect sets = algorithmSetButton(algorithmSetRange(algorithmOps_).count, 0);
+            c.text({sets.x - 128.0f, sets.y, 120.0f, sets.h}, tr(Str::AlgorithmOps), kTextLabel, kDim, Align::Right);
+            const float foot = w.rect.bottom() - kAlgorithmFootH + 10.0f;
+            c.line({x, foot}, {right, foot}, kBorder, 1.0f);
+            const bool over = hover_ && hover_->kind == Kind::AlgorithmItem;
+            const Rect line{x, foot, right - x - 90.0f, w.rect.bottom() - foot};
+            c.text(line, over ? algorithmText(kAlgorithms[hover_->a]) : tr(Str::AlgorithmHint), kTextLabel,
+                   over ? kText : kDim, Align::Left);
+            c.text({right - 90.0f, foot, 90.0f, line.h}, tr(Str::AlgorithmEscape), kTextSmall, kFaint, Align::Right);
+        }
+        break;
+    case Kind::AlgorithmSet: {
+        const bool on = algorithmOps_ == w.b;
+        paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
+        c.text(w.rect, std::to_string(w.b), kTextLabel, on ? litInk(kText) : kDim, Align::Center, on);
+        break;
+    }
+    case Kind::AlgorithmItem: {
+        // A cell a little darker than the panel, the algorithm the operators form lit in the accent; its number at
+        // the top left, the algorithm under it.
+        const Algorithm &a = kAlgorithms[w.a];
+        const bool current = currentAlgorithm() == w.a;
+        const Color dark{0.0f, 0.0f, 0.0f, 1.0f};
+        const Color well = lightTheme() ? mix(popupFill(), dark, hovered ? 0.1f : 0.05f)
+                                        : (hovered ? look.track : look.display);
+        const Color ground = current ? mix(well, kAccent, 0.16f) : well;
+        c.fillRect(w.rect, ground, kRadiusControl);
+        if (current)
+            c.strokeRect(w.rect.inset(0.75f), kAccent, 1.5f, kRadiusControl);
+        c.text({w.rect.x + 6.0f, w.rect.y + 3.0f, 30.0f, 12.0f}, std::to_string(a.number), kTextSmall,
+               current ? kAccent : hovered ? kDim : kFaint, Align::Left, true);
+        paintAlgorithm(c, {w.rect.x + 3.0f, w.rect.y + 9.0f, w.rect.w - 6.0f, w.rect.h - 12.0f}, a, 4.0f, ground);
+        break;
+    }
     case Kind::SourceMenuItem: {
         // A small picture of what the type puts out, then its name.
         const auto type = static_cast<SourceType>(w.a);
@@ -8913,6 +9081,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::TempoBox && hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
+         !(hover_->kind == Kind::AlgorithmButton && !algorithmMenuOpen_) &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::PartialRandom &&
          hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
@@ -8951,6 +9120,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipModsFilter);
     } else if (hover_->kind == Kind::MacroName) {
         text = tr(Str::TipRenameMacro);
+    } else if (hover_->kind == Kind::AlgorithmButton) {
+        text = tr(Str::TipAlgorithm);
     } else if (hover_->kind == Kind::ModPill) {
         if (modListOn(*hover_))
             return; // its list shows them
@@ -10257,6 +10428,24 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (w.a == 0) // a click anywhere else closes the list
             sourceMenuOpen_ = false;
         break;
+    case Kind::AlgorithmButton: // open on the set of the algorithm the operators form, the six operators' with none
+        if (const int now = currentAlgorithm(); !algorithmMenuOpen_)
+            algorithmOps_ = now >= 0 ? kAlgorithms[now].ops : kOps;
+        algorithmMenuOpen_ = !algorithmMenuOpen_;
+        break;
+    case Kind::AlgorithmMenu:
+        if (w.a == 0) // a click anywhere else closes it
+            algorithmMenuOpen_ = false;
+        break;
+    case Kind::AlgorithmSet:
+        algorithmOps_ = w.b;
+        hover_.reset();
+        break;
+    case Kind::AlgorithmItem:
+        algorithmMenuOpen_ = false;
+        hover_.reset();
+        applyAlgorithm(w.a);
+        break;
     case Kind::SourceMenuItem:
         sourceMenuOpen_ = false;
         addSource(static_cast<SourceType>(w.a));
@@ -11100,7 +11289,7 @@ std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
             k == Kind::SourceMenuItem || k == Kind::ListItem || k == Kind::PeqTypeItem || k == Kind::WaveMenuItem ||
             k == Kind::CascadeItem ||
             ((k == Kind::FxMenu || k == Kind::SourceMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu ||
-              k == Kind::WaveMenu || k == Kind::CascadeMenu) &&
+              k == Kind::WaveMenu || k == Kind::CascadeMenu || k == Kind::AlgorithmMenu) &&
              hit->a != 0))
             return std::nullopt;
     }
@@ -11131,6 +11320,7 @@ void View::middleDown(Point p) {
         cascade_.reset();
         fxMenuOpen_ = false;
         sourceMenuOpen_ = false;
+        algorithmMenuOpen_ = false;
         listMenu_ = -1;
         peqMenu_ = -1;
         waveMenu_ = -1;
@@ -12236,6 +12426,7 @@ CursorKind View::cursor() const {
     // and a pill's list's rows, which only take a source's handle dropped on them.
     case Kind::WaveMenu:
     case Kind::SourceMenu:
+    case Kind::AlgorithmMenu:
     case Kind::FxMenu:
     case Kind::ListMenu:
     case Kind::PeqTypeMenu:
