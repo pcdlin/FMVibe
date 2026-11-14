@@ -1952,9 +1952,20 @@ void effectsChainChecks() {
         const float comb = stale(FilterType::LowPass, 1, FilterType::Comb, 1);
         const float slope = stale(FilterType::LowPass, 3, FilterType::LowPass, 1);
         const float back = stale(FilterType::Comb, 1, FilterType::LowPass, 1);
-        std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g\n", comb, slope,
-                    back);
-        check(comb < 1e-4f && slope < 1e-4f && back < 1e-4f,
+        const float ladder = stale(FilterType::Ladder, 3, FilterType::LowPass, 1);
+        // The newer types, back from a low-pass, and the analog types, which share their stages, back from one another,
+        // and from a morph.
+        float newer = 0.0f;
+        for (FilterType t : {FilterType::Diode, FilterType::SallenKeyLow, FilterType::SallenKeyHigh, FilterType::Formant,
+                             FilterType::Morph})
+            newer = std::max(newer, stale(t, 1, FilterType::LowPass, 1));
+        newer = std::max({newer, stale(FilterType::Diode, 3, FilterType::Ladder, 3),
+                          stale(FilterType::Morph, 1, FilterType::SallenKeyLow, 1),
+                          stale(FilterType::Ladder, 3, FilterType::Morph, 1)});
+        std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g, ladder %.1g, the "
+                    "newer types %.1g\n",
+                    comb, slope, back, ladder, newer);
+        check(comb < 1e-4f && slope < 1e-4f && back < 1e-4f && ladder < 1e-4f && newer < 1e-4f,
               "the filter effect switched to another type or slope and back plays nothing it held before");
     }
     {
@@ -3522,6 +3533,52 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -45.0},
+        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level), resonant
+        // here and cut off above the note's 4th harmonic: its stages' harmonics, which are what it sounds of, alias
+        // some 6 dB more than the driven low-pass's at 2x, falling as the oversampling rises.
+        {"saw into driven ladder at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Ladder);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(6000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -40.0},
+        // The diode, saturating at its input, and the Sallen-Key, clipping in its loop, driven and resonant likewise.
+        // The diode's one saturation takes its input less all of its feedback, so it clips harder there than the
+        // ladder's stages do, and aliases some 6 dB more at 2x, falling as the oversampling rises.
+        {"saw into driven diode at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Diode);
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(6000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -35.0},
+        {"saw into driven Sallen-Key at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::SallenKeyLow);
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(6000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -40.0},
     };
     std::printf("aliasing (energy off the harmonics, dB):\n");
     for (const AliasCase &c : cases) {
@@ -3582,6 +3639,37 @@ int main() {
         const double cutoff = unexpectedDb(steadyTone(1, key, cutoffMod), partials);
         std::printf("      %-30s %7.1f\n", "LFO on filter cutoff", cutoff);
         check(cutoff < -80.0, "LFO on a filter cutoff doesn't zipper");
+        // The same on a resonant ladder's.
+        auto ladderMod = [&](ParamValues &p) {
+            cutoffMod(p);
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Ladder);
+            p[paramIndex(0, FilterParam::Resonance)] = 0.5;
+        };
+        const double ladder = unexpectedDb(steadyTone(1, key, ladderMod), partials);
+        std::printf("      %-30s %7.1f\n", "LFO on ladder cutoff", ladder);
+        check(ladder < -80.0, "LFO on a ladder's cutoff doesn't zipper");
+        // And on a formant's vowel, which moves all three band-passes at once (the LFO taken off the cutoff onto it).
+        auto vowelMod = [&](ParamValues &p) {
+            cutoffMod(p);
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Formant);
+            p[paramIndex(0, FilterParam::Cutoff)] = kDefaultCutoff;
+            p[paramIndex(0, FilterParam::Vowel)] = 0.5;
+            lfoOn(p, paramIndex(0, FilterParam::Vowel), 0.2, lfo);
+        };
+        const double vowel = unexpectedDb(steadyTone(1, key, vowelMod), partials);
+        std::printf("      %-30s %7.1f\n", "LFO on formant vowel", vowel);
+        check(vowel < -80.0, "LFO on a formant's vowel doesn't zipper");
+        // And on a morph's place, which shares out the stage's outputs anew.
+        auto morphMod = [&](ParamValues &p) {
+            cutoffMod(p);
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Morph);
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(440.0);
+            p[paramIndex(0, FilterParam::Morph)] = 0.5;
+            lfoOn(p, paramIndex(0, FilterParam::Morph), 0.3, lfo);
+        };
+        const double morph = unexpectedDb(steadyTone(1, key, morphMod), partials);
+        std::printf("      %-30s %7.1f\n", "LFO on filter morph", morph);
+        check(morph < -80.0, "LFO on a morph's place doesn't zipper");
 
         // An operator's Pan, swept: its left channel's gain moves with it, smoothly.
         auto panMod = [&](ParamValues &p) { lfoOn(p, paramIndex(0, OpParam::Pan), 0.3, lfo); };

@@ -1677,20 +1677,24 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
     // Worked out again only when its params, or the pitch it tracks, move. Without key tracking the pitch moves
     // nothing (2 to the power of 0 is exactly 1), and is left out.
     const double keyTrack = p[paramIndex(slot, FxParam::FilterKeyTrack)];
-    const std::array<double, 7> inputs{p[paramIndex(slot, FxParam::FilterType)],
+    const std::array<double, 10> inputs{p[paramIndex(slot, FxParam::FilterType)],
                                        p[paramIndex(slot, FxParam::FilterCutoff)],
                                        keyTrack,
                                        keyTrack != 0.0 ? pitch : 0.0,
                                        p[paramIndex(slot, FxParam::FilterSlope)],
                                        p[paramIndex(slot, FxParam::FilterResonance)],
-                                       p[paramIndex(slot, FxParam::FilterDrive)]};
+                                       p[paramIndex(slot, FxParam::FilterDrive)],
+                                       p[paramIndex(slot, FxParam::FilterVowel)],
+                                       p[paramIndex(slot, FxParam::FilterMorph)],
+                                       p[paramIndex(slot, FxParam::FilterMorphMode)]};
     if (std::memcmp(inputs.data(), filter.settingsFor.data(), sizeof inputs) != 0) {
         filter.settingsFor = inputs;
         const auto type = static_cast<FilterType>(
             std::clamp(static_cast<int>(std::lround(inputs[0])), 0, static_cast<int>(FilterType::Count) - 1));
         // Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
         const double cutoffHz = cutoffFromNorm(inputs[1]) * std::exp2((pitch - 60.0) / 12.0 * keyTrack);
-        filter.settings = filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], sampleRate_);
+        filter.settings = filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], sampleRate_,
+                                         inputs[7], inputs[8], morphMode(inputs[9]));
     }
     const FilterSettings &settings = filter.settings;
     const double mixStep = rampStep(filter.mix, p[paramIndex(slot, FxParam::FilterMix)], n, rampShortest_);

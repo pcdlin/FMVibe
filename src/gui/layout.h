@@ -202,10 +202,26 @@ inline Rect scopeCycleButton(int choice) {
 inline Rect slopeButton(Rect display) {
     return {display.center().x - 36.0f, display.bottom() + 4.0f, 72.0f, 18.0f};
 }
-// A filter's page: its type buttons across the row under the summary, its response with the slope's list under it.
-inline Rect filterTypeButton(int type) {
-    constexpr float kStep = (kInspector.w - 32.0f + 4.0f) / static_cast<float>(FilterType::Count);
-    return {kInspector.x + 16.0f + type * kStep, kInspector.y + 62.0f, kStep - 4.0f, 22.0f};
+// A Morph filter's slope's list and its notch switch (through the notch rather than the band-pass, the notch's icon),
+// side by side in its place, centered together.
+inline Rect morphSlopeButton(Rect display) {
+    return {display.center().x - 57.0f, display.bottom() + 4.0f, 72.0f, 18.0f};
+}
+inline Rect morphNotchButton(Rect display) {
+    return {display.center().x + 21.0f, display.bottom() + 4.0f, 36.0f, 18.0f};
+}
+// A filter's page: its type's list across the row under the summary (where a shaper's curve's is), its response with
+// the slope's list under it.
+constexpr Rect kFilterTypeButton{kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f, 22.0f};
+// A Formant or Morph filter's six knobs (its Vowel or Morph after Resonance), a little smaller and closer together
+// than the five the others have.
+constexpr float kFilterSixKnobD = 30.0f;
+inline Point filterSixKnob(int i) {
+    return {kInspector.x + 29.0f + i * 48.0f, kInspector.y + 110.0f};
+}
+// A filter type's icon before its name, on a type list's button or one of its rows.
+inline Rect filterTypeIconRect(Rect row) {
+    return {row.x + 9.0f, row.center().y - 5.0f, 22.0f, 10.0f};
 }
 constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 90.0f};
 inline const Rect kFilterSlopeButton = slopeButton(kFilterDisplay);
@@ -775,6 +791,10 @@ inline Rect clipLinkButton(Rect card, bool custom) {
     return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 194.0f, 44.0f, 20.0f};
 }
 inline Rect reverbTypeButton(Rect card) {
+    return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
+}
+// The filter effect's type, in the same place: a list, as a voice filter's is.
+inline Rect filterTypeListButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
 

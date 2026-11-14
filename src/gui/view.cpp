@@ -183,12 +183,37 @@ bool isMidiInput(int param) {
     return sourceFieldOf(param) == SourceParam::MidiInput;
 }
 
+// The voice filter a param is one of, or -1.
+int filterOfParam(int param) {
+    return param >= kFilterBase && param < kFilterBase + kFilters * kFilterParamCount
+               ? (param - kFilterBase) / kFilterParamCount
+               : -1;
+}
+
+// A voice filter's type, or the filter effect's.
+bool isFilterTypeList(int param) {
+    if (fxFieldOf(param) == FxParam::FilterType)
+        return true;
+    for (int filter = 0; filter < kFilters; ++filter)
+        if (paramIndex(filter, FilterParam::Type) == param)
+            return true;
+    return false;
+}
+
+// A voice filter's morph mode, or the filter effect's: whether its Morph type goes through the notch (a switch).
+bool isMorphMode(int param) {
+    const int filter = filterOfParam(param);
+    return fxFieldOf(param) == FxParam::FilterMorphMode ||
+           (filter >= 0 && param == paramIndex(filter, FilterParam::MorphMode));
+}
+
 // A choice that opens a list under its button (an LFO's shape, a MIDI source's input, a shaper's curve, the reverb's
-// algorithm, a filter's slope): how many values it offers (an LFO's shapes kLfoShapesOffered, in their order), and
-// their names.
+// algorithm, a filter's type or slope): how many values it offers (an LFO's shapes kLfoShapesOffered, in their
+// order), and their names.
 int listCount(int param) {
     return routeModeFrom(param) >= 0                  ? static_cast<int>(RouteMode::Count)
            : isSlopeList(param)                       ? kFilterSlopes
+           : isFilterTypeList(param)                  ? static_cast<int>(FilterType::Count)
            : isLfoShape(param)                        ? kLfoShapeItems
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
@@ -201,6 +226,8 @@ std::string listItemName(int param, int value) {
         return routeModeName(static_cast<RouteMode>(value));
     if (isSlopeList(param))
         return std::to_string(slopeDb(value)) + " dB";
+    if (isFilterTypeList(param))
+        return filterTypeName(static_cast<FilterType>(value));
     if (isLfoShape(param))
         return lfoShapeName(static_cast<LfoShape>(value));
     if (isMidiInput(param))
@@ -211,6 +238,28 @@ std::string listItemName(int param, int value) {
         return ampCabName(static_cast<AmpCab>(value));
     return fxFieldOf(param) == FxParam::ReverbType ? reverbTypeName(static_cast<ReverbType>(value))
                                                     : clipModeName(static_cast<ClipMode>(value));
+}
+
+// The value a list's entry sets: the entry's place, but for an LFO's shapes, which offer some of theirs in an order of
+// their own.
+int listItemValue(int param, int item) {
+    return isLfoShape(param) ? static_cast<int>(kLfoShapesOffered[item]) : item;
+}
+
+FilterType filterTypeOf(double value) {
+    return static_cast<FilterType>(std::clamp(static_cast<int>(std::lround(value)), 0,
+                                              static_cast<int>(FilterType::Count) - 1));
+}
+
+// What a filter's Cutoff and Resonance knobs are called for its type: a formant's shift its formants and narrow them;
+// on the effect's card, Resonance is Reso.
+struct FilterKnobLabels {
+    Str cutoff, resonance;
+};
+FilterKnobLabels filterKnobLabels(FilterType type, bool card) {
+    if (type == FilterType::Formant)
+        return {Str::LabelShift, Str::LabelQ};
+    return {Str::LabelCutoff, card ? Str::LabelReso : Str::LabelResonance};
 }
 
 const char *const kNoteNames[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
@@ -2053,7 +2102,6 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::Toggle, graph ? cardPowerInGraph(card) : cardPower(card), at(FxParam::Enabled));
             if (!graph)
                 add(Kind::FxRemove, cardClose(card), -1, slot);
-            const float row = card.y + 44.0f; // mode buttons and switches
             auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
                              float y = 240.0f) {
                 const float step = card.w / static_cast<float>(params.size());
@@ -2129,22 +2177,30 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             }
             case FxType::Filter: {
-                // The filter types in a row of icons, and the slope's list under the response.
-                constexpr int kTypes = static_cast<int>(FilterType::Count);
-                const float w = (card.w - 28.0f + 4.0f) / kTypes;
-                const size_t types = list.size();
-                for (int t = 0; t < kTypes; ++t)
-                    add(Kind::Choice, {card.x + 14.0f + t * w, row, w - 4.0f, 20.0f}, at(FxParam::FilterType), -1, t);
-                merge(types);
-                add(Kind::ListButton, slopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
+                // The filter type's list across the card, and the slope's list under the response (a morph's with
+                // its notch switch beside it); a formant's vowel or a morph's place between Drive and Mix.
+                const auto filterType = filterTypeOf(value(at(FxParam::FilterType)));
+                add(Kind::ListButton, filterTypeListButton(card), at(FxParam::FilterType));
+                if (filterType == FilterType::Morph) {
+                    add(Kind::ListButton, morphSlopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
+                    add(Kind::Toggle, morphNotchButton(fxDisplayIn(card, type)), at(FxParam::FilterMorphMode));
+                } else {
+                    add(Kind::ListButton, slopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
+                }
                 // The response's handle, as a voice filter's: b = 1 marks the effect's.
                 const Point handle = filterHandle(fxDisplayIn(card, type), value(at(FxParam::FilterCutoff)),
                                                   value(at(FxParam::FilterResonance)));
                 add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, slot, 1);
+                const FilterKnobLabels names = filterKnobLabels(filterType, true);
                 knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
-                      {tr(Str::LabelCutoff), tr(Str::LabelReso), tr(Str::LabelKeyTrack)}, 206.0f);
-                knobs({at(FxParam::FilterDrive), -1, at(FxParam::FilterMix)},
-                      {tr(Str::LabelDrive), nullptr, tr(Str::LabelMix)}, 266.0f);
+                      {tr(names.cutoff), tr(names.resonance), tr(Str::LabelKeyTrack)}, 206.0f);
+                const bool formant = filterType == FilterType::Formant, morph = filterType == FilterType::Morph;
+                knobs({at(FxParam::FilterDrive),
+                       formant ? at(FxParam::FilterVowel) : morph ? at(FxParam::FilterMorph) : -1,
+                       at(FxParam::FilterMix)},
+                      {tr(Str::LabelDrive), formant ? tr(Str::LabelVowel) : morph ? tr(Str::LabelMorph) : nullptr,
+                       tr(Str::LabelMix)},
+                      266.0f);
                 break;
             }
             case FxType::Compressor:
@@ -2696,15 +2752,35 @@ std::vector<View::Widget> View::widgets() const {
         }
     } else {
         const int filter = node - kOps;
-        for (int t = 0; t < static_cast<int>(FilterType::Count); ++t) // pills, as the waves are
-            add(Kind::TypeButton, filterTypeButton(t), -1, filter, t);
-        add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
+        const auto filterType = filterTypeOf(value(paramIndex(filter, FilterParam::Type)));
+        add(Kind::ListButton, kFilterTypeButton, paramIndex(filter, FilterParam::Type)); // as a shaper's curve's
+        if (filterType == FilterType::Morph) { // its slope's list and notch switch side by side
+            add(Kind::ListButton, morphSlopeButton(kFilterDisplay), paramIndex(filter, FilterParam::Slope));
+            add(Kind::Toggle, morphNotchButton(kFilterDisplay), paramIndex(filter, FilterParam::MorphMode));
+        } else {
+            add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
+        }
+        const FilterKnobLabels names = filterKnobLabels(filterType, false);
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
                               paramIndex(filter, FilterParam::KeyTrack), paramIndex(filter, FilterParam::Drive),
                               paramIndex(filter, FilterParam::Mix)};
-        const char *const labels[] = {tr(Str::LabelCutoff), tr(Str::LabelResonance), tr(Str::LabelKeyTrack),
+        const char *const labels[] = {tr(names.cutoff), tr(names.resonance), tr(Str::LabelKeyTrack),
                                       tr(Str::LabelDrive), tr(Str::LabelMix)};
-        knobRow(params, labels);
+        if (filterType == FilterType::Formant || filterType == FilterType::Morph) { // the six closer together
+            const bool formant = filterType == FilterType::Formant;
+            const int six[] = {params[0],
+                               params[1],
+                               paramIndex(filter, formant ? FilterParam::Vowel : FilterParam::Morph),
+                               params[2],
+                               params[3],
+                               params[4]};
+            const char *const sixLabels[] = {
+                labels[0], labels[1], tr(formant ? Str::LabelVowel : Str::LabelMorph), labels[2], labels[3], labels[4]};
+            for (int i = 0; i < 6; ++i)
+                knob(six[i], filterSixKnob(i), kFilterSixKnobD, sixLabels[i]);
+        } else {
+            knobRow(params, labels);
+        }
         const Point handle = filterHandle(kFilterDisplay, value(params[0]), value(params[1]));
         add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, filter);
         inputKnobs(node);
@@ -3074,7 +3150,11 @@ std::vector<View::Widget> View::widgets() const {
         if (const std::optional<Rect> shown = fxCardOf(listSlot)) {
             const Rect card = *shown;
             const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
-                                : listField == FxParam::FilterSlope ? slopeButton(fxDisplayIn(card, FxType::Filter))
+                                : listField == FxParam::FilterType  ? filterTypeListButton(card)
+                                : listField == FxParam::FilterSlope
+                                    ? (filterTypeOf(value(paramIndex(listSlot, FxParam::FilterType))) == FilterType::Morph
+                                           ? morphSlopeButton(fxDisplayIn(card, FxType::Filter))
+                                           : slopeButton(fxDisplayIn(card, FxType::Filter)))
                                 : listField == FxParam::AmpModel    ? ampModelButton(card)
                                 : listField == FxParam::AmpCab      ? ampCabButton(card)
                                                                     : clipModeButton(card);
@@ -3082,7 +3162,7 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
             for (int item = 0; item < items; ++item)
-                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
         }
     }
     // A split's list of slopes, under its button on its card (in the row's container or the graph's inspector).
@@ -3104,24 +3184,29 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
         list.back().clip = sourceListClip();
         for (int item = 0; item < items; ++item) {
-            add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1,
-                isLfoShape(listMenu_) ? static_cast<int>(kLfoShapesOffered[item]) : item);
+            add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1, listItemValue(listMenu_, item));
             list.back().clip = sourceListClip();
         }
     }
-    // A shaper's list of curves or a filter's slopes, under its button on its page.
+    // A shaper's list of curves or a filter's types or slopes, under its button on its page.
     const int pageNode = controller_.layout().selectedNode;
     const bool shaperList = shaperOf(listMenu_) >= 0 && pageNode == kOps + kFilters + shaperOf(listMenu_);
     const bool slopeList =
         listMenu_ >= 0 && isFilterNode(pageNode) && listMenu_ == paramIndex(pageNode - kOps, FilterParam::Slope);
-    if ((shaperList || slopeList) && !inspectorCovered()) {
-        const Rect button =
-            slopeList ? kFilterSlopeButton : shaperModeButton(clipMode(value(listMenu_)) == ClipMode::Custom);
+    const bool typeList =
+        listMenu_ >= 0 && isFilterNode(pageNode) && listMenu_ == paramIndex(pageNode - kOps, FilterParam::Type);
+    const bool morphSlope = slopeList && filterTypeOf(value(paramIndex(pageNode - kOps, FilterParam::Type))) ==
+                                             FilterType::Morph;
+    if ((shaperList || slopeList || typeList) && !inspectorCovered()) {
+        const Rect button = morphSlope ? morphSlopeButton(kFilterDisplay)
+                            : slopeList ? kFilterSlopeButton
+                            : typeList  ? kFilterTypeButton
+                                        : shaperModeButton(clipMode(value(listMenu_)) == ClipMode::Custom);
         const int items = listCount(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
         for (int item = 0; item < items; ++item)
-            add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+            add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
     }
     // A route's list of modes, under the mode's part of its label's pill, while the graph shows that route.
     if (const int from = routeModeFrom(listMenu_), to = routeModeTo(listMenu_);
@@ -6473,17 +6558,28 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
     const double resonance = value(resonanceParam);
     const int steps = type == FilterType::Comb ? 240 : 96; // comb teeth need more points
     const double slope = value(slopeParam);
-    // Mixed with what goes in, as it plays (and as modulation takes it, live).
+    // Mixed with what goes in, as it plays (and as modulation takes it, live), and the Formant type's vowel likewise.
     const double mix = std::clamp(liveAmount(mixParam), 0.0, 1.0);
+    const bool fx = fxSlotOf(typeParam) >= 0;
+    const int vowelParam = fx ? paramIndex(fxSlotOf(typeParam), FxParam::FilterVowel)
+                              : paramIndex(filterOfParam(typeParam), FilterParam::Vowel);
+    const int morphParam = fx ? paramIndex(fxSlotOf(typeParam), FxParam::FilterMorph)
+                              : paramIndex(filterOfParam(typeParam), FilterParam::Morph);
+    const int modeParam = fx ? paramIndex(fxSlotOf(typeParam), FxParam::FilterMorphMode)
+                             : paramIndex(filterOfParam(typeParam), FilterParam::MorphMode);
+    const double vowel = type == FilterType::Formant ? std::clamp(liveAmount(vowelParam), 0.0, 1.0) : 0.0;
+    const double morph = type == FilterType::Morph ? std::clamp(liveAmount(morphParam), 0.0, 1.0) : 0.0;
+    const MorphMode mode = type == FilterType::Morph ? morphMode(value(modeParam)) : MorphMode::Band;
     auto response = [&](double cutoffNorm, double res) {
         std::vector<double> key = curveKey(Curve::Filter, inner);
-        key.insert(key.end(), {static_cast<double>(type), slope, cutoffNorm, res, mix});
+        key.insert(key.end(), {static_cast<double>(type), slope, cutoffNorm, res, mix, vowel, morph,
+                               static_cast<double>(mode)});
         return curves_.get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= steps; ++i) {
                 const double x = static_cast<double>(i) / steps;
                 const double magnitude = filterResponse(type, filterSlope(slope), cutoffFromNorm(cutoffNorm), res,
-                                                        cutoffFromNorm(x), mix);
+                                                        cutoffFromNorm(x), mix, vowel, morph, mode);
                 const float db = static_cast<float>(20.0 * std::log10(std::max(magnitude, 1e-6)));
                 points.push_back({inner.x + static_cast<float>(x) * inner.w, yOfDb(db)});
             }
@@ -7084,12 +7180,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled || field == FxParam::AmpCabOn;
         const std::string count = std::to_string(w.b); // the partial editor's resolution
         const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's INPUTS row's, as glyphs
-        const char *text = power || modeChoice ? ""
+        const bool notchSwitch = isMorphMode(w.param); // a morph's, as the notch's icon
+        const char *text = power || modeChoice || notchSwitch ? ""
                            : isPartialCount(w.param) || field == FxParam::ChorusVoices ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
-                           : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
                            : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ||
                                      field == FxParam::AmpStereo
                                ? tr(Str::SwitchStereo)
@@ -7106,16 +7202,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             color = fxColor(fxSlotOf(w.param));
         if (shaperOf(w.param) >= 0)
             color = kShaperColor;
-        if (w.param >= kFilterBase && w.param < kFilterLinkBase) // a filter's, as its type switches
+        if (w.param >= kFilterBase && w.param < kFilterLinkBase) // a filter's
             color = kFilterColor;
         if (modeChoice)
             color = routeColor(routeModeFrom(w.param), routeModeTo(w.param));
         paintButtonFace(c, w, on, hovered, color, 0.22f, kRadiusControl);
-        if (field == FxParam::FilterType) // the filter types show as icons, named in their tooltips
-            filterIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 5.0f, 20.0f, w.rect.h - 10.0f},
-                       static_cast<FilterType>(w.b), on ? litInk(color) : kDim);
-        else if (power)
+        if (power)
             powerIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (notchSwitch)
+            filterIcon(c, {w.rect.center().x - 11.0f, w.rect.center().y - 5.0f, 22.0f, 10.0f}, FilterType::Notch,
+                       on ? litInk(color) : (hovered ? kText : kDim));
         else if (modeChoice)
             routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
@@ -7225,12 +7321,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const std::vector<Point> points =
             waveIcon(static_cast<OpWave>(w.b), {w.rect.x + 6.0f, w.rect.y + 6.0f, w.rect.w - 12.0f, w.rect.h - 12.0f});
         c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
-        break;
-    }
-    case Kind::TypeButton: {
-        const bool selected = std::lround(value(paramIndex(w.a, FilterParam::Type))) == w.b;
-        paintButtonFace(c, w, selected, hovered, kFilterColor, 0.18f, 0.5f * w.rect.h);
-        filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? litInk(kFilterColor) : kDim);
         break;
     }
     case Kind::Port: { // under the mouse, or dragged from, the node's outline glows in its color
@@ -7926,11 +8016,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
         }
         const Color text = !relevant ? kFaint : lit ? kText : kDim;
-        // An LFO's shape shows its icon before its name.
-        const float indent = isLfoShape(w.param) ? 24.0f : 0.0f;
+        // An LFO's shape and a filter's type show their icons before their names.
+        const bool filterType = isFilterTypeList(w.param);
+        const float indent = isLfoShape(w.param) ? 24.0f : filterType ? 30.0f : 0.0f;
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown),
                          color);
+        if (filterType)
+            filterIcon(c, filterTypeIconRect(w.rect), static_cast<FilterType>(shown), color);
         c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 30.0f - indent, w.rect.h}, listItemName(w.param, shown),
                kTextBody, text, Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
@@ -8005,10 +8098,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = listShown(w.param) == w.b;
         paintMenuRow(c, w.rect, hovered && fits, selected);
         const bool modeChoice = routeModeFrom(w.param) >= 0;
-        const float indent = isLfoShape(w.param) || modeChoice ? 24.0f : 0.0f;
+        const bool filterType = isFilterTypeList(w.param);
+        const float indent = isLfoShape(w.param) || modeChoice ? 24.0f : filterType ? 30.0f : 0.0f;
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(w.b),
                          selected ? listColor(w.param) : kDim);
+        if (filterType)
+            filterIcon(c, filterTypeIconRect(w.rect), static_cast<FilterType>(w.b), selected ? listColor(w.param) : kDim);
         if (modeChoice)
             routeModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<RouteMode>(w.b),
                           selected ? listColor(w.param) : kDim);
@@ -8631,12 +8727,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
 // every widget so the ones below don't cover them.
 void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
     for (const Widget &w : list) {
-        if ((((w.kind == Kind::WaveButton || w.kind == Kind::WaveMore) && waveMenu_ < 0) ||
-             w.kind == Kind::TypeButton) &&
-            isHovered(w)) {
+        if ((w.kind == Kind::WaveButton || w.kind == Kind::WaveMore) && waveMenu_ < 0 && isHovered(w)) {
             const auto picked = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
-            const char *name = w.kind == Kind::TypeButton   ? filterTypeName(static_cast<FilterType>(w.b))
-                               : w.kind == Kind::WaveButton ? waveName(static_cast<OpWave>(w.b))
+            const char *name = w.kind == Kind::WaveButton ? waveName(static_cast<OpWave>(w.b))
                                : isMoreWave(picked)         ? waveName(picked)
                                                             : tr(Str::TipMoreWaves);
             const Rect tip{w.rect.center().x - 40.0f, w.rect.bottom() + 3.0f, 80.0f, 16.0f};
@@ -9181,14 +9274,14 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipRms);
     else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo)
         text = tr(Str::TipStereo);
+    else if (isMorphMode(param))
+        text = tr(Str::TipMorphNotch);
     else if (field == FxParam::PhaserNegative || field == FxParam::FlangerNegative)
         text = tr(hover_->b == 1 ? Str::TipNegative : Str::TipPositive);
     else if (field == FxParam::ShaperLink || shaperFieldOf(param) == ShaperParam::Link)
         text = tr(Str::TipShaperLink);
     else if (field == FxParam::ShaperSymmetric || shaperFieldOf(param) == ShaperParam::Symmetric)
         text = tr(Str::TipShaperSymmetric);
-    else if (field == FxParam::FilterType)
-        text = filterTypeName(static_cast<FilterType>(hover_->b));
     else if (field == FxParam::ShaperMode)
         text = tr(hover_->b == 0 ? Str::TipClipHard : hover_->b == 1 ? Str::TipClipSoft : Str::TipClipAsym);
     else if (isMidiInput(param)) { // what the input picked follows
@@ -10611,9 +10704,6 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::WaveButton:
         edit(paramIndex(w.a, OpParam::Wave), w.b);
-        break;
-    case Kind::TypeButton:
-        edit(paramIndex(w.a, FilterParam::Type), w.b);
         break;
     case Kind::SlotRemove:
         removeSlot(w.a, w.b);

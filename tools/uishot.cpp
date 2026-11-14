@@ -733,8 +733,11 @@ Point scopeCycleButton(int choice) {
 }
 const Point kMoreWavesButton = waveButton(5);
 
-Point typeButton(int type) {
-    return detail::filterTypeButton(type).center();
+// The type's list button on a filter's page (where a shaper's curve's is), and its entries, which open under it.
+const Point kTypeButton = detail::kFilterTypeButton.center();
+Point typeItem(FilterType type) {
+    return detail::listMenuItem(detail::kFilterTypeButton, static_cast<int>(FilterType::Count), static_cast<int>(type))
+        .center();
 }
 
 // The slope's list button under the filter's response, and its entries, 6 to 24 dB, which open under it.
@@ -889,6 +892,12 @@ void addSource(View &view, SourceType type) {
 void addFx(View &view, FxType type) {
     click(view, kFxMenuButton);
     click(view, fxMenuItem(type));
+}
+
+// A filter's type picked from its list on its page.
+void pickType(View &view, FilterType type) {
+    click(view, kTypeButton);
+    click(view, typeItem(type));
 }
 
 void drag(View &view, Point from, Point to) {
@@ -8827,10 +8836,10 @@ void run(const std::filesystem::path &dir, float scale) {
           "clicking a switched-off filter's tab switches it on");
     model.set(paramIndex(1, FilterParam::Enabled), 0.0);
     click(view, kF1Tab);
-    click(view, typeButton(static_cast<int>(FilterType::Comb)));
+    pickType(view, FilterType::Comb);
     check(std::lround(model.value(paramIndex(0, FilterParam::Type))) == static_cast<long>(FilterType::Comb),
-          "type buttons set the filter type");
-    click(view, typeButton(static_cast<int>(FilterType::LowPass)));
+          "the type's list sets the filter type");
+    pickType(view, FilterType::LowPass);
     // The slope's list: a low-pass comes in 6 to 24 dB per octave; a band-pass only in 12 and 24, the others faint
     // in its list, where a click on one leaves the list open.
     const int slope = paramIndex(0, FilterParam::Slope);
@@ -8842,7 +8851,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kSlopeButton);
     click(view, slopeItem(0));
     const bool gentle = model.value(slope) == 0.0;
-    click(view, typeButton(static_cast<int>(FilterType::BandPass)));
+    pickType(view, FilterType::BandPass);
     click(view, kSlopeButton);
     view.mouseMove(slopeItem(2), {});
     const bool bandListShot = renderer.save(view, dir / "4b-slope-list-band.png");
@@ -8861,10 +8870,88 @@ void run(const std::filesystem::path &dir, float scale) {
     const bool refused = model.value(slope) == 0.0;
     click(view, slopeItem(3)); // the list is still open
     const bool bandSteep = model.value(slope) == 3.0;
-    click(view, typeButton(static_cast<int>(FilterType::LowPass)));
+    pickType(view, FilterType::LowPass);
     model.set(slope, kDefaultSlope);
     check(listShot && steep && gentle && bandListShot && refused && bandSteep,
           "the slope's list picks 6 to 24 dB, a band-pass's only 12 and 24");
+    // The type's list: every type with its icon before its name (read off the rendered pixels: a stroke in each row's
+    // icon box, brighter than the row's empty right end), Ladder picked from it and shown on its button, and the
+    // wheel over the button stepping the type, a run of notches one undo step, held at the list's ends.
+    {
+        const int type = paramIndex(0, FilterParam::Type);
+        constexpr int kTypes = static_cast<int>(FilterType::Count);
+        auto lit = [](uint32_t px) { return ((px >> 16 & 255) + (px >> 8 & 255) + (px & 255)) / 3; };
+        click(view, kTypeButton);
+        view.mouseMove({detail::kFilterTypeButton.x - 8.0f, detail::kFilterTypeButton.center().y}, {});
+        const bool typeListShot = renderer.save(view, dir / "4c-type-list.png");
+        bool icons = true;
+        for (int t = 0; t < kTypes; ++t) {
+            const Rect row = detail::listMenuItem(detail::kFilterTypeButton, kTypes, t);
+            const Rect box = detail::filterTypeIconRect(row);
+            uint32_t most = 0;
+            for (float x = box.x; x <= box.right(); x += 1.0f)
+                for (float y = box.y; y <= box.bottom(); y += 1.0f)
+                    most = std::max(most, lit(renderer.pixel({x, y})));
+            const uint32_t empty = lit(renderer.pixel({row.right() - 6.0f, row.center().y}));
+            if (most < empty + 40) {
+                std::printf("      type %d's icon: brightest %u, the row's end %u\n", t, most, empty);
+                icons = false;
+            }
+        }
+        click(view, typeItem(FilterType::Ladder));
+        const bool ladder = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
+        const bool ladderShot = renderer.save(view, dir / "4d-type-ladder.png");
+        view.wheel(kTypeButton, -1.0f, {});
+        view.wheel(kTypeButton, -1.0f, {});
+        const bool stepped = std::lround(model.value(type)) == static_cast<long>(FilterType::Notch);
+        view.undo();
+        const bool undone = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
+        pickType(view, FilterType::Morph); // the last in the list
+        view.wheel(kTypeButton, 1.0f, {});
+        const bool held = std::lround(model.value(type)) == static_cast<long>(FilterType::Morph);
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        check(typeListShot && icons && ladder && ladderShot && stepped && undone && held,
+              "the type's list shows each type with its icon and picks Ladder, and the wheel steps it");
+    }
+    // A morph's slope's list and notch switch, side by side where the slope's list is: 24 dB picked from the list
+    // (18 refused), the switch going through the notch and back; its six knobs, its Morph's after Resonance turning;
+    // then a formant's, its Vowel's turning.
+    {
+        const int type = paramIndex(0, FilterParam::Type), mode = paramIndex(0, FilterParam::MorphMode),
+                  morph = paramIndex(0, FilterParam::Morph), vowel = paramIndex(0, FilterParam::Vowel),
+                  slope = paramIndex(0, FilterParam::Slope);
+        const Rect slopeButton = detail::morphSlopeButton(detail::kFilterDisplay);
+        const Point notchButton = detail::morphNotchButton(detail::kFilterDisplay).center();
+        pickType(view, FilterType::Morph);
+        click(view, slopeButton.center());
+        view.mouseMove(detail::listMenuItem(slopeButton, kFilterSlopes, 3).center(), {});
+        const bool modeShot = renderer.save(view, dir / "4e-morph-slope.png");
+        click(view, detail::listMenuItem(slopeButton, kFilterSlopes, 2).center()); // 18 dB: refused, the list open
+        click(view, detail::listMenuItem(slopeButton, kFilterSlopes, 3).center());
+        const bool steep = model.value(slope) == 3.0;
+        click(view, notchButton);
+        const bool notch = morphMode(model.value(mode)) == MorphMode::Notch;
+        click(view, notchButton);
+        const bool band = morphMode(model.value(mode)) == MorphMode::Band;
+        click(view, notchButton); // through the notch, for the picture
+        const Point morphKnob = detail::filterSixKnob(2);
+        drag(view, morphKnob, {morphKnob.x, morphKnob.y - 40.0f});
+        const bool morphed = model.value(morph) > 0.1;
+        const bool morphShot = renderer.save(view, dir / "4f-morph.png");
+        pickType(view, FilterType::Formant);
+        const Point vowelKnob = detail::filterSixKnob(2);
+        drag(view, vowelKnob, {vowelKnob.x, vowelKnob.y - 40.0f});
+        const bool turned = model.value(vowel) > 0.1;
+        const bool formantShot = renderer.save(view, dir / "4g-formant.png");
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        model.set(mode, 0.0);
+        model.set(morph, 0.0);
+        model.set(vowel, 0.0);
+        model.set(slope, kDefaultSlope);
+        check(modeShot && steep && notch && band && morphed && morphShot && turned && formantShot,
+              "a morph's slope's list picks 24 dB, its notch switch goes through the notch and back, its Morph turns, "
+              "and a formant's Vowel turns");
+    }
     const int cutoff = paramIndex(0, FilterParam::Cutoff);
     const double cutoffBefore = model.value(cutoff);
     const Rect response = detail::kFilterDisplay; // its handle as View places it, 10 px inside the display
@@ -9241,10 +9328,16 @@ void run(const std::filesystem::path &dir, float scale) {
               "the list of effects stays inside the editor, and over a switched-off card's dimming");
     }
 
-    // The filter card's type buttons, in a row: Comb is the fifth.
-    click(view, {fxCardX(model, 3) + 14.0f + 4.0f * 29.4f + 13.0f, 180.0f + 44.0f + 10.0f});
+    // The filter card's type list, across the card under its title as the shaper card's curve list is: Comb picked
+    // from it.
+    {
+        const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
+        click(view, button.center());
+        click(view, detail::listMenuItem(button, static_cast<int>(FilterType::Count), static_cast<int>(FilterType::Comb))
+                        .center());
+    }
     check(std::lround(model.value(paramIndex(3, FxParam::FilterType))) == static_cast<long>(FilterType::Comb),
-          "the filter card's buttons pick the filter type");
+          "the filter card's type list picks the filter type");
 
     // The parametric EQ's first band: dragging its handle 30 px up is +10 dB.
     const float peqW = fxCardW(model, 2) - 44.0f; // its display's plot, inside the wider card

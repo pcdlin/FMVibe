@@ -2418,14 +2418,24 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // Without key tracking the pitch moves nothing (2 to the power of 0 is exactly 1): left out, so a pitch that
         // moves doesn't have the settings worked out again.
         const double keyTrack = p[paramIndex(f, FilterParam::KeyTrack)];
-        const std::array<double, 7> inputs{
+        // The ladder, the diode and the Sallen-Key's self-oscillate at the top of their resonance, which would ring
+        // on without end: once the voice's operators have faded (see Voice::tail), it is held below that, so their
+        // ringing dies away as a loop's does.
+        double resonance = p[paramIndex(f, FilterParam::Resonance)];
+        if (v.tail && selfOscillates(static_cast<FilterType>(
+                          stepped(p[paramIndex(f, FilterParam::Type)], static_cast<int>(FilterType::Count) - 1))))
+            resonance = std::min(resonance, kTailResonance);
+        const std::array<double, 10> inputs{
             p[paramIndex(f, FilterParam::Cutoff)], keyTrack, keyTrack != 0.0 ? pitch : 0.0,
             p[paramIndex(f, FilterParam::Type)],   p[paramIndex(f, FilterParam::Slope)],
-            p[paramIndex(f, FilterParam::Resonance)], p[paramIndex(f, FilterParam::Drive)]};
+            resonance,                             p[paramIndex(f, FilterParam::Drive)],
+            p[paramIndex(f, FilterParam::Vowel)],  p[paramIndex(f, FilterParam::Morph)],
+            p[paramIndex(f, FilterParam::MorphMode)]};
         filter[f] = &v.filterSettings[f].get(inputs, [&] {
             const double cutoffHz = cutoffFromNorm(inputs[0]) * std::exp2((pitch - 60.0) / 12.0 * inputs[1]);
             const auto type = static_cast<FilterType>(stepped(inputs[3], static_cast<int>(FilterType::Count) - 1));
-            return filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], rate_);
+            return filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], rate_, inputs[7],
+                                  inputs[8], morphMode(inputs[9]));
         });
         if (filter[f]->type == FilterType::Comb) // its lines start silent
             for (int c = 0; c < channels; ++c)

@@ -230,7 +230,7 @@ private:
         // Its settings, and the params (and pitch, while it tracks the key) they were worked out from: NaN until the
         // first chunk, so worked out again only when one moves (see runFilter()).
         FilterSettings settings;
-        std::array<double, 7> settingsFor{std::numeric_limits<double>::quiet_NaN()};
+        std::array<double, 10> settingsFor{std::numeric_limits<double>::quiet_NaN()};
     };
 
     // The gain reduction (dB, 0 or below) follows the static curve at the attack
