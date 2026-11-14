@@ -481,7 +481,7 @@ STR(ViewMods, "MODS") // every modulation, as a table
 STR(ButtonAlgorithm, "ALGORITHM")
 STR(AlgorithmBadgeOps, "{1}-OP {2}") // on the button: the algorithm of fewer than six operators the operators form
 STR(AlgorithmOps, "Operators") // before the panel's switch between the sets: 6 | 4 | 3 | 2, how many they use
-STR(AlgorithmHint, "Sets the operators' routes in one undo step. Filters and shapers stay as they are.")
+STR(AlgorithmHint, "Apply an operator routing layout. Does not affect shapers or filters.")
 STR(AlgorithmName, "Algorithm {1}") // the panel's foot, for the thumbnail under the mouse, then what follows
 STR(AlgorithmCarriers, "{1} carriers")
 STR(AlgorithmCarrierOne, "1 carrier")
