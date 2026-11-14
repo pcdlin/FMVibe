@@ -1348,7 +1348,12 @@ one may have changed since it last did.
       shaded faintly and its fade a ramp up to its end, with the fade's handle on it; along its foot Start's tab. Each
       drag is an undo step and a double-click puts a handle back. A line shows where the newest voice's first copy
       plays. Under it **LOOP** (Off, Fwd, Ping) and **MODE** (Gate, Sus, 1-Shot). With no sample, a dashed card in the
-      display's place opens the file dialog.
+      display's place opens the file dialog. A file the dialog would offer (WAV, FLAC, `.wt`, `.vitaltable`), dragged in
+      from the system's file browser or a host's, can be dropped on the display (or the dashed card): while it is held
+      there the display is lit in the accent and ringed, and dropped, it is imported as the dialog would import it,
+      one undo step. (The window registers an OLE drop target, ahead of its host's windows, taking a file list or a
+      file's name from the drag; where OLE can't be had on its thread, files the system's file browser drops still
+      come, unlit.)
     - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a

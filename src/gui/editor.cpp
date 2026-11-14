@@ -9,16 +9,19 @@
 #endif
 
 #include <commdlg.h>
+#include <ole2.h>
 #include <shellapi.h>
 #include <shobjidl.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fmvibe::gui {
@@ -33,6 +36,7 @@ constexpr uint32_t kMaxWidth = 3600;
 constexpr UINT kPresetMessage = WM_APP + 1; // posted, so the dialog opens after the mouse gesture ends
 constexpr UINT kImportMessage = WM_APP + 2; // likewise, a table or sample to import: the operator, then its kind
 constexpr UINT kFolderMessage = WM_APP + 3; // and a folder to add to the wavetable library
+constexpr UINT kDropMessage = WM_APP + 4; // a file dropped onto the editor, imported once the drag's loop is over
 
 int liveEditors = 0;
 
@@ -167,7 +171,127 @@ private:
     HMODULE module_ = nullptr;
 };
 
+// A file's bytes, up to 512 MB; none if it can't be read.
+std::vector<uint8_t> readFile(const std::wstring &path) {
+    std::vector<uint8_t> bytes;
+    std::ifstream in(std::filesystem::path(path), std::ios::binary);
+    in.seekg(0, std::ios::end);
+    const std::streamoff size = in.tellg();
+    if (in && size > 0 && size < (std::streamoff{512} << 20)) {
+        in.seekg(0);
+        bytes.resize(static_cast<size_t>(size));
+        in.read(reinterpret_cast<char *>(bytes.data()), size);
+    }
+    return bytes;
+}
+
+std::string fileNameOf(const std::wstring &path) {
+    const std::u8string name = std::filesystem::path(path).filename().u8string();
+    return std::string(reinterpret_cast<const char *>(name.data()), name.size());
+}
+
+// What the import dialog offers: a file of these, not a folder, is taken when dropped.
+bool importable(const std::wstring &path) {
+    const DWORD attributes = path.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY))
+        return false;
+    std::wstring extension = std::filesystem::path(path).extension().wstring();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t c) { return towlower(c); });
+    return extension == L".wav" || extension == L".flac" || extension == L".wt" || extension == L".vitaltable";
+}
+
+// The first file a drag holds: as a file list (CF_HDROP, which the system's file browser and most hosts give), or as
+// one name ("FileNameW").
+std::wstring draggedFile(IDataObject *data) {
+    std::wstring path;
+    FORMATETC list{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium{};
+    if (SUCCEEDED(data->GetData(&list, &medium))) {
+        const auto drop = static_cast<HDROP>(medium.hGlobal);
+        if (const UINT length = DragQueryFileW(drop, 0, nullptr, 0); length > 0) {
+            path.resize(length + 1);
+            path.resize(DragQueryFileW(drop, 0, path.data(), length + 1));
+        }
+        ReleaseStgMedium(&medium);
+    }
+    if (path.empty()) {
+        static const auto fileName = static_cast<CLIPFORMAT>(RegisterClipboardFormatW(L"FileNameW"));
+        FORMATETC name{fileName, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+        STGMEDIUM text{};
+        if (SUCCEEDED(data->GetData(&name, &text))) {
+            if (const auto *wide = static_cast<const wchar_t *>(GlobalLock(text.hGlobal))) {
+                path.assign(wide, wcsnlen(wide, GlobalSize(text.hGlobal) / sizeof(wchar_t)));
+                GlobalUnlock(text.hGlobal);
+            }
+            ReleaseStgMedium(&text);
+        }
+    }
+    return path;
+}
+
 } // namespace
+
+// The editor window's OLE drop target: it takes a file the import dialog would offer, where the view has a place for
+// it, and hands the drop to the editor. The editor holds a reference and lets go of it with its window.
+class FileDrop final : public IDropTarget {
+public:
+    explicit FileDrop(Editor &editor) : editor_(&editor) {}
+    void detach() { editor_ = nullptr; }
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void **out) override {
+        if (!out)
+            return E_POINTER;
+        if (id == IID_IUnknown || id == IID_IDropTarget) {
+            *out = static_cast<IDropTarget *>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return static_cast<ULONG>(InterlockedIncrement(&refs_)); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        const LONG left = InterlockedDecrement(&refs_);
+        if (left == 0)
+            delete this;
+        return static_cast<ULONG>(left);
+    }
+    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject *data, DWORD keys, POINTL at, DWORD *effect) override {
+        path_ = data ? draggedFile(data) : std::wstring();
+        if (!importable(path_))
+            path_.clear();
+        return DragOver(keys, at, effect);
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL at, DWORD *effect) override {
+        const bool lands = editor_ && !path_.empty() && editor_->fileOver(&at);
+        if (effect)
+            *effect = lands ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragLeave() override {
+        if (editor_)
+            editor_->fileOver(nullptr);
+        path_.clear();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE Drop(IDataObject *, DWORD, POINTL at, DWORD *effect) override {
+        const bool lands = editor_ && !path_.empty() && editor_->fileOver(&at);
+        if (editor_)
+            editor_->fileOver(nullptr);
+        if (effect)
+            *effect = lands ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        if (lands)
+            editor_->fileDropped(at, path_);
+        path_.clear();
+        return S_OK;
+    }
+
+private:
+    ~FileDrop() = default;
+    Editor *editor_;
+    LONG refs_ = 1;
+    std::wstring path_; // the file held, if the editor can take it
+};
 
 Editor::Editor(Controller &controller) : controller_(controller), view_(controller) {
     // The class lives in this DLL, so register it while editors exist and
@@ -269,8 +393,50 @@ bool Editor::attach(HWND parent) {
         {GID_ROTATE, 0, GC_ROTATE},
     };
     SetGestureConfig(hwnd_, 0, static_cast<UINT>(std::size(gestures)), gestures, sizeof(GESTURECONFIG));
+    // Files dropped from outside: the window's own drop target, ahead of any its host's windows have, which needs OLE
+    // on this thread (most hosts have it already; this adds a reference). On a thread that can't have it, the files
+    // the system's file browser drops still come as WM_DROPFILES, without the light while one is held.
+    oleInitialized_ = SUCCEEDED(OleInitialize(nullptr));
+    fileDrop_ = new FileDrop(*this);
+    dropRegistered_ = oleInitialized_ && SUCCEEDED(RegisterDragDrop(hwnd_, fileDrop_));
+    if (!dropRegistered_)
+        DragAcceptFiles(hwnd_, TRUE);
     followDpi(); // on a monitor scaled unlike the primary one, in a host aware of it
     return true;
+}
+
+bool Editor::fileOver(const POINTL *screen) {
+    std::optional<Point> at;
+    if (screen && hwnd_) {
+        POINT client{screen->x, screen->y};
+        ScreenToClient(hwnd_, &client);
+        at = toView(client.x, client.y);
+    }
+    if (view_.fileDragOver(at))
+        invalidate();
+    return at && view_.fileDropTarget(*at);
+}
+
+void Editor::fileDropped(POINTL screen, const std::wstring &path) {
+    if (!hwnd_)
+        return;
+    POINT client{screen.x, screen.y};
+    ScreenToClient(hwnd_, &client);
+    droppedAt_ = toView(client.x, client.y);
+    droppedPath_ = path;
+    PostMessageW(hwnd_, kDropMessage, 0, 0);
+}
+
+void Editor::importFile(Point at, const std::wstring &path) {
+    const ModalGuard guard(alive_); // the message box runs a modal loop
+    const std::optional<std::string> said = view_.fileDrop(at, readFile(path), fileNameOf(path));
+    if (!guard.alive() || !said)
+        return;
+    lastImportFolder_ = std::filesystem::path(path).parent_path().wstring();
+    if (!said->empty())
+        MessageBoxW(hwnd_, widen(*said).c_str(), L"FMVibe", MB_ICONWARNING);
+    if (guard.alive())
+        invalidate();
 }
 
 void Editor::followDpi() {
@@ -355,6 +521,23 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case kFolderMessage:
         browseTableFolder();
         return 0;
+    case kDropMessage:
+        importFile(droppedAt_, std::exchange(droppedPath_, std::wstring()));
+        return 0;
+    case WM_DROPFILES: { // where no OLE drop target could be registered
+        const auto drop = reinterpret_cast<HDROP>(wParam);
+        POINT client{};
+        DragQueryPoint(drop, &client);
+        std::wstring path;
+        if (const UINT length = DragQueryFileW(drop, 0, nullptr, 0); length > 0) {
+            path.resize(length + 1);
+            path.resize(DragQueryFileW(drop, 0, path.data(), length + 1));
+        }
+        DragFinish(drop);
+        if (importable(path))
+            importFile(toView(client.x, client.y), path);
+        return 0;
+    }
     case WM_MOUSEMOVE: {
         if (!trackingLeave_) {
             TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd_, 0};
@@ -507,6 +690,17 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_DESTROY:
         KillTimer(hwnd_, kPollTimer);
         target_.Reset();
+        if (dropRegistered_)
+            RevokeDragDrop(hwnd_);
+        dropRegistered_ = false;
+        if (fileDrop_) {
+            fileDrop_->detach();
+            fileDrop_->Release();
+            fileDrop_ = nullptr;
+        }
+        if (oleInitialized_)
+            OleUninitialize();
+        oleInitialized_ = false;
         return 0;
     case WM_NCDESTROY:
         SetWindowLongPtrW(hwnd_, GWLP_USERDATA, 0);
@@ -921,20 +1115,7 @@ void Editor::browseOperatorFile(int op, DataKind kind) {
     if (!guard.alive() || !picked || picked->empty())
         return;
     lastImportFolder_ = std::filesystem::path(*picked).parent_path().wstring();
-    std::vector<uint8_t> bytes;
-    {
-        std::ifstream in(std::filesystem::path(*picked), std::ios::binary);
-        in.seekg(0, std::ios::end);
-        const std::streamoff size = in.tellg();
-        if (in && size > 0 && size < (std::streamoff{512} << 20)) {
-            in.seekg(0);
-            bytes.resize(static_cast<size_t>(size));
-            in.read(reinterpret_cast<char *>(bytes.data()), size);
-        }
-    }
-    const std::u8string name = std::filesystem::path(*picked).filename().u8string();
-    const std::string said = controller_.importOperatorData(
-        op, kind, bytes, std::string(reinterpret_cast<const char *>(name.data()), name.size()));
+    const std::string said = controller_.importOperatorData(op, kind, readFile(*picked), fileNameOf(*picked));
     if (!guard.alive())
         return;
     if (!said.empty())

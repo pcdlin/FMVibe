@@ -626,6 +626,34 @@ void View::showTableSource(int source) {
     }
 }
 
+// --- Files dropped from outside the editor.
+
+std::optional<View::FileDropTarget> View::fileDropTarget(Point p) const {
+    if (dialogOpen() || inspectorCovered() || partialEditing() >= 0)
+        return std::nullopt;
+    const int op = controller_.layout().selectedNode;
+    if (op < 0 || op >= kOps || !isSampleOp(op) || opTabShown(op) != InspectorTab::Source || !kOpDisplay.contains(p))
+        return std::nullopt;
+    return FileDropTarget{op, DataKind::Sample};
+}
+
+bool View::fileDragOver(std::optional<Point> p) {
+    const std::optional<FileDropTarget> target = p ? fileDropTarget(*p) : std::nullopt;
+    if (target == fileDrag_)
+        return false;
+    fileDrag_ = target;
+    return true;
+}
+
+std::optional<std::string> View::fileDrop(Point p, const std::vector<uint8_t> &bytes, const std::string &name) {
+    fileDrag_.reset();
+    const std::optional<FileDropTarget> target = fileDropTarget(p);
+    if (!target)
+        return std::nullopt;
+    endTyping(true);
+    return controller_.importOperatorData(target->op, target->kind, bytes, name);
+}
+
 std::vector<View::TbRow> View::tbRows() const {
     std::vector<TbRow> rows;
     const std::vector<std::string> words = tablesSearch_.words();

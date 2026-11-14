@@ -13,6 +13,8 @@
 
 namespace fmvibe::gui {
 
+class FileDrop;
+
 // Opens a folder in the system's file browser.
 void showFolder(const std::string &utf8);
 
@@ -67,6 +69,18 @@ private:
     void browseOperatorFile(int op, DataKind kind);
     void browseTableFolder();
     std::wstring lastImportFolder_; // where the import dialog was last left
+    // Files dragged in from outside (the system's file browser, a host's): an OLE drop target on the window (see
+    // FileDrop in editor.cpp), or WM_DROPFILES where OLE can't be had. The view lights where the file would land; a
+    // drop is imported once the drag's loop has returned (kDropMessage), the file read here.
+    friend class FileDrop;
+    bool fileOver(const POINTL *screen); // nullptr once the file has left: true if it would land there
+    void fileDropped(POINTL screen, const std::wstring &path);
+    void importFile(Point at, const std::wstring &path);
+    FileDrop *fileDrop_ = nullptr;
+    bool oleInitialized_ = false;
+    bool dropRegistered_ = false;
+    std::wstring droppedPath_;
+    Point droppedAt_;
     // The editor takes the keyboard while a value is typed or a dialog is open, and hands it back after.
     bool wantsKeyboard() const { return view_.typing() || view_.dialogOpen(); }
     void syncFocus();

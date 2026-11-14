@@ -83,6 +83,21 @@ public:
     void refreshTelemetry() { controller_.telemetry(telemetry_); }
     // The table browser shows the library's source `source` (a folder just added).
     void showTableSource(int source);
+    // A file dragged over the editor from outside it (the system's file browser, a host's): where one can land, an
+    // operator and what it takes the file as. A Sample operator's SAMPLE tab takes one on its display.
+    struct FileDropTarget {
+        int op = -1;
+        DataKind kind = DataKind::Sample;
+        bool operator==(const FileDropTarget &) const = default;
+    };
+    std::optional<FileDropTarget> fileDropTarget(Point p) const;
+    // The file is held at `p` (nullopt once it leaves the editor or the drag ends): its target, which is lit, if
+    // there is one there. True if what is lit changed, so a repaint is due.
+    bool fileDragOver(std::optional<Point> p);
+    // The file dropped at `p`, its bytes and its name: imported as its target takes it (see
+    // Controller::importOperatorData()), the drag's light going out. Nullopt where nothing takes one; else "" if it went
+    // in, or what to tell the user.
+    std::optional<std::string> fileDrop(Point p, const std::vector<uint8_t> &bytes, const std::string &name);
 
     // True if what the editor shows changed: what is under the mouse, or what a drag moves. A move that changes
     // neither needs no paint.
@@ -1604,6 +1619,7 @@ private:
     std::vector<std::string> tbFolded_;
     bool tbSearching_ = false;
     TextField tablesSearch_;
+    std::optional<FileDropTarget> fileDrag_; // where a file dragged in from outside would land, lit (fileDragOver())
     // The data the browser read from the library's files: the last few, by source and path.
     mutable std::vector<std::pair<std::string, std::shared_ptr<const OpData>>> tbRead_;
     std::mt19937 random_{std::random_device{}()}; // the partial editor's dice

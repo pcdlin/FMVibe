@@ -8197,6 +8197,7 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     const bool sampled = std::lround(model.value(paramIndex(1, OpParam::Wave))) == static_cast<long>(OpWave::Sample);
     renderer.save(view, dir / "wt-12-no-sample.png");
+    const bool cardTakesFile = view.fileDropTarget(detail::kOpDisplay.center()) == View::FileDropTarget{1, DataKind::Sample};
     click(view, detail::kOpDisplay.center());
     click(view, detail::kSampleImport.center());
     check(sampled && model.fileDialogs == 2 && model.fileDialogKind == DataKind::Sample,
@@ -8259,6 +8260,47 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     const int phase = paramIndex(1, OpParam::Phase);
     drag(view, detail::opKnobCenter(2), {detail::opKnobCenter(2).x, detail::opKnobCenter(2).y - 40.0f});
     check(model.value(phase) == 0.0, "a sample's Phase is dimmed and doesn't turn");
+
+    // A file dragged in from outside the editor (the system's file browser, a host's) lands on the SAMPLE tab's display,
+    // as on the dashed card with no sample: lit while it is held there (read off the rendered pixels: a ring around the
+    // display), not over the knobs nor on a plain wave's page. Dropped there, it is imported into the operator, one undo
+    // step; dropped on a knob, it is refused.
+    {
+        const Point onDisplay = detail::kOpDisplay.center(), onKnob = detail::opKnobCenter(0);
+        const Point ring{detail::kOpDisplay.x - 3.0f, detail::kOpDisplay.center().y};
+        model.live.voices = 0;
+        view.poll();
+        renderer.save(view, dir / "wt-20-drop-before.png");
+        const uint32_t unlit = renderer.pixel(ring);
+        const bool overKnob = view.fileDragOver(onKnob);
+        const bool lit = view.fileDragOver(onDisplay);
+        renderer.save(view, dir / "wt-20-drop-lit.png");
+        const uint32_t litRing = renderer.pixel(ring);
+        const bool left = view.fileDragOver(std::nullopt);
+        model.ui.selectedNode = 0;
+        view.poll();
+        const bool waveRefuses = !view.fileDropTarget(onDisplay);
+        model.ui.selectedNode = 1;
+        view.poll();
+        std::printf("      the ring around the display: %08x, a file held over it %08x\n", unlit, litRing);
+        check(cardTakesFile && !overKnob && lit && left && litRing != unlit && !view.fileDropTarget(onKnob) &&
+                  waveRefuses && view.fileDropTarget(onDisplay) == View::FileDropTarget{1, DataKind::Sample},
+              "a file dragged in from outside lands on the SAMPLE tab's display, lit while it is held there");
+        const int sample = paramIndex(1, OpParam::Sample);
+        const double before = model.value(sample);
+        std::vector<uint8_t> other = sampleWav();
+        other[other.size() - 2] ^= 0x10; // another recording, so another key
+        const std::optional<std::string> refused = view.fileDrop(onKnob, other, "other.wav");
+        const bool untouched = model.value(sample) == before;
+        const std::optional<std::string> dropped = view.fileDrop(onDisplay, other, "other.wav");
+        view.poll();
+        const OpData *d = model.opData(dataKey(model.value(sample)));
+        const bool landed = dropped && dropped->empty() && model.value(sample) != before && d && d->name == "other.wav";
+        view.undo();
+        check(!refused && untouched && landed && model.value(sample) == before,
+              "a file dropped on the SAMPLE tab's display is imported into its operator, undoably; dropped on a knob, "
+              "refused");
+    }
 }
 
 void run(const std::filesystem::path &dir, float scale) {

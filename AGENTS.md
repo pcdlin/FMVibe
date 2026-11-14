@@ -694,7 +694,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
     does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
     loop's end dragged, each an undo step, a double-click putting one back; LOOP and
-    MODE picking; the newest voice's playhead (read off the rendered pixels); and Phase dimmed, not turning.
+    MODE picking; the newest voice's playhead (read off the rendered pixels); Phase dimmed, not turning; and a file
+    dragged in from outside lighting the display (or the dashed card) while held there (read off the rendered pixels), not a
+    knob nor a plain wave's page, and dropped there imported into the operator, undoably, while one dropped on a knob
+    is refused.
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.
 - **VST3 smoke test** (`tests/vst3_host.cpp`): a small headless VST3 host. It loads `FMVibe.vst3` and checks what the

@@ -5960,6 +5960,10 @@ void View::paintInspector(Canvas &c) {
                 paintTableTab(c, kOpDisplay, op);
             else
                 paintSampleTab(c, kOpDisplay, op);
+            if (fileDrag_ && fileDrag_->op == op) { // a file held over the display: it lands here
+                c.fillRect(kOpDisplay, kAccent.alpha(0.10f), kRadiusCard);
+                c.strokeRect(kOpDisplay.inset(-3.0f), kAccent, 2.0f, kRadiusCard + 3.0f);
+            }
             break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
