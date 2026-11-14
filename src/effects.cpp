@@ -437,6 +437,12 @@ void Effects::prepare(double sampleRate) {
         for (ZeroBuffer &comb : slot.filter.combs)
             comb.assign(static_cast<size_t>(combLength(sampleRate)), 0.0f);
         slot.filter.settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // for this rate
+        // Flat up to 20 kHz (or as near the host rate's half as it is), as the voices' decimator is.
+        const double transition = std::clamp(0.25 - 20000.0 / (2.0 * sampleRate), 0.01, 0.24);
+        for (HalfBand &band : slot.shaperUp)
+            band.design(HalfBand::kMaxCoefs, transition);
+        for (HalfBand &band : slot.shaperDown)
+            band.design(HalfBand::kMaxCoefs, transition);
 
         // Room behind the longest line for its wavering, the most of any algorithm.
         const double reach = kReverbLongest + 2.0 * kReverbWander * reverbStyle(ReverbType::Shimmer).wander;
@@ -542,6 +548,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.shaper.drive = settings.drive;
         s.shaper.output = settings.output;
         s.shaper.mix = settings.mix;
+        s.shaper.between = settings.between;
         break;
     }
     case FxType::Delay: {
@@ -1487,7 +1494,9 @@ void Effects::clearGraph() {
         sp.running = false;
 }
 
-// The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them.
+// The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them. The Stack stages run at
+// twice the rate, as the voices' do at their oversampling: the anti-aliasing's average over each step (see
+// kStackLift) would dull a stack's top at the host rate, 15 dB at 15 kHz stacked eight high at 48 kHz.
 void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Slot &place = slots_[slot];
     Shaper &sh = place.shaper;
@@ -1498,21 +1507,43 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
         place.curve.update(get, fields.curve);
         place.curve.advance(n / sampleRate_);
     }
+    const bool doubled = settings.mode == ClipMode::Stack;
+    if (doubled && !place.shaperDoubled) // from silence, rather than from what they last held
+        for (int ch = 0; ch < 2; ++ch) {
+            place.shaperUp[ch].reset();
+            place.shaperDown[ch].reset();
+        }
+    place.shaperDoubled = doubled;
+    const double rate = doubled ? 2.0 * sampleRate_ : sampleRate_;
     ClipCurve curve = place.curve.curve(settings.mode, settings.symmetric);
+    curve.stack(settings.stack, rate);
     const double fadeStep = 1.0 / n;
     const bool block = clipNeedsBlocker(settings.mode);
-    const double pole = clipBlockerPole(sampleRate_);
+    const double pole = clipBlockerPole(rate);
     const double driveStep = rampStep(sh.drive, settings.drive, n, rampShortest_);
     const double outputStep = rampStep(sh.output, settings.output, n, rampShortest_);
     const double mixStep = rampStep(sh.mix, settings.mix, n, rampShortest_);
+    const double betweenStep = rampStep(sh.between, settings.between, n, rampShortest_);
     for (uint32_t s = 0; s < n; ++s) {
         sh.drive += driveStep;
         sh.output += outputStep;
         sh.mix += mixStep;
+        sh.between += betweenStep;
         if (curve.from)
             curve.fade = (s + 1) * fadeStep;
-        for (int ch = 0; ch < 2; ++ch)
-            io[ch][s] = static_cast<float>(sh.sides[ch].run(curve, io[ch][s], sh.drive, sh.output, sh.mix, block, pole));
+        for (int ch = 0; ch < 2; ++ch) {
+            ClipState &side = sh.sides[ch];
+            if (doubled) {
+                double first, second;
+                place.shaperUp[ch].processUp(io[ch][s], first, second);
+                first = side.run(curve, first, sh.drive, sh.output, sh.mix, block, pole, sh.between);
+                second = side.run(curve, second, sh.drive, sh.output, sh.mix, block, pole, sh.between);
+                io[ch][s] = static_cast<float>(place.shaperDown[ch].process(first, second));
+            } else {
+                io[ch][s] = static_cast<float>(side.run(curve, io[ch][s], sh.drive, sh.output, sh.mix, block, pole,
+                                                        sh.between));
+            }
+        }
     }
 }
 

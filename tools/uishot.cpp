@@ -791,8 +791,14 @@ constexpr Point kShaperLink = ins(1146.0f, 205.0f);
 Point shaperKnob(int knob) {
     return ins(884.0f + 150.0f + 268.0f / 4.0f * (knob - 1.0f), 242.0f); // Drive, Output, Mix
 }
+// A curve's row in a shaper's list, which offers them in its own order (detail::kClipModesOffered): Stack before
+// Custom.
+int clipRow(ClipMode mode) {
+    const auto *offered = std::begin(detail::kClipModesOffered);
+    return static_cast<int>(std::find(offered, std::end(detail::kClipModesOffered), mode) - offered);
+}
 Point shaperListItem(ClipMode mode) {
-    return ins(1009.0f, 220.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f);
+    return ins(1009.0f, 220.0f + 4.0f + clipRow(mode) * 22.0f + 11.0f);
 }
 Point shaperCurveAt(double x, double y) {
     return ins(908.0f + static_cast<float>(x) * 252.0f, 338.0f - static_cast<float>(y) * 42.24f);
@@ -3041,6 +3047,34 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, shaperKnob(3), {shaperKnob(3).x, shaperKnob(3).y - 30.0f});
     check(mixTurned && at(ShaperParam::Mix) == 1.0 && at(ShaperParam::Out) == outBefore,
           "a shaper's page has Drive, Output and Mix, centered, and no To Out knob");
+    {
+        // The Stack curve's Stack knob comes after Drive, the four knobs as far apart as ever, centered: dragged up, it runs
+        // more stages, whole ones, undoably.
+        click(view, kShaperList);
+        click(view, shaperListItem(ClipMode::Stack));
+        const bool picked = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack);
+        const Point stackKnob = ins(884.0f + 150.0f - 268.0f / 4.0f * 0.5f, 242.0f);
+        drag(view, stackKnob, {stackKnob.x, stackKnob.y - 40.0f});
+        const double stacked = at(ShaperParam::Stack);
+        view.mouseMove(stackKnob, {});
+        const bool shot = renderer.save(view, dir / "30b-shaper-stack.png");
+        view.undo();
+        const bool undone = at(ShaperParam::Stack) == 1.0;
+        // The wheel over the list's button steps along the list: from Fold to Stack, then to Custom, and back.
+        model.set(paramIndex(shaper, ShaperParam::Mode), static_cast<double>(ClipMode::Fold));
+        view.wheel(kShaperList, 1.0f, {});
+        const bool wheeledToStack = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack);
+        view.wheel(kShaperList, 1.0f, {});
+        const bool wheeledToCustom = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom);
+        view.wheel(kShaperList, -1.0f, {});
+        check(wheeledToStack && wheeledToCustom && at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack),
+              "the wheel over a shaper's list steps along it, Stack between Fold and Custom");
+        click(view, kShaperList);
+        click(view, shaperListItem(ClipMode::Hard));
+        check(picked && stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
+                  at(ShaperParam::Mode) == static_cast<double>(ClipMode::Hard),
+              "a shaper's Stack curve shows its Stack knob after Drive, which turns in whole stages, undoably");
+    }
     model.set(paramIndex(0, OpParam::Enabled), 1.0);
     model.set(paramIndex(1, OpParam::Enabled), 1.0);
     model.set(shaperSendIndex(0, shaper), 0.8);
@@ -9360,7 +9394,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // The shaper's curve comes from a list under its button.
     const Point clipButton{fxCardX(model, 0) + 60.0f, 180.0f + 44.0f + 11.0f};
     auto clipItem = [&](ClipMode mode) {
-        return Point{fxCardX(model, 0) + 40.0f, 180.0f + 44.0f + 22.0f + 4.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f};
+        return Point{fxCardX(model, 0) + 40.0f, 180.0f + 44.0f + 22.0f + 4.0f + 4.0f + clipRow(mode) * 22.0f + 11.0f};
     };
     click(view, clipButton);
     view.mouseMove(clipItem(ClipMode::SineFold), {});
@@ -9368,6 +9402,27 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, clipItem(ClipMode::Asymmetric));
     check(std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
           "the shaper's list picks its curve");
+    {
+        // The Stack curve, before Custom in the list, puts its Stack knob after Drive, four knobs across the card:
+        // dragged up, it runs more stages, whole ones, undoably, the display drawing the stages' curve.
+        click(view, clipButton);
+        click(view, clipItem(ClipMode::Stack));
+        const bool picked =
+            std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Stack);
+        const int stack = paramIndex(0, FxParam::ShaperStack);
+        const Point knob{fxCardX(model, 0) + fxCardW(model, 0) / 4.0f * 1.5f, 180.0f + 240.0f};
+        drag(view, knob, {knob.x, knob.y - 40.0f});
+        const double stacked = model.value(stack);
+        view.mouseMove(knob, {});
+        const bool shot = renderer.save(view, dir / "8e-clip-stack.png");
+        view.undo();
+        const bool undone = model.value(stack) == 1.0;
+        click(view, clipButton);
+        click(view, clipItem(ClipMode::Asymmetric));
+        check(picked && stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
+                  std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
+              "the shaper effect's Stack curve shows its Stack knob after Drive, which turns in whole stages");
+    }
     // Custom draws the curve in the card, to edit right there: its plot is the display less 8 px all round
     // (the card less 44 px across, 100 down), the full swing 6 px short of its edges. A double-click adds a point, a
     // drag moves it.

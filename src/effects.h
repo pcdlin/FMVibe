@@ -4,6 +4,7 @@
 #include "analyzer.h"
 #include "clipcurve.h"
 #include "filter.h"
+#include "oversampler.h"
 #include "params.h"
 #include "zerobuffer.h"
 
@@ -188,6 +189,7 @@ private:
         double drive = 1.0; // gains, ramped
         double output = 1.0;
         double mix = 1.0;
+        double between = 1.0; // after each Stack stage but the last
     };
 
     struct Delay {
@@ -437,6 +439,10 @@ private:
         Analyzed analyzed;
         // The shaper's drawn curve as a table (see runShaper()).
         ClipTable curve;
+        // The shaper's Stack stages run at twice the rate (see runShaper()): up to it and back down, a side each,
+        // designed in prepare(), and whether the last chunk ran there.
+        std::array<HalfBand, 2> shaperUp, shaperDown;
+        bool shaperDoubled = false;
     };
 
     // A slot's effect in place on `io`, fading as it is switched; `keep` grows while it rings on.

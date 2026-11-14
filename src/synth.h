@@ -349,6 +349,7 @@ private:
         std::array<double, kShapers> shaperDrive{};  // gains
         std::array<double, kShapers> shaperOutput{};
         std::array<double, kShapers> shaperMix{};
+        std::array<double, kShapers> shaperBetween{}; // after each Stack stage but the last
     };
 
     struct Voice {
@@ -389,7 +390,7 @@ private:
         std::array<Envelope, kMaxSources> modEnvs{};
         std::array<Memo<EnvRates, 8>, kMaxSources> modEnvRates{};
         std::array<Memo<FilterSettings, 7>, kFilters> filterSettings{};
-        std::array<Memo<ShaperSettings, 6>, kShapers> shaperSettings{};
+        std::array<Memo<ShaperSettings, 7>, kShapers> shaperSettings{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
         // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's
         // line's length past the last time it put out more than kFilterRingFloor (see renderBlock()).

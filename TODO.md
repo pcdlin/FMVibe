@@ -1,7 +1,5 @@
 ## New Features
 
-- Make hard clip shaper stackable. Add a stack setting from 1 to 8 that behaves as if that shaper is repeated that many times in direct succession.
-
 - Remap modifiers for modulation sources
     - **In one line:** Random and MIDI (a controller or aftertouch, with Slew) sources came as card types, and each
       modulation now has a curve of its own (an envelope segment's bend, in the MODS view); what is left is slewing

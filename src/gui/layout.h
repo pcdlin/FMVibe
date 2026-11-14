@@ -636,6 +636,12 @@ inline Rect lfoShapeButton(float card) {
 // Curve sources took over.
 constexpr LfoShape kLfoShapesOffered[] = {LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square};
 constexpr int kLfoShapeItems = static_cast<int>(std::size(kLfoShapesOffered));
+// The curves a shaper's list offers, in its order: Stack, which came after Custom (they are stored by number), before
+// it.
+constexpr ClipMode kClipModesOffered[] = {ClipMode::Hard,   ClipMode::Soft,     ClipMode::Asymmetric,
+                                          ClipMode::Cubic,  ClipMode::Gentle,   ClipMode::SineFold,
+                                          ClipMode::Fold,   ClipMode::Stack,    ClipMode::Custom};
+static_assert(std::size(kClipModesOffered) == static_cast<size_t>(ClipMode::Count), "the list offers every curve");
 
 // A Random or Curve card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over
 // its clock modes as an LFO's.

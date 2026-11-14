@@ -30,6 +30,40 @@ inline double foldPhase(double x) {
     return m < 0.0 ? m + 4.0 : m;
 }
 
+// The Stack curve: a soft one (tanh) biased off its middle, like a tube stage, scaled to pass what is quiet at its
+// level and moved to pass silence as silence. It saturates gradually, its lower half reaching further than its upper
+// half (to -1.25 and 0.83): even harmonics, and an offset that grows as it is driven harder, which the stage after it
+// (see StackStage) pumps against.
+constexpr double kStackBias = 0.2;
+inline const double kStackTanh = std::tanh(kStackBias);
+inline const double kStackScale = 1.0 / (1.0 - kStackTanh * kStackTanh); // its slope at 0, 1
+
+inline double stackCurve(double x) {
+    return (std::tanh(x + kStackBias) - kStackTanh) * kStackScale;
+}
+
+// Its antiderivative, 0 at 0.
+inline double stackIntegral(double x) {
+    static const double atZero = logCosh(kStackBias);
+    return (logCosh(x + kStackBias) - atZero - kStackTanh * x) * kStackScale;
+}
+
+// A Stack stage's high-pass before its gain, like the coupling capacitor between two gain stages. The offset the
+// curve puts out as it is driven harder, the next stage's high-pass takes out over some milliseconds, which that stage
+// drives: a stack's low end pumps with the sound, and what the high-passes still hold as a note ends, the stages after
+// them drive on, a low thump past the note.
+constexpr double kStackHighPassHz = 20.0;
+// The anti-aliasing averages each stage's curve over the last sample step, which for what the curve leaves straight is
+// the mean of two samples: a top falling away toward the rate's half, which a stack multiplies. Each stage lifts its
+// top back by this much of the step it took, y + e (y - y'): at 96 kHz (where the shaper effect runs them from a
+// 48 kHz host, see Effects::runShaper(), and the voices at their default oversampling) eight stages stay within half
+// a dB up to 15 kHz, 3 dB down at 20 kHz; one stage within 0.4 dB to 20 kHz.
+constexpr double kStackLift = 0.25;
+// What a stage's high-pass puts out comes this much closer to 0 before the stage drives it: far below hearing, but a
+// stack of eight at full drive would otherwise bring up what is all but silence (a reverb's tail far down, rounding)
+// by nearly 300 dB, and its ringing would never end.
+constexpr double kStackFloor = 1e-9;
+
 } // namespace clip
 
 // A drawn curve's table: kClipTableSteps + 1 values across -1..1, then their running integral. Doubles: the
@@ -90,6 +124,8 @@ inline double clipShape(ClipMode mode, double x) {
         return std::sin(0.5 * std::numbers::pi * x);
     case ClipMode::Fold:
         return 1.0 - std::abs(clip::foldPhase(x) - 2.0);
+    case ClipMode::Stack: // one stage of it, without its filters and gains (see StackStage)
+        return clip::stackCurve(x);
     case ClipMode::Custom: // needs the drawn points; see clipCurveValue()
     case ClipMode::Count:
         break;
@@ -99,9 +135,10 @@ inline double clipShape(ClipMode mode, double x) {
 
 // Curves that aren't symmetric shift the signal's average, which a DC blocker after them takes out. A drawn curve
 // gets one even when it is made symmetric: one that jumps at the middle shifts the average of a sound that spends
-// longer above 0 than below.
+// longer above 0 than below. Stack has one after its last stage (the high-pass each stage starts with takes out
+// what the one before it put out).
 constexpr bool clipNeedsBlocker(ClipMode mode) {
-    return mode == ClipMode::Asymmetric || mode == ClipMode::Custom;
+    return mode == ClipMode::Asymmetric || mode == ClipMode::Custom || mode == ClipMode::Stack;
 }
 
 // A shaper curve: one of the formulas, or (Custom) the drawn one through its table. Symmetric, the input below 0
@@ -121,6 +158,19 @@ struct ClipCurve {
     // hand drags, which the DC blocker lets through.
     double restFrom = 0.0;
     double restTo = 0.0;
+    // The Stack curve's stages, run one after another (see StackStage), and their high-passes' pole at the
+    // rate they run at; 0 stages for every other curve, which runs once, as it is.
+    int stages = 0;
+    double highPass = 0.0;
+
+    // A Stack curve run `count` times in a row at `rate` (see ShaperSettings::stack); other curves are left as
+    // they are.
+    void stack(int count, double rate) {
+        if (mode != ClipMode::Stack)
+            return;
+        stages = std::clamp(count, 1, kMaxShaperStack);
+        highPass = std::exp(-2.0 * std::numbers::pi * clip::kStackHighPassHz / rate);
+    }
 
     double rest() const { return from ? restFrom + (restTo - restFrom) * fade : restTo; }
 
@@ -170,6 +220,8 @@ private:
             const double m = clip::foldPhase(x);
             return m <= 2.0 ? 0.5 * m * m - m : -0.5 * m * m + 3.0 * m - 4.0;
         }
+        case ClipMode::Stack:
+            return clip::stackIntegral(x);
         case ClipMode::Custom: {
             const double to = clipTableIntegral(table, x);
             return from ? clipTableIntegral(from, x) + (to - clipTableIntegral(from, x)) * fade : to;
@@ -189,21 +241,38 @@ inline ClipMode clipMode(double value) {
 // What follows runs a shaper, the effect's and the voices' alike (see shaperParams()).
 
 // What a shaper's params ask of it: its curve, and its drive, output (linked to the drive or not, see
-// clipOutputDb()) and mix as gains.
+// clipOutputDb()) and mix as gains; and how many times the Stack curve runs in a row (1 for every other curve),
+// each stage but the last followed by the level that keeps it about as loud as it went in, as a linked shaper is
+// (`between`, see shaperBetween()).
 struct ShaperSettings {
     ClipMode mode;
     double drive;
     double output;
     double mix;
     bool symmetric;
+    int stack = 1;
+    double between = 1.0;
 };
+
+// The gain after each Stack stage but the last: the linked output for `driveDb`, so a stack plays as as many
+// linked shapers in a row, the last with the shaper's own Output.
+inline double shaperBetween(double driveDb) {
+    return std::pow(10.0, clipOutputDb(0.0, driveDb, true) / 20.0);
+}
+// A Stack param's value as a count of stages.
+inline int shaperStack(double value) {
+    return value == value ? std::clamp(static_cast<int>(std::lround(value)), 1, kMaxShaperStack) : 1;
+}
+
 template <class Get>
 ShaperSettings shaperSettings(const Get &get, const ShaperParams &p) {
     const double driveDb = get(p.drive);
     const ClipMode mode = clipMode(get(p.mode));
     return {mode, std::pow(10.0, driveDb / 20.0),
             std::pow(10.0, clipOutputDb(get(p.output), driveDb, get(p.link) >= 0.5) / 20.0), get(p.mix),
-            mode == ClipMode::Custom && get(p.symmetric) >= 0.5}; // the switch shows for a drawn curve only
+            mode == ClipMode::Custom && get(p.symmetric) >= 0.5, // the switch shows for a drawn curve only
+            mode == ClipMode::Stack ? shaperStack(get(p.stack)) : 1, // and the Stack knob for Stack
+            shaperBetween(driveDb)};
 }
 
 // A shaper's curve for drawing (no drive, no anti-aliasing), a drawn one read straight from its points (`curveBase`,
@@ -301,6 +370,39 @@ inline double clipBlockerPole(double rate) {
     return 1.0 - 2.0 * std::numbers::pi * 5.0 / rate;
 }
 
+// One stage of the Stack curve as it runs: its high-pass, then its drive into the curve (anti-aliased as
+// ClipState::run() runs the others, its top lifted back, see kStackLift). A stack runs them one after another, each
+// driven alike, as if
+// as many linked shapers stood in a row (see ShaperSettings::between), but for their DC blockers: the high-pass each
+// stage starts with does that job, and a slower one between them would draw a stack's ringing out for seconds. The DC
+// blocker, the shaper's own output level and its mix come once, after the last.
+struct StackStage {
+    double highIn = 0.0;
+    double highOut = 0.0;
+    double last = 0.0;         // its last driven input
+    double lastIntegral = 0.0; // and the curve's integral there
+    double lastOut = 0.0;      // the curve's, before the lift
+
+    double run(double x, double drive, const ClipCurve &curve) {
+        const double high = curve.highPass * (highOut + x - highIn);
+        highIn = x;
+        highOut = high;
+        const double floored = high > clip::kStackFloor    ? high - clip::kStackFloor
+                               : high < -clip::kStackFloor ? high + clip::kStackFloor
+                                                               : 0.0;
+        const double driven = floored * drive;
+        const double dx = driven - last;
+        const double integral = clip::stackIntegral(driven);
+        const double y = dx > -1e-6 && dx < 1e-6 ? clip::stackCurve(0.5 * (driven + last))
+                                                 : (integral - lastIntegral) / dx;
+        last = driven;
+        lastIntegral = integral;
+        const double lifted = y + clip::kStackLift * (y - lastOut);
+        lastOut = y;
+        return lifted;
+    }
+};
+
 // One side of a shaper as it runs: its last driven input, for the anti-aliasing, and its DC blocker, which keeps
 // running whether its curve needs it or not, so it is settled when one that does is picked.
 struct ClipState {
@@ -316,12 +418,20 @@ struct ClipState {
     // curve's level there (see ClipCurve::rest()).
     double signIn = 0.0;
     double signOut = 0.0;
+    // The Stack curve's stages (see ClipCurve::stages), and how many of them ran in the step before: one the
+    // stack takes on starts from silence.
+    std::array<StackStage, kMaxShaperStack> stages{};
+    int stagesRan = 0;
 
     // `x` driven through the curve (blocked if `block`), then at `output`, and `mix` of that against x. The curve is
     // averaged over the last sample step (first-order antiderivative anti-aliasing), which keeps the harmonics that
-    // hard and steep curves add from aliasing as badly.
-    double run(const ClipCurve &curve, double x, double drive, double output, double mix, bool block, double pole) {
+    // hard and steep curves add from aliasing as badly. Stack runs its stages, `between` after each but the last.
+    double run(const ClipCurve &curve, double x, double drive, double output, double mix, bool block, double pole,
+               double between = 1.0) {
         const double driven = x * drive;
+        if (curve.stages > 0)
+            return runStages(curve, x, driven, drive, between, output, mix, pole);
+        stagesRan = 0;
         const double dx = driven - last;
         double y;
         double sign; // of the input, averaged over the step as y is: what the jump of a symmetric curve scales
@@ -356,6 +466,31 @@ struct ClipState {
         if (block)
             y = blocked;
         return x + (y * output - x) * mix;
+    }
+
+private:
+    // The Stack curve's stages one after another. The anti-aliasing and the DC blocker the other curves run with
+    // follow along, so a curve picked after it starts from where the sound is. Kept out of run(), which the voices'
+    // loop inlines, so that loop doesn't grow by one it seldom runs.
+#ifdef _MSC_VER
+    __declspec(noinline)
+#else
+    __attribute__((noinline))
+#endif
+    double runStages(const ClipCurve &curve, double x, double driven, double drive, double between, double output,
+                     double mix, double pole) {
+        for (int k = stagesRan; k < curve.stages; ++k)
+            stages[k] = {};
+        stagesRan = curve.stages;
+        double y = stages[0].run(x, drive, curve);
+        for (int k = 1; k < curve.stages; ++k)
+            y = stages[k].run(y * between, drive, curve);
+        last = driven;
+        integralKnown = false;
+        const double blocked = y - dcIn + pole * dcOut;
+        dcIn = y;
+        dcOut = blocked;
+        return x + (blocked * output - x) * mix;
     }
 };
 

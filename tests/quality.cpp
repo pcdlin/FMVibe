@@ -3419,6 +3419,228 @@ void unisonModeChecks() {
 
 } // namespace
 
+// The shaper effects in slots 0..slots-1 one after another, each Stack at `stack` and `driveDb`, all wet, the last
+// unlinked at 0 dB output and (if `linkedRow`) the ones before it linked.
+ParamValues stackParams(int slots, int stack, double driveDb, bool linkedRow = false) {
+    ParamValues p{};
+    for (int i = 0; i < kParamCount; ++i)
+        p[i] = paramTable()[i].def;
+    std::vector<int> order;
+    for (int slot = 0; slot < slots; ++slot) {
+        p[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(slot, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Stack);
+        p[paramIndex(slot, FxParam::ShaperStack)] = stack;
+        p[paramIndex(slot, FxParam::ShaperDrive)] = driveDb;
+        p[paramIndex(slot, FxParam::ShaperLink)] = linkedRow && slot + 1 < slots ? 1.0 : 0.0;
+        p[paramIndex(slot, FxParam::ShaperOutput)] = 0.0;
+        p[paramIndex(slot, FxParam::ShaperMix)] = 1.0;
+        order.push_back(slot);
+    }
+    chain(p, order);
+    return p;
+}
+
+// `in` through the effects as `p` sets them, on both sides, in pieces of `piece` frames, `change` called before each
+// with the frame it starts at; the left side, then (if `ringing`) whether the effects still ran at the end.
+template <class Change>
+std::vector<float> throughEffects(ParamValues p, const std::vector<float> &in, uint32_t piece, const Change &change,
+                                  bool *ringing = nullptr) {
+    Effects fx;
+    fx.prepare(kSampleRate);
+    std::vector<float> left = in, right = in;
+    for (size_t t = 0; t < in.size(); t += piece) {
+        change(p, t);
+        const uint32_t n = static_cast<uint32_t>(std::min<size_t>(piece, in.size() - t));
+        fx.process(left.data() + t, right.data() + t, n, p, 120.0, 60.0);
+    }
+    if (ringing)
+        *ringing = fx.ringing();
+    return left;
+}
+std::vector<float> throughEffects(const ParamValues &p, const std::vector<float> &in, bool *ringing = nullptr) {
+    return throughEffects(p, in, kBlock, [](ParamValues &, size_t) {}, ringing);
+}
+
+void stackChecks() {
+    std::printf("stack:\n");
+    // A saw-like tone at 110 Hz, its first eight harmonics, half a second at -6 dB, then a release of 50 ms and two
+    // seconds of silence.
+    const size_t held = static_cast<size_t>(kSampleRate / 2), release = static_cast<size_t>(0.05 * kSampleRate);
+    std::vector<float> tone(held + release + static_cast<size_t>(2.0 * kSampleRate), 0.0f);
+    for (size_t i = 0; i < held + release; ++i) {
+        double x = 0.0;
+        for (int k = 1; k <= 8; ++k)
+            x += std::sin(2.0 * std::numbers::pi * 110.0 * k * static_cast<double>(i) / kSampleRate) / k;
+        const double level = i < held ? 1.0 : 1.0 - static_cast<double>(i - held) / release;
+        tone[i] = static_cast<float>(0.3 * level * x);
+    }
+    auto peakIn = [](const std::vector<float> &x, size_t from, size_t to) {
+        float peak = 0.0f;
+        bool finite = true;
+        for (size_t i = from; i < std::min(to, x.size()); ++i) {
+            finite = finite && std::isfinite(x[i]);
+            peak = std::max(peak, std::abs(x[i]));
+        }
+        return finite ? peak : std::numeric_limits<float>::infinity();
+    };
+    {
+        // A stack of three plays about as three shapers of one stage in a row, the first two linked (once the row's
+        // DC blockers between them, which the stack hasn't, have settled; at a gentle drive, as the row cuts what its
+        // stages put out past 20 kHz between them, and the stack, at twice the rate, not), and isn't one.
+        const std::vector<float> stacked = throughEffects(stackParams(1, 3, 6.0), tone);
+        const std::vector<float> row = throughEffects(stackParams(3, 1, 6.0, true), tone);
+        const std::vector<float> single = throughEffects(stackParams(1, 1, 6.0), tone);
+        // How far apart, in RMS against the stack's own, in dB, `other` taken as many samples later as matches best
+        // (each shaper in the row going up to twice the rate and back adds a few samples).
+        auto apartDb = [&](const std::vector<float> &other) {
+            double best = std::numeric_limits<double>::infinity();
+            for (size_t lag = 0; lag < 32; ++lag) {
+                double diff = 0.0, own = 0.0;
+                for (size_t i = held / 2; i < held; ++i) {
+                    const double d = static_cast<double>(stacked[i]) - other[i + lag];
+                    diff += d * d;
+                    own += static_cast<double>(stacked[i]) * stacked[i];
+                }
+                best = std::min(best, 10.0 * std::log10(diff / own + 1e-30));
+            }
+            return best;
+        };
+        const double fromRow = apartDb(row), fromSingle = apartDb(single);
+        std::printf("      a stack of 3 at 6 dB against 3 shapers in a row: %.1f dB apart; against 1: %.1f dB\n",
+                    fromRow, fromSingle);
+        check(fromRow < -18.0 && fromRow < fromSingle - 8.0,
+              "a Stack curve's stack plays about as as many linked shapers in a row");
+    }
+    {
+        // One stage at 0 dB passes a quiet 1 kHz sine at its level (its filters far from it), and at full drive
+        // saturates a loud tone unevenly, one half reaching further than the other (once the DC blocker has centered
+        // it), neither past 1.8 (its edges, nothing rounding them off, overshooting a little).
+        std::vector<float> quiet(static_cast<size_t>(kSampleRate / 2));
+        for (size_t i = 0; i < quiet.size(); ++i)
+            quiet[i] = static_cast<float>(0.01 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / kSampleRate));
+        const std::vector<float> passed = throughEffects(stackParams(1, 1, 0.0), quiet);
+        double inSq = 0.0, outSq = 0.0;
+        for (size_t i = 4800; i < quiet.size(); ++i) {
+            inSq += static_cast<double>(quiet[i]) * quiet[i];
+            outSq += static_cast<double>(passed[i]) * passed[i];
+        }
+        const double gainDb = 10.0 * std::log10(outSq / inSq);
+        const std::vector<float> driven = throughEffects(stackParams(1, 1, 36.0), tone);
+        float top = 0.0f, bottom = 0.0f;
+        for (size_t i = 12000; i < held; ++i) { // once the DC blocker has settled
+            top = std::max(top, driven[i]);
+            bottom = std::min(bottom, driven[i]);
+        }
+        std::printf("      one stage: a quiet sine %.2f dB; at 36 dB of drive from %.3f to %.3f\n", gainDb, bottom, top);
+        check(std::abs(gainDb) < 0.1 && std::abs(top + bottom) > 0.1f && top < 1.8f && -bottom < 1.8f,
+              "a Stack curve's stage passes a quiet sine at its level and saturates a loud one unevenly");
+    }
+    {
+        // No low-pass: stacked eight high at 0 dB, quiet sines from 1 to 15 kHz come out within a dB of their level
+        // (at twice the rate, each stage lifting back what its anti-aliasing takes off the top).
+        std::printf("      stacked 8 high, quiet sines:");
+        double worst = 0.0;
+        for (double hz : {1000.0, 5000.0, 10000.0, 15000.0}) {
+            std::vector<float> quiet(static_cast<size_t>(kSampleRate / 4));
+            for (size_t i = 0; i < quiet.size(); ++i)
+                quiet[i] = static_cast<float>(0.01 * std::sin(2.0 * std::numbers::pi * hz * i / kSampleRate));
+            const std::vector<float> passed = throughEffects(stackParams(1, 8, 0.0), quiet);
+            double inSq = 0.0, outSq = 0.0;
+            for (size_t i = 4800; i < quiet.size(); ++i) {
+                inSq += static_cast<double>(quiet[i]) * quiet[i];
+                outSq += static_cast<double>(passed[i]) * passed[i];
+            }
+            const double db = 10.0 * std::log10(outSq / inSq);
+            worst = std::max(worst, std::abs(db));
+            std::printf(" %.0f kHz %+.2f dB", hz / 1000.0, db);
+        }
+        std::printf("\n");
+        check(worst < 1.0, "a Stack curve keeps its top: quiet sines to 15 kHz within a dB, stacked 8 high");
+    }
+    {
+        // Stacked eight high and fully driven, what the stages' high-passes still hold as the note ends is driven on
+        // by the stages after them: it rings on a moment past the note, further than a single stage, then stops.
+        bool ringing8 = true, ringing1 = true;
+        const std::vector<float> eight = throughEffects(stackParams(1, 8, 36.0), tone, &ringing8);
+        const std::vector<float> one = throughEffects(stackParams(1, 1, 36.0), tone, &ringing1);
+        const size_t end = held + release, ms = static_cast<size_t>(kSampleRate / 1000.0);
+        auto lastHeard = [&](const std::vector<float> &x) { // ms after the note's end it last came over -60 dB
+            size_t last = end;
+            for (size_t i = end; i < x.size(); ++i)
+                if (std::abs(x[i]) > 1e-3f)
+                    last = i;
+            return static_cast<double>(last - end) / ms;
+        };
+        const double heard8 = lastHeard(eight), heard1 = lastHeard(one);
+        const float after8 = peakIn(eight, end + 1000 * ms, eight.size());
+        const float after1 = peakIn(one, end + 1000 * ms, one.size());
+        std::printf("      after the note, over -60 dB for %.0f ms stacked 8 high, %.0f ms with one stage; a second "
+                    "on %.1e and %.1e, %s\n",
+                    heard8, heard1, after8, after1, ringing8 || ringing1 ? "still running" : "stopped");
+        check(heard8 > 20.0 && heard8 > 2.0 * heard1 && heard8 < 1000.0 && after8 < 1e-6f && after1 < 1e-6f &&
+                  !ringing8 && !ringing1,
+              "a Stack curve stacked high rings on past the note, longer than one stage, then stops");
+    }
+    {
+        // The stack turned from 1 up to 8 and back down under the tone, in single frames: nothing louder than full
+        // scale, nothing that isn't a number.
+        const std::vector<float> moved =
+            throughEffects(stackParams(1, 1, 24.0), tone, 1, [&](ParamValues &p, size_t t) {
+                const double along = static_cast<double>(t) / static_cast<double>(held);
+                p[paramIndex(0, FxParam::ShaperStack)] = along < 1.0 ? 1.0 + 7.0 * (1.0 - std::abs(2.0 * along - 1.0))
+                                                                     : 1.0;
+            });
+        const float peak = peakIn(moved, 0, moved.size());
+        std::printf("      the stack moved from 1 to 8 and back under a note: peak %.4f\n", peak);
+        check(peak <= 2.0f, "a Stack curve's stack moved under a note stays finite, within the curve's reach");
+    }
+    {
+        // The low end thumps: as the note ends, what the stages' high-passes hold the stages after them drive on, so
+        // far more comes out between 10 and 60 Hz in the 150 ms after it stacked eight high than with one stage.
+        auto thump = [&](int stack) {
+            const std::vector<float> out = throughEffects(stackParams(1, stack, 24.0), tone);
+            const double low = 1.0 - std::exp(-2.0 * std::numbers::pi * 60.0 / kSampleRate);
+            const double slow = 1.0 - std::exp(-2.0 * std::numbers::pi * 10.0 / kSampleRate);
+            double a = 0.0, b = 0.0, c = 0.0, d = 0.0, end = 0.0;
+            const size_t window = static_cast<size_t>(0.15 * kSampleRate), ended = held + release;
+            for (size_t i = 0; i < ended + window; ++i) {
+                a += (out[i] - a) * low;
+                b += (a - b) * low;
+                c += (out[i] - c) * slow;
+                d += (c - d) * slow;
+                if (i >= ended)
+                    end = std::max(end, std::abs(b - d));
+            }
+            return end;
+        };
+        const double one = thump(1), eight = thump(8);
+        std::printf("      10-60 Hz after the note: %.3f with one stage, %.3f stacked 8 high\n", one, eight);
+        check(eight > 3.0 * one && eight > 0.3, "a Stack curve stacked high thumps its low end after the note");
+    }
+    {
+        // A voice's shaper, the Stack curve stacked eight high at full drive, the operator heard only through it: the
+        // voice rings on, and ends once the stages have rung out.
+        Engine e(2);
+        e.p[paramIndex(0, ShaperParam::Enabled)] = 1.0;
+        e.p[paramIndex(0, ShaperParam::Mode)] = static_cast<double>(ClipMode::Stack);
+        e.p[paramIndex(0, ShaperParam::Stack)] = 8.0;
+        e.p[paramIndex(0, ShaperParam::Drive)] = 36.0;
+        e.p[paramIndex(0, ShaperParam::Out)] = 1.0;
+        e.p[shaperSendIndex(0, 0)] = 0.5;
+        e.p[paramIndex(0, OpParam::Out)] = 0.0;
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.05);
+        e.noteOn(45);
+        const std::vector<float> note = e.render(static_cast<size_t>(kSampleRate / 2));
+        const float notePeak = peakIn(note, 4800, note.size());
+        e.noteOff(45);
+        const std::vector<float> after = e.render(static_cast<size_t>(3.0 * kSampleRate));
+        std::printf("      a voice's shaper stacked 8 high: peak %.3f, %d voice(s) left 3 s after its release\n",
+                    notePeak, e.synth().activeVoiceCount());
+        check(notePeak > 0.3f && std::isfinite(peakIn(after, 0, after.size())) && e.synth().activeVoiceCount() == 0,
+              "a voice's Stack curve sounds stacked high, and the voice ends once it has rung out");
+    }
+}
+
 int main() {
     const int factors[] = {1, 2, 4, 8};
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
@@ -4579,6 +4801,7 @@ int main() {
     }
 
     effectsChainChecks();
+    stackChecks();
     ampChecks();
 
     // --- The mod wheel leaves the FM alone until it is assigned: an FM pair sounds the same with it all the way up.
