@@ -7,8 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, warp, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult
-  lists, and the state layout are
+- Parameter ids, the wave, warp, filter type, effect type, source type, amp model, cabinet, mic, fixed Mult,
+  factory table, sample loop and sample mode lists, and the state layout (its DATA chunk too) are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -68,6 +68,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     set to 64 modulated on to 128 and no further;
   - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
     Pitch and Detune turned and modulated;
+  - a Wavetable operator playing Basic Shapes (a sine at Position 0, a 25 % pulse at 1), FM going into one and out
+    of one; hosts given Position and Start, not the Table, the Sample, the root, the loop or the mode; a state's own
+    table (in its DATA chunk) playing, saved and loaded again playing the same; a sample playing at the note's pitch
+    from its root and fixed at its Freq, and modulating a sine into sidebands;
   - a new instance has only operator A on, no filter key tracking or going out, its shaper effects linked, its
     frequency shifters' range at 100 Hz, its flangers stereo and its Custom waves at 32 partials; a switched-off
     operator is silent, and a switched-off filter passes nothing; a filter routed nowhere isn't heard, and goes out
@@ -279,6 +283,31 @@ the plain CMake commands and installing into a host are in the [README](README.m
     release taking a sample each, a 0.5 ms and a 1 ms attack their time, a sustain change after a 0 ms decay still
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
   - a Custom wave playing the partials drawn, taken up as it is picked and changed partial by partial as it plays;
+  - Wavetable operators: every factory table's brightest frame at C7 60 dB clean of aliasing at 2x (and no worse
+    oversampled further), a warped table too; an LFO on Position not zippering; Position 0 and 1 playing the first
+    and last frames bit for bit; an operator whose table isn't registered yet staying silent and asking for it, then
+    playing it; data let go of while a voice plays it freed only once the audio thread has rendered past it;
+  - Sample operators: one three octaves above its root 60 dB clean of aliasing at 2x (no worse oversampled further);
+    a forward and a ping-pong loop off whole cycles, and a loop an LFO moves, not clicking; a One-Shot sample, and a
+    Gate one with no loop, ending its voice at its end with the key down, Sustain leaving its loop once let go and
+    playing to its end, where Gate loops on; Linear FM through zero staying finite and within the sample; and where
+    the newest voice plays its table and its sample reaching the editor through `SharedTelemetry`, as the plugin
+    hands it; and a recording of middle C played on middle C at its own pitch (within a cent, at every oversampling
+    factor), its Root where a new Sample operator starts it;
+  - the operators' new fields at their ids (op A's Position 134, op F's Sample Mode 393, 38000 on free for them);
+  - the file readers: WAVs at 16, 24 and 32 bits and float with Serum's `clm` (its frame size read, 2048 guessed
+    without one, the folder's taken), stereo summed, past 512 frames thinned, `uhWT`, `srge`, cue and `smpl` frame
+    sizes, FLAC, `.wt` (full, quarter and float, and a sample), `.vitaltable` keyframes filled in between and a Vital
+    preset refused saying its table is inside, a 4096-point frame brought to 2048 with its harmonics, files cut short
+    or lying about their sizes read no further than they go, a broken RIFF refused, frames losing their DC under one
+    gain, and a sample's rate, root and loop from its file;
+  - the DATA chunk: tables and samples coming back as saved, keys and samples alike, through a 5-byte stream (a table
+    two operators share stored once), a state cut short inside it keeping its params and the entries that came
+    whole, an older build reading up to the preset chunk as before, and a preset file carrying them;
+  - the table library: a folder's files listed with their frames and formats (subfolders as groups, guessed frame
+    sizes marked), its frame size used for files without one, a folder inside a source being that source and its
+    parent taking it in, a second scan reading only what changed, a folder gone showing missing, scans running while
+    the list is read and a folder removed, and twenty thousand files scanned in good time;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
   - an operator's Note Sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
     Pulse, Steps, Sync, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
@@ -454,7 +483,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
   - the INPUTS tab's rows: a modulated depth's handles under it and its ranges just above it, its number left as it
-    was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
+    was (read off the rendered pixels), and ten rows scrolling under the wheel, the scrollbar's thumb and the
     middle button;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, a dotted leader running
     from it across to the inspector's lens, and a switched-off one's ghost filled while it is shown (read off the
@@ -640,7 +669,36 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the title bar's tempo: none for a plugin host, and for a host that lets the editor set it a field (read off the
     rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
-    text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history.
+    text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
+  - an operator's source switch: on its title row, left of the edit button, the knobs, the well and the controls' labels inside
+    the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place); TABLE making the operator a Wavetable and opening its tab, WAVE
+    bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
+    picker opening the table browser, a row picking a table, Done closing it and the steps going through the tables;
+    a click on the TABLE tab's display (Position has no knob) setting Position where the mouse is on the meter's
+    scale and a drag following it, one undo step each, Shift dragging it finely from where it is, the wheel, a
+    double-click and Ctrl+Click as a knob's, and the lit frame in the stack moving with it, and a source's handle dropped on the display modulating Position, its depth handle centered along the display's
+    foot and its band on the meter in the source's color (both read off the rendered pixels); the warp on the TABLE tab, a
+    layout left on WARP showing it and asking for no scope, its buttons, Amount and NOTE each an undo step and the
+    played frame drawn warped (read off the rendered pixels); a table
+    imported, undone back to the factory table and redone, its data kept while the history names it; the browser's
+    Import file... opening the file dialog;
+  - every factory table at its first, middle, a late and its last frame drawn inside the TABLE tab's display and the
+    browser's preview, the strips around them as with nothing drawn (read off the rendered pixels);
+  - the table browser over a library of made-up folders: a folder's table loading from its row, the preview drawing
+    the table under the mouse and a file that can't be read telling why (read off the rendered pixels), the step on
+    loading the next file in its folder, the search taking the keyboard only once clicked (ringed, read off the
+    rendered pixels) and letting it go at Enter, at Escape (which first empties it) and at a click elsewhere, a key
+    typed then going nowhere, and finding a table in every source with Down and Enter, a folder gone shown so and its
+    menu setting the frame size for its files, and + Add folder... opening the folder dialog; and over a folder of
+    2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
+    and jumping to a click on its track;
+  - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
+    does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
+    loop's end dragged, each an undo step, a double-click putting one back; LOOP and
+    MODE picking; the newest voice's playhead (read off the rendered pixels); Phase dimmed, not turning; and a file
+    dragged in from outside lighting the display (or the dashed card) while held there (read off the rendered pixels), not a
+    knob nor a plain wave's page, and dropped there imported into the operator, undoably, while one dropped on a knob
+    is refused.
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.
 - **VST3 smoke test** (`tests/vst3_host.cpp`): a small headless VST3 host. It loads `FMVibe.vst3` and checks what the
@@ -665,7 +723,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     allocated asking the host for a restart;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
-    host read the values again, and a foreign blob refused;
+    host read the values again, a foreign blob refused, and a state with a table of its own playing it and
+    getState() giving it back as setState() took it;
   - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, the Volume knob dragged
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
     the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
@@ -868,16 +927,21 @@ breakpoints in `src/` then hit.
 | `src/vst3entry.cpp` | The VST3 plugin's exported `GetPluginFactory` (and `InitDll`, `ExitDll`) and factory |
 | `src/vst3plugin.cpp` | The VST3 plugin: the core as one object that is component, processor and edit controller (buses, process loop, params in units, MIDI mapping, note expressions, state), and its editor view |
 | `src/vst3iids.cpp` | The ids of the VST3 interfaces the plugin and its test host use |
-| `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
+| `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks, and the DATA chunk of the patch's tables and samples; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them, the table browser's folders) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
 | `src/uistrings.inc` | The wording of every piece of text the plugin shows, by name; `src/uistrings.h` looks it up |
 | `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of the plugin formats |
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
+| `src/opdata.h`, `src/opdata.cpp` | What a Wavetable or Sample operator plays (`OpData`): a table's frames by level, a sample's halved copies; the registry that hands them to the audio thread and the store that keeps them on the main thread |
+| `src/tables.h`, `src/tables.cpp` | The factory wavetables, generated from their spectra |
+| `src/tables/readers.h`, `src/tables/readers.cpp`, `src/tables/flac.cpp` | Reading wavetable and sample files (WAV and its chunks, FLAC, `.wt`, `.vitaltable`), guessing a frame size, normalizing frames; and writing a table as a WAV |
+| `src/tables/library.h`, `src/tables/library.cpp` | The table browser's folders: scanned on a thread of their own, cached between runs |
+| `src/fft.h` | A small FFT, for the tables' spectra |
 | `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
@@ -892,6 +956,7 @@ breakpoints in `src/` then hit.
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
 | `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
 | `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
+| `src/gui/tableview.cpp` | The Wavetable and Sample operators' part of the editor: the source switch, the pickers, the TABLE and SAMPLE tabs, and the table browser |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
@@ -943,7 +1008,9 @@ itself.
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
-  Sync, Warp and Warp Amount; the
+  Sync, Warp and Warp Amount, then TablePos, Table, Sample, SampleStart, SampleRoot, LoopMode, LoopStart, LoopEnd,
+  LoopFade and SampleMode, the 35th to 44th fields; past the 50th, an operator's fields go at 38000 + 50·op, as
+  `ids::kSplitSections` has it; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -979,8 +1046,9 @@ itself.
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`) and
-  warp (`OpWarp`) lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
+  warp (`OpWarp`), factory table (`FactoryTable`), sample loop (`SampleLoop`) and sample mode (`SampleMode`) lists,
+  the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -1001,10 +1069,11 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,280 of the 19,623 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,292 of the 19,683 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
-  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
-  feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
+  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, a Sample operator's
+  root, loop and mode, the chain's retired order, the feedback's route modes and the retired fields), the operators'
+  Table and Sample (wiring, as a slot's target is), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires) and the source places' own fields (a place's slot
   depths are listed, whatever it holds). Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
@@ -1051,10 +1120,20 @@ itself.
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
   effect cards past the 16th slot are folded, the node the effects graph's inspector shows, whether the FX view shows
-  the graph, the band each split shows and which splits' containers are folded.
+  the graph, the band each split shows and which splits' containers are folded, and the wave each operator's source
+  switch goes back to (`UiLayout::plainWave`).
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
-  in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a
+  in UTF-8, left out past 64 KB); preset files stop after the layout. Last, in both, comes the DATA chunk
+  (`writeDataChunk()` in `src/state.cpp`, its layout in `src/state.h`), only while an operator's Table or Sample names
+  data of the patch's own: each table or sample as stored (`OpData`), by its key, a table as frames of 2048 points and
+  a sample at its rate, 16-bit when its file was and as floats otherwise, its name, where it came from and its format,
+  up to 16 MB an entry and 64 MB in all (`kMaxDataEntryBytes`, `kMaxDataChunkBytes`), each entry with its size so a
+  reader skips a kind it doesn't know. An older build stops reading before it. A Table or Sample param stores a key: a
+  factory table's number (0–8, `FactoryTable`, built when first asked for and never stored), or a hash of the data's
+  content (`contentKey()`, from `kUserDataBase`, 2^16, up), so the same data imported twice is held once. The
+  plugin's state loads the DATA chunk before it sets the params, so no Table or Sample is ever set to a key the synth
+  can't find; one a host sets anyway (its project, its automation) leaves the operator silent. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
   floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
   short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States
@@ -1086,6 +1165,20 @@ itself.
   and the effects' delay lines (every slot has every type's, a few MB a slot), are `ZeroBuffer`s
   (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written, so the lines no voice or
   effect uses take address space, not memory, and allocating them fills nothing.
+- Wavetable and Sample operators read their data through a fixed registry of key/pointer pairs (`DataRegistry` in
+  `src/opdata.h`, 32 of them), which the synth looks through at each `render()`; the audio thread never allocates or
+  frees it. The main thread's `DataStore` (in the core's `Controller`) builds the data (a table's band-limited levels,
+  a sample's halved copies) and registers each key before a param is set to it (`Controller::beforeSet()`, before the
+  host hears of the change); it keeps what the params, the undo history and the redo history name, and frees what
+  nothing names once the audio thread has rendered past it (`DataStore::keep()`, by the registry's render count, or
+  at once while nothing renders). A key the audio thread doesn't find leaves its operator silent and is reported to
+  the main thread (`takeMissing()`), which builds a factory table or tells it to stop asking. In the browser demo the
+  store sends the data to the worklet's module as a message instead (its sink), and the DSP module registers it.
+- The table library (`src/tables/library.cpp`) scans the folders added in the table browser on a thread of its own
+  (none in the browser demo, which reads a folder the page hands it), reading each file only as far as it tells its
+  frames and format, at most 20,000 files a folder (`kMaxFiles`), and keeps what it found in `tables-cache.bin`
+  beside the settings file, by each file's size and time, so the next scan reads only what changed. The folders are in
+  the settings file (`tableFolder=<frame size>|<name>|<path>`), shared by every FMVibe editor.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
   user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a
   bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`.

@@ -35,6 +35,8 @@ void check(bool ok, const char *what) {
 
 // The sizes the editor asked the host for (gui's request_resize).
 std::vector<std::pair<uint32_t, uint32_t>> resizeRequests;
+// The plugin asked for on_main_thread(): the blocks run it after them, as a host's main thread would soon.
+bool callbackRequested = false;
 
 const clap_host_gui_t kHostGui = {
     [](const clap_host_t *) {}, // resize_hints_changed
@@ -59,7 +61,7 @@ const clap_host_t kHost = {
     },
     [](const clap_host_t *) { ++restartRequests; },
     [](const clap_host_t *) { ++processRequests; },
-    [](const clap_host_t *) {}, // request_callback
+    [](const clap_host_t *) { callbackRequested = true; }, // request_callback: on_main_thread() after the block
 };
 
 struct InputEvents {
@@ -187,6 +189,31 @@ clap_event_param_mod_t paramModEvent(int index, int32_t noteId, double amount) {
     ev.key = -1;
     ev.amount = amount;
     return ev;
+}
+
+// A DATA chunk holding one table or sample, as state.h lays it out (written here byte by byte, from the layout alone):
+// its key, kind (1 a table, 2 a sample), rate, frame size, frames or samples and root, no loop, its samples as floats.
+std::vector<uint8_t> dataChunk(uint32_t key, uint32_t kind, uint32_t rate, uint32_t frameSize, uint32_t frames, float root,
+                               const std::vector<float> &pcm) {
+    std::vector<uint8_t> entry;
+    auto word = [](std::vector<uint8_t> &to, uint32_t w) {
+        for (int i = 0; i < 4; ++i)
+            to.push_back(static_cast<uint8_t>(w >> (8 * i)));
+    };
+    uint32_t rootBits;
+    std::memcpy(&rootBits, &root, 4);
+    for (uint32_t w : {key, kind, rate, frameSize, frames, rootBits, 0u, 0u, 2u, 4u})
+        word(entry, w);
+    entry.insert(entry.end(), {'t', 'e', 's', 't'});
+    const auto *bytes = reinterpret_cast<const uint8_t *>(pcm.data());
+    entry.insert(entry.end(), bytes, bytes + pcm.size() * 4);
+    word(entry, 0); // no origin
+    word(entry, 0); // no format tag
+    std::vector<uint8_t> chunk;
+    for (uint32_t w : {0x41544144u, 1u, 1u, static_cast<uint32_t>(entry.size())})
+        word(chunk, w);
+    chunk.insert(chunk.end(), entry.begin(), entry.end());
+    return chunk;
 }
 
 // The info hosts get for param `index`, looked up by its id in the list they are given; false for one they aren't
@@ -492,6 +519,10 @@ int main(int argc, char **argv) {
     auto runBlock = [&](std::vector<const clap_event_header_t *> events = {}) {
         in.events = std::move(events);
         status = plugin->process(plugin, &proc);
+        if (callbackRequested) { // a Wavetable operator's table to build, say
+            callbackRequested = false;
+            plugin->on_main_thread(plugin);
+        }
         if (status == CLAP_PROCESS_ERROR)
             return NAN;
         float peak = 0.0f;
@@ -967,6 +998,8 @@ int main(int argc, char **argv) {
     // Operator waves.
     bool wavesSound = true;
     for (int w = 0; w < static_cast<int>(OpWave::Count); ++w) {
+        if (static_cast<OpWave>(w) == OpWave::Sample)
+            continue; // with no sample, silent (the samples' checks below play one)
         const float peak = peakOf(play({.wave = static_cast<OpWave>(w)}));
         if (!(peak > 0.05f && peak < 1.0f)) {
             std::printf("      wave %d: peak %g\n", w, peak);
@@ -974,6 +1007,155 @@ int main(int argc, char **argv) {
         }
     }
     check(wavesSound, "every operator wave sounds at a sane level");
+
+    // --- Wavetable and Sample operators, through CLAP alone: their params, events and the state.
+    {
+        // A's settings, then an A4 (or `key`): the left channel after a settle.
+        auto playWith = [&](const std::vector<clap_event_param_value_t> &settings, int key) {
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 22, static_cast<int16_t>(key));
+            std::vector<const clap_event_header_t *> events;
+            for (const auto &s : settings)
+                events.push_back(&s.header);
+            events.push_back(&on.header);
+            runBlock(events);
+            runBlocks(6); // the table is built on the main thread meanwhile (see request_callback)
+            std::vector<float> signal;
+            for (int b = 0; b < 16; ++b) {
+                runBlock();
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            return signal;
+        };
+        auto table = [](int op, double position) {
+            return std::vector<clap_event_param_value_t>{
+                paramEvent(paramIndex(op, OpParam::Wave), static_cast<double>(OpWave::Wavetable)),
+                paramEvent(paramIndex(op, OpParam::Table), static_cast<double>(FactoryTable::BasicShapes)),
+                paramEvent(paramIndex(op, OpParam::TablePos), position)};
+        };
+        // Basic Shapes: a sine at Position 0, a 25 % pulse at 1 (its 4th harmonic gone, its 2nd 0.71 of its 1st).
+        const std::vector<float> sine = playWith(table(0, 0.0), 69), pulse = playWith(table(0, 1.0), 69);
+        const double sine2 = magnitude(sine, 880.0) / magnitude(sine, 440.0);
+        const double pulse2 = magnitude(pulse, 880.0) / magnitude(pulse, 440.0);
+        const double pulse4 = magnitude(pulse, 1760.0) / magnitude(pulse, 440.0);
+        std::printf("      Basic Shapes: at 0 its 2nd harmonic %.4f of its 1st; at 1 its 2nd %.2f, its 4th %.4f\n", sine2,
+                    pulse2, pulse4);
+        check(peakOf(sine) > 0.05f && sine2 < 0.01 && std::abs(pulse2 - 0.71) < 0.06 && pulse4 < 0.02,
+              "a Wavetable operator plays Basic Shapes, a sine at Position 0 and a 25 % pulse at 1");
+        // FM into a Wavetable operator, and out of one.
+        std::vector<clap_event_param_value_t> into = table(0, 0.0);
+        into.push_back(paramEvent(matrixIndex(1, 0), 0.5));
+        const std::vector<float> fmIn = playWith(into, 69);
+        std::vector<clap_event_param_value_t> outOf = table(1, 0.0);
+        outOf.push_back(paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Sine)));
+        outOf.push_back(paramEvent(matrixIndex(1, 0), 0.5));
+        const std::vector<float> fmOut = playWith(outOf, 69);
+        const double in2 = magnitude(fmIn, 880.0) / magnitude(fmIn, 440.0);
+        const double out2 = magnitude(fmOut, 880.0) / magnitude(fmOut, 440.0);
+        const std::vector<clap_event_param_value_t> back = {
+            paramEvent(matrixIndex(1, 0), 0.0), paramEvent(paramIndex(1, OpParam::Wave), 0.0),
+            paramEvent(paramIndex(0, OpParam::Wave), 0.0), paramEvent(paramIndex(0, OpParam::TablePos), 0.0)};
+        runBlock({&back[0].header, &back[1].header, &back[2].header, &back[3].header});
+        std::printf("      FM sidebands at 880 Hz: into a table %.2f, out of one %.2f\n", in2, out2);
+        check(in2 > 0.1 && out2 > 0.1, "FM goes into a Wavetable operator, and out of one, as for any wave");
+        // Hosts get Position and Start, not the data keys, the root, the loop or the mode.
+        clap_param_info_t info;
+        check(paramInfo(plugin, params, paramIndex(0, OpParam::TablePos), &info) &&
+                  (info.flags & CLAP_PARAM_IS_AUTOMATABLE) && paramInfo(plugin, params, paramIndex(0, OpParam::SampleStart), &info) &&
+                  !paramInfo(plugin, params, paramIndex(0, OpParam::Table), &info) &&
+                  !paramInfo(plugin, params, paramIndex(0, OpParam::Sample), &info) &&
+                  !paramInfo(plugin, params, paramIndex(0, OpParam::SampleRoot), &info) &&
+                  !paramInfo(plugin, params, paramIndex(0, OpParam::LoopMode), &info),
+              "hosts are given Position and Start, and not the tables' and samples' keys, root or loop");
+
+        // A state holding its own table (a saw, frame size 2048, under a key the patch picked) plays it, and saved and
+        // loaded again, plays the same.
+        constexpr uint32_t kKey = 1u << 20;
+        std::vector<float> saw(2048);
+        for (int i = 0; i < 2048; ++i) {
+            double x = 0.0;
+            for (int n = 1; n <= 40; ++n)
+                x += std::sin(2.0 * 3.141592653589793 * n * i / 2048.0) / n;
+            saw[i] = static_cast<float>(0.5 * x);
+        }
+        auto loadWith = [&](std::vector<uint8_t> bytes) {
+            MemoryStream s;
+            s.data = std::move(bytes);
+            const bool ok = state->load(plugin, &s.in);
+            plugin->on_main_thread(plugin);
+            return ok;
+        };
+        const clap_event_param_value_t setUp[] = {
+            paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable)),
+            paramEvent(paramIndex(0, OpParam::Table), static_cast<double>(kKey))};
+        runBlock({&setUp[0].header, &setUp[1].header});
+        MemoryStream saved;
+        state->save(plugin, &saved.out);
+        std::vector<uint8_t> withData = saved.data;
+        const std::vector<uint8_t> chunk = dataChunk(kKey, 1, 0, 2048, 1, 60.0f, saw);
+        withData.insert(withData.end(), chunk.begin(), chunk.end());
+        const bool loaded = loadWith(withData);
+        const std::vector<float> first = playWith({}, 69);
+        MemoryStream again;
+        state->save(plugin, &again.out);
+        const bool reloaded = loadWith(again.data);
+        const std::vector<float> second = playWith({}, 69);
+        const double ratio1 = magnitude(first, 880.0) / magnitude(first, 440.0);
+        const double ratio2 = magnitude(second, 880.0) / magnitude(second, 440.0);
+        std::printf("      a table in the state: its 2nd harmonic %.3f of its 1st; saved and loaded again %.3f\n", ratio1,
+                    ratio2);
+        check(loaded && reloaded && peakOf(first) > 0.05f && std::abs(ratio1 - 0.5) < 0.03 && std::abs(ratio2 - ratio1) < 1e-3,
+              "a state's own table plays, and saved and loaded again plays the same");
+
+        // A sample of a 440 Hz sine, its root A4: an A5 plays it at 880 Hz; fixed at 440 Hz x1, any note plays 440.
+        std::vector<float> tone(48000);
+        for (size_t i = 0; i < tone.size(); ++i)
+            tone[i] = static_cast<float>(0.8 * std::sin(2.0 * 3.141592653589793 * 440.0 * i / 48000.0));
+        constexpr uint32_t kSample = (1u << 20) + 1;
+        // (The table's key let go of, so the state saved holds no DATA chunk of its own before the one put after it.)
+        const clap_event_param_value_t sampleUp[] = {
+            paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Sample)),
+            paramEvent(paramIndex(0, OpParam::Sample), static_cast<double>(kSample)),
+            paramEvent(paramIndex(0, OpParam::SampleRoot), 69.0), paramEvent(paramIndex(0, OpParam::Table), 0.0)};
+        runBlock({&sampleUp[0].header, &sampleUp[1].header, &sampleUp[2].header, &sampleUp[3].header});
+        MemoryStream withSample;
+        state->save(plugin, &withSample.out);
+        const std::vector<uint8_t> sampleChunk = dataChunk(kSample, 2, 48000, 1, 48000, 69.0f, tone);
+        withSample.data.insert(withSample.data.end(), sampleChunk.begin(), sampleChunk.end());
+        const bool sampleLoaded = loadWith(withSample.data);
+        const std::vector<float> a5 = playWith({}, 81);
+        const std::vector<float> fixedA5 =
+            playWith({paramEvent(paramIndex(0, OpParam::Fixed), 1.0),
+                      paramEvent(paramIndex(0, OpParam::FixedFreq), normFromFixedFreq(440.0)),
+                      paramEvent(paramIndex(0, OpParam::FixedMult), 3.0)},
+                     81);
+        const clap_event_param_value_t unfixed = paramEvent(paramIndex(0, OpParam::Fixed), 0.0);
+        runBlock({&unfixed.header});
+        // As a modulator: B a sample, A a sine carrier.
+        const std::vector<float> sampleFm =
+            playWith({paramEvent(paramIndex(1, OpParam::Wave), static_cast<double>(OpWave::Sample)),
+                      paramEvent(paramIndex(1, OpParam::Sample), static_cast<double>(kSample)),
+                      paramEvent(paramIndex(1, OpParam::SampleRoot), 69.0),
+                      paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Sine)),
+                      paramEvent(matrixIndex(1, 0), 0.5)},
+                     69);
+        const double up = magnitude(a5, 880.0) / std::max(magnitude(a5, 440.0), 1e-9);
+        const double fixedAt = magnitude(fixedA5, 440.0) / std::max(magnitude(fixedA5, 880.0), 1e-9);
+        const double sidebands = magnitude(sampleFm, 880.0) / magnitude(sampleFm, 440.0);
+        std::printf("      a 440 Hz sample at its root A4: an A5 at 880 Hz %.0fx 440's; fixed at 440 Hz %.0fx 880's; "
+                    "modulating a sine, its 880 Hz %.2f\n",
+                    up, fixedAt, sidebands);
+        check(sampleLoaded && up > 30.0 && fixedAt > 30.0, "a sample plays at the note's pitch from its root, and fixed at its Freq");
+        check(sidebands > 0.1, "a Sample operator modulating a sine makes sidebands");
+        const std::vector<clap_event_param_value_t> clear = {
+            paramEvent(matrixIndex(1, 0), 0.0), paramEvent(paramIndex(1, OpParam::Wave), 0.0),
+            paramEvent(paramIndex(0, OpParam::Wave), 0.0), paramEvent(paramIndex(1, OpParam::Sample), 0.0),
+            paramEvent(paramIndex(0, OpParam::Sample), 0.0), paramEvent(paramIndex(0, OpParam::Table), 0.0)};
+        std::vector<const clap_event_header_t *> clearing;
+        for (const auto &c : clear)
+            clearing.push_back(&c.header);
+        runBlock(clearing);
+    }
     const double saw = secondHarmonicRatio({.wave = OpWave::Saw});
     check(saw > 0.4 && saw < 0.6, "a saw has its 2nd harmonic at about half the fundamental");
     // The newer waves: Alt Sine's 2nd harmonic is 3 pi / 8 of its fundamental, Organ's 4' drawbar as loud as its
@@ -3929,6 +4111,12 @@ int main(int argc, char **argv) {
         params->flush(plugin, &in.list, &out.list); // the host collects the editor's edits
         const std::vector<uint16_t> expected = {CLAP_EVENT_PARAM_GESTURE_BEGIN, CLAP_EVENT_PARAM_VALUE,
                                                 CLAP_EVENT_PARAM_GESTURE_END};
+        if (!(editor && volumeAfter > volumeBefore + 5.0 && out.paramEventTypes == expected)) {
+            std::printf("      Volume %.2f -> %.2f, %zu events:", volumeBefore, volumeAfter, out.paramEventTypes.size());
+            for (uint16_t type : out.paramEventTypes)
+                std::printf(" %u", type);
+            std::printf("\n");
+        }
         check(editor && volumeAfter > volumeBefore + 5.0 && out.paramEventTypes == expected,
               "dragging a knob changes the param and tells the host (begin, value, end)");
 
@@ -4550,6 +4738,8 @@ int main(int argc, char **argv) {
         for (int split = 0; split < kFxSplits; ++split)
             layout.push_back(static_cast<float>(split % 2 == 0)); // the band each split shows, some the high one
         layout.push_back(5.0f);                                   // splits' containers folded
+        for (int op = 0; op < kOps; ++op) // the wave each operator's source switch goes back to
+            layout.push_back(static_cast<float>(op % 4));
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

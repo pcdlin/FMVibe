@@ -217,7 +217,7 @@ bool View::setCtrl(bool held) {
 
 bool View::routingGridShown() const {
     return ctrlHeld_ && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
-           partialEditing() < 0 && (drag_.kind == DragKind::Node || (drag_.kind == DragKind::None && kRouting.contains(hoverPoint_)));
+           partialEditing() < 0 && tableBrowsing() < 0 && (drag_.kind == DragKind::Node || (drag_.kind == DragKind::None && kRouting.contains(hoverPoint_)));
 }
 
 // The grid's points nearest `want` first; a point a node fits at, clear of the others, takes it.

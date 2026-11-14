@@ -24,8 +24,11 @@ set(FMVIBE_ENGINE_SOURCES
     src/effects.cpp
     src/effects.h
     src/envelope.h
+    src/fft.h
     src/filter.h
     src/noise.h
+    src/opdata.cpp
+    src/opdata.h
     src/oversampler.h
     src/params.cpp
     src/params.h
@@ -34,6 +37,8 @@ set(FMVIBE_ENGINE_SOURCES
     src/uistrings.inc
     src/synth.cpp
     src/synth.h
+    src/tables.cpp
+    src/tables.h
     src/zerobuffer.cpp
     src/zerobuffer.h
     src/wavetable.cpp
@@ -115,6 +120,7 @@ add_library(fmvibe-core STATIC
     src/gui/routing.cpp
     src/gui/routing.h
     src/gui/shapes.cpp
+    src/gui/tableview.cpp
     src/gui/theme.cpp
     src/gui/theme.h
     src/gui/view.cpp
@@ -124,6 +130,11 @@ add_library(fmvibe-core STATIC
     src/sharedtelemetry.h
     src/state.cpp
     src/state.h
+    src/tables/flac.cpp
+    src/tables/library.cpp
+    src/tables/library.h
+    src/tables/readers.cpp
+    src/tables/readers.h
 )
 target_include_directories(fmvibe-core PUBLIC src)
 target_link_libraries(fmvibe-core PUBLIC clap d2d1 dwrite)
@@ -142,7 +153,7 @@ add_library(fmvibe-plugin STATIC
     src/gui/editor.cpp
     src/gui/editor.h
 )
-target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core ole32 shell32 uuid) # ole32 and shell32: the file dialogs
+target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core ole32 shell32 uuid) # ole32 and shell32: the file dialogs and dropped files
 fmvibe_options(fmvibe-plugin)
 
 add_library(FMVibe MODULE

@@ -387,6 +387,8 @@ std::optional<View::Field> View::fieldTyping() const {
         return Field::CascadeSearch;
     if (modsFiltering_ && modsWide())
         return Field::ModsFilter;
+    if (tableBrowsing() >= 0 && tbSearching_) // the table browser's search, once clicked: its keys go through it
+        return Field::Tables;
     return std::nullopt;
 }
 
@@ -396,6 +398,8 @@ View::TextField &View::field(Field f) {
         return modsFilter_;
     case Field::CascadeSearch:
         return cascadeSearch_;
+    case Field::Tables:
+        return tablesSearch_;
     case Field::Browser:
         break;
     }
@@ -419,6 +423,10 @@ void View::fieldChanged(Field f) {
         break;
     case Field::ModsFilter:
         scrollMods(0.0f, false);
+        break;
+    case Field::Tables:
+        tbScroll_ = 0.0f;
+        tbPick_ = -1;
         break;
     case Field::CascadeSearch:
         if (cascade_) {

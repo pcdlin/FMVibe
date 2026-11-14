@@ -50,6 +50,18 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.examples = std::max(std::atoi(line.c_str() + 9), 0);
         else if (line.starts_with("examplesVersion="))
             settings.examplesVersion = line.substr(16);
+        else if (line.starts_with("tableFolder=")) { // its frame size, its name, then its path, "|" between them
+            const std::string rest = line.substr(12);
+            const size_t a = rest.find('|'), b = a == std::string::npos ? a : rest.find('|', a + 1);
+            if (b != std::string::npos && b + 1 < rest.size()) {
+                TableFolder folder;
+                const int size = std::atoi(rest.c_str());
+                folder.frameSize = size == 256 || size == 512 || size == 1024 || size == 2048 ? size : 0;
+                folder.name = rest.substr(a + 1, b - a - 1);
+                folder.path = rest.substr(b + 1);
+                settings.tableFolders.push_back(std::move(folder));
+            }
+        }
     }
     return settings;
 }
@@ -57,9 +69,23 @@ UserSettings readFile(const std::filesystem::path &file) {
 // The settings as this process last read or wrote them, which tells what it changed since.
 UserSettings asRead;
 
+bool sameFolders(const std::vector<TableFolder> &a, const std::vector<TableFolder> &b) {
+    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](const TableFolder &x, const TableFolder &y) {
+        return x.name == y.name && x.path == y.path && x.frameSize == y.frameSize;
+    });
+}
+
 } // namespace
 
 UserSettings userSettings;
+
+std::string userSettingsFolder() {
+    const std::filesystem::path file = userSettingsFile();
+    if (file.empty())
+        return {};
+    const std::u8string folder = file.parent_path().u8string();
+    return std::string(reinterpret_cast<const char *>(folder.data()), folder.size());
+}
 
 void readUserSettings() {
     const std::filesystem::path file = userSettingsFile();
@@ -86,6 +112,8 @@ void writeUserSettings() {
         merged.links = userSettings.links;
     if (userSettings.zoom != asRead.zoom)
         merged.zoom = userSettings.zoom;
+    if (!sameFolders(userSettings.tableFolders, asRead.tableFolders))
+        merged.tableFolders = userSettings.tableFolders;
     merged.examples = std::max(merged.examples, userSettings.examples);
     if (versionBefore(merged.examplesVersion, userSettings.examplesVersion))
         merged.examplesVersion = userSettings.examplesVersion;
@@ -111,6 +139,11 @@ void writeUserSettings() {
             out << "examples=" << merged.examples << '\n';
         if (!merged.examplesVersion.empty())
             out << "examplesVersion=" << merged.examplesVersion << '\n';
+        for (const TableFolder &folder : merged.tableFolders) {
+            std::string name = folder.name; // a "|" in the name would end it early
+            std::replace(name.begin(), name.end(), '|', '/');
+            out << "tableFolder=" << folder.frameSize << '|' << name << '|' << folder.path << '\n';
+        }
         out.close();
         if (!out)
             error = std::make_error_code(std::errc::io_error);

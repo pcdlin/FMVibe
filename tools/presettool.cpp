@@ -3,7 +3,8 @@
 //   fmvibe-presettool [--arrange] <file.fmv>...
 //
 // Rewrites each preset file holding only the params that differ from their defaults (which is what loading it gives
-// the others) and its editor layout, as the factory presets are stored. A preset edited in the plugin and saved over
+// the others) and its editor layout, then its DATA chunk (its own tables and samples) as it was, as the factory presets
+// are stored. A preset edited in the plugin and saved over
 // its file holds every param (about 128 KB); this makes it sparse again before it is committed. With --arrange, it
 // first lays the preset's routing graph out again (see src/gui/arrange.h) where its nodes, wires, lines to OUT or
 // labels run over each other, and says how many such clashes are left. A file it can't read is left as it is.
@@ -44,6 +45,14 @@ std::string normalize(const std::filesystem::path &path, bool arrange) {
     clap_istream_t in = fileIn(file);
     const bool read = readParams(&in, values);
     gui::UiLayout layout = read ? readLayout(&in) : gui::UiLayout{};
+    // What follows the layout (the DATA chunk of the tables and samples the preset holds) stays as it is.
+    std::vector<unsigned char> rest;
+    for (unsigned char chunk[4096]; read;) {
+        const size_t n = std::fread(chunk, 1, sizeof(chunk), file);
+        rest.insert(rest.end(), chunk, chunk + n);
+        if (n < sizeof(chunk))
+            break;
+    }
     std::fclose(file);
     if (!read)
         return {};
@@ -60,6 +69,7 @@ std::string normalize(const std::filesystem::path &path, bool arrange) {
     clap_ostream_t out = memoryOut(bytes);
     if (!writePatch(&out, values, layout, true))
         return {};
+    bytes.insert(bytes.end(), rest.begin(), rest.end());
     file = openFile(path, "wb");
     if (!file)
         return {};

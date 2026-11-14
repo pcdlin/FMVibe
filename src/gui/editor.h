@@ -13,6 +13,11 @@
 
 namespace fmvibe::gui {
 
+class FileDrop;
+
+// Opens a folder in the system's file browser.
+void showFolder(const std::string &utf8);
+
 // Win32 child window that hosts the View inside the host's plugin window. The
 // view is drawn at a uniform scale, so the editor resizes with a fixed aspect ratio.
 class Editor {
@@ -32,6 +37,10 @@ public:
     bool show(bool visible);
     // Opens the preset file dialog, after the current mouse gesture is over.
     void choosePreset(bool save);
+    // Likewise, the file dialog that imports a table or sample into an operator, and the folder dialog that adds a
+    // folder to the wavetable library.
+    void chooseOperatorFile(int op, DataKind kind);
+    void chooseTableFolder();
     // A key the host's window took in, which the editor's keyboard hook passes on: true if it was
     // an undo or redo shortcut meant for this editor, which the host then doesn't see.
     bool shortcut(WPARAM key, bool up);
@@ -57,6 +66,21 @@ private:
     void updateCursor();
     void contextMenu(int x, int y);
     void browsePreset(bool save);
+    void browseOperatorFile(int op, DataKind kind);
+    void browseTableFolder();
+    std::wstring lastImportFolder_; // where the import dialog was last left
+    // Files dragged in from outside (the system's file browser, a host's): an OLE drop target on the window (see
+    // FileDrop in editor.cpp), or WM_DROPFILES where OLE can't be had. The view lights where the file would land; a
+    // drop is imported once the drag's loop has returned (kDropMessage), the file read here.
+    friend class FileDrop;
+    bool fileOver(const POINTL *screen); // nullptr once the file has left: true if it would land there
+    void fileDropped(POINTL screen, const std::wstring &path);
+    void importFile(Point at, const std::wstring &path);
+    FileDrop *fileDrop_ = nullptr;
+    bool oleInitialized_ = false;
+    bool dropRegistered_ = false;
+    std::wstring droppedPath_;
+    Point droppedAt_;
     // The editor takes the keyboard while a value is typed or a dialog is open, and hands it back after.
     bool wantsKeyboard() const { return view_.typing() || view_.dialogOpen(); }
     void syncFocus();

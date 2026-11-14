@@ -1,6 +1,7 @@
 #include "state.h"
 
 #include "gui/controller.h"
+#include "opdata.h"
 
 #include <algorithm>
 #include <array>
@@ -27,7 +28,8 @@ constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
 constexpr uint32_t kMaxLayoutFloats = 4096;
 constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
-                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 <=
+                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 +
+                  1 + 1 + kFxSplits + 1 + kOps <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a
@@ -318,6 +320,8 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.fxGraphView, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     io.numbers(ui.splitBand, 0.0f, 2.0f, rounded<int>); // 0 low, 1 high, 2 middle
     io.number(ui.splitsFolded, 0.0f, 15.0f, rounded<uint32_t>);
+    // The wave each operator's source switch goes back to (any but the data waves, which come after Vowel).
+    io.numbers(ui.plainWave, 0.0f, static_cast<float>(OpWave::Vowel), rounded<int>);
 }
 
 } // namespace
@@ -646,6 +650,170 @@ bool writePresetChunk(const clap_ostream_t *stream, bool edited, const std::stri
     const std::string preset = (edited ? '\1' : '\0') + (file.size() < kMaxPresetChunk ? file : std::string());
     const uint32_t presetChunk[] = {kPresetMagic, static_cast<uint32_t>(preset.size())};
     return writeAll(stream, presetChunk, sizeof(presetChunk)) && writeAll(stream, preset.data(), preset.size());
+}
+
+namespace {
+
+constexpr uint32_t kDataMagic = 0x41544144; // "DATA"
+constexpr uint32_t kDataVersion = 1;
+constexpr uint32_t kFormatInt16 = 1, kFormatFloat32 = 2;
+constexpr size_t kMaxDataName = 255, kMaxDataOrigin = 1024, kMaxDataTag = 16;
+constexpr uint32_t kMaxDataEntries = 4096;
+
+void putWord(std::vector<unsigned char> &out, uint32_t word) {
+    const auto *b = reinterpret_cast<const unsigned char *>(&word);
+    out.insert(out.end(), b, b + 4);
+}
+
+void putText(std::vector<unsigned char> &out, const std::string &text, size_t most) {
+    const size_t n = std::min(text.size(), most);
+    putWord(out, static_cast<uint32_t>(n));
+    out.insert(out.end(), text.begin(), text.begin() + static_cast<std::ptrdiff_t>(n));
+}
+
+// Reads words, text and samples from an entry's bytes, never past their end.
+struct EntryReader {
+    const unsigned char *at, *end;
+    bool ok = true;
+    uint32_t word() {
+        if (end - at < 4) {
+            ok = false;
+            return 0;
+        }
+        uint32_t w;
+        std::memcpy(&w, at, 4);
+        at += 4;
+        return w;
+    }
+    float real() {
+        const uint32_t w = word();
+        float f;
+        std::memcpy(&f, &w, 4);
+        return f;
+    }
+    std::string text(size_t most) {
+        const uint32_t n = word();
+        if (!ok || n > most || static_cast<size_t>(end - at) < n) {
+            ok = false;
+            return {};
+        }
+        std::string s(reinterpret_cast<const char *>(at), n);
+        at += n;
+        return s;
+    }
+};
+
+} // namespace
+
+bool writeDataChunk(const clap_ostream_t *stream, const std::vector<const OpData *> &data) {
+    std::vector<unsigned char> bytes;
+    putWord(bytes, kDataMagic);
+    putWord(bytes, kDataVersion);
+    putWord(bytes, static_cast<uint32_t>(data.size()));
+    for (const OpData *d : data) {
+        // In 16 bits only what fits them as it is: anything past full scale would come back clipped, so as floats.
+        const bool int16 = d->int16 && std::all_of(d->pcm.begin(), d->pcm.end(), [](float x) { return std::abs(x) <= 1.0f; });
+        std::vector<unsigned char> entry;
+        putWord(entry, d->key);
+        putWord(entry, static_cast<uint32_t>(d->kind));
+        putWord(entry, d->rate);
+        putWord(entry, d->kind == DataKind::Table ? static_cast<uint32_t>(FrameTable::kFrameSize) : 1u);
+        putWord(entry, static_cast<uint32_t>(d->frames));
+        uint32_t root;
+        std::memcpy(&root, &d->root, 4);
+        putWord(entry, root);
+        putWord(entry, d->loopStart);
+        putWord(entry, d->loopEnd);
+        putWord(entry, int16 ? kFormatInt16 : kFormatFloat32);
+        putText(entry, d->name, kMaxDataName);
+        if (int16) {
+            for (float x : d->pcm) {
+                const auto s = static_cast<int16_t>(std::lround(std::clamp(x, -1.0f, 1.0f) * 32767.0f));
+                const auto *b = reinterpret_cast<const unsigned char *>(&s);
+                entry.insert(entry.end(), b, b + 2);
+            }
+        } else {
+            const auto *b = reinterpret_cast<const unsigned char *>(d->pcm.data());
+            entry.insert(entry.end(), b, b + d->pcm.size() * sizeof(float));
+        }
+        putText(entry, d->origin, kMaxDataOrigin);
+        putText(entry, d->format, kMaxDataTag);
+        putWord(bytes, static_cast<uint32_t>(entry.size()));
+        bytes.insert(bytes.end(), entry.begin(), entry.end());
+    }
+    return writeAll(stream, bytes.data(), bytes.size());
+}
+
+bool readDataChunk(const clap_istream_t *stream, std::vector<std::shared_ptr<OpData>> &out) {
+    out.clear();
+    uint32_t header[3];
+    if (!readAll(stream, header, sizeof(header)) || header[0] != kDataMagic || header[1] < 1)
+        return false;
+    const uint32_t count = std::min(header[2], kMaxDataEntries);
+    size_t total = 0;
+    for (uint32_t n = 0; n < count; ++n) {
+        uint32_t size = 0;
+        if (!readAll(stream, &size, sizeof(size)) || size > kMaxDataEntryBytes + 4096 ||
+            total + size > kMaxDataChunkBytes + 65536)
+            break;
+        total += size;
+        std::vector<unsigned char> entry(size);
+        if (!readAll(stream, entry.data(), entry.size()))
+            break; // cut short: the entries before it stand
+        EntryReader r{entry.data(), entry.data() + entry.size()};
+        auto d = std::make_shared<OpData>();
+        d->key = r.word();
+        const uint32_t kind = r.word();
+        d->rate = r.word();
+        const uint32_t frameSize = r.word();
+        const uint32_t frames = r.word();
+        d->root = r.real();
+        d->loopStart = r.word();
+        d->loopEnd = r.word();
+        const uint32_t format = r.word();
+        d->name = r.text(kMaxDataName);
+        if (!r.ok || (kind != static_cast<uint32_t>(DataKind::Table) && kind != static_cast<uint32_t>(DataKind::Sample)))
+            continue; // a kind this version doesn't know
+        d->kind = static_cast<DataKind>(kind);
+        const bool table = d->kind == DataKind::Table;
+        if ((table && (frameSize != FrameTable::kFrameSize || frames < 1 || frames > FrameTable::kMaxFrames)) ||
+            (!table && (frames < 1 || frames > kMaxSampleLength || d->rate < 1000 || d->rate > 768000)) ||
+            (format != kFormatInt16 && format != kFormatFloat32) || d->key < kUserDataBase ||
+            !std::isfinite(d->root))
+            continue;
+        const size_t samples = table ? static_cast<size_t>(frames) * FrameTable::kFrameSize : frames;
+        const size_t width = format == kFormatInt16 ? 2 : 4;
+        if (static_cast<size_t>(r.end - r.at) < samples * width)
+            continue;
+        d->frames = static_cast<int>(frames);
+        d->int16 = format == kFormatInt16;
+        d->pcm.resize(samples);
+        for (size_t i = 0; i < samples; ++i) {
+            if (d->int16) {
+                int16_t s;
+                std::memcpy(&s, r.at + 2 * i, 2);
+                d->pcm[i] = static_cast<float>(s) / 32767.0f;
+            } else {
+                float f;
+                std::memcpy(&f, r.at + 4 * i, 4);
+                d->pcm[i] = std::isfinite(f) ? std::clamp(f, -4.0f, 4.0f) : 0.0f;
+            }
+        }
+        r.at += samples * width;
+        d->root = std::clamp(d->root, 0.0f, 127.0f);
+        if (d->loopEnd > static_cast<uint32_t>(frames) || d->loopStart >= d->loopEnd)
+            d->loopStart = d->loopEnd = 0;
+        if (r.end - r.at >= 4) { // after the samples: where it was picked from, and its format tag
+            const std::string origin = r.text(kMaxDataOrigin);
+            if (r.ok)
+                d->origin = origin;
+            const std::string tag = r.ok ? r.text(kMaxDataTag) : std::string();
+            if (r.ok)
+                d->format = tag;
+        }
+        out.push_back(std::move(d));
+    }
+    return true;
 }
 
 bool readPresetChunk(const clap_istream_t *stream, std::string &file, bool &edited) {

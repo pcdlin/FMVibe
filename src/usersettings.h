@@ -1,6 +1,9 @@
 #pragma once
 
+#include "tables/library.h"
+
 #include <string>
+#include <vector>
 
 namespace fmvibe {
 
@@ -17,8 +20,13 @@ struct UserSettings {
     double zoom = 0.0; // the editor size new instances open at, relative to the default; 0 if never resized
     int examples = -1; // how many examples the preset folder has been given, or -1 if not known
     std::string examplesVersion; // the version of FMVibe that last wrote them out, or empty if none has
+    // The folders of wavetables the user added to the table browser: they belong to the machine, not the patch.
+    std::vector<TableFolder> tableFolders;
 };
 extern UserSettings userSettings; // as the settings file has them; editors only run on the main thread
+
+// The folder the settings file is in (UTF-8), where the wavetable library keeps its cache; "" if there is none.
+std::string userSettingsFolder();
 
 void readUserSettings();
 // Writes what this process changed since it last read them into the file as it is now, where another process may
