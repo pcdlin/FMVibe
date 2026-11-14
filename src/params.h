@@ -126,6 +126,9 @@ enum class FilterParam {
     Slope,
     Shapers,
     Mix = Shapers + kShapers,
+    Vowel,     // the Formant type's vowel, 0..1 from A through E, I and O to U (see formantVowel())
+    Morph,     // the Morph type's place, 0..1 from low-pass to high-pass (see morphWeights())
+    MorphMode, // one of MorphMode, by number: what the Morph type passes through on the way
     Count
 };
 // A shaper in each voice: the shaper effect's curves (see ClipMode), drive, output, mix and link,
@@ -322,8 +325,33 @@ enum class UniCurve { Linear, Center, Supersaw, Random, Count };
 // Where its copies sit across the stereo field: from left to right as their pitch rises, copies next to each other in
 // pitch on opposite sides, or anywhere, new for every note. Stored by number: only append.
 enum class UniPan { Ramp, Alternate, Random, Count };
-// Stored in projects by number: only append.
-enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
+// A filter's type. The first four are the state-variable filter's responses; Comb a tuned delay; Ladder a four-pole
+// transistor ladder, a low-pass with its resonance in a loop around its four stages, which self-oscillates at the top
+// of its range; Diode a four-pole diode ladder, its stages loading each other; SallenKeyLow and SallenKeyHigh a
+// two-pole Sallen-Key low- and high-pass with a clipper in its resonance's loop, as in Korg's MS-20; Formant three
+// band-passes at a vowel's formants (FilterParam::Vowel); Morph the state-variable filter going from its low-pass to
+// its high-pass through its band-pass or its notch (FilterParam::Morph and MorphMode). Stored in projects by number:
+// only append.
+enum class FilterType {
+    LowPass,
+    HighPass,
+    BandPass,
+    Notch,
+    Comb,
+    Ladder,
+    Diode,
+    SallenKeyLow,
+    SallenKeyHigh,
+    Formant,
+    Morph,
+    Count
+};
+// What the Morph type passes through on its way from low-pass to high-pass: the band-pass or the notch. Stored in
+// projects by number: only append.
+enum class MorphMode { Band, Notch, Count };
+inline MorphMode morphMode(double value) {
+    return static_cast<MorphMode>(std::clamp(std::lround(value), 0L, static_cast<long>(MorphMode::Count) - 1L));
+}
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
 // the source to where the operator reads its wave (phase modulation, what FM synths call FM); Linear FM adds it to the
 // operator's frequency, through zero once deep enough; Exp FM moves its pitch by octaves; Ring multiplies its output
@@ -333,19 +361,43 @@ enum class RouteMode { Phase, LinearFm, ExpFm, Ring, Count };
 inline RouteMode routeMode(double value) {
     return static_cast<RouteMode>(std::clamp(std::lround(value), 0L, static_cast<long>(RouteMode::Count) - 1L));
 }
-// The types that come in more than one slope.
-constexpr bool hasSlope(FilterType type) { return type <= FilterType::Notch; }
 // A filter's slope (FilterParam::Slope, and the filter effect's): 6, 12, 18 or 24 dB per octave, stored by number,
-// 12 to begin with. Low- and high-passes come in all four; a band-pass or notch only in 12 and 24, so 6 and 18 play
-// as the slope above them. Stored in projects by number: only append.
+// 12 to begin with. Each type comes in the slopes kFilterTypeSlopes gives it, a bit each: low- and high-passes and the
+// ladder (its stages tapped) in all four, a band-pass, notch or morph only in 12 and 24, the diode in 24, the
+// Sallen-Key's in 12, and a comb or formant in none. A stored slope a
+// type doesn't come in plays as the next one up it does (see playedSlope()). Stored in projects by number: only append.
 constexpr int kFilterSlopes = 4;
 constexpr int kDefaultSlope = 1;
+constexpr unsigned kAllSlopes = 0b1111, kEvenSlopes = 0b1010, kSlope12 = 0b0010, kSlope24 = 0b1000;
+constexpr unsigned kFilterTypeSlopes[] = {kAllSlopes, kAllSlopes, kEvenSlopes, kEvenSlopes, 0, kAllSlopes,
+                                          kSlope24,   kSlope12,   kSlope12,    0,           kEvenSlopes};
+static_assert(std::size(kFilterTypeSlopes) == static_cast<size_t>(FilterType::Count), "a slope set for each type");
 inline int filterSlope(double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, kFilterSlopes - 1L)); }
 constexpr int slopeDb(int slope) { return 6 * (slope + 1); }
-constexpr bool slopeFits(FilterType type, int slope) {
-    return type <= FilterType::HighPass || (hasSlope(type) && slope % 2 == 1);
+constexpr unsigned filterTypeSlopes(FilterType type) {
+    return type < FilterType::Count ? kFilterTypeSlopes[static_cast<int>(type)] : 0;
 }
-constexpr int playedSlope(FilterType type, int slope) { return type <= FilterType::HighPass ? slope : slope | 1; }
+// The types that come in more than one slope.
+constexpr bool hasSlope(FilterType type) { return filterTypeSlopes(type) != 0; }
+constexpr bool slopeFits(FilterType type, int slope) { return (filterTypeSlopes(type) >> slope & 1) != 0; }
+// The slope as it plays: the stored one if the type comes in it, else the next one up it does, else its steepest.
+constexpr int playedSlope(FilterType type, int slope) {
+    const unsigned slopes = filterTypeSlopes(type);
+    if (slopes == 0)
+        return slope;
+    for (int s = slope; s < kFilterSlopes; ++s)
+        if (slopes >> s & 1)
+            return s;
+    for (int s = kFilterSlopes - 1; s >= 0; --s)
+        if (slopes >> s & 1)
+            return s;
+    return slope;
+}
+static_assert(playedSlope(FilterType::BandPass, 0) == 1 && playedSlope(FilterType::BandPass, 2) == 3 &&
+                  playedSlope(FilterType::Notch, 3) == 3 && playedSlope(FilterType::LowPass, 0) == 0 &&
+                  playedSlope(FilterType::Ladder, 2) == 2 && playedSlope(FilterType::Comb, 2) == 2 &&
+                  playedSlope(FilterType::Diode, 1) == 3 && playedSlope(FilterType::SallenKeyLow, 3) == 1,
+              "slopes play as before");
 
 // Effects, run on the sum of all voices. Each slot of the chain holds one
 // effect of any type, or none, so a type can be used several times. A slot has
@@ -639,6 +691,11 @@ enum class FxParam {
     ChorusSpread,
     ChorusMix,
     ChorusVoices,
+    // The filter's, past the fields it came with: its Formant type's vowel and its Morph type's place and mode, as a
+    // voice filter's (see FilterParam::Vowel, Morph and MorphMode).
+    FilterVowel,
+    FilterMorph,
+    FilterMorphMode,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -1088,6 +1145,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::AmpModel, FxParam::AmpOversampling, FxType::Amp},
     {FxParam::UtilityGain, FxParam::UtilityMonoBass, FxType::Utility},
     {FxParam::ChorusRate, FxParam::ChorusVoices, FxType::Chorus},
+    {FxParam::FilterVowel, FxParam::FilterMorphMode, FxType::Filter},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1734,8 +1792,11 @@ static_assert(numberedInOrder({UniCurve::Linear, UniCurve::Center, UniCurve::Sup
 static_assert(numberedInOrder({UniPan::Ramp, UniPan::Alternate, UniPan::Random, UniPan::Count}),
               "UniPan is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
-                               FilterType::Comb, FilterType::Count}),
+                               FilterType::Comb, FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
+                               FilterType::SallenKeyHigh, FilterType::Formant, FilterType::Morph, FilterType::Count}),
               "FilterType is stored by number: only append");
+static_assert(numberedInOrder({MorphMode::Band, MorphMode::Notch, MorphMode::Count}),
+              "MorphMode is stored by number: only append");
 static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
                                FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
@@ -2375,6 +2436,7 @@ enum class ParamKind {
     OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
     UniCurve,     // stepped: how an operator's unison copies spread in pitch (see UniCurve)
     UniPan,       // stepped: where they sit across the stereo field (see UniPan)
+    MorphMode,    // stepped: what a Morph filter passes through (see MorphMode)
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2669,6 +2731,7 @@ const char *ampModelName(AmpModel model);
 const char *ampCabName(AmpCab cab);
 const char *ampMicName(AmpMic mic);
 const char *routeModeName(RouteMode mode);
+const char *morphModeName(MorphMode mode);
 const char *midiInputName(MidiInput input);
 const char *sourceTypeName(SourceType type);
 const char *fxName(FxType fx);

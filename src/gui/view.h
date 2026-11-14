@@ -172,7 +172,6 @@ private:
         WaveMore,     // a = op: "..." opens the list of the other waves
         WaveMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         WaveMenuItem, // a = op, b = wave: an entry of the list
-        TypeButton,   // a = filter, b = type
         Node,         // a = node (operators, then filters)
         NodeGhost,    // a = node that is off: a dashed button in the graph's top left that switches it on
         NodeDelete,   // a = node: the x in a circle at a node's upper right, while the mouse is over it: switches it off

@@ -388,7 +388,7 @@ private:
         std::array<Lfo, kMaxSources> lfos{};
         std::array<Envelope, kMaxSources> modEnvs{};
         std::array<Memo<EnvRates, 8>, kMaxSources> modEnvRates{};
-        std::array<Memo<FilterSettings, 7>, kFilters> filterSettings{};
+        std::array<Memo<FilterSettings, 10>, kFilters> filterSettings{};
         std::array<Memo<ShaperSettings, 6>, kShapers> shaperSettings{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
         // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's

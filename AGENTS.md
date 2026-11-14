@@ -8,7 +8,7 @@ feature.
 ## Ground rules
 
 - Parameter ids, the wave, warp, unison curve and pan, filter type, effect type, source type, amp model, cabinet,
-  mic and fixed Mult lists, and the state layout are
+  mic, morph mode and fixed Mult lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -62,8 +62,18 @@ the plain CMake commands and installing into a host are in the [README](README.m
     playing an A4's 3rd harmonic alone and at 3.5 times its harmonics, not 1540 Hz; a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
+  - the ladder's slopes tapping one to four of its one-pole stages; the ladder, the diode and both Sallen-Key's, at
+    full resonance and plucked, ringing on at their cutoff, steady and finite (silent by then at 80 %); an A4 sine
+    under the ladder's cutoff coming out with a 3rd harmonic from its saturation, more with Drive, where the
+    low-pass's stays clean, and its resonance thinning the note, where the low-pass's leaves it as it was; the diode
+    playing 24 dB whatever its slope says, the Sallen-Key low-pass two poles at its cutoff and its high-pass lifting
+    a saw's 2nd harmonic; the Formant type putting noise through a vowel's formants (A's first at 600 Hz, I's at 250);
+    the Morph type playing exactly the low-pass, the band-pass or notch and the high-pass at its ends and middle, at
+    12 and 24 dB, between them along the way, and set to 6 or 18 dB playing 12 or 24; and the low-pass (12 and 24 dB), the ladder, the diode and the Sallen-Key low-pass each
+    sounding unlike the others, by at least 3 dB in a saw's harmonics through them, the 3rd harmonic they give a sine or
+    how far the note falls with resonance (the figures printed);
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
-    still ends;
+    or a self-oscillating ladder, diode or Sallen-Key still ends;
   - an operator's Ratio taking modulation on its log curve, continuously (a seventh of its range an octave), and one
     set to 64 modulated on to 128 and no further;
   - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
@@ -176,9 +186,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **Audio quality** (`tests/quality.cpp`): drives the engine directly and measures, at every oversampling factor:
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
-    feedback and a driven filter;
-  - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff and a wire of the
-    effects graph;
+    feedback, a driven filter and a driven, resonant ladder, diode and Sallen-Key;
+  - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff, a resonant ladder's
+    cutoff, a formant's vowel, a morph's place and a wire of the effects graph;
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain (0 to
@@ -245,7 +255,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
     curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
     silence, and an input that isn't a number reading inside its table;
-  - the filter effect switched to another type or slope and back, and a plate switched to a hall and back,
+  - the filter effect switched to another type or slope and back (every newer type among them, and the analog
+    types, which share their stages, from one another and from a morph), and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
@@ -491,7 +502,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing; a shaper's
     row routing it into the other shaper and, on the diagonal, into itself;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused, the hand cursor showing only over
-    an entry it can pick (not over a refused one, the list's edge or around it);
+    an entry it can pick (not over a refused one, the list's edge or around it); its type's list (as a shaper's
+    curve's) showing each type with its icon (read off the rendered pixels) and picking Ladder, and the wheel over it
+    stepping the type, a run of notches one undo step, held at the list's end; and the filter card's type list
+    picking Comb; a morph's slope's list picking 24 dB (18 refused) and its notch switch beside it (the notch's icon)
+    going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
@@ -993,7 +1008,7 @@ itself.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
-  warp (`OpWarp`), unison curve (`UniCurve`) and unison pan (`UniPan`) lists, the routing views and the operator page's tabs,
+  warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`) and morph mode (`MorphMode`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -1014,7 +1029,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,298 of the 19,641 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,304 of the 19,743 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

@@ -205,6 +205,25 @@ void filterIcon(Canvas &c, Rect r, FilterType type, Color color) {
             case FilterType::Comb: // evenly spaced teeth
                 y = -0.8f + 1.5f * std::pow(std::abs(std::cos(3.0f * kPi * x)), 6.0f);
                 break;
+            case FilterType::Ladder: // lower before its corner, a tall, sharp peak there, then a steep fall
+                y = x <= 0.5f ? 0.1f + 0.85f * peak(x, 0.5f, 200.0f) : 0.95f - 6.0f * (x - 0.5f);
+                break;
+            case FilterType::Diode: // a broad, rounded hump before a steep fall
+                y = x <= 0.48f ? 0.2f + 0.45f * peak(x, 0.48f, 30.0f) : 0.65f - 4.5f * (x - 0.48f);
+                break;
+            case FilterType::SallenKeyLow:  // flat, then a jagged peak, for its clipper, and down
+            case FilterType::SallenKeyHigh: { // the same the other way round
+                const int at = type == FilterType::SallenKeyLow ? i : 24 - i;
+                y = at < 10 ? 0.3f : at <= 14 ? 0.3f + (at % 2 ? 0.55f : 0.2f) : 0.6f - 3.4f * (at - 14) / 24.0f;
+                break;
+            }
+            case FilterType::Formant: // three humps, falling, at a vowel's formants
+                y = -0.8f + 1.6f * peak(x, 0.25f, 250.0f) + 1.15f * peak(x, 0.5f, 250.0f) +
+                    0.8f * peak(x, 0.74f, 250.0f);
+                break;
+            case FilterType::Morph: // a notch going into a peak, from one response to the next
+                y = 0.25f - 1.1f * peak(x, 0.32f, 160.0f) + 0.65f * peak(x, 0.68f, 160.0f);
+                break;
             case FilterType::Count:
                 break;
             }

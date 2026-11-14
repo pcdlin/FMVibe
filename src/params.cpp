@@ -31,9 +31,15 @@ static_assert(std::size(kUniCurveNames) == static_cast<size_t>(UniCurve::Count))
 constexpr Str kUniPanNames[] = {Str::UniPanRamp, Str::UniPanAlternate, Str::UniPanRandom};
 static_assert(std::size(kUniPanNames) == static_cast<size_t>(UniPan::Count));
 constexpr Str kFilterTypeNames[] = {Str::FilterLowPass, Str::FilterHighPass, Str::FilterBandPass, Str::FilterNotch,
-                                    Str::FilterComb};
+                                    Str::FilterComb,    Str::FilterLadder,   Str::FilterDiode,    Str::FilterSallenKeyLow,
+                                    Str::FilterSallenKeyHigh, Str::FilterFormant, Str::FilterMorph};
 constexpr Str kFilterTypeShortNames[] = {Str::FilterShortLowPass, Str::FilterShortHighPass, Str::FilterShortBandPass,
-                                         Str::FilterShortNotch, Str::FilterShortComb};
+                                         Str::FilterShortNotch, Str::FilterShortComb, Str::FilterShortLadder,
+                                         Str::FilterShortDiode, Str::FilterShortSallenKeyLow,
+                                         Str::FilterShortSallenKeyHigh, Str::FilterShortFormant,
+                                         Str::FilterShortMorph};
+constexpr Str kMorphModeNames[] = {Str::MorphBand, Str::MorphNotch};
+static_assert(std::size(kMorphModeNames) == static_cast<size_t>(MorphMode::Count));
 const char *const kFilterSlopeNames[] = {"6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct"};
 static_assert(std::size(kFilterSlopeNames) == static_cast<size_t>(kFilterSlopes));
 static_assert(std::size(kFilterTypeNames) == static_cast<size_t>(FilterType::Count));
@@ -169,7 +175,7 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
             kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
             kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp ||
-            kind == ParamKind::UniCurve || kind == ParamKind::UniPan)
+            kind == ParamKind::UniCurve || kind == ParamKind::UniPan || kind == ParamKind::MorphMode)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -398,6 +404,12 @@ void buildTable(ParamTable &t) {
             1.0, 0.0);
         add(paramIndex(filter, FilterParam::Slope), name + " " + tr(Str::ParamSlope), module, ParamKind::FilterSlope,
             0.0, kFilterSlopes - 1.0, d.slope);
+        add(paramIndex(filter, FilterParam::Vowel), name + " " + tr(Str::ParamVowel), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
+        add(paramIndex(filter, FilterParam::Morph), name + " " + tr(Str::ParamMorph), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
+        add(paramIndex(filter, FilterParam::MorphMode), name + " " + tr(Str::ParamMorphMode), module,
+            ParamKind::MorphMode, 0.0, static_cast<double>(MorphMode::Count) - 1.0, 0.0);
         add(paramIndex(filter, FilterParam::Enabled), name + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0,
             1.0, 0.0);
         add(paramIndex(filter, FilterParam::Mix), name + " " + tr(Str::ParamMix), module, ParamKind::Percent, 0.0, 1.0,
@@ -678,6 +690,10 @@ void buildTable(ParamTable &t) {
         fx(FxParam::FilterDrive, tr(Str::ParamFilterDrive), ParamKind::Percent, 0.0, 1.0, 0.0);
         fx(FxParam::FilterMix, tr(Str::ParamFilterMix), ParamKind::Percent, 0.0, 1.0, 1.0);
         fx(FxParam::FilterKeyTrack, tr(Str::ParamFilterKeyTrack), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::FilterVowel, tr(Str::ParamFilterVowel), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::FilterMorph, tr(Str::ParamFilterMorph), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::FilterMorphMode, tr(Str::ParamFilterMorphMode), ParamKind::MorphMode, 0.0,
+           static_cast<double>(MorphMode::Count) - 1.0, 0.0);
 
         fx(FxParam::CompThreshold, tr(Str::ParamCompThreshold), ParamKind::Decibel, -60.0, 0.0, -18.0);
         fx(FxParam::CompRatio, tr(Str::ParamCompRatio), ParamKind::CompRatio, 1.0, 20.0, 4.0);
@@ -1036,6 +1052,10 @@ const char *routeModeName(RouteMode mode) {
     return nameAt(kRouteModeNames, static_cast<double>(mode));
 }
 
+const char *morphModeName(MorphMode mode) {
+    return nameAt(kMorphModeNames, static_cast<double>(mode));
+}
+
 const char *midiInputName(MidiInput input) {
     return nameAt(kMidiInputNames, static_cast<double>(input));
 }
@@ -1125,7 +1145,8 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
            kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
-           kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan;
+           kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan ||
+           kind == ParamKind::MorphMode;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1324,6 +1345,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::RouteMode:
         std::snprintf(out, capacity, "%s", nameAt(kRouteModeNames, value));
         break;
+    case ParamKind::MorphMode:
+        std::snprintf(out, capacity, "%s", nameAt(kMorphModeNames, value));
+        break;
     case ParamKind::MidiInput:
         std::snprintf(out, capacity, "%s", nameAt(kMidiInputNames, value));
         break;
@@ -1422,6 +1446,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::AmpMic       ? findName(kAmpMicNames, text)
                       : def.kind == ParamKind::MidiInput    ? findName(kMidiInputNames, text)
                       : def.kind == ParamKind::RouteMode    ? findName(kRouteModeNames, text)
+                      : def.kind == ParamKind::MorphMode    ? findName(kMorphModeNames, text)
                                                             : -1;
     if (named >= 0) {
         *out = named;
@@ -1638,6 +1663,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::OpWarp:
     case ParamKind::UniCurve:
     case ParamKind::UniPan:
+    case ParamKind::MorphMode:
     case ParamKind::FilterType:
         value = std::round(value);
         break;

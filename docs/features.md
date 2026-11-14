@@ -160,7 +160,40 @@ What the plugin does and how its editor works, in full. Building and installing 
     18, it plays the slope above;
   - Comb: a tuned feedback delay, so the cutoff sets the pitch and resonance the feedback. With its cutoff at 0
     and the note source on it at 100 %, its curve drawn along the cutoff knobs' (and Key Track left at 0), it
-    rings at the pitch of the note.
+    rings at the pitch of the note;
+  - Ladder: a four-pole transistor ladder, a low-pass whose resonance runs in a loop around its four one-pole
+    stages, solved without a sample's delay so its cutoff and peak land where the analog circuit's do. **Slope**
+    taps one to four of its stages (6 to 24 dB), the resonance coming from around all four. Each stage saturates
+    what it takes in, on a curve close to tanh, as a transistor ladder's pairs do: an operator at its usual level
+    comes out warmed (a sine's 3rd harmonic about 30 dB under it, where the low-pass leaves it clean), and Drive's
+    saturator feeds it at full level rather than taken back down, so its stages saturate on top of it (its output is
+    taken down instead). As its resonance rises its level below the cutoff falls (a quarter of that loss put back),
+    thinning the note. From about 93 % of Resonance it self-oscillates, a tone of its own at its cutoff held by its
+    stages' saturation, louder toward the top; once a released note's operators have faded, its resonance is held
+    at 90 %, so its ringing dies away and the voice ends;
+  - Diode: a four-pole diode ladder, its stages loading each other (each the one before it half as much as a passive
+    RC ladder's would), so its poles spread apart: darker than the ladder without resonance, and its peak climbs
+    toward the cutoff as the resonance rises, the cutoff where it lands at the top. 24 dB only. It saturates once, at
+    its input less the feedback, loses less of its bass than the ladder (half of the loss put back), takes Drive as the
+    ladder does, and self-oscillates from about 93 % in the same way, held at 90 % once a released note has faded;
+  - Sallen-Key LP and Sallen-Key HP: a two-pole Sallen-Key filter, as in Korg's MS-20, 12 dB only: soft without
+    resonance (two poles at the cutoff), with its resonance's loop through a clipper set low, so that as Resonance
+    rises it screams and breaks up rather than ringing clean. It takes Drive as the ladder does, and self-oscillates
+    from about 93 % in the same way, held at 90 % once a released note has faded;
+  - Formant: three band-passes at a vowel's first three formants (a bass voice's A, E, I, O and U), each at its level.
+    **Vowel** (A to begin with) goes from one vowel to the next in equal steps, moving the formants on a log scale and
+    their levels in dB, so it can be swept or modulated like any knob. Cutoff shifts the formants, half an octave for
+    each octave it moves from its middle (where they are as the table has them), and Key Track with it; Resonance
+    narrows them, from a Q of 4 to 30;
+  - Morph: the state-variable filter going from its low-pass to its high-pass as **Morph** goes from 0 to 1
+    (0 to begin with), through its band-pass or its notch as **Morph Mode** says (LP > BP > HP, the first, or
+    LP > Notch > HP, its notch switch on). **Slope** picks 12 or 24 dB, as a band-pass's or notch's does (6 and 18
+    playing as the slope above): at 24 a Butterworth stage after the resonant one, shared out the same way. Its outputs
+    are shared out: through the band-pass, the low-pass gives way to the band-pass over
+    the first half and the band-pass to the high-pass over the second; through the notch, the high-pass rises to meet
+    the low-pass (the two together the notch) and the low-pass then falls away. At 0, 0.5 and 1 it plays exactly the
+    low-pass, the band-pass or notch and the high-pass at its slope, with Resonance as theirs; Morph can be swept or
+    modulated like any knob.
 
   Every filter's Cutoff, the filter effect's too, starts (and resets) at its knob's middle, about 632 Hz: there,
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
@@ -449,8 +482,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     there either), and an **On** switch. All three start on, flat (at 250 Hz, 1 kHz and 4 kHz). A band switched off leaves the sound
     alone, fading out and back in over 5 ms. **Amount** (100 % to begin with) mixes what the bands put out with
     what goes in, as a Mix knob does: at 0 % the EQ leaves the sound alone.
-  - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb; a row of icons on its
-    card, with the list of slopes under the response) and their slopes, 6 to 24 dB, on
+  - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
+    and HP, formant, morph; a list across its card under its title, as the shaper's curves are, with the list of
+    slopes under the response, a morph's with its notch switch (the notch's icon) beside it, and a formant's Vowel or a morph's Morph
+    between Drive and Mix) and their
+    slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
     the last one left it. Like the Param EQ, its display shows what it puts out behind its response.
@@ -1347,8 +1383,11 @@ one may have changed since it last did.
     edit button (a pencil) opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
-    operators it modulates, as a shaper's has), type buttons across the row under it, each a small picture of its
-    response (named on hover), cutoff, resonance, key tracking, drive and mix (its output level is its line to OUT's
+    operators it modulates, as a shaper's has), the type's list across the row under it (where a shaper's curve's
+    is), its button and each of its entries a small picture of the type's response before its name, the wheel over
+    it stepping along them, cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph after
+    them, the six knobs a little closer together, and a morph's slope's list and notch switch (the notch's icon) side
+    by side where the slope's list is), key tracking, drive and mix (its output level is its line to OUT's
     label), and a live response curve, drawn as its Mix blends what goes in back in (a notch at 50 % dips about 6 dB,
     a low-pass leveling off 6 dB down past its cutoff), whose
     handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it, as the filter effect's and
@@ -1771,7 +1810,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,298 of FMVibe's 19,641 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,304 of FMVibe's 19,743 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

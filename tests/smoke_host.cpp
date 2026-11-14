@@ -694,6 +694,10 @@ int main(int argc, char **argv) {
         double ratio = 1.0;    // A's ratio
         OpWarp warp = OpWarp::Off; // A's warp, and its amount
         double warpAmount = 0.0;
+        double drive = 0.0; // that filter's Drive
+        double vowel = 0.0; // and its Vowel, Morph and Morph Mode
+        double morph = 0.0;
+        MorphMode morphMode = MorphMode::Band;
     };
     // Plays the patch for ~0.1 s; returns the left channel after a short settle.
     auto play = [&](const Patch &patch) {
@@ -715,6 +719,10 @@ int main(int argc, char **argv) {
             paramEvent(paramIndex(patch.filter, FilterParam::Cutoff), normFromCutoff(patch.cutoffHz)),
             paramEvent(paramIndex(patch.filter, FilterParam::Resonance), patch.resonance),
             paramEvent(paramIndex(patch.filter, FilterParam::KeyTrack), 0.0),
+            paramEvent(paramIndex(patch.filter, FilterParam::Drive), patch.drive),
+            paramEvent(paramIndex(patch.filter, FilterParam::Vowel), patch.vowel),
+            paramEvent(paramIndex(patch.filter, FilterParam::Morph), patch.morph),
+            paramEvent(paramIndex(patch.filter, FilterParam::MorphMode), static_cast<double>(patch.morphMode)),
             paramEvent(filterLinkIndex(std::min(patch.filter, last - 1), last), patch.intoLast ? 1.0 : 0.0),
         };
         for (int f = 0; f < kFilters; ++f)
@@ -1076,6 +1084,217 @@ int main(int argc, char **argv) {
     check(std::abs(band6 - band12) < 1e-6 * band12 && std::abs(band18 - band24) < 1e-6 * band24 &&
               std::abs(band12 - band24) > 0.01 * band12,
           "a band-pass set to 6 or 18 dB plays 12 or 24");
+    // The ladder: without resonance each slope taps one more of its four one-pole stages, so the saw's 2nd harmonic
+    // against its 1st comes out at that many one-poles' worth, an octave and a half past the cutoff.
+    {
+        std::array<double, kFilterSlopes> ladderBySlope{};
+        bool poles = true;
+        for (int slope = 0; slope < kFilterSlopes; ++slope) {
+            ladderBySlope[slope] = secondHarmonicRatio(
+                {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::Ladder, .slope = slope, .cutoffHz = 300.0});
+            const double expected =
+                0.5 * std::pow((1.0 + std::pow(440.0 / 300.0, 2.0)) / (1.0 + std::pow(880.0 / 300.0, 2.0)), 0.5 * (slope + 1));
+            poles = poles && std::abs(ladderBySlope[slope] / expected - 1.0) < 0.12;
+        }
+        std::printf("      ladder at 300 Hz, 6 to 24 dB: 880/440 Hz %.3f %.3f %.3f %.3f\n", ladderBySlope[0],
+                    ladderBySlope[1], ladderBySlope[2], ladderBySlope[3]);
+        check(poles, "the ladder's slopes tap one to four of its one-pole stages");
+    }
+    // At full resonance the ladder, the diode and the Sallen-Key's self-oscillate: plucked by a saw that dies away in
+    // 20 ms while its key stays down, each rings on at a tone of its own near its cutoff, steady and finite, where at
+    // 80 % (below where it oscillates) it has fallen silent.
+    for (FilterType oscillator : {FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
+                                  FilterType::SallenKeyHigh}) {
+        auto ringing = [&](double resonance) {
+            play({.wave = OpWave::Saw, .throughFilter = true, .type = oscillator, .slope = 3, .cutoffHz = 1500.0,
+                  .resonance = resonance}); // the routing; the note it plays is over
+            const clap_event_param_value_t pluck[] = {paramEvent(paramIndex(0, OpParam::Sustain), 0.0),
+                                                      paramEvent(paramIndex(0, OpParam::Decay), normFromTime(0.02))};
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 32, 69);
+            runBlock({&pluck[0].header, &pluck[1].header, &on.header});
+            runBlocks(blocksPerSecond / 2);
+            std::vector<float> signal;
+            for (int b = 0; b < 16; ++b) {
+                if (!std::isfinite(runBlock()))
+                    return std::vector<float>{};
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            return signal;
+        };
+        const std::vector<float> oscillating = ringing(1.0), resonant = ringing(0.8);
+        double tone = 0.0, toneHz = 0.0;
+        for (double f = 1000.0; f <= 1800.0; f += 5.0)
+            if (const double m = magnitude(oscillating, f); m > tone) {
+                tone = m;
+                toneHz = f;
+            }
+        std::printf("      %s at 1.5 kHz, plucked: rings at %.0f Hz, peak %.3f at full resonance, %.5f at 80 %%\n",
+                    filterTypeName(oscillator), toneHz, peakOf(oscillating), peakOf(resonant));
+        const clap_event_param_value_t restore[] = {paramEvent(paramIndex(0, OpParam::Sustain), 1.0),
+                                                    paramEvent(paramIndex(0, OpParam::Decay), normFromTime(1.5))};
+        runBlock({&restore[0].header, &restore[1].header});
+        char what[96];
+        std::snprintf(what, sizeof what, "the %s self-oscillates at full resonance near its cutoff, and stays finite",
+                      filterTypeName(oscillator));
+        check(!oscillating.empty() && peakOf(oscillating) > 0.05f && peakOf(oscillating) < 4.0f &&
+                  std::abs(toneHz / 1500.0 - 1.0) < 0.1 && peakOf(resonant) < 0.001f,
+              what);
+    }
+    // The diode comes in 24 dB alone: set to any slope, it plays the same. The Sallen-Key's are 12 dB: without
+    // resonance two real poles at the cutoff, so a saw's 2nd harmonic against its 1st comes out at two one-poles'
+    // worth past a 300 Hz cutoff, and its high-pass at 2 kHz lifts it as a high-pass does.
+    {
+        std::array<double, kFilterSlopes> diode{};
+        for (int slope = 0; slope < kFilterSlopes; ++slope)
+            diode[slope] = secondHarmonicRatio(
+                {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::Diode, .slope = slope, .cutoffHz = 600.0});
+        const double skLow = secondHarmonicRatio(
+            {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::SallenKeyLow, .cutoffHz = 300.0});
+        const double skHigh = secondHarmonicRatio(
+            {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::SallenKeyHigh, .cutoffHz = 2000.0});
+        const double twoPoles = 0.5 * (1.0 + std::pow(440.0 / 300.0, 2.0)) / (1.0 + std::pow(880.0 / 300.0, 2.0));
+        std::printf("      saw 880/440 Hz: diode at 600 Hz %.4f %.4f %.4f %.4f; Sallen-Key LP at 300 Hz %.3f (two poles "
+                    "%.3f), HP at 2 kHz %.2f\n",
+                    diode[0], diode[1], diode[2], diode[3], skLow, twoPoles, skHigh);
+        check(diode[0] == diode[3] && diode[1] == diode[3] && diode[2] == diode[3] && diode[3] < 0.5,
+              "the diode plays 24 dB whatever its slope says");
+        check(std::abs(skLow / twoPoles - 1.0) < 0.12 && skHigh > 1.0,
+              "the Sallen-Key low-pass is two poles at its cutoff, and its high-pass lifts the 2nd harmonic");
+    }
+    // The Formant type puts noise through a vowel's formants: A's first at 600 Hz, I's at 250 Hz, each louder there
+    // than at the other's (with the cutoff at its middle, where the formants aren't moved).
+    {
+        auto band = [&](const std::vector<float> &signal, double hz) { // the mean magnitude 30 Hz either side
+            double sum = 0.0;
+            int n = 0;
+            for (double f = hz - 30.0; f <= hz + 30.0; f += 5.0, ++n)
+                sum += magnitude(signal, f);
+            return sum / n;
+        };
+        const Patch noise{.wave = OpWave::Noise,
+                          .throughFilter = true,
+                          .type = FilterType::Formant,
+                          .cutoffHz = cutoffFromNorm(kDefaultCutoff),
+                          .resonance = 0.3};
+        Patch a = noise, i = noise;
+        i.vowel = 0.5;
+        const std::vector<float> atA = play(a), atI = play(i);
+        const double aRatio = band(atA, 600.0) / band(atA, 250.0), iRatio = band(atI, 250.0) / band(atI, 600.0);
+        std::printf("      formant on noise: A 600 Hz over 250 Hz %.1f, I 250 Hz over 600 Hz %.1f\n", aRatio, iRatio);
+        check(aRatio > 3.0 && iRatio > 3.0, "the Formant type puts noise through a vowel's formants, as Vowel picks it");
+    }
+    // The Morph type plays the state-variable filter's responses at its ends and middle, at 12 and at 24 dB: the
+    // low-pass at 0, the high-pass at 1, and at 0.5 the band-pass or the notch, as its mode says; and between, between
+    // them (a saw's 2nd harmonic against its 1st, through a resonant 1 kHz cutoff). Set to 6 or 18 dB, it plays 12 or
+    // 24, as the band-pass and notch do.
+    {
+        auto ratio = [&](FilterType type, int slope, double morph, MorphMode mode) {
+            return secondHarmonicRatio({.wave = OpWave::Saw, .throughFilter = true, .type = type, .slope = slope,
+                                        .cutoffHz = 1000.0, .resonance = 0.3, .morph = morph, .morphMode = mode});
+        };
+        auto same = [](double a, double b) { return std::abs(a - b) <= 1e-4 * std::max(std::abs(b), 1e-6); };
+        bool plays = true, along = true;
+        for (int slope : {1, 3}) {
+            const double low = ratio(FilterType::LowPass, slope, 0.0, MorphMode::Band),
+                         band = ratio(FilterType::BandPass, slope, 0.0, MorphMode::Band),
+                         notch = ratio(FilterType::Notch, slope, 0.0, MorphMode::Band),
+                         high = ratio(FilterType::HighPass, slope, 0.0, MorphMode::Band);
+            const double atLow = ratio(FilterType::Morph, slope, 0.0, MorphMode::Band),
+                         atBand = ratio(FilterType::Morph, slope, 0.5, MorphMode::Band),
+                         atNotch = ratio(FilterType::Morph, slope, 0.5, MorphMode::Notch),
+                         atHigh = ratio(FilterType::Morph, slope, 1.0, MorphMode::Notch),
+                         between = ratio(FilterType::Morph, slope, 0.75, MorphMode::Band);
+            std::printf("      saw 880/440 Hz through 1 kHz at %d dB: morph at 0 %.4f (low-pass %.4f), 0.5 %.4f (band-pass "
+                        "%.4f), 0.5 notch %.4f (notch %.4f), 1 %.4f (high-pass %.4f), 0.75 %.4f\n",
+                        slopeDb(slope), atLow, low, atBand, band, atNotch, notch, atHigh, high, between);
+            plays = plays && same(atLow, low) && same(atBand, band) && same(atNotch, notch) && same(atHigh, high);
+            along = along && between > std::min(band, high) && between < std::max(band, high);
+        }
+        const bool stepped = ratio(FilterType::Morph, 0, 0.3, MorphMode::Band) ==
+                                 ratio(FilterType::Morph, 1, 0.3, MorphMode::Band) &&
+                             ratio(FilterType::Morph, 2, 0.3, MorphMode::Band) ==
+                                 ratio(FilterType::Morph, 3, 0.3, MorphMode::Band);
+        check(plays, "the Morph type plays the low-pass, the band-pass or notch and the high-pass at its ends and "
+                     "middle, at 12 and 24 dB");
+        check(along && stepped, "the Morph type goes between them along the way, and set to 6 or 18 dB plays 12 or 24");
+    }
+    // The regular low-pass (at 12 and 24 dB), the ladder (at 24), the diode and the Sallen-Key low-pass sound unlike one
+    // another, at the same cutoff and resonance: a saw's harmonics through each (its response's shape), the 3rd
+    // harmonic a sine under each one's cutoff comes out with (its saturation), and how far the note falls as the
+    // resonance rises (its loss of bass). Each pair differs by at least 3 dB in one of them.
+    {
+        struct Measured {
+            const char *name;
+            FilterType type;
+            int slope;
+            std::array<double, 6> harmonics{}; // the saw's 2nd to 7th against its 1st, in dB
+            double third = 0.0, thinning = 0.0;
+        };
+        std::array<Measured, 5> lows{{{"low-pass 12", FilterType::LowPass, 1},
+                                      {"low-pass 24", FilterType::LowPass, 3},
+                                      {"ladder 24", FilterType::Ladder, 3},
+                                      {"diode", FilterType::Diode, 3},
+                                      {"Sallen-Key LP", FilterType::SallenKeyLow, 1}}};
+        auto db = [](double ratio) { return 20.0 * std::log10(std::max(ratio, 1e-9)); };
+        for (Measured &m : lows) {
+            const std::vector<float> saw = play({.wave = OpWave::Saw, .throughFilter = true, .type = m.type,
+                                                 .slope = m.slope, .cutoffHz = 1000.0, .resonance = 0.6});
+            for (int h = 2; h <= 7; ++h)
+                m.harmonics[h - 2] = db(magnitude(saw, 440.0 * h) / magnitude(saw, 440.0));
+            const std::vector<float> sine =
+                play({.throughFilter = true, .type = m.type, .slope = m.slope, .cutoffHz = 3000.0, .resonance = 0.3});
+            m.third = db(magnitude(sine, 1320.0) / magnitude(sine, 440.0));
+            m.thinning = db(magnitude(play({.throughFilter = true, .type = m.type, .slope = m.slope,
+                                            .cutoffHz = 3000.0, .resonance = 0.9}),
+                                      440.0) /
+                            magnitude(play({.throughFilter = true, .type = m.type, .slope = m.slope,
+                                            .cutoffHz = 3000.0, .resonance = 0.0}),
+                                      440.0));
+            std::printf("      %-14s saw through 1 kHz at 60 %%, 2nd-7th: %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f dB; sine's 3rd "
+                        "%6.1f dB; note at 90 %% %+5.1f dB\n",
+                        m.name, m.harmonics[0], m.harmonics[1], m.harmonics[2], m.harmonics[3], m.harmonics[4],
+                        m.harmonics[5], m.third, m.thinning);
+        }
+        bool apart = true;
+        for (size_t i = 0; i < lows.size(); ++i)
+            for (size_t j = i + 1; j < lows.size(); ++j) {
+                double most = std::max(std::abs(lows[i].third - lows[j].third),
+                                       std::abs(lows[i].thinning - lows[j].thinning));
+                for (size_t h = 0; h < lows[i].harmonics.size(); ++h)
+                    most = std::max(most, std::abs(lows[i].harmonics[h] - lows[j].harmonics[h]));
+                if (most < 3.0) {
+                    std::printf("      %s and %s differ by only %.1f dB\n", lows[i].name, lows[j].name, most);
+                    apart = false;
+                }
+            }
+        check(apart, "the low-pass, the ladder, the diode and the Sallen-Key low-pass each sound unlike the others");
+    }
+    // The ladder colours what goes through it where the low-pass doesn't: an A4 sine well under both cutoffs comes
+    // out of the low-pass clean and out of the ladder with a 3rd harmonic from its saturation, more with Drive; and as
+    // its resonance rises the ladder thins the note, which the low-pass leaves as it was.
+    {
+        auto at = [&](FilterType type, double resonance, double drive) {
+            return play({.throughFilter = true, .type = type, .slope = 3, .cutoffHz = 3000.0, .resonance = resonance,
+                         .drive = drive});
+        };
+        auto db = [](double ratio) { return 20.0 * std::log10(std::max(ratio, 1e-9)); };
+        auto third = [&](const std::vector<float> &signal) { return db(magnitude(signal, 1320.0) / magnitude(signal, 440.0)); };
+        const std::vector<float> low = at(FilterType::LowPass, 0.3, 0.0), ladder = at(FilterType::Ladder, 0.3, 0.0),
+                                 driven = at(FilterType::Ladder, 0.3, 0.5);
+        const double lowThird = third(low), ladderThird = third(ladder), drivenThird = third(driven);
+        const double lowThin = db(magnitude(at(FilterType::LowPass, 0.9, 0.0), 440.0) /
+                                  magnitude(at(FilterType::LowPass, 0.0, 0.0), 440.0));
+        const double ladderThin = db(magnitude(at(FilterType::Ladder, 0.9, 0.0), 440.0) /
+                                     magnitude(at(FilterType::Ladder, 0.0, 0.0), 440.0));
+        std::printf("      A4 sine under a 3 kHz cutoff, 3rd harmonic: low-pass %.0f dB, ladder %.0f dB, driven ladder "
+                    "%.0f dB; the note at 90 %% resonance: low-pass %+.1f dB, ladder %+.1f dB\n",
+                    lowThird, ladderThird, drivenThird, lowThin, ladderThin);
+        check(lowThird < -80.0 && ladderThird > -45.0 && drivenThird > ladderThird + 6.0,
+              "the ladder saturates what goes through it, more with Drive, where the low-pass stays clean");
+        check(std::abs(lowThin) < 0.5 && ladderThin < -2.0,
+              "the ladder thins the note as its resonance rises, where the low-pass doesn't");
+    }
     bool filtersSound = true;
     for (int t = 0; t < static_cast<int>(FilterType::Count); ++t) {
         for (int slope = 0; slope < kFilterSlopes; ++slope) {
@@ -1417,6 +1636,27 @@ int main(int argc, char **argv) {
         for (const clap_event_param_value_t &ev : back)
             events.push_back(&ev.header);
         runBlock(events);
+    }
+
+    // A voice through a self-oscillating ladder, diode or Sallen-Key still ends after its release: once its operators
+    // have faded, the filter is held below where it oscillates, and rings out.
+    for (FilterType oscillator : {FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
+                                  FilterType::SallenKeyHigh}) {
+        play({.wave = OpWave::Saw, .throughFilter = true, .type = oscillator, .slope = 3, .cutoffHz = 800.0,
+              .resonance = 1.0});
+        const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 31, 57);
+        const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 31, 57);
+        out.noteEnds.clear();
+        bool finite = std::isfinite(runBlock({&on.header}));
+        for (int b = 0; b < 8; ++b)
+            finite = std::isfinite(runBlock()) && finite;
+        finite = std::isfinite(runBlock({&off.header})) && finite;
+        for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+            finite = std::isfinite(runBlock()) && finite;
+        char what[96];
+        std::snprintf(what, sizeof what, "a voice through a self-oscillating %s ends after its release",
+                      filterTypeName(oscillator));
+        check(finite && out.noteEnds.size() == 1 && runBlock() == 0.0f, what);
     }
 
     // A voice ringing through a resonant comb still ends after its release.
