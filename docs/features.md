@@ -805,6 +805,35 @@ one may have changed since it last did.
     on, switches on the nodes it joins. A row's or column's name works like the node's tab in the
     inspector: clicking it shows that node there, switching it on if it is off, and the names of the node shown
     sit on a plate, like its tab, where a click switches it off, or on again.
+  - **Algorithms**: **ALGORITHM**, at the right end of the tabs' row while ROUTING or MATRIX is shown, opens a panel
+    of the classic FM algorithms over the graph or matrix (the inspector left in view), in four sets that the switch
+    in its title row picks, by how many operators they use (**6 | 4 | 3 | 2**, with "Operators" before them): 6, the
+    32 layouts of six, numbered as the classic charts have them; 4, the 8 of four (A to D), as the classic
+    four-operator chips number them; 3, the 5 shapes three can take (A to C: a stack, two into one, one into two, a
+    pair beside a carrier, all three out); and 2, the classic two-operator pair (B into A, or both out). The feedback of four, three and two
+    operators sits on the top one (D, C or B). Each is a
+    thumbnail drawn the way the graph runs, modulators on the left, carriers in a column and their lines into OUT on
+    the right, each operator in its color and its feedback a small loop on its top (or, for six operators' 4 and 6,
+    a dashed curve back up the stack). The panel's foot names the one under the mouse (its number, how many carriers
+    it has and where its feedback is). The algorithm the operators form now is lit, and its number shows on the
+    button (with "4-OP", "3-OP" or "2-OP" before it for fewer operators); the panel opens on its set. A click on a thumbnail sets the
+    operators to it, as one undo step, and closes the panel; Escape or a click around it closes it too. Picking one:
+    - switches on the operators it uses and the others off (their settings and routes kept, as switching off keeps
+      them);
+    - keeps each route it has as it was (depth, mode and modulation), brings in its others at 50 % (its feedback at
+      25 %), and disconnects the routes among its operators that it hasn't, their modulation with them;
+    - sends its carriers out: one going out already, straight or through a filter or shaper that goes out, as it was,
+      a new one at 100 % / √n for n carriers (71 % for two, 41 % for six); and takes the others off the output, a
+      modulator's send into a filter or shaper that goes out disconnected too (what it sends into one that only
+      modulates stays);
+    - lays its operators out afresh, their wires bowing as new ones do: the carriers in the column where A and D start,
+      clear of the shapers and filters nearer OUT, each operator two columns left of the furthest down the stack it
+      modulates, the rows spread over the graph's height (past five, every other one a column further left); an
+      operator landing on a filter or shaper shown there is moved clear of it, and a feedback route back up a stack
+      bows round the operators between.
+    Filters, shapers, their routes and places, the carriers' sends into them and every operator's own sound (wave,
+    ratio, envelope, unison) stay as they are. Nothing is stored for it: which algorithm the operators form is read
+    from the routes each time (one above 0 % or kept at 0 % counting, whatever its depth).
 
   - **FX**: takes the place of both the routing panel and the inspector. It shows a card per effect, left to right
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter

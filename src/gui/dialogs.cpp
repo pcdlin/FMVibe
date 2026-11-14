@@ -212,6 +212,13 @@ void View::answerConfirm(int button) {
 bool View::dialogKey(Key key) {
     if (typing_ || !dialogOpen() || (key != Key::Enter && key != Key::Escape))
         return false;
+    if (!settingsOpen_ && confirm_ < 0) { // the panel of algorithms: Escape closes it, Enter goes on to the host
+        if (key != Key::Escape)
+            return false;
+        algorithmMenuOpen_ = false;
+        hover_.reset();
+        return true;
+    }
     if (settingsOpen_) { // nothing in it waits to be confirmed: either key closes it
         settingsOpen_ = false;
         hover_.reset();
