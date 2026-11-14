@@ -326,8 +326,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock, so it doesn't use it (nor does
     a Random source, which keeps its steps); an anchored one stands at it at the song's start. A one-shot runs from there to the cycle's
     end, so at 50 % it plays only the second half.
-  - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
-    dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
+  - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 8/1 (a cycle every eight bars) and
+    8/1T, then 4/1 down to 1/64, each straight, dotted (D) or as a triplet (T). A Random and a Curve source sync the
+    same way; the effects' synced times and sweeps stop at 4/1D. Without a tempo from the host, it assumes 120 BPM. The browser demo has no
     host: its editor's title bar has a **tempo** field instead (20–999 BPM, 140 to begin with, remembered by the
     browser; see Header), which every synced LFO, delay and sweep follows, as does `fmvibe-uihost`'s. A new LFO
     starts synced, in quarter notes. The note
@@ -520,7 +521,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Phaser**: 2–12 first-order all-passes (Stages) whose corner an LFO (Rate, 0–20 Hz; at 0 the sweep stands
     still) sweeps up to 2.5 octaves either way of Center (Depth), with Feedback (either sign) from the last stage
     into the first. **Sync** (off to begin with) makes the LFO go round once per note value of the host tempo
-    instead, 4/1 down to 1/64 like an LFO's (a bar to begin with; 120 BPM without a tempo from the host). **Stereo** (off to begin with, under its display) runs the right side's LFO a quarter cycle
+    instead, 4/1D down to 1/64T (an LFO's without its two slowest, 8/1 and 8/1T; a bar to begin with; 120 BPM without a tempo from the host). **Stereo** (off to begin with, under its display) runs the right side's LFO a quarter cycle
     ahead. Mix runs to 100 %, which is half wet: there the notches are deepest, and past it they would only get
     shallower again. Its polarity, **+** or **−** (+ to begin with, at the right under its display), picks whether
     the wet sound is added to the dry one or taken from it: negative turns the wet sound over, and the feedback
