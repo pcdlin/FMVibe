@@ -6,6 +6,7 @@
 #include "opdata.h"
 #include "tables/library.h"
 #include "tables/readers.h"
+#include "gui/algorithms.h"
 #include "gui/arrange.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
@@ -62,6 +63,13 @@ public:
             lastNote = note;
     }
     int lastNote = -1; // the last key played
+    void auditionNote(int note, bool on) override {
+        if (on)
+            lastAudition = note;
+        auditioning += on ? 1 : -1;
+    }
+    int lastAudition = -1; // the last note the SEQ view played to be heard alone
+    int auditioning = 0;   // and how many of them it holds down
     void setScope(int op, int cycles) override {
         scopeOp = op;
         scopeCycles = cycles;
@@ -79,6 +87,8 @@ public:
         setPreset(path);
         return true;
     }
+    // As the plugin does: a factory preset's "file" can't be written over.
+    bool presetWritable() const override { return presetHasFile() && !presetFile().starts_with(L"factory:"); }
     void choosePreset(bool save) override { ++(save ? saves : loads); }
     int resets = 0, loads = 0, saves = 0, writes = 0;
     std::wstring written; // the file savePreset() was given last
@@ -125,6 +135,9 @@ public:
     void setHandleSize(int size) override { handles = size; }
     double linkIntensity() const override { return links; }
     void setLinkIntensity(double amount) override { links = amount; }
+    double gridIntensity() const override { return grid; }
+    void setGridIntensity(double amount) override { grid = amount; }
+    double grid = Controller::kDefaultGridIntensity;
     bool hasTempo() const override { return offersTempo; }
     double tempo() const override { return bpm; }
     void setTempo(double v) override {
@@ -447,9 +460,10 @@ constexpr Point kOutCore = detail::kOutCore; // the routing graph's OUT
 // What covers the routing panel alone (the note curve's and the partial editor) moved with it, right of the lens.
 constexpr float kRoutingDx = detail::kRouting.x - 16.0f;
 const Point kPitchKnob = detail::opKnobCenter(0);
-// On the UNISON tab, under its display: Unison (the copies) first, Rnd Phase last.
-constexpr Point kUnisonKnob{detail::kInspector.x + 16.0f + 268.0f / 4.0f * 0.5f, detail::kUnisonKnobsY};
-constexpr Point kPhaseKnob{detail::kInspector.x + 16.0f + 268.0f / 4.0f * 3.5f, detail::kUnisonKnobsY};
+// On the UNISON tab, under its display: Unison (the copies) first, Blend fourth, Rnd Phase last.
+constexpr Point kUnisonKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 0.5f, detail::kUnisonKnobsY};
+constexpr Point kBlendKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 3.5f, detail::kUnisonKnobsY};
+constexpr Point kPhaseKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 4.5f, detail::kUnisonKnobsY};
 const Point kSlopeKnob = detail::opKnobCenter(-2); // a noise operator's, where the Ratio readout is
 constexpr Point kDecayKnob{detail::kInspector.x + 16.0f + 268.0f / 5.0f * 2.5f, detail::kOpControlsY};
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
@@ -537,6 +551,15 @@ Point anchorToggle(float card) {
 
 Point oneShotToggle(float card) {
     return {cardX(card) + 122.75f, 644.0f};
+}
+
+// A Random card's two clock modes, Retrigger and Free, each as wide as two of an LFO's.
+Point randomRetriggerToggle(float card) {
+    return {cardX(card) + 46.5f, 644.0f};
+}
+
+Point randomFreeToggle(float card) {
+    return {cardX(card) + 107.5f, 644.0f};
 }
 
 Point unipolarToggle(float card) {
@@ -742,8 +765,16 @@ Point scopeCycleButton(int choice) {
 }
 const Point kMoreWavesButton = waveButton(5);
 
-Point typeButton(int type) {
-    return detail::filterTypeButton(type).center();
+// The arrows in a list's button that step its choice along the list (-1 back, 1 on).
+Point listStep(Rect button, int dir) {
+    return detail::listStepButton(button, dir).center();
+}
+
+// The type's list button on a filter's page (where a shaper's curve's is), and its entries, which open under it.
+const Point kTypeButton = detail::kFilterTypeButton.center();
+Point typeItem(FilterType type) {
+    return detail::listMenuItem(detail::kFilterTypeButton, static_cast<int>(FilterType::Count), static_cast<int>(type))
+        .center();
 }
 
 // The slope's list button under the filter's response, and its entries, 6 to 24 dB, which open under it.
@@ -793,20 +824,26 @@ Point nodeTab(int node) {
 
 // A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output and Mix knobs (centered, as far
 // apart as four would be), the list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its
-// edit button in the display's corner.
+// edit button between the list and the symmetric switch.
 constexpr Point kShaperList = ins(1009.0f, 205.0f);
 constexpr Point kShaperSym = ins(1096.0f, 205.0f);
 constexpr Point kShaperLink = ins(1146.0f, 205.0f);
 Point shaperKnob(int knob) {
     return ins(884.0f + 150.0f + 268.0f / 4.0f * (knob - 1.0f), 242.0f); // Drive, Output, Mix
 }
+// A curve's row in a shaper's list, which offers them in its own order (detail::kClipModesOffered): Stack before
+// Custom.
+int clipRow(ClipMode mode) {
+    const auto *offered = std::begin(detail::kClipModesOffered);
+    return static_cast<int>(std::find(offered, std::end(detail::kClipModesOffered), mode) - offered);
+}
 Point shaperListItem(ClipMode mode) {
-    return ins(1009.0f, 220.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f);
+    return ins(1009.0f, 220.0f + 4.0f + clipRow(mode) * 22.0f + 11.0f);
 }
 Point shaperCurveAt(double x, double y) {
     return ins(908.0f + static_cast<float>(x) * 252.0f, 338.0f - static_cast<float>(y) * 42.24f);
 }
-constexpr Point kShaperEdit = ins(1150.0f, 381.0f);
+const Point kShaperEdit = detail::kShaperEditButton.center();
 
 // A switched-off node's ghost, docked under OUT in the graph's bottom right, the ghosts in the nodes' order (mirrors
 // the widgets in view.cpp).
@@ -898,6 +935,12 @@ void addSource(View &view, SourceType type) {
 void addFx(View &view, FxType type) {
     click(view, kFxMenuButton);
     click(view, fxMenuItem(type));
+}
+
+// A filter's type picked from its list on its page.
+void pickType(View &view, FilterType type) {
+    click(view, kTypeButton);
+    click(view, typeItem(type));
 }
 
 void drag(View &view, Point from, Point to) {
@@ -1079,6 +1122,22 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(wheeledDown && std::lround(model.value(paramIndex(0, SourceParam::Shape))) ==
                              static_cast<long>(LfoShape::Square),
           "the wheel over an LFO's shape list steps along the shapes it offers, Square the last");
+    {
+        // The arrows in its button step along the same shapes, round the list's ends: on from Square to Sine, back to
+        // Square, each click an undo step; the icon and name between them (rendered).
+        const Rect button = detail::lfoShapeButton(0.0f);
+        const int shape = paramIndex(0, SourceParam::Shape);
+        click(view, listStep(button, 1));
+        const bool round = std::lround(model.value(shape)) == static_cast<long>(LfoShape::Sine);
+        view.mouseMove(listStep(button, 1), {});
+        const bool shot = renderer.save(view, dir / "10b-lfo-shape-steps.png");
+        click(view, listStep(button, -1));
+        const bool back = std::lround(model.value(shape)) == static_cast<long>(LfoShape::Square);
+        view.undo();
+        check(round && back && shot && std::lround(model.value(shape)) == static_cast<long>(LfoShape::Sine),
+              "the arrows in an LFO's shape list step its shape round the list's ends, each an undo step");
+        view.undo();
+    }
     // The Random source, in the next card: synced on quarter notes as it starts, as an LFO is.
     addSource(view, SourceType::Random);
     const bool randomSynced = model.value(paramIndex(1, SourceParam::Sync)) == 1.0 &&
@@ -1088,6 +1147,28 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
+    // Its clock modes are Retrigger and Free alone: the wheel stops at Free, and a click where an LFO's One-Shot
+    // would be picks Free, Anchor and One-Shot left off.
+    {
+        auto clocks = [&] {
+            return std::array{model.value(paramIndex(1, SourceParam::Free)),
+                              model.value(paramIndex(1, SourceParam::Anchor)),
+                              model.value(paramIndex(1, SourceParam::OneShot))};
+        };
+        using Clocks = std::array<double, 3>;
+        view.wheel(randomRetriggerToggle(1), 3.0f, {});
+        const bool wheeled = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, randomRetriggerToggle(1));
+        const bool retriggered = clocks() == Clocks{};
+        click(view, oneShotToggle(1));
+        const bool freed = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, randomRetriggerToggle(1));
+        click(view, randomFreeToggle(1));
+        const bool freeAgain = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, randomRetriggerToggle(1));
+        check(wheeled && retriggered && freed && freeAgain && clocks() == Clocks{},
+              "a Random source's clock modes are Retrigger and Free alone");
+    }
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed Random source");
     // Running, it shows its own last cycles instead, as one line scrolling left, the live dot at its right end.
@@ -1425,6 +1506,19 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {fxCardX(model, 1) + 40.0f, 265.0f + 22.0f}); // Room
     check(listed && model.value(paramIndex(1, FxParam::ReverbType)) == static_cast<double>(ReverbType::Room),
           "the reverb's list picks its algorithm");
+    {
+        // Its arrows step the algorithm: on from Room to Plate, back, and back again past Hall round to Shimmer.
+        const Rect button{fxCardX(model, 1) + 14.0f, 180.0f + 44.0f, fxCardW(model, 1) - 28.0f, 22.0f};
+        const int type = paramIndex(1, FxParam::ReverbType);
+        click(view, listStep(button, 1));
+        const bool plate = model.value(type) == static_cast<double>(ReverbType::Plate);
+        click(view, listStep(button, -1));
+        click(view, listStep(button, -1));
+        click(view, listStep(button, -1));
+        const bool shimmer = model.value(type) == static_cast<double>(ReverbType::Shimmer);
+        model.set(type, static_cast<double>(ReverbType::Room));
+        check(plate && shimmer, "the arrows in the reverb's list step its algorithm round the list's ends");
+    }
     model.set(paramIndex(1, FxParam::ReverbSize), 0.1);
     view.mouseMove({600.0f, 328.0f}, {});
     const bool smallRoom = renderer.save(view, dir / "21d-reverb-small-room.png");
@@ -1467,7 +1561,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     };
     auto aboveB = [&](float offset) {
         model.live.modOffset[matrixIndex(1, 0)] = offset;
-        view.poll();
+        for (int poll = 0; poll < 60; ++poll) // the halo eases to its level over a few polls, from wherever it was
+            view.poll();
         renderer.save(view, dir / "18b2-modulated-route-glow.png");
         return Above{renderer.pixel({bNode.x, bNode.y - 28.0f}), renderer.pixel({bNode.x, bNode.y - 33.0f})};
     };
@@ -2128,7 +2223,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     mods.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
     mods.set(slotAmountIndex(kMaxSources, 0), 0.35);
     modsView.poll();
-    click(modsView, {314.0f, 116.0f}); // the MODS tab
+    click(modsView, {382.0f, 116.0f}); // the MODS tab
     auto removedOnly = [&](int slot) {
         click(modsView, {1144.0f, 182.0f}); // the top row's x
         bool ok = true;
@@ -2384,7 +2479,7 @@ void testFlatThemes(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotAmountIndex(0, 0), 0.4);
     model.set(slotAuxIndex(0, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     const Rect row = detail::modsRow(0.0f), cell = detail::modsCell(row, detail::kModsAux);
     const float y = row.center().y + 6.0f; // under the name's letters
     // How much of the chip's first 120 px is the row's own fill, its most common color along it.
@@ -2655,8 +2750,250 @@ void renderFactoryPresets(const std::filesystem::path &dir, Renderer &renderer) 
           "every factory preset's routing graph keeps its nodes, wires and labels clear of each other");
 }
 
+// The node places, the routes kept at 0 % and the wires' bends: what an algorithm changes of the layout.
+bool sameRoutingLayout(const UiLayout &a, const UiLayout &b) {
+    return a.nodeX == b.nodeX && a.nodeY == b.nodeY && a.boxX == b.boxX && a.boxY == b.boxY &&
+           a.keptRoutes == b.keptRoutes && a.wireBends == b.wireBends;
+}
+
+// The classic algorithms (kAlgorithms), which View::applyAlgorithm() sets: each on a new patch laid out with no clash
+// (as the factory presets' graphs are counted), the one currentAlgorithm() finds then, and taken back by one undo;
+// then onto a patch of its own, what it keeps, what comes in and what goes with its modulation.
+void checkAlgorithms(const std::filesystem::path &dir, Renderer &renderer) {
+    int clear = 0, known = 0, undone = 0;
+    for (size_t i = 0; i < kAlgorithms.size(); ++i) {
+        const Algorithm &a = kAlgorithms[i];
+        const std::string name = std::to_string(a.ops) + "-op-" + std::to_string(a.number);
+        FakeController model;
+        model.glowLevel = 0.5;
+        View view(model);
+        const ParamValues before = model.values;
+        const UiLayout layoutBefore = model.ui;
+        view.applyAlgorithm(static_cast<int>(i));
+        view.poll();
+        if (view.currentAlgorithm() == static_cast<int>(i))
+            ++known;
+        else
+            std::printf("  algorithm %s: found as %d\n", name.c_str(), view.currentAlgorithm());
+        if (const detail::ArrangeScore score = detail::arrangeScore(model.values, model.ui); score.clashes == 0)
+            ++clear;
+        else
+            std::printf("  algorithm %s: %d clashes in its routing graph\n", name.c_str(), score.clashes);
+        if (i == 0 || i == 4 || i == 23 || i == 31 || i == 32 || i == 37 || i == 40 || i == 42 || i == 45) {
+            view.mouseMove({600.0f, 600.0f}, {});
+            renderer.save(view, dir / ("50-algorithm-" + name + ".png"));
+        }
+        view.undo();
+        if (model.values == before && sameRoutingLayout(model.ui, layoutBefore))
+            ++undone;
+        else
+            std::printf("  algorithm %s: not all taken back by an undo\n", name.c_str());
+    }
+    const int count = static_cast<int>(kAlgorithms.size());
+    check(clear == count, "every algorithm keeps its routing graph's nodes, wires and labels clear of each other");
+    check(known == count, "every algorithm set is the one the operators are found to form");
+    check(undone == count, "one undo takes every algorithm back, params and layout");
+
+    // A patch of its own: A, B, C and F1 on; B into A at 35 %, B's feedback at 30 %, C into A at 55 % as Linear FM with
+    // an LFO on it, A into F1 at 40 % (and going out too), C into F1 at 60 % and F1 out at 80 %.
+    FakeController model;
+    model.glowLevel = 0.5;
+    View view(model);
+    const int f1 = kOps;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(2, OpParam::Enabled), 1.0);
+    model.set(paramIndex(0, FilterParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.35);
+    model.set(matrixIndex(1, 1), 0.30);
+    model.set(matrixIndex(2, 0), 0.55);
+    model.set(detail::routeModeParam(2, 0), static_cast<double>(RouteMode::LinearFm));
+    model.set(detail::routeParam(0, f1), 0.40);
+    model.set(detail::routeParam(2, f1), 0.60);
+    model.set(detail::outParam(f1), 0.80);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(sourceEnabledIndex(0), 1.0);
+    model.set(slotTargetIndex(0, 0), slotTargetValue(matrixIndex(2, 0)));
+    model.ui.keptRoutes = {detail::outParam(0), matrixIndex(1, 0), matrixIndex(1, 1), matrixIndex(2, 0),
+                           detail::routeParam(0, f1), detail::routeParam(2, f1), detail::outParam(f1)};
+    view.poll();
+    const ParamValues before = model.values;
+    const UiLayout layoutBefore = model.ui;
+    check(view.currentAlgorithm() < 0, "a patch that isn't one of the algorithms is found to be none");
+    view.applyAlgorithm(4); // six operators' 5: B into A, D into C, F into E; A, C and E out; F's feedback
+    view.poll();
+    renderer.save(view, dir / "50a-algorithm-onto-patch.png");
+    const double third = 1.0 / std::sqrt(3.0);
+    auto about = [](double v, double want) { return std::abs(v - want) < 1e-9; };
+    bool on = true;
+    for (int op = 0; op < kOps; ++op)
+        on = on && model.value(paramIndex(op, OpParam::Enabled)) == 1.0;
+    check(on && model.value(matrixIndex(1, 0)) == 0.35 && model.value(matrixIndex(3, 2)) == View::kAlgorithmDepth &&
+              model.value(matrixIndex(5, 4)) == View::kAlgorithmDepth &&
+              model.value(matrixIndex(5, 5)) == View::kAlgorithmFeedback,
+          "an algorithm switches its operators on, keeps a route it has as it was and brings in its others");
+    check(model.value(matrixIndex(1, 1)) == 0.0 && model.value(matrixIndex(2, 0)) == 0.0 &&
+              model.value(detail::routeModeParam(2, 0)) == 0.0 && slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
+              std::find(model.ui.keptRoutes.begin(), model.ui.keptRoutes.end(), matrixIndex(2, 0)) ==
+                  model.ui.keptRoutes.end(),
+          "an algorithm disconnects the routes it hasn't, their modes and modulation with them");
+    check(model.value(detail::outParam(0)) == 1.0 && model.value(detail::outParam(2)) == 0.0 &&
+              about(model.value(detail::outParam(4)), third) && model.value(detail::outParam(1)) == 0.0 &&
+              model.value(detail::outParam(3)) == 0.0 && model.value(detail::outParam(5)) == 0.0,
+          "an algorithm's carriers go out (as they did, through a filter too, or at 1 / sqrt(carriers)), the others not");
+    check(model.value(paramIndex(0, FilterParam::Enabled)) == 1.0 && model.value(detail::routeParam(0, f1)) == 0.40 &&
+              model.value(detail::routeParam(2, f1)) == 0.60 && model.value(detail::outParam(f1)) == 0.80 &&
+              model.ui.boxX == layoutBefore.boxX && model.ui.boxY == layoutBefore.boxY,
+          "an algorithm leaves the filters, their places and the sends into them alone");
+    check(view.currentAlgorithm() == 4, "an operator going out through a filter counts as a carrier");
+    view.undo();
+    check(model.values == before && sameRoutingLayout(model.ui, layoutBefore),
+          "one undo brings back the routes, the mode and the LFO an algorithm took away");
+    view.redo();
+    view.applyAlgorithm(32); // four operators' 1: D into C into B into A
+    view.poll();
+    check(model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && model.value(paramIndex(5, OpParam::Enabled)) == 0.0 &&
+              model.value(matrixIndex(5, 4)) == View::kAlgorithmDepth && model.value(detail::outParam(4)) == third,
+          "a four-operator algorithm switches E and F off, leaving their routes and outputs as they were");
+    check(model.value(detail::outParam(2)) == 0.0 && model.value(detail::routeParam(2, f1)) == 0.0 &&
+              model.value(detail::routeParam(0, f1)) == 0.40 && view.currentAlgorithm() == 32,
+          "an operator an algorithm makes a modulator stops going out through a filter, a carrier's send staying");
+    renderer.save(view, dir / "50b-algorithm-four-ops.png");
+}
+
+// The brightest channel of a pixel.
+int levelOf(uint32_t color) {
+    return std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                     static_cast<int>(color & 255)});
+}
+
+// ALGORITHM and its panel: there with ROUTING and MATRIX only; its thumbnails, the one under the mouse named at the
+// panel's foot (read off the rendered pixels), a click setting the operators to it in one undo step and closing it,
+// its number then on the button and its thumbnail lit (read off the rendered pixels); the switch to the four
+// operators' algorithms; and Escape and a click around closing it, changing nothing.
+void checkAlgorithmMenu(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    const Point button = detail::kAlgorithmButton.center();
+    const Rect six = detail::algorithmPanel(32);
+    const Point title{six.x + 260.0f, six.y + 24.0f}; // in the title row, between ALGORITHM and the switch
+    const Point badge{detail::kAlgorithmButton.right() - 34.0f, button.y};
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51-algorithm-closed.png");
+    const uint32_t under = renderer.pixel(title), noBadge = renderer.pixel(badge);
+    click(view, button);
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool openShot = renderer.save(view, dir / "51a-algorithm-panel.png");
+    check(openShot && view.dialogOpen() && renderer.pixel(title) != under,
+          "ALGORITHM opens the panel of algorithms over the graph");
+    // The foot names the thumbnail under the mouse, in the text's color where the hint was dim.
+    const float footY = six.bottom() - 0.5f * (detail::kAlgorithmFootH - 10.0f);
+    const Point footFrom{six.x + detail::kAlgorithmPad, footY}, footTo{six.x + 330.0f, footY};
+    const int hint = levelOf(brightestAlong(renderer, footFrom, footTo));
+    const Point fifth = detail::algorithmCell(32, 4).center();
+    view.mouseMove(fifth, {});
+    const bool hoverShot = renderer.save(view, dir / "51b-algorithm-hover.png");
+    check(hoverShot && levelOf(brightestAlong(renderer, footFrom, footTo)) > hint + 20,
+          "the panel's foot names the algorithm under the mouse");
+    const ParamValues before = model.values;
+    click(view, fifth);
+    view.poll();
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51c-algorithm-picked.png");
+    check(!view.dialogOpen() && view.currentAlgorithm() == 4 && levelOf(renderer.pixel(badge)) != levelOf(noBadge),
+          "a thumbnail sets the operators to its algorithm and closes the panel, its number on ALGORITHM");
+    view.undo();
+    const bool undone = model.values == before;
+    view.redo();
+    check(undone && view.currentAlgorithm() == 4, "picking an algorithm is one undo step");
+    // Open again: the panel shows the six operators' algorithms with the one in force lit.
+    click(view, button);
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51d-algorithm-current.png");
+    const Rect lit = detail::algorithmCell(32, 4), other = detail::algorithmCell(32, 5);
+    const uint32_t litEdge = renderer.pixel({lit.x + 0.5f * lit.w, lit.y + 0.75f});
+    const uint32_t otherEdge = renderer.pixel({other.x + 0.5f * other.w, other.y + 0.75f});
+    check(levelOf(litEdge) > levelOf(otherEdge) + 40, "the panel lights the algorithm the operators form");
+    // Escape closes it; Enter goes on to the host. A click around it closes it too, changing nothing.
+    const bool enterPassed = !view.dialogKey(View::Key::Enter) && view.dialogOpen();
+    const bool escaped = view.dialogKey(View::Key::Escape) && !view.dialogOpen();
+    click(view, button);
+    const ParamValues picked = model.values;
+    click(view, {700.0f, 700.0f});
+    check(enterPassed && escaped && !view.dialogOpen() && model.values == picked,
+          "Escape and a click around the panel close it, changing nothing; Enter goes on to the host");
+    // The Operators switch's 4 shows the four operators' eight, its first a stack of four.
+    click(view, button);
+    click(view, detail::algorithmSetButton(32, 1).center());
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool fourShot = renderer.save(view, dir / "51e-algorithm-four.png");
+    click(view, detail::algorithmCell(8, 0).center());
+    view.poll();
+    check(fourShot && view.currentAlgorithm() == 32 && model.value(paramIndex(4, OpParam::Enabled)) == 0.0,
+          "the Operators switch's 4 shows the four operators' algorithms, which switch E and F off");
+    click(view, button); // opened again on the set of the algorithm in force
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51f-algorithm-four-current.png");
+    const Rect fourLit = detail::algorithmCell(8, 0), fourOther = detail::algorithmCell(8, 1);
+    check(levelOf(renderer.pixel({fourLit.x + 0.5f * fourLit.w, fourLit.y + 0.75f})) >
+              levelOf(renderer.pixel({fourOther.x + 0.5f * fourOther.w, fourOther.y + 0.75f})) + 40,
+          "the panel opens on the four operators' algorithms while one of them is in force");
+    // Its 3 and 2 likewise: two into one, switching D off, and an FM pair, switching C off.
+    click(view, detail::algorithmSetButton(8, 2).center());
+    view.mouseMove(detail::algorithmCell(5, 1).center(), {});
+    const bool threeShot = renderer.save(view, dir / "51f2-algorithm-three.png");
+    click(view, detail::algorithmCell(5, 1).center());
+    view.poll();
+    const bool three = view.currentAlgorithm() == algorithmSetRange(3).first + 1 &&
+                       model.value(paramIndex(3, OpParam::Enabled)) == 0.0 &&
+                       model.value(paramIndex(2, OpParam::Enabled)) == 1.0 && model.value(matrixIndex(2, 0)) > 0.0;
+    click(view, button); // opened on the three operators' set
+    click(view, detail::algorithmSetButton(5, 3).center());
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool twoShot = renderer.save(view, dir / "51f3-algorithm-two.png");
+    click(view, detail::algorithmCell(2, 0).center());
+    view.poll();
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "51f4-algorithm-two-picked.png");
+    const bool two = view.currentAlgorithm() == algorithmSetRange(2).first &&
+                     model.value(paramIndex(2, OpParam::Enabled)) == 0.0 && model.value(matrixIndex(1, 0)) > 0.0 &&
+                     model.value(matrixIndex(1, 1)) == View::kAlgorithmFeedback;
+    check(threeShot && three && twoShot && two,
+          "the Operators switch's 3 and 2 show their algorithms, which switch the operators past theirs off");
+    click(view, button); // open again, for what follows
+    // MATRIX has it too, and FX and MODS don't; another view closes it.
+    model.ui.view = RoutingView::Matrix;
+    view.poll();
+    const bool matrixKept = view.dialogOpen();
+    view.dialogKey(View::Key::Escape);
+    click(view, button);
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool matrixShot = renderer.save(view, dir / "51g-algorithm-matrix.png");
+    const bool matrixOpen = view.dialogOpen();
+    model.ui.view = RoutingView::Fx;
+    view.poll();
+    const bool closedByFx = !view.dialogOpen();
+    click(view, button);
+    const bool noneInFx = !view.dialogOpen();
+    model.ui.view = RoutingView::Mods;
+    view.poll();
+    click(view, button);
+    const bool noneInMods = !view.dialogOpen();
+    check(matrixKept && matrixShot && matrixOpen && closedByFx && noneInFx && noneInMods,
+          "ALGORITHM is there with ROUTING and MATRIX, not with FX or MODS, and another view closes its panel");
+    // The panel in Spectrum, glowing, for a look.
+    model.ui.view = RoutingView::Graph;
+    model.themeName = "Spectrum";
+    model.glowLevel = 0.5;
+    view.poll();
+    click(view, button);
+    view.mouseMove(detail::algorithmCell(8, 4).center(), {});
+    renderer.save(view, dir / "51h-algorithm-spectrum.png");
+    view.dialogKey(View::Key::Escape);
+}
+
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
-                   const std::string &prefix, size_t effects, const std::string &theme = "", bool playing = false) {
+                   const std::string &prefix, size_t effects, const std::string &theme = "", bool playing = false, bool seq = false) {
     FakeController model;
     if (!theme.empty())
         model.themeName = theme;
@@ -2707,15 +3044,20 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     view.mouseMove({600.0f, 600.0f}, {});
     shots = shots && model.ui.fxGraphView &&
             renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
+    if (seq) { // its SEQ view (the README's)
+        click(view, {308.0f, 116.0f});
+        view.mouseMove({600.0f, 600.0f}, {});
+        shots = shots && renderer.save(view, dir / (prefix + "-seq.png"), &panel); // the panel alone, as the FX one
+    }
     if (!theme.empty()) { // in a theme other than the checks' Midnight, its effects as a row and its MODS view too
         click(view, detail::fxModeButton(0).center());
         view.mouseMove({600.0f, 600.0f}, {});
         shots = shots && renderer.save(view, dir / (prefix + "-fx-row.png"));
-        click(view, {314.0f, 116.0f});
+        click(view, {382.0f, 116.0f});
         view.mouseMove({600.0f, 600.0f}, {});
         shots = shots && renderer.save(view, dir / (prefix + "-mods.png"));
     }
-    check(shots && fxChain(model).size() == effects,
+    check(shots && (effects == SIZE_MAX || fxChain(model).size() == effects), // SIZE_MAX: any number
           ("render " + name + "'s routing, matrix and " + std::to_string(effects) +
            " effects, and its effects' panel as a chain and as a graph")
               .c_str());
@@ -3003,6 +3345,36 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     }
 }
 
+// In Porcelain, whose displays are nearly the inspector's lens's own face, a filter's response and a shaper's curve on
+// the lens are drawn a shade apart from it, as in the other themes (read off the rendered pixels).
+void checkLensDisplays(const std::filesystem::path &dir, Renderer &renderer) {
+    auto apart = [](uint32_t a, uint32_t b) {
+        int sum = 0;
+        for (int shift = 0; shift < 24; shift += 8)
+            sum += std::abs(static_cast<int>((a >> shift) & 0xFF) - static_cast<int>((b >> shift) & 0xFF));
+        return sum;
+    };
+    for (const char *theme : {"Porcelain", "Spectrum", "Midnight", "Light"}) {
+        FakeController model;
+        model.themeName = theme;
+        View view(model);
+        int least = 1000;
+        for (const int node : {kOps, kOps + kFilters}) { // F1, then S1: switched on, its page shown
+            click(view, nodeTab(node));
+            view.mouseMove({600.0f, 900.0f}, {});
+            if (!renderer.save(view, dir / (std::string("14x-lens-display-") + theme + ".png")))
+                least = 0;
+            const Rect display = node == kOps ? detail::kFilterDisplay : detail::kShaperDisplay;
+            // Just inside the display's top left corner, clear of its grid and curve, and on the lens left of it.
+            least = std::min(least, apart(renderer.pixel({display.x + 5.0f, display.y + 5.0f}),
+                                          renderer.pixel({display.x - 6.0f, display.y + 30.0f})));
+        }
+        std::printf("      %s: the lens's displays %d apart from its face\n", theme, least);
+        check(least >= 18, (std::string("in ") + theme +
+                            ", a filter's and a shaper's display stand apart from the inspector's lens").c_str());
+    }
+}
+
 // A shaper's page: the curve list picks Hard, the link switch unlinks, Drive turns; picked from the list, Custom shows
 // its points in the display to drag, and its pencil opens the big editor over the routing panel, the page staying.
 void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
@@ -3028,6 +3400,51 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, shaperKnob(3), {shaperKnob(3).x, shaperKnob(3).y - 30.0f});
     check(mixTurned && at(ShaperParam::Mix) == 1.0 && at(ShaperParam::Out) == outBefore,
           "a shaper's page has Drive, Output and Mix, centered, and no To Out knob");
+    {
+        // The Stack curve's Stack knob comes after Drive, the four knobs as far apart as ever, centered: dragged up, it runs
+        // more stages, whole ones, undoably.
+        click(view, kShaperList);
+        click(view, shaperListItem(ClipMode::Stack));
+        const bool picked = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack);
+        const Point stackKnob = ins(884.0f + 150.0f - 268.0f / 4.0f * 0.5f, 242.0f);
+        drag(view, stackKnob, {stackKnob.x, stackKnob.y - 40.0f});
+        const double stacked = at(ShaperParam::Stack);
+        view.mouseMove(stackKnob, {});
+        const bool shot = renderer.save(view, dir / "30b-shaper-stack.png");
+        view.undo();
+        const bool undone = at(ShaperParam::Stack) == 1.0;
+        // The wheel over the list's button steps along the list: from Fold to Stack, then to Custom, and back.
+        model.set(paramIndex(shaper, ShaperParam::Mode), static_cast<double>(ClipMode::Fold));
+        view.wheel(kShaperList, 1.0f, {});
+        const bool wheeledToStack = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack);
+        view.wheel(kShaperList, 1.0f, {});
+        const bool wheeledToCustom = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom);
+        view.wheel(kShaperList, -1.0f, {});
+        check(wheeledToStack && wheeledToCustom && at(ShaperParam::Mode) == static_cast<double>(ClipMode::Stack),
+              "the wheel over a shaper's list steps along it, Stack between Fold and Custom");
+        // The arrows in the list's button step along it too, round its ends: from Stack on to Custom, then on round
+        // to the first curve offered and back to Custom, each click an undo step.
+        {
+            const Rect button = detail::shaperModeButton(false);
+            click(view, listStep(button, 1));
+            const bool onToCustom = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom);
+            const Rect custom = detail::shaperModeButton(true); // narrower now, beside SYM
+            click(view, listStep(custom, 1));
+            const bool round = at(ShaperParam::Mode) == static_cast<double>(detail::kClipModesOffered[0]);
+            click(view, listStep(button, -1));
+            const bool back = at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom);
+            view.undo();
+            view.undo();
+            check(onToCustom && round && back && at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom),
+                  "the arrows in a shaper's list step its curve, round the list's ends, each an undo step");
+            view.undo();
+        }
+        click(view, kShaperList);
+        click(view, shaperListItem(ClipMode::Hard));
+        check(picked && stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
+                  at(ShaperParam::Mode) == static_cast<double>(ClipMode::Hard),
+              "a shaper's Stack curve shows its Stack knob after Drive, which turns in whole stages, undoably");
+    }
     model.set(paramIndex(0, OpParam::Enabled), 1.0);
     model.set(paramIndex(1, OpParam::Enabled), 1.0);
     model.set(shaperSendIndex(0, shaper), 0.8);
@@ -3049,18 +3466,287 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     const bool symmetric = at(ShaperParam::Symmetric) == 1.0;
     click(view, kShaperSym);
     check(symmetric && at(ShaperParam::Symmetric) == 0.0, "a Custom curve's SYM switches on and off");
+    // The pencil sits beside the curve's list, out of the display, and is lit while its big editor is open.
+    const Point pencilFace{detail::kShaperEditButton.x + 3.0f, detail::kShaperEditButton.y + 3.0f}; // clear of its icon
+    view.mouseMove({600.0f, 900.0f}, {});
+    renderer.save(view, dir / "30a1-shaper-pencil.png");
+    const uint32_t pencilShut = renderer.pixel(pencilFace);
+    const bool pencilOutside = detail::kShaperEditButton.bottom() < detail::kShaperDisplay.y;
     click(view, kShaperEdit);
     view.doubleClick(noteCurveAt(0.25, 0.5), {});
     const bool added = model.value(shaperCurveCountIndex(shaper)) == 4.0;
+    {
+        // The big editor has the SYM switch too, left of its Points | Steps; on, the curve's left half takes no
+        // clicks: a double-click there adds no point, a Shift+click draws no step. Undone, SYM goes off again.
+        const Point sym{detail::kRouting.x + 366.0f, detail::kRouting.y + detail::kRouting.h - 18.0f};
+        const int count = shaperCurveCountIndex(shaper);
+        const double before = model.value(count);
+        click(view, sym);
+        const bool on = at(ShaperParam::Symmetric) == 1.0;
+        const double points = model.value(count);
+        view.doubleClick(noteCurveAt(0.2, 0.3), {});
+        click(view, noteCurveAt(0.3, -0.4), {true, false});
+        const bool ignored = model.value(count) == points;
+        view.mouseMove(noteCurveAt(0.2, 0.3), {});
+        const bool shot = renderer.save(view, dir / "30c-shaper-editor-sym.png");
+        view.undo();
+        check(on && ignored && shot && at(ShaperParam::Symmetric) == 0.0 && model.value(count) == before,
+              "the big curve editor's SYM switches, and its mirrored half takes no clicks");
+    }
     const double driveThen = at(ShaperParam::Drive);
     drag(view, shaperKnob(0), {shaperKnob(0).x, shaperKnob(0).y - 20.0f});
     const bool pageStays = at(ShaperParam::Drive) > driveThen;
     view.mouseMove(noteCurveAt(0.25, 0.5), {});
     const bool editorShot = renderer.save(view, dir / "30b-shaper-editor.png");
+    const bool pencilLit = renderer.pixel(pencilFace) != pencilShut;
     click(view, kRoutingEditorDone);
     check(added && pageStays && editorShot && model.layout().view == RoutingView::Graph,
           "the pencil opens a shaper's curve over the routing panel, its page staying beside it");
+    check(pencilOutside && pencilLit, "a shaper's pencil sits beside its curve's list, lit while its editor is open");
 }
+// Points picked in the shape editors, to move and remove together. In a Curve source's full-size editor: a box from
+// empty space picking the points it reaches (drawn filled, read off the rendered pixels), one of them dragged moving
+// them all as far, one undo step, stopping as a whole at a neighbor not picked and at the top; Ctrl+click adding a
+// point and taking one away, a click on one of several picked picking it alone, Ctrl+A picking every one and Delete
+// removing all but the two it keeps, undoably, and a click on empty space letting them go. On a symmetric voice
+// shaper's page, the middle point picked with another staying in the middle as they move.
+void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Curve)); // the only card, the first
+    view.poll();
+    click(view, lfoDisplay(0));
+    click(view, wideButton(0, 2));
+    const double xs[] = {0.0, 0.2, 0.4, 0.6, 0.8}, ys[] = {-1.0, -0.5, 0.0, 0.5, -0.5};
+    auto reset = [&] {
+        model.set(shapeCountIndex(2), 5.0);
+        for (int i = 0; i < 5; ++i) {
+            model.set(shapePointIndex(2, i, PointField::X), xs[i]);
+            model.set(shapePointIndex(2, i, PointField::Y), ys[i]);
+            model.set(shapePointIndex(2, i, PointField::Curve), 0.0);
+        }
+        view.poll();
+    };
+    reset();
+    auto px = [&](int i) { return model.value(shapePointIndex(2, i, PointField::X)); };
+    auto py = [&](int i) { return model.value(shapePointIndex(2, i, PointField::Y)); };
+    auto nearly = [](double a, double b) { return std::abs(a - b) < 0.01; };
+    auto boxDrag = [&](Point from, Point to, Modifiers mods = {}) {
+        view.mouseDown(from, mods);
+        view.mouseMove({(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}, mods);
+        view.mouseMove(to, mods);
+        view.mouseUp(to, mods);
+    };
+    const Modifiers ctrl{false, true, false};
+    auto lit = [](uint32_t c) { return ((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3; };
+
+    // The box over the 3rd and 4th points: they draw filled, the 2nd hollow; while dragged, the box shows.
+    view.mouseDown(shapeAt(0.3, 0.9), {});
+    view.mouseMove(shapeAt(0.5, 0.4), {});
+    view.mouseMove(shapeAt(0.7, -0.2), {});
+    const bool boxShot = renderer.save(view, dir / "10g-shape-box.png");
+    view.mouseUp(shapeAt(0.7, -0.2), {});
+    view.mouseMove(shapeAt(0.1, 0.9), {});
+    const bool pickedShot = renderer.save(view, dir / "10g-shape-picked.png");
+    const uint32_t filled = lit(renderer.pixel(shapeAt(0.4, 0.0))), hollow = lit(renderer.pixel(shapeAt(0.2, -0.5)));
+    if (filled <= hollow + 40)
+        std::printf("      a point's middle: %u picked, %u not\n", filled, hollow);
+    check(boxShot && pickedShot && filled > hollow + 40, "a box across a shape picks the points it reaches, drawn filled");
+
+    // Dragged by the 4th, both move as far; the others stay; one undo step takes both back.
+    drag(view, shapeAt(0.6, 0.5), shapeAt(0.65, 0.7));
+    const bool moved = nearly(px(2), 0.45) && nearly(py(2), 0.2) && nearly(px(3), 0.65) && nearly(py(3), 0.7) &&
+                       nearly(px(1), 0.2) && nearly(px(4), 0.8) && nearly(py(4), -0.5) && model.openEdits == 0;
+    view.undo();
+    const bool undone = nearly(px(2), 0.4) && nearly(py(2), 0.0) && nearly(px(3), 0.6) && nearly(py(3), 0.5);
+    check(moved && undone, "the points picked move together after the one dragged, one undo step");
+    // Left past the 2nd point and up past the top: they stop together, as far apart as they were.
+    drag(view, shapeAt(0.4, 0.0), shapeAt(0.05, 0.9));
+    const bool stopped = nearly(px(2), 0.2) && nearly(px(3), 0.4) && nearly(py(3), 1.0) && nearly(py(2), 0.5);
+    view.undo();
+    check(stopped, "points moved together stop as a whole at a neighbor not picked and at the shape's top");
+
+    // Ctrl+click adds the 5th and takes the 4th away: dragged by the 3rd, the 3rd and 5th move, the 4th stays.
+    click(view, shapeAt(0.8, -0.5), ctrl);
+    click(view, shapeAt(0.6, 0.5), ctrl);
+    drag(view, shapeAt(0.4, 0.0), shapeAt(0.4, -0.2));
+    const bool ctrlPicked = nearly(py(2), -0.2) && nearly(py(4), -0.7) && nearly(py(3), 0.5);
+    view.undo();
+    // A click on the 3rd, one of the two picked, picks it alone: dragged, the 5th stays.
+    click(view, shapeAt(0.4, 0.0));
+    drag(view, shapeAt(0.4, 0.0), shapeAt(0.4, 0.2));
+    const bool alone = nearly(py(2), 0.2) && nearly(py(4), -0.5);
+    view.undo();
+    check(ctrlPicked && alone, "Ctrl+click adds a point and takes one away, and a click on one picked picks it alone");
+
+    // Ctrl+A picks every point; Delete removes all but the first and one more, undoably.
+    view.mouseMove(shapeAt(0.1, 0.9), {});
+    const bool all = view.seqKey(View::Key::SelectAll, false);
+    const bool deleted = view.seqKey(View::Key::Delete, false);
+    const bool kept = model.value(shapeCountIndex(2)) == 2.0 && nearly(px(1), 0.8);
+    view.undo();
+    const bool back = model.value(shapeCountIndex(2)) == 5.0 && nearly(px(3), 0.6);
+    // Picked, then a click on empty space: Delete has nothing to remove, and goes on to the host.
+    view.seqKey(View::Key::SelectAll, false);
+    click(view, shapeAt(0.1, 0.9));
+    const bool letGo = !view.seqKey(View::Key::Delete, false) && model.value(shapeCountIndex(2)) == 5.0;
+    check(all && deleted && kept && back && letGo,
+          "Ctrl+A picks every point and Delete removes them, undoably; a click on empty space lets them go");
+
+    // A symmetric voice shaper's drawn curve on its page: its middle point and the next picked by a box, dragged left,
+    // the middle staying in the middle and the other stopping just right of it.
+    {
+        const int shaper = 0, node = kOps + kFilters;
+        click(view, {64.0f, 116.0f}); // ROUTING, closing the full-size editor
+        click(view, nodeTab(node));
+        const ShaperParams clip = shaperParams(kFxSlots + shaper);
+        model.set(clip.mode, static_cast<double>(ClipMode::Custom));
+        model.set(clip.symmetric, 1.0);
+        const double cx[] = {0.0, 0.5, 0.75, 1.0}, cy[] = {-1.0, 0.0, 0.6, 1.0};
+        model.set(clip.curve, 4.0);
+        for (int i = 0; i < 4; ++i) {
+            model.set(shapeFieldIndex(clip.curve, i, PointField::X), cx[i]);
+            model.set(shapeFieldIndex(clip.curve, i, PointField::Y), cy[i]);
+        }
+        view.poll();
+        auto cxAt = [&](int i) { return model.value(shapeFieldIndex(clip.curve, i, PointField::X)); };
+        auto cyAt = [&](int i) { return model.value(shapeFieldIndex(clip.curve, i, PointField::Y)); };
+        boxDrag(shaperCurveAt(0.85, 0.9), shaperCurveAt(0.45, -0.3)); // from the right half, over the middle
+        drag(view, shaperCurveAt(0.75, 0.6), shaperCurveAt(0.3, 0.7));
+        const bool middle = cxAt(1) == 0.5 && nearly(cyAt(1), 0.1) && cxAt(2) > 0.5 && cxAt(2) < 0.51 &&
+                            nearly(cyAt(2), 0.7) && cxAt(3) == 1.0;
+        view.mouseMove(shaperCurveAt(0.3, -0.8), {});
+        const bool shot = renderer.save(view, dir / "30d-shaper-picked.png");
+        view.undo();
+        check(middle && shot && cxAt(2) == 0.75,
+              "a symmetric curve's middle point picked with another stays in the middle as they move");
+    }
+
+    // The Curve card still widened beside the SEQ view: Ctrl+A over the roll picks its notes, not the shape's points,
+    // and Delete then removes the note, leaving the shape as it was.
+    {
+        click(view, {308.0f, 116.0f}); // the SEQ tab
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0);
+        view.poll();
+        view.mouseMove({600.0f, 116.0f + 300.0f}, {}); // the roll
+        const bool took = view.seqKey(View::Key::SelectAll, false) && view.seqKey(View::Key::Delete, false);
+        const bool notes = model.value(seqNoteIndex(0, 0, SeqNoteParam::Length)) == 0.0 &&
+                           model.value(shapeCountIndex(2)) == 5.0;
+        view.undo();
+        check(took && notes,
+              "Ctrl+A over the SEQ roll picks its notes while a Curve card is widened, and Delete removes them");
+    }
+}
+
+// Points picked on the SEQ view's BEND lane, as a shape editor's are: with Select, a box from empty space picking the
+// points it reaches (ringed, read off the rendered pixels), one of them dragged moving them all as far, one undo step,
+// stopping as a whole at a neighbor not picked; Shift+click adding a point; with Draw, a point picked dragged moving
+// the others too; Ctrl+A over the lane picking every point and Delete removing them, undoably; a click off the lane
+// letting them go, and Ctrl+A over the roll too, Delete then removing the notes.
+void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    using detail::kSeqGrid;
+    view.poll();
+    click(view, {308.0f, 116.0f}); // the SEQ tab
+    click(view, {kSeqGrid.x + 2.0f * 76.0f + 36.0f, detail::kSeqLaneTabs.y + 11.0f}); // BEND
+    const float laneTop = detail::kSeqLaneArea.y + 6.0f, laneH = detail::kSeqLaneArea.h - 12.0f;
+    auto bendAt = [&](double step, double v) {
+        return Point{kSeqGrid.x + static_cast<float>(step) * kSeqGrid.w / 16.0f,
+                     laneTop + laneH - static_cast<float>((v + 1.0) * 0.5) * laneH};
+    };
+    const double xs[] = {2.0, 5.0, 8.0, 11.0}, ys[] = {0.0, 0.5, -0.5, 0.0};
+    model.set(seqCurveCountIndex(0, SeqCurve::Bend), 4.0);
+    for (int i = 0; i < 4; ++i) {
+        model.set(seqCurveIndex(0, SeqCurve::Bend, i, PointField::X), xs[i]);
+        model.set(seqCurveIndex(0, SeqCurve::Bend, i, PointField::Y), ys[i]);
+    }
+    view.poll();
+    auto cx = [&](int i) { return model.value(seqCurveIndex(0, SeqCurve::Bend, i, PointField::X)); };
+    auto cy = [&](int i) { return model.value(seqCurveIndex(0, SeqCurve::Bend, i, PointField::Y)); };
+    auto count = [&] { return model.value(seqCurveCountIndex(0, SeqCurve::Bend)); };
+    auto nearly = [](double a, double b) { return std::abs(a - b) < 0.02; };
+    const Modifiers shift{true, false, false};
+    auto lit = [](uint32_t c) { return ((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3; };
+
+    // With Select, a box over the 2nd and 3rd: ringed (a pixel on the ring, left of each point, read off the rendered
+    // pixels), the 4th not.
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    renderer.save(view, dir / "36p-seq-curve-unpicked.png");
+    auto ring = [&](int i) { return Point{bendAt(xs[i], ys[i]).x - 6.0f, bendAt(xs[i], ys[i]).y}; };
+    const uint32_t before = lit(renderer.pixel(ring(1)));
+    view.mouseDown(bendAt(4.0, 0.9), {});
+    view.mouseMove(bendAt(6.0, 0.0), {});
+    view.mouseMove(bendAt(9.0, -0.8), {});
+    const bool boxShot = renderer.save(view, dir / "36p-seq-curve-box.png");
+    view.mouseUp(bendAt(9.0, -0.8), {});
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    const bool shot = renderer.save(view, dir / "36p-seq-curve-picked.png");
+    const uint32_t after = lit(renderer.pixel(ring(1))), other = lit(renderer.pixel(ring(3)));
+    if (after <= before + 30 || other > before + 10)
+        std::printf("      a lane point's ring: %u, %u picked, the 4th's %u\n", before, after, other);
+    check(boxShot && shot && after > before + 30 && other <= before + 10,
+          "a box across the BEND lane picks its points, ringed");
+
+    // Dragged by the 2nd, both move a step later and a quarter up; one undo step takes them back.
+    drag(view, bendAt(5.0, 0.5), bendAt(6.0, 0.75));
+    const bool moved = nearly(cx(1), 6.0) && nearly(cy(1), 0.75) && nearly(cx(2), 9.0) && nearly(cy(2), -0.25) &&
+                       nearly(cx(0), 2.0) && nearly(cx(3), 11.0);
+    view.undo();
+    const bool undone = nearly(cx(1), 5.0) && nearly(cx(2), 8.0);
+    // Right past the 4th: they stop as a whole there, three steps apart still.
+    drag(view, bendAt(5.0, 0.5), bendAt(10.0, 0.5));
+    const bool stopped = nearly(cx(2), 11.0) && nearly(cx(1), 8.0);
+    view.undo();
+    check(moved && undone && stopped, "the lane's points picked move together, stopping at a neighbor, undoably");
+
+    // Shift+click adds the 1st: dragged by the 1st, all three move down, the 4th stays.
+    click(view, bendAt(2.0, 0.0), shift);
+    drag(view, bendAt(2.0, 0.0), bendAt(2.0, -0.25));
+    const bool three = nearly(cy(0), -0.25) && nearly(cy(1), 0.25) && nearly(cy(2), -0.75) && nearly(cy(3), 0.0);
+    view.undo();
+    // With Draw, a point picked dragged moves the others too.
+    const Point selectTool = rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h});
+    click(view, {selectTool.x + 30.0f, selectTool.y}); // Draw
+    click(view, bendAt(14.5, 0.9) , {}); // a point put down there, picked alone, then taken away again
+    view.undo();
+    view.mouseMove(bendAt(5.0, 0.0), {});
+    view.seqKey(View::Key::SelectAll, false);
+    drag(view, bendAt(5.0, 0.5), bendAt(5.0, 0.25));
+    const bool drawn = nearly(cy(0), -0.25) && nearly(cy(3), -0.25) && count() == 4.0;
+    view.undo();
+    click(view, selectTool);
+    check(three && drawn, "Shift+click adds a lane point, and with Draw a point picked moves the others too");
+
+    // Ctrl+A over the lane picks every point and Delete removes them, undoably; a click off the lane lets them go.
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    const bool all = view.seqKey(View::Key::SelectAll, false);
+    const bool deleted = view.seqKey(View::Key::Delete, false) && count() == 0.0;
+    view.undo();
+    const bool back = count() == 4.0;
+    view.seqKey(View::Key::SelectAll, false);
+    click(view, {600.0f, 116.0f + 300.0f}); // the roll, off the lane
+    const bool letGo = !view.seqKey(View::Key::Delete, false) && count() == 4.0;
+    check(all && deleted && back && letGo,
+          "Ctrl+A over the lane picks its points and Delete removes them, undoably; a click off the lane lets them go");
+
+    // Ctrl+A over the lane, then over the roll with no click between: Delete then removes the notes, not the points.
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0);
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Length), 1.0);
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0);
+    view.poll();
+    view.mouseMove(bendAt(14.5, 0.9), {});
+    view.seqKey(View::Key::SelectAll, false);
+    view.mouseMove({600.0f, 116.0f + 300.0f}, {}); // over the roll
+    const bool notesPicked = view.seqKey(View::Key::SelectAll, false);
+    const bool notesGone = view.seqKey(View::Key::Delete, false) &&
+                           model.value(seqNoteIndex(0, 0, SeqNoteParam::Length)) == 0.0 && count() == 4.0;
+    check(notesPicked && notesGone,
+          "Ctrl+A over the roll after Ctrl+A over the lane: Delete removes the notes, the lane's points staying");
+}
+
 
 // Folding cards: the chevron left of an effect card's cross folds it to a strip (38 px, its neighbours closing
 // up), whose icon stays where it was and still switches it, and whose name unfolds it; an LFO card folds the
@@ -3529,12 +4215,12 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                 return model.value(highIndex) >=
                        normFromCutoff(std::min(low * std::pow(2.0, 1.0 / 3.0), kMaxCutoff)) - 1e-9;
             };
-            const Point lowKnob = detail::splitCrossKnob(card, 0), highKnob = detail::splitCrossKnob(card, 1);
+            const Point lowKnob = detail::splitCrossKnob(card, 0), highCross = detail::splitCrossKnob(card, 1);
             drag(view, lowKnob, {lowKnob.x, lowKnob.y - 120.0f});
             const bool upPushed = model.value(highIndex) > highBefore3 && apart() && model.openEdits == 0;
             view.undo();
             const bool upBack = model.value(lowIndex) == lowBefore && model.value(highIndex) == highBefore3;
-            drag(view, highKnob, {highKnob.x, highKnob.y + 120.0f});
+            drag(view, highCross, {highCross.x, highCross.y + 120.0f});
             const bool downPushed = model.value(lowIndex) < lowBefore && apart() && model.openEdits == 0;
             view.undo();
             const bool downBack = model.value(lowIndex) == lowBefore && model.value(highIndex) == highBefore3;
@@ -4465,26 +5151,26 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     // reverb, the low band still shown. Each undone.
     {
         const Rect delayCard = detail::fxCard(3.0f + detail::kFxBoxEdge);
-        const Point grip{delayCard.x + 40.0f, delayCard.y + 17.0f};
-        const Point overWidener{detail::fxCard(2.0f + detail::kFxBoxEdge).x + 40.0f, grip.y};
-        const Point overControls{column.x + 100.0f, grip.y};
+        const Point cardGrip{delayCard.x + 40.0f, delayCard.y + 17.0f};
+        const Point overWidener{detail::fxCard(2.0f + detail::kFxBoxEdge).x + 40.0f, cardGrip.y};
+        const Point overControls{column.x + 100.0f, cardGrip.y};
         const Point highTab = centerOf(detail::splitTab(column, 1, 2));
         auto lowBand = [&] { return from(1, 0) == low && from(2, 0) == fxSlotPort(1) && from(join, 1) == fxSlotPort(2); };
-        view.mouseDown(grip, {});
-        view.mouseMove({grip.x + 60.0f, grip.y}, {});
-        view.mouseUp({grip.x + 60.0f, grip.y}, {});
+        view.mouseDown(cardGrip, {});
+        view.mouseMove({cardGrip.x + 60.0f, cardGrip.y}, {});
+        view.mouseUp({cardGrip.x + 60.0f, cardGrip.y}, {});
         settle();
         const bool withinOwn = lowBand();
-        view.mouseDown(grip, {});
-        view.mouseMove({grip.x + 20.0f, grip.y}, {});
-        view.mouseMove({grip.x + 20.0f, 640.0f}, {});
+        view.mouseDown(cardGrip, {});
+        view.mouseMove({cardGrip.x + 20.0f, cardGrip.y}, {});
+        view.mouseMove({cardGrip.x + 20.0f, 640.0f}, {});
         settle();
         const bool freeShot = renderer.save(view, dir / "41j-fx-row-carried-free.png");
-        view.mouseUp({grip.x + 20.0f, 640.0f}, {});
+        view.mouseUp({cardGrip.x + 20.0f, 640.0f}, {});
         settle();
         const bool straightDown = lowBand();
-        view.mouseDown(grip, {});
-        view.mouseMove({grip.x - 30.0f, grip.y}, {});
+        view.mouseDown(cardGrip, {});
+        view.mouseMove({cardGrip.x - 30.0f, cardGrip.y}, {});
         view.mouseMove(overWidener, {});
         view.mouseMove(overControls, {});
         view.mouseUp(overControls, {});
@@ -4492,20 +5178,20 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
         const bool bandStart = from(2, 0) == low && from(1, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(1) &&
                                model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(0);
         view.undo();
-        view.mouseDown(grip, {});
-        view.mouseMove({grip.x - 30.0f, grip.y}, {});
+        view.mouseDown(cardGrip, {});
+        view.mouseMove({cardGrip.x - 30.0f, cardGrip.y}, {});
         view.mouseMove(overWidener, {});
         view.mouseMove(overControls, {});
         view.mouseMove(highTab, {});
-        const bool highShown = model.ui.splitBand[0] == 0; // the low band still shown
+        const bool stillLow = model.ui.splitBand[0] == 0; // the low band still shown
         view.mouseUp(highTab, {});
         settle();
         const bool onHigh = from(2, 0) == fxSlotPort(3) && from(join, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(1);
         view.undo();
         std::printf("      carried freely: within its place %d, straight down %d, over the controls %d, onto the high "
                     "band %d %d\n",
-                    withinOwn, straightDown, bandStart, highShown, onHigh);
-        check(withinOwn && straightDown && freeShot && bandStart && highShown && onHigh && lowBand() &&
+                    withinOwn, straightDown, bandStart, stillLow, onHigh);
+        check(withinOwn && straightDown && freeShot && bandStart && stillLow && onHigh && lowBand() &&
                   model.ui.splitBand[0] == 0,
               "a card at its band's end moves nothing carried right or down, waits over a container's controls, and "
               "carried over a tab lands on that band");
@@ -4999,6 +5685,1011 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
 // The bin at the FX panel's top right, in the chain and in the graph: with effects (or a split) it asks first, and a
 // click around the dialog keeps them; going ahead removes every one, a split and its join too, in one undo step;
 // with nothing to remove it asks nothing (read off the rendered pixels: the header isn't dimmed).
+// The SEQ tab: the sequencer's card and the roll of its pattern. A double-click puts a note down, and on a note takes it
+// away; a note is picked and moved by a drag, stretched by its end, notes picked by a box, and the field changes the
+// notes picked. The draw tool paints notes, the lane sets their chance, the ruler the loop; the rows fold to a scale,
+// the snap list picks the grid, the bin clears the pattern (asking first) and copying fills the next empty pattern.
+void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    using detail::kSeqGrid;
+    view.poll();
+    click(view, {308.0f, 116.0f}); // the SEQ tab, between FX and MODS
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool emptyShot = renderer.save(view, dir / "36-seq-empty.png");
+    // Its tab shows a dot while the sequencer is on, and none while it is off (read off the rendered pixels).
+    {
+        const Point dot = detail::viewTabDot(static_cast<int>(RoutingView::Seq));
+        const uint32_t off = renderer.pixel(dot);
+        model.set(paramIndex(SeqParam::Enabled), 1.0);
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36-seq-on.png");
+        const uint32_t on = renderer.pixel(dot);
+        model.set(paramIndex(SeqParam::Enabled), 0.0);
+        view.poll();
+        check(on != off, "the SEQ tab shows a dot while the sequencer is on");
+    }
+    check(model.ui.view == RoutingView::Seq && emptyShot, "the SEQ tab shows the sequencer's card and an empty roll");
+    // A bar of 16 steps across the grid, 22 rows from C3 (48) up.
+    const float rh = kSeqGrid.h / 22.0f;
+    auto at = [&](double step, int pitch) {
+        return Point{kSeqGrid.x + static_cast<float>(step) * kSeqGrid.w / 16.0f,
+                     kSeqGrid.y + kSeqGrid.h - (static_cast<float>(pitch - 48) + 0.5f) * rh};
+    };
+    auto field = [&](int slot, SeqNoteParam f) { return model.value(seqNoteIndex(0, slot, f)); };
+
+    // A double-click on the grid puts a note down on its step, a step long at 1/16; on the note, takes it away.
+    doubleClick(view, at(4.4, 60));
+    const bool added = field(0, SeqNoteParam::Length) == 1.0 && field(0, SeqNoteParam::Start) == 4.0 &&
+                       field(0, SeqNoteParam::Pitch) == 60.0;
+    doubleClick(view, at(4.4, 60));
+    check(added && field(0, SeqNoteParam::Length) == 0.0,
+          "a double-click on the roll puts a note down on its step, and on a note deletes it");
+
+    // A pattern: a note on each beat, one at 8 two steps long, and the sequencer on.
+    auto put = [&](int slot, double start, double length, int pitch) {
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Start), start);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), length);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Pitch), pitch);
+    };
+    put(0, 0.0, 1.0, 48);
+    put(1, 4.0, 1.0, 55);
+    put(2, 8.0, 2.0, 51);
+    put(3, 12.0, 1.0, 58);
+    model.set(seqNoteIndex(0, 3, SeqNoteParam::Chance), 0.5);
+    model.set(paramIndex(SeqParam::Enabled), 1.0);
+    model.live.seqPosition = 6.0f;
+    view.poll();
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool rollShot = renderer.save(view, dir / "36a-seq-roll.png");
+    // The playhead at step 6 lights the ruler there, and nowhere else (read off the rendered pixels).
+    auto bright = [&](Point p) {
+        const uint32_t c = renderer.pixel(p);
+        return ((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF) > 500;
+    };
+    const float rulerY = detail::kSeqRuler.y + 11.0f;
+    check(rollShot && bright({at(6.0, 48).x, rulerY}) && !bright({at(7.0, 48).x, rulerY}),
+          "the roll shows the pattern's notes and the playhead where the sequencer plays");
+    // The playhead reaching a note (two steps long, on step 8) makes it glow round its edge, just after, as the glow
+    // setting says: none with it off (read off the rendered pixels).
+    {
+        const double glowWas = model.glowLevel;
+        const Point beside{at(9.5, 51).x, at(9.5, 51).y - rh * 0.5f - 3.0f}; // just over its top edge
+        model.live.seqPosition = 8.1f;
+        view.poll();
+        model.glowLevel = 1.0;
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool glowShot = renderer.save(view, dir / "36a-seq-glow.png");
+        const uint32_t glowing = renderer.pixel(beside);
+        model.glowLevel = 0.0;
+        renderer.save(view, dir / "36a-seq-no-glow.png");
+        const uint32_t plain = renderer.pixel(beside);
+        model.glowLevel = glowWas;
+        model.live.seqPosition = 6.0f;
+        view.poll();
+        check(glowShot && glowing != plain, "a note the playhead reaches glows, as the glow setting says");
+    }
+
+    // A note dragged onto another's start and pitch takes its place: the one there goes, in the same undo step; and so
+    // does one a note lands on by the arrow keys.
+    {
+        drag(view, at(4.4, 55), at(0.4, 48));
+        const bool replaced = field(0, SeqNoteParam::Length) == 0.0 && field(1, SeqNoteParam::Start) == 0.0 &&
+                              field(1, SeqNoteParam::Pitch) == 48.0;
+        view.undo();
+        const bool back = field(0, SeqNoteParam::Length) == 1.0 && field(1, SeqNoteParam::Start) == 4.0;
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 1.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 48.0);
+        view.poll();
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(1.4, 48));  // the one on step 1
+        view.seqKey(View::Key::Left, false);
+        const bool keyed = field(0, SeqNoteParam::Length) == 0.0 && field(20, SeqNoteParam::Start) == 0.0;
+        view.undo();
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 60.0);
+        view.poll();
+        check(replaced && back && keyed && field(0, SeqNoteParam::Length) == 1.0,
+              "a note landing on another's start and pitch takes its place, undoably");
+    }
+    // A note dragged above the roll's top scrolls the rows up as it is held there, the note going up with them.
+    {
+        const int lowBefore = model.ui.seqLow;
+        view.mouseDown(at(0.4, 48), {});
+        view.mouseMove({at(0.4, 48).x, kSeqGrid.y + 40.0f}, {});
+        view.mouseMove({at(0.4, 48).x, kSeqGrid.y - 20.0f}, {});
+        for (int i = 0; i < 12; ++i)
+            view.poll();
+        view.mouseUp({at(0.4, 48).x, kSeqGrid.y - 20.0f}, {});
+        const int lowScrolled = model.ui.seqLow;
+        const double pitch = field(0, SeqNoteParam::Pitch);
+        view.undo();
+        model.ui.seqLow = lowBefore;
+        std::printf("      dragged above the top: rows from %d, the note on %.0f\n", lowScrolled, pitch);
+        check(lowScrolled > lowBefore && pitch > 69.0 && field(0, SeqNoteParam::Pitch) == 48.0,
+              "a note dragged past the roll's edge scrolls it, the note going along");
+    }
+    // A patch loaded fits the roll to its notes: notes high up (C6 to G6), loaded, show.
+    {
+        const int lowBefore = model.ui.seqLow;
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Start), 2.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Pitch), 100.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Start), 6.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Pitch), 30.0);
+        model.clearHistory(); // as a preset loaded has it
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool fitShot = renderer.save(view, dir / "36m-seq-fitted.png");
+        // C1 (24) to E7 (100) and the rest: the rows shrunk to show them all, from 30's down.
+        const int lowFitted = model.ui.seqLow;
+        for (int slot : {30, 31})
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Pitch), 60.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Pitch), 60.0);
+        model.set(seqNoteIndex(0, 30, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 31, SeqNoteParam::Start), 0.0);
+        model.clearHistory();
+        view.poll();
+        const int lowRefit = model.ui.seqLow;
+        std::printf("      fitted to a patch loaded: rows from %d, then %d\n", lowFitted, lowRefit);
+        check(fitShot && lowFitted <= 30 && lowRefit > 30 && lowRefit <= 48,
+              "a patch loaded fits the roll to its notes");
+        model.ui.seqLow = lowBefore;
+    }
+    // Dragged two steps on and two rows up, a note moves there as one undo step.
+    drag(view, at(0.5, 48), at(2.5, 50));
+    const bool moved = field(0, SeqNoteParam::Start) == 2.0 && field(0, SeqNoteParam::Pitch) == 50.0;
+    view.undo();
+    check(moved && field(0, SeqNoteParam::Start) == 0.0 && field(0, SeqNoteParam::Pitch) == 48.0,
+          "a note dragged moves on the grid, undoably");
+    // Its end dragged two steps on: two steps longer.
+    drag(view, {at(10.0, 51).x - 2.0f, at(10.0, 51).y}, {at(12.0, 51).x - 2.0f, at(12.0, 51).y});
+    check(field(2, SeqNoteParam::Length) == 4.0, "a note's end dragged sets its length");
+    view.undo();
+    // Its start dragged a step on: a step shorter, its end where it was; the cursor over either end the left-right one.
+    view.mouseMove({at(8.0, 51).x + 2.0f, at(8.0, 51).y}, {});
+    const bool startCursor = view.cursor() == CursorKind::Horizontal;
+    view.mouseMove({at(10.0, 51).x - 2.0f, at(10.0, 51).y}, {});
+    const bool endCursor = view.cursor() == CursorKind::Horizontal;
+    drag(view, {at(8.0, 51).x + 2.0f, at(8.0, 51).y}, {at(9.0, 51).x + 2.0f, at(9.0, 51).y});
+    check(startCursor && endCursor && field(2, SeqNoteParam::Start) == 9.0 && field(2, SeqNoteParam::Length) == 1.0,
+          "a note's start dragged moves it, its end staying, and either end shows the left-right cursor");
+    view.undo();
+    // With Shift, its end follows the mouse off the grid: dragged a third of a step on, a third of a step longer; and
+    // its start, a quarter step on, a quarter shorter, both picking nothing else.
+    {
+        const Point end{at(10.0, 51).x - 2.0f, at(10.0, 51).y};
+        const Point endTo{end.x + kSeqGrid.w / 16.0f / 3.0f, end.y};
+        view.mouseDown(end, {true, false, false});
+        view.mouseMove({(end.x + endTo.x) * 0.5f, end.y}, {true, false, false});
+        view.mouseMove(endTo, {true, false, false});
+        view.mouseUp(endTo, {true, false, false});
+        const double longer = field(2, SeqNoteParam::Length);
+        view.undo();
+        const Point start{at(8.0, 51).x + 2.0f, at(8.0, 51).y};
+        const Point startTo{start.x + kSeqGrid.w / 16.0f / 4.0f, start.y};
+        view.mouseDown(start, {true, false, false});
+        view.mouseMove({(start.x + startTo.x) * 0.5f, start.y}, {true, false, false});
+        view.mouseMove(startTo, {true, false, false});
+        view.mouseUp(startTo, {true, false, false});
+        const double shorter = field(2, SeqNoteParam::Length), movedTo = field(2, SeqNoteParam::Start);
+        view.undo();
+        std::printf("      Shift-dragged: %.3f steps long by its end, %.3f from %.3f by its start\n", longer, shorter,
+                    movedTo);
+        check(std::abs(longer - 2.0 - 1.0 / 3.0) < 0.02 && std::abs(shorter - 1.75) < 0.02 &&
+                  std::abs(movedTo - 8.25) < 0.02,
+              "a note's end or start dragged with Shift sets its length off the grid");
+    }
+    // With Shift held from the press, the note moved lands off the grid: a third of a step on, its length kept; and a
+    // Shift+click on it, picked, without a drag, no longer picks it (Delete then leaving it).
+    {
+        const Point grab = at(9.0, 51);
+        const Point to{grab.x + kSeqGrid.w / 16.0f / 3.0f, grab.y};
+        view.mouseDown(grab, {true, false, false});
+        view.mouseMove({(grab.x + to.x) * 0.5f, grab.y}, {true, false, false});
+        view.mouseMove(to, {true, false, false});
+        view.mouseUp(to, {true, false, false});
+        const double startNow = field(2, SeqNoteParam::Start), length = field(2, SeqNoteParam::Length);
+        const bool stillPicked = view.seqKey(View::Key::Delete, false) && field(2, SeqNoteParam::Length) == 0.0;
+        view.undo(); // the delete
+        view.undo(); // the move
+        const bool back = field(2, SeqNoteParam::Start) == 8.0;
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(9.0, 51));  // it alone
+        view.mouseDown(at(9.0, 51), {true, false, false});
+        view.mouseUp(at(9.0, 51), {true, false, false});
+        view.seqKey(View::Key::Delete, false);
+        const bool unpicked = field(2, SeqNoteParam::Length) == 2.0;
+        if (!unpicked)
+            view.undo();
+        std::printf("      Shift-dragged a third of a step on: from %.3f, %.3f long\n", startNow, length);
+        check(std::abs(startNow - 8.0 - 1.0 / 3.0) < 0.02 && length == 2.0 && stillPicked && back && unpicked,
+              "a note dragged with Shift lands off the grid, and Shift+click unpicks a picked note");
+    }
+
+    // A box from an empty place over the first two notes picks them; the field's velocity dragged up turns both up.
+    drag(view, at(0.0, 57), at(5.5, 47));
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool boxShot = renderer.save(view, dir / "36b-seq-picked.png");
+    const double before0 = field(0, SeqNoteParam::Velocity), before1 = field(1, SeqNoteParam::Velocity);
+    const float velX = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f - 84.0f - 58.0f - 92.0f -
+                       58.0f + 20.0f; // the VEL field (see seq.cpp's seqFieldRect())
+    const Point velPoint{velX, detail::kSeqTools.y + 12.0f};
+    view.mouseDown(velPoint, {});
+    view.mouseMove({velPoint.x, velPoint.y - 15.0f}, {});
+    view.mouseUp({velPoint.x, velPoint.y - 15.0f}, {});
+    const bool louder = std::lround((field(0, SeqNoteParam::Velocity) - before0) * 127.0) == 5 &&
+                        std::lround((field(1, SeqNoteParam::Velocity) - before1) * 127.0) == 5 &&
+                        field(2, SeqNoteParam::Velocity) == before0;
+    view.undo();
+    check(boxShot && louder, "a box picks the notes it reaches, and the field changes every one picked");
+    // A double-click on the field's VEL puts the notes picked back to velocity 100, and on OFFSET back on the grid.
+    {
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(0.5, 48));  // the first note
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 64.0 / 127.0);
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.3);
+        view.poll();
+        const float right = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f;
+        doubleClick(view, {right - 84.0f - 58.0f - 92.0f - 58.0f + 20.0f, detail::kSeqTools.y + 12.0f}); // VEL
+        doubleClick(view, {right - 84.0f + 20.0f, detail::kSeqTools.y + 12.0f});                         // OFFSET
+        const bool reset = field(0, SeqNoteParam::Velocity) == 100.0 / 127.0 && field(0, SeqNoteParam::Start) == 0.0;
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 100.0 / 127.0);
+        model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0);
+        view.poll();
+        check(reset, "a double-click on the field's VEL or OFFSET puts the notes picked back to 100 or onto the grid");
+    }
+    // A key the sequencer plays lights in the roll's keys (read off the rendered pixels).
+    {
+        const Point key{detail::kSeqKeys.x + detail::kSeqKeys.w - 4.0f, at(0.0, 55).y};
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36l-seq-key-off.png");
+        const uint32_t dark = renderer.pixel(key);
+        model.live.seqKeys[55 / 32] |= 1u << (55 % 32);
+        view.poll();
+        renderer.save(view, dir / "36l-seq-key-rising.png");
+        const uint32_t rising = renderer.pixel(key);
+        for (int i = 0; i < 4; ++i)
+            view.poll();
+        renderer.save(view, dir / "36l-seq-key-played.png");
+        const uint32_t lit = renderer.pixel(key);
+        model.live.seqKeys = {};
+        view.poll();
+        renderer.save(view, dir / "36l-seq-key-falling.png");
+        const uint32_t falling = renderer.pixel(key);
+        for (int i = 0; i < 8; ++i)
+            view.poll();
+        renderer.save(view, dir / "36l-seq-key-gone.png");
+        const uint32_t gone = renderer.pixel(key);
+        check(lit != dark, "a key the sequencer plays lights in the roll's keys");
+        check(rising != dark && rising != lit && falling != lit && falling != dark && gone == dark,
+              "a key the sequencer plays eases up to lit over a few polls and back down once its note ends");
+    }
+
+    // Keys: with nothing picked the arrows go on to the host; Ctrl+A picks every note, Right moves them a grid step
+    // (a step at 1/16), Up a semitone and Shift+Up an octave, each an undo step.
+    click(view, at(15.5, 66)); // nothing there: nothing picked
+    const bool passed = !view.seqKey(View::Key::Right, false);
+    const bool all = view.seqKey(View::Key::SelectAll, false);
+    view.seqKey(View::Key::Right, false);
+    const bool right = field(0, SeqNoteParam::Start) == 1.0 && field(2, SeqNoteParam::Start) == 9.0;
+    view.seqKey(View::Key::Up, false);
+    const bool up = field(0, SeqNoteParam::Pitch) == 49.0 && field(1, SeqNoteParam::Pitch) == 56.0;
+    view.seqKey(View::Key::Up, true);
+    const bool octave = field(0, SeqNoteParam::Pitch) == 61.0 && field(3, SeqNoteParam::Pitch) == 71.0;
+    view.undo();
+    view.undo();
+    view.undo();
+    model.ui.seqLow = 48; // the rows went up with the octave: back where they were
+    // Delete removes the notes picked, undoably; with none picked, it goes on to the host.
+    view.seqKey(View::Key::SelectAll, false);
+    const bool deleted = view.seqKey(View::Key::Delete, false) && field(0, SeqNoteParam::Length) == 0.0 &&
+                         field(2, SeqNoteParam::Length) == 0.0;
+    const bool deletePassed = !view.seqKey(View::Key::Delete, false);
+    view.undo();
+    check(deleted && deletePassed && field(2, SeqNoteParam::Length) == 2.0,
+          "Delete removes the notes picked, undoably, and with none picked goes on to the host");
+    check(passed && all && right && up && octave && field(0, SeqNoteParam::Start) == 0.0 &&
+              field(0, SeqNoteParam::Pitch) == 48.0,
+          "Ctrl+A picks every note, and the arrows move them a step, a semitone and with Shift an octave, undoably");
+    // Shift+Up moves the rows only as far as shows every note moved: every note picked (C3 to A#3), up an octave to
+    // C4 to A#4, past the top row (A4), takes them up a row; the first alone, to C4, leaves them where they are.
+    {
+        view.seqKey(View::Key::SelectAll, false);
+        const int lowBefore = model.ui.seqLow;
+        view.seqKey(View::Key::Up, true);
+        const int lowAll = model.ui.seqLow;
+        view.undo();
+        model.ui.seqLow = lowBefore;
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(0.5, 48));  // the first note
+        view.seqKey(View::Key::Up, true);
+        const int lowOne = model.ui.seqLow;
+        view.undo();
+        model.ui.seqLow = lowBefore;
+        std::printf("      rows from %d: an octave up from %d with every note, %d with one\n", lowBefore, lowAll, lowOne);
+        check(lowAll == lowBefore + 1 && lowOne == lowBefore,
+              "an octave's move takes the rows only as far as shows every note moved");
+    }
+
+    // The lane: a picked note's dot ringed, an unpicked one's not (read off the rendered pixels).
+    auto laneDot = [&](double step, double velocity) {
+        return Point{at(step, 48).x + 1.5f, detail::kSeqLaneArea.y + detail::kSeqLaneArea.h - 6.0f -
+                                                static_cast<float>(velocity) * (detail::kSeqLaneArea.h - 12.0f)};
+    };
+    click(view, at(15.5, 66)); // nothing there: nothing picked
+    model.lastAudition = -1;
+    model.lastNote = -1;
+    click(view, at(4.4, 55)); // the note on step 4, alone: heard alone, and let go
+    const bool heard = model.lastAudition == 55 && model.lastNote < 0 && model.auditioning == 0;
+    view.mouseDown(at(4.4, 55), {}); // dragged up two rows, held: the row it is on heard
+    view.mouseMove(at(4.4, 57), {});
+    const bool follows = model.lastAudition == 57 && model.auditioning == 1;
+    view.mouseUp(at(4.4, 57), {});
+    view.undo();
+    model.lastAudition = -1;
+    view.mouseDown({detail::kSeqKeys.x + 30.0f, at(0.0, 60).y}, {}); // a key: heard alone, not played as the keyboard
+    const bool keyHeard = model.lastAudition == 60 && model.lastNote < 0;
+    view.mouseUp({detail::kSeqKeys.x + 30.0f, at(0.0, 60).y}, {});
+    check(heard && follows && keyHeard && model.auditioning == 0,
+          "a note or key clicked in the roll is heard alone while held, a note moved heard on its new row");
+    // A key clicked again quickly, the second click coming as a double-click, is heard again, held as the first was.
+    {
+        const Point key{detail::kSeqKeys.x + 30.0f, at(0.0, 60).y};
+        click(view, key);
+        model.lastAudition = -1;
+        view.doubleClick(key, {});
+        const bool again = model.lastAudition == 60 && model.auditioning == 1;
+        view.mouseUp(key, {});
+        check(again && model.auditioning == 0, "a key in the roll clicked quickly twice is heard twice");
+    }
+    // A note put down by a double-click (with Select) is heard while the button is held, and let go as it comes up.
+    {
+        model.lastAudition = -1;
+        const Point empty = at(14.3, 62);
+        click(view, empty);
+        view.doubleClick(empty, {});
+        const bool held = model.lastAudition == 62 && model.auditioning == 1 && model.lastNote < 0;
+        view.mouseUp(empty, {});
+        const bool putHeard = model.auditioning == 0;
+        view.undo();
+        check(held && putHeard, "a note put down by a double-click is heard while the button is held");
+    }
+    // The slot of the note starting at `start` on `pitch`, -1 for none.
+    auto noteAt = [&](double start, int pitch) {
+        for (int s = 0; s < kSeqNotes; ++s)
+            if (field(s, SeqNoteParam::Length) > 0.0 && std::abs(field(s, SeqNoteParam::Start) - start) < 1e-9 &&
+                field(s, SeqNoteParam::Pitch) == pitch)
+                return s;
+        return -1;
+    };
+    // Held after a double-click, the mouse up and down sets the new note's velocity, a step a pixel from 100, the
+    // cursor up and down; the note and its velocity one undo step.
+    {
+        const Point empty = at(14.3, 62);
+        click(view, empty);
+        view.doubleClick(empty, {});
+        view.mouseMove({empty.x, empty.y - 10.0f}, {});
+        view.mouseMove({empty.x, empty.y - 20.0f}, {});
+        const bool upDown = view.cursor() == CursorKind::Vertical;
+        view.mouseUp({empty.x, empty.y - 20.0f}, {});
+        const int slot = noteAt(14.0, 62);
+        const long velocity = slot >= 0 ? std::lround(field(slot, SeqNoteParam::Velocity) * 127.0) : -1;
+        view.undo();
+        std::printf("      a note put down by a double-click, held and dragged 20 px up: velocity %ld\n", velocity);
+        check(velocity == 120 && upDown && noteAt(14.0, 62) < 0,
+              "a double-click held and dragged up and down sets the new note's velocity, in its undo step");
+    }
+    // Held after a double-click, the mouse across sets the length: to the right the end follows it, to the left the start,
+    // the other end staying; the velocity still goes with up and down.
+    {
+        const Point empty = at(14.3, 62);
+        click(view, empty);
+        view.doubleClick(empty, {});
+        view.mouseMove(at(16.3, 62), {});
+        view.mouseUp(at(16.3, 62), {});
+        const int rightNote = noteAt(14.0, 62);
+        const double rightLength = rightNote >= 0 ? field(rightNote, SeqNoteParam::Length) : -1.0;
+        view.undo();
+        click(view, empty);
+        view.doubleClick(empty, {});
+        view.mouseMove(at(12.3, 62), {});
+        view.mouseUp(at(12.3, 62), {});
+        const int left = noteAt(12.0, 62);
+        const double leftLength = left >= 0 ? field(left, SeqNoteParam::Length) : -1.0;
+        view.undo();
+        std::printf("      a note put down by a double-click, dragged 2 steps right: length %.2f, left: start 12, length %.2f\n",
+                    rightLength, leftLength);
+        check(std::abs(rightLength - 3.0) < 1e-6 && std::abs(leftLength - 3.0) < 1e-6 && noteAt(14.0, 62) < 0,
+              "a double-click held and dragged across sets the new note's length, to the right its end and to the left its start");
+    }
+    // Ctrl+C keeps the notes picked, and Ctrl+V puts them down as they were but for where: at the step under the mouse
+    // on the roll, picked, and with the mouse off it after what was copied or pasted last; Ctrl+X takes them away too,
+    // and with the mouse off the roll Ctrl+V puts them back. Each an undo step; with nothing picked, Ctrl+C and Ctrl+X go
+    // on to the host.
+    {
+        const Point offRoll{600.0f, 40.0f};
+        click(view, at(15.5, 66)); // nothing picked
+        const bool passedOn = !view.seqKey(View::Key::Copy, false) && !view.seqKey(View::Key::Cut, false);
+        model.set(seqNoteIndex(0, 2, SeqNoteParam::Velocity), 64.0 / 127.0);
+        view.poll();
+        click(view, at(8.5, 51)); // the note on step 8, two steps long
+        const bool copied = view.seqKey(View::Key::Copy, false);
+        view.mouseMove(offRoll, {});
+        view.seqKey(View::Key::Paste, false);
+        view.seqKey(View::Key::Paste, false);
+        const bool after = noteAt(10.0, 51) >= 0 && noteAt(12.0, 51) >= 0;
+        view.undo();
+        view.undo();
+        view.mouseMove(at(5.6, 60), {});
+        const bool pasted = view.seqKey(View::Key::Paste, false);
+        const int copy = noteAt(5.0, 51);
+        const bool asCopied = copy >= 0 && field(copy, SeqNoteParam::Length) == 2.0 &&
+                              field(copy, SeqNoteParam::Velocity) == 64.0 / 127.0;
+        view.seqKey(View::Key::Delete, false); // the copy alone is picked
+        const bool picked = noteAt(5.0, 51) < 0 && noteAt(8.0, 51) == 2;
+        view.undo();
+        view.undo();
+        const bool undone = noteAt(5.0, 51) < 0;
+        click(view, at(8.5, 51));
+        const bool cut = view.seqKey(View::Key::Cut, false) && field(2, SeqNoteParam::Length) == 0.0;
+        view.mouseMove(offRoll, {});
+        view.seqKey(View::Key::Paste, false);
+        const bool back = noteAt(8.0, 51) >= 0;
+        view.undo();
+        view.undo();
+        const bool restored = noteAt(8.0, 51) == 2 && field(2, SeqNoteParam::Length) == 2.0;
+        model.set(seqNoteIndex(0, 2, SeqNoteParam::Velocity), 100.0 / 127.0);
+        view.poll();
+        check(passedOn && copied && after && pasted && asCopied && picked && undone && cut && back && restored,
+              "Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste the notes picked, at the mouse or after them, undoably");
+    }
+    // The roll's right-click menu: on a note not picked, picking it alone; Duplicate putting a copy right after it, Mute
+    // muting it (checked then), Quantize putting it on the grid, Paste on an empty place putting what was copied there,
+    // Select All picking every note; each an undo step.
+    {
+        auto entry = [&](const std::vector<MenuItem> &items, Str label) {
+            for (const MenuItem &item : items)
+                if (item.label == tr(label))
+                    return item.command;
+            return -1;
+        };
+        click(view, at(15.5, 66)); // nothing picked
+        const std::vector<MenuItem> onNote = view.contextMenu(at(4.4, 55)); // the note on step 4
+        const bool offered = entry(onNote, Str::MenuSeqCut) >= 0 && entry(onNote, Str::MenuSeqCopy) >= 0 &&
+                             entry(onNote, Str::MenuDuplicate) >= 0 && entry(onNote, Str::MenuSeqDelete) >= 0 &&
+                             entry(onNote, Str::MenuSeqSelectAll) >= 0 && entry(onNote, Str::MenuSeqQuantize) >= 0;
+        view.menuCommand(entry(onNote, Str::MenuDuplicate));
+        const bool duplicated = noteAt(5.0, 55) >= 0 && noteAt(4.0, 55) == 1;
+        view.undo();
+        view.menuCommand(entry(view.contextMenu(at(4.4, 55)), Str::MenuSeqMute));
+        const bool muted = field(1, SeqNoteParam::Mute) == 1.0;
+        bool checked = false;
+        for (const MenuItem &item : view.contextMenu(at(4.4, 55)))
+            checked = checked || (item.label == tr(Str::MenuSeqMute) && item.checked);
+        view.undo();
+        model.set(seqNoteIndex(0, 1, SeqNoteParam::Start), 4.3);
+        view.poll();
+        view.menuCommand(entry(view.contextMenu(at(4.6, 55)), Str::MenuSeqQuantize));
+        const bool quantized = field(1, SeqNoteParam::Start) == 4.0;
+        view.undo();
+        model.set(seqNoteIndex(0, 1, SeqNoteParam::Start), 4.0);
+        view.poll();
+        view.menuCommand(entry(view.contextMenu(at(4.4, 55)), Str::MenuSeqCopy));
+        view.menuCommand(entry(view.contextMenu(at(14.6, 62)), Str::MenuSeqPaste)); // an empty place
+        const bool pastedThere = noteAt(14.0, 55) >= 0;
+        view.undo();
+        view.menuCommand(entry(view.contextMenu(at(14.6, 62)), Str::MenuSeqSelectAll));
+        const bool every = view.seqKey(View::Key::Delete, false) && noteAt(0.0, 48) < 0 && noteAt(12.0, 58) < 0;
+        view.undo();
+        click(view, at(15.5, 66)); // nothing picked
+        check(offered && duplicated && muted && checked && quantized && pastedThere && every && noteAt(4.0, 55) == 1 &&
+                  field(1, SeqNoteParam::Mute) == 0.0,
+              "the roll's right-click menu cuts, copies, pastes, duplicates, mutes, quantizes and picks every note");
+    }
+    // In Porcelain, the field of the notes picked one even well, its NOTE and OFFSET no darker than the others; and the
+    // zoom's buttons set in a well, apart from the arrows beside them (read off the rendered pixels).
+    {
+        const std::string themeWas = model.themeName;
+        model.themeName = "Porcelain";
+        click(view, at(0.5, 48)); // a note picked: the field reads
+        view.mouseMove({600.0f, 40.0f}, {});
+        const bool shot = renderer.save(view, dir / "36n-seq-porcelain.png");
+        const float toolsRight = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f;
+        const float y = detail::kSeqTools.y + 3.0f; // above the fields' text
+        const uint32_t note = renderer.pixel({toolsRight - 84.0f - 58.0f - 92.0f - 58.0f - 72.0f + 40.0f, y});
+        const uint32_t chance = renderer.pixel({toolsRight - 84.0f - 58.0f - 92.0f + 40.0f, y});
+        const uint32_t offset = renderer.pixel({toolsRight - 84.0f + 40.0f, y});
+        // The third zoom button (out, up and down): inside it, left of its −, and just left of it, right of its arrow.
+        const float zx = detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 2.0f * 20.0f;
+        const float zy = detail::kSeqLaneTabs.y + detail::kSeqLaneTabs.h * 0.5f;
+        const uint32_t inside = renderer.pixel({zx + 3.0f, zy}), beside = renderer.pixel({zx - 3.0f, zy});
+        model.themeName = themeWas;
+        click(view, at(15.5, 66)); // nothing picked
+        check(shot && note == chance && offset == chance, "in Porcelain, the field's NOTE and OFFSET sit in its even well");
+        check(inside != beside, "in Porcelain, the zoom's buttons stand apart from the arrows beside them");
+    }
+    click(view, at(4.4, 55)); // the note on step 4, alone
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "36i-seq-lane-ring.png");
+    const Point dot1 = laneDot(4.0, 100.0 / 127.0), dot0 = laneDot(0.0, 100.0 / 127.0);
+    const bool ringed = bright({dot1.x + 6.0f, dot1.y}) && !bright({dot0.x + 6.0f, dot0.y});
+    check(ringed, "a picked note's dot in the lane is ringed");
+    // With Draw: every note picked, the first's dot dragged 4 px up takes each one's velocity a tenth up from its own
+    // (the first from 64, the others from 100), as one undo step.
+    model.ui.seqDraw = true;
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 64.0 / 127.0);
+    view.poll();
+    view.seqKey(View::Key::SelectAll, false);
+    const Point grab = laneDot(0.0, 64.0 / 127.0);
+    view.mouseMove(grab, {});
+    const bool dotCursor = view.cursor() == CursorKind::Vertical;
+    view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 10.0f}, {});
+    const bool penCursor = view.cursor() == CursorKind::Pen;
+    view.mouseDown(grab, {});
+    view.mouseMove({grab.x, grab.y - 2.0f}, {});
+    view.mouseMove({grab.x, grab.y - 4.0f}, {});
+    const bool groupDragCursor = view.cursor() == CursorKind::Vertical;
+    view.mouseUp({grab.x, grab.y - 4.0f}, {});
+    // A single note's dot dragged keeps the up and down cursor too; a drag from an empty place, the pen.
+    model.ui.seqDraw = false; // a click on the empty grid picks nothing with Select (with Draw it puts a note down)
+    click(view, at(15.5, 66)); // nothing picked
+    model.ui.seqDraw = true;
+    const Point single = laneDot(4.0, 100.0 / 127.0);
+    view.mouseDown(single, {});
+    view.mouseMove({single.x, single.y - 3.0f}, {});
+    const bool singleDragCursor = view.cursor() == CursorKind::Vertical;
+    view.mouseUp({single.x, single.y - 3.0f}, {});
+    view.undo();
+    view.mouseDown({at(2.5, 48).x, detail::kSeqLaneArea.y + 30.0f}, {});
+    view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 28.0f}, {});
+    const bool emptyDragCursor = view.cursor() == CursorKind::Pen;
+    view.mouseUp({at(2.5, 48).x, detail::kSeqLaneArea.y + 28.0f}, {});
+    view.seqKey(View::Key::SelectAll, false); // as before, for the checks below
+    const long v0 = std::lround(field(0, SeqNoteParam::Velocity) * 127.0);
+    const long v1 = std::lround(field(1, SeqNoteParam::Velocity) * 127.0);
+    view.undo();
+    model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 100.0 / 127.0);
+    view.poll();
+    std::printf("      the picked notes' velocities moved together: %ld and %ld\n", v0, v1);
+    model.ui.seqDraw = false;
+    check(v0 == 77 && v1 == 113 && dotCursor && penCursor && groupDragCursor && singleDragCursor && emptyDragCursor,
+          "with Draw, the picked notes' velocities move together in the lane, its cursor a pen and up and down over a dot");
+    // With Select, the lane's dots are picked as their notes are: a box over their stems alone picks nothing, and one
+    // from empty space back over the dots of steps 4 and 0 picks those two notes (ringed, read off the rendered
+    // pixels), the 8th's left out; a dot dragged up
+    // moves both, each from its own, one undo step; Shift+click adds the 8th's and Ctrl+click lets it go again; a click
+    // on one of those picked, let go unmoved, picks it alone; the arrow, not a pen, over empty space.
+    {
+        click(view, at(15.5, 66)); // nothing picked
+        double was[4]; // every velocity at 100 for this, as it was after
+        for (int slot = 0; slot < 4; ++slot) {
+            was[slot] = field(slot, SeqNoteParam::Velocity);
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), 100.0 / 127.0);
+        }
+        view.poll();
+        const float foot = detail::kSeqLaneArea.y + detail::kSeqLaneArea.h - 8.0f;
+        view.mouseMove({at(2.5, 48).x, detail::kSeqLaneArea.y + 10.0f}, {});
+        const bool arrow = view.cursor() == CursorKind::Arrow;
+        // Along the lane's foot, over the stems alone, it picks nothing.
+        view.mouseDown({at(5.5, 48).x, foot}, {});
+        view.mouseMove({at(2.0, 48).x, foot - 6.0f}, {});
+        view.mouseMove({at(0.0, 48).x - 6.0f, foot - 12.0f}, {});
+        view.mouseUp({at(0.0, 48).x - 6.0f, foot - 12.0f}, {});
+        const bool stemsLeft = !view.seqKey(View::Key::Delete, false);
+        // Over the dots of steps 0 and 4, from right of step 4 back past the lane's left end, it picks those two.
+        const float dots = laneDot(0.0, 100.0 / 127.0).y;
+        view.mouseDown({at(5.5, 48).x, dots + 8.0f}, {});
+        view.mouseMove({at(2.0, 48).x, dots}, {});
+        view.mouseMove({at(0.0, 48).x - 6.0f, dots - 8.0f}, {});
+        const bool boxCursor = view.cursor() == CursorKind::Arrow;
+        const bool laneBoxShot = renderer.save(view, dir / "36i2-seq-lane-box.png");
+        view.mouseUp({at(0.0, 48).x - 6.0f, dots - 8.0f}, {});
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36i2-seq-lane-picked.png");
+        const Point d0 = laneDot(0.0, 100.0 / 127.0), d4 = laneDot(4.0, 100.0 / 127.0), d8 = laneDot(8.0, 100.0 / 127.0);
+        const bool boxed = bright({d0.x + 6.0f, d0.y}) && bright({d4.x + 6.0f, d4.y}) && !bright({d8.x + 6.0f, d8.y});
+        view.mouseDown(d4, {});
+        view.mouseMove({d4.x, d4.y - 2.0f}, {});
+        view.mouseMove({d4.x, d4.y - 4.0f}, {});
+        view.mouseUp({d4.x, d4.y - 4.0f}, {});
+        auto vel = [&](int slot) { return std::lround(field(slot, SeqNoteParam::Velocity) * 127.0); };
+        const bool together = vel(0) == 113 && vel(1) == 113 && vel(2) == 100;
+        view.undo();
+        const bool undone = vel(0) == 100 && vel(1) == 100;
+        click(view, d8, {true, false, false});
+        const bool cleared = view.seqKey(View::Key::Delete, false) && field(2, SeqNoteParam::Length) == 0.0;
+        view.undo(); // the three back
+        view.seqKey(View::Key::SelectAll, false);
+        click(view, d8, {false, true, false}); // Ctrl lets the 8th's go
+        click(view, d0); // one of the two picked: picked alone
+        view.seqKey(View::Key::Delete, false);
+        const bool alone = field(0, SeqNoteParam::Length) == 0.0 && field(1, SeqNoteParam::Length) > 0.0 &&
+                           field(2, SeqNoteParam::Length) > 0.0;
+        view.undo();
+        std::printf("      the lane picked with Select: box %d (%d), together %d, undone %d, added %d, alone %d\n", boxed,
+                    laneBoxShot, together, undone, cleared, alone);
+        check(arrow && stemsLeft && boxCursor && laneBoxShot && boxed && together && undone && cleared && alone,
+              "with Select, a box, Shift+click and Ctrl+click pick the lane's dots, which move up and down together");
+        for (int slot = 0; slot < 4; ++slot)
+            model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), was[slot]);
+        view.poll();
+        view.seqKey(View::Key::SelectAll, false); // as before, for the checks below
+    }
+    // With Draw, two notes starting together on step 12, one picked: the lane dragged there sets the picked one's
+    // velocity alone.
+    {
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 12.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 62.0);
+        view.poll();
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(12.4, 62)); // the new one picked
+        model.ui.seqDraw = true;
+        drag(view, {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 30.0f},
+             {laneDot(12.0, 100.0 / 127.0).x, detail::kSeqLaneArea.y + 6.0f});
+        const bool alone = field(20, SeqNoteParam::Velocity) == 1.0 && field(3, SeqNoteParam::Velocity) == 100.0 / 127.0;
+        view.undo();
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 20, SeqNoteParam::Pitch), 60.0);
+        view.poll();
+        model.ui.seqDraw = false;
+        check(alone, "with Draw, where notes start together, the lane sets the picked ones' alone");
+    }
+
+    // Selecting, the cursor over the empty grid is the arrow; drawing, a pen, and over a note what a drag does to it.
+    view.mouseMove(at(6.5, 62), {});
+    const bool arrow = view.cursor() == CursorKind::Arrow;
+    click(view, {detail::kSeqTools.x + 45.0f, detail::kSeqTools.y + 12.0f});
+    view.mouseMove(at(6.5, 62), {});
+    const bool pen = view.cursor() == CursorKind::Pen;
+    view.mouseMove(at(4.4, 55), {});
+    const bool overNote = view.cursor() == CursorKind::Move;
+    check(model.ui.seqDraw && arrow && pen && overNote,
+          "the draw tool's cursor is a pen over the empty grid, and over a note what a drag does to it");
+    // The draw tool: a click puts a note down, and held, the mouse 20 px up takes its velocity from 100 to 120, as one
+    // undo step with the note.
+    auto slotAt = [&](double start, int pitch) {
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            if (field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Start) == start &&
+                field(slot, SeqNoteParam::Pitch) == pitch)
+                return slot;
+        return -1;
+    };
+    view.mouseDown(at(6.5, 62), {});
+    view.mouseMove({at(6.5, 62).x, at(6.5, 62).y - 10.0f}, {});
+    view.mouseMove({at(6.5, 62).x, at(6.5, 62).y - 20.0f}, {});
+    const bool vertical = view.cursor() == CursorKind::Vertical;
+    view.mouseUp({at(6.5, 62).x, at(6.5, 62).y - 20.0f}, {});
+    const int drawn = slotAt(6.0, 62);
+    const bool drawnLouder = drawn >= 0 && std::lround(field(drawn, SeqNoteParam::Velocity) * 127.0) == 120;
+    view.undo();
+    check(drawnLouder && vertical && slotAt(6.0, 62) < 0,
+          "a note drawn and held takes the velocity the mouse sets up and down, undone with it");
+    // With Shift, a drag along a row paints a note in each step it crosses that has none.
+    view.mouseDown(at(1.5, 65), {true, false, false});
+    view.mouseMove(at(2.5, 65), {true, false, false});
+    view.mouseMove(at(3.5, 65), {true, false, false});
+    view.mouseUp(at(3.5, 65), {true, false, false});
+    int painted = 0;
+    for (int slot = 0; slot < kSeqNotes; ++slot)
+        if (field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Pitch) == 65.0)
+            ++painted;
+    check(painted == 3, "the draw tool with Shift paints a note in each step dragged across");
+    click(view, {detail::kSeqTools.x + 15.0f, detail::kSeqTools.y + 12.0f}); // select again
+
+    // The card's switches have tooltips of their own: KEY's under it (read off the rendered pixels).
+    const Point keyChip{detail::kSeqCardControls + 62.0f + 30.0f, detail::kSeqPlayY + 11.0f};
+    const Point underKey{keyChip.x, detail::kSeqPlayY + 22.0f + 6.0f + 11.0f};
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "36g-seq-no-tip.png");
+    const uint32_t bare = renderer.pixel(underKey);
+    view.mouseMove(keyChip, {});
+    const bool tipShot = renderer.save(view, dir / "36g-seq-tip.png");
+    check(tipShot && renderer.pixel(underKey) != bare, "the SEQ card's switches show tooltips of their own");
+
+    // The lane on CHANCE: dragged to its top over the note at step 4, that note's chance goes to all of it.
+    click(view, {kSeqGrid.x + 84.0f + 39.0f, detail::kSeqLaneTabs.y + 11.0f});
+    model.set(seqNoteIndex(0, 1, SeqNoteParam::Chance), 0.2);
+    view.poll();
+    drag(view, {at(4.0, 48).x + 1.0f, detail::kSeqLaneArea.y + 40.0f}, {at(4.0, 48).x + 1.0f, detail::kSeqLaneArea.y + 2.0f});
+    check(model.ui.seqLane == SeqLane::Chance && field(1, SeqNoteParam::Chance) == 1.0,
+          "the lane on CHANCE sets a note's chance by its height");
+
+    // The lane on BEND: its grid's lines, a quarter of the range apart (read off the rendered pixels). With Select, a
+    // click does nothing (no pen), and a Ctrl+double-click puts a point down on the grid (step 2, at 0.5) and a
+    // Ctrl+drag moves it onto the grid (step 6, at -0.5), each an undo step; with Draw (a pen), a click puts one down
+    // where the mouse is (step 10.3, at 1) and a double-click there leaves it; the middle of the segment between them
+    // dragged up bends it, and double-clicked straightens it again; with Select, a point double-clicked goes; the curve
+    // shows in the bend's color where the lane was bare (read off the rendered pixels).
+    {
+        const float laneTop = detail::kSeqLaneArea.y + 6.0f, laneH = detail::kSeqLaneArea.h - 12.0f;
+        auto bendAt = [&](double step, double v) {
+            return Point{at(step, 48).x, laneTop + laneH - static_cast<float>((v + 1.0) * 0.5) * laneH};
+        };
+        auto curveField = [&](SeqCurve curve, int i, PointField f) { return model.value(seqCurveIndex(0, curve, i, f)); };
+        auto count = [&](SeqCurve curve) { return model.value(seqCurveCountIndex(0, curve)); };
+        const Modifiers ctrl{false, true, false}, shift{true, false, false};
+        const Point selectTool = rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h});
+        const Point drawTool = {selectTool.x + 30.0f, selectTool.y};
+        click(view, {kSeqGrid.x + 2.0f * 76.0f + 36.0f, detail::kSeqLaneTabs.y + 11.0f}); // BEND
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36h-seq-bend-empty.png");
+        const bool grid = renderer.pixel(bendAt(14.5, 0.5)) != renderer.pixel(bendAt(14.5, 0.75));
+        const Point bareAt = bendAt(14.5, 0.75); // between the grid's lines, in what the curve will fill
+        const uint32_t bareInk = renderer.pixel(bareAt);
+        view.mouseMove(bendAt(2.2, 0.4), {});
+        const bool noPen = view.cursor() != CursorKind::Pen;
+        click(view, bendAt(2.2, 0.4));
+        const bool nothing = count(SeqCurve::Bend) == 0.0;
+        view.mouseDown(bendAt(2.2, 0.4), ctrl);
+        view.mouseUp(bendAt(2.2, 0.4), ctrl);
+        view.doubleClick(bendAt(2.2, 0.4), ctrl);
+        view.mouseUp(bendAt(2.2, 0.4), ctrl);
+        const bool putDown = model.ui.seqLane == SeqLane::Bend && count(SeqCurve::Bend) == 1.0 &&
+                         curveField(SeqCurve::Bend, 0, PointField::X) == 2.0 &&
+                         curveField(SeqCurve::Bend, 0, PointField::Y) == 0.5;
+        view.mouseMove(bendAt(2.0, 0.5), {});
+        const bool pointCursor = view.cursor() == CursorKind::Move;
+        view.mouseDown(bendAt(2.0, 0.5), ctrl);
+        view.mouseMove(bendAt(4.0, 0.0), ctrl);
+        view.mouseMove(bendAt(6.2, -0.4), ctrl);
+        view.mouseUp(bendAt(6.2, -0.4), ctrl);
+        const bool curveMoved = curveField(SeqCurve::Bend, 0, PointField::X) == 6.0 &&
+                           curveField(SeqCurve::Bend, 0, PointField::Y) == -0.5;
+        view.undo();
+        const bool undone = curveField(SeqCurve::Bend, 0, PointField::X) == 2.0;
+        view.redo();
+        click(view, drawTool);
+        view.mouseMove(bendAt(12.5, 0.25), {});
+        const bool penNow = view.cursor() == CursorKind::Pen;
+        doubleClick(view, bendAt(10.3, 1.0)); // its click puts the point down, and the double-click leaves it
+        const bool kept = count(SeqCurve::Bend) == 2.0 &&
+                          std::abs(curveField(SeqCurve::Bend, 1, PointField::X) - 10.3) < 0.02 &&
+                          curveField(SeqCurve::Bend, 1, PointField::Y) == 1.0;
+        // The segment from (6, -0.5) to (10.3, 1), its middle a quarter up, dragged 20 px up: a bend of -0.5.
+        const double middleStep = (6.0 + curveField(SeqCurve::Bend, 1, PointField::X)) * 0.5;
+        const Point middle = bendAt(middleStep, -0.5 + 1.5 * 0.5);
+        view.mouseMove(middle, {});
+        const bool bendCursor = view.cursor() == CursorKind::Vertical;
+        drag(view, middle, {middle.x, middle.y - 20.0f});
+        const double bent = curveField(SeqCurve::Bend, 0, PointField::Curve);
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool bentShot = renderer.save(view, dir / "36h-seq-bend.png");
+        const bool curveDrawn = renderer.pixel(bareAt) != bareInk; // held at 1 past its last point, filled down to 0
+        doubleClick(view, bendAt(middleStep, -0.5 + 1.5 * shapeBend(0.5, bent)));
+        const bool straight = curveField(SeqCurve::Bend, 0, PointField::Curve) == 0.0;
+        click(view, selectTool);
+        doubleClick(view, bendAt(6.0, -0.5));
+        const bool gone = count(SeqCurve::Bend) == 1.0 && std::abs(curveField(SeqCurve::Bend, 0, PointField::X) - 10.3) < 0.02;
+        std::printf("      bend lane: bent by %.2f\n", bent);
+        check(grid && noPen && nothing && putDown && pointCursor && curveMoved && undone && penNow && kept &&
+                  bendCursor && std::abs(bent + 0.5) < 0.05 && bentShot && curveDrawn && straight && gone,
+              "the BEND lane's grid, and its points put down, moved, bent and deleted as notes are, Ctrl on the grid");
+
+        // On MOD WHEEL with Draw, Shift+drag across steps 0 to 4 at the middle draws a point a step, at 0.5; the BEND
+        // curve left as it was.
+        click(view, {kSeqGrid.x + 3.0f * 76.0f + 36.0f, detail::kSeqLaneTabs.y + 11.0f}); // MOD WHEEL
+        click(view, drawTool);
+        const float middleY = laneTop + laneH * 0.5f;
+        view.mouseDown({at(0.1, 48).x, middleY}, shift);
+        view.mouseMove({at(2.1, 48).x, middleY}, shift);
+        view.mouseMove({at(4.2, 48).x, middleY}, shift);
+        view.mouseUp({at(4.2, 48).x, middleY}, shift);
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool wheelShot = renderer.save(view, dir / "36h-seq-wheel.png");
+        bool level = count(SeqCurve::ModWheel) == 5.0;
+        for (int i = 0; level && i < 5; ++i)
+            level = curveField(SeqCurve::ModWheel, i, PointField::X) == i &&
+                    std::abs(curveField(SeqCurve::ModWheel, i, PointField::Y) - 0.5) < 0.03;
+        std::printf("      mod wheel lane: %.0f points drawn\n", count(SeqCurve::ModWheel));
+        check(wheelShot && level && count(SeqCurve::Bend) == 1.0 && model.ui.seqLane == SeqLane::ModWheel,
+              "the MOD WHEEL lane's Shift+drag with Draw draws its curve a point a step");
+        // Back as it was: no curves, the select tool, the lane on CHANCE.
+        click(view, rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h}));
+        for (SeqCurve curve : {SeqCurve::Bend, SeqCurve::ModWheel})
+            model.set(seqCurveCountIndex(0, curve), 0.0);
+        click(view, {kSeqGrid.x + 84.0f + 39.0f, detail::kSeqLaneTabs.y + 11.0f});
+        view.poll();
+    }
+
+    // The ruler: the loop's ends dragged in (the cursor left and right over them) make it steps 4 to 12; its middle
+    // dragged two steps on (the cursor moving over it) takes it to 6 to 14; a drag across the bars outside it, from
+    // step 1 to 3, makes that the loop; and a double-click loops the whole bar again.
+    auto loopIs = [&](double start, double end) {
+        return model.value(paramIndex(0, SeqPatternParam::LoopStart)) == start &&
+               model.value(paramIndex(0, SeqPatternParam::LoopEnd)) == end;
+    };
+    view.mouseMove({at(0.0, 48).x + 2.0f, rulerY}, {});
+    const bool loopStartCursor = view.cursor() == CursorKind::Horizontal;
+    drag(view, {at(0.0, 48).x + 2.0f, rulerY}, {at(4.0, 48).x, rulerY});
+    drag(view, {at(16.0, 48).x - 2.0f, rulerY}, {at(12.0, 48).x, rulerY});
+    const bool looped = loopIs(4.0, 12.0);
+    view.mouseMove({at(8.0, 48).x, rulerY}, {});
+    const bool middleCursor = view.cursor() == CursorKind::Move;
+    drag(view, {at(8.0, 48).x, rulerY}, {at(10.0, 48).x, rulerY});
+    const bool movedLoop = loopIs(6.0, 14.0);
+    drag(view, {at(1.0, 48).x, rulerY}, {at(3.0, 48).x, rulerY});
+    const bool newLoop = loopIs(1.0, 3.0);
+    check(loopStartCursor && middleCursor && movedLoop && newLoop,
+          "the loop drags by its ends and its middle, a new one across the bars outside it, each with its cursor");
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool loopShot = renderer.save(view, dir / "36c-seq-loop.png");
+    doubleClick(view, {at(8.0, 48).x, rulerY});
+    check(looped && loopShot && model.value(paramIndex(0, SeqPatternParam::LoopStart)) == 0.0 &&
+              model.value(paramIndex(0, SeqPatternParam::LoopEnd)) == 0.0,
+          "the ruler sets the loop, and a double-click loops the whole pattern");
+
+    // The scale's list picks Minor, and FOLD shows only its rows.
+    const Rect scaleButton{detail::kSeqCardControls + 52.0f, detail::kSeqScaleY, 102.0f, 22.0f};
+    click(view, rectCenter(scaleButton));
+    click(view, rectCenter(detail::listMenuItem(scaleButton, static_cast<int>(SeqScale::Count),
+                                                static_cast<int>(SeqScale::Minor))));
+    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 27.0f, detail::kSeqScaleY + 11.0f});
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool foldShot = renderer.save(view, dir / "36d-seq-fold.png");
+    check(foldShot && model.value(paramIndex(SeqParam::Scale)) == static_cast<double>(SeqScale::Minor) &&
+              model.ui.seqFold,
+          "the scale's list picks a scale, and FOLD shows only its rows");
+    // A note off the scale (C#4) keeps its row folded, between C4's and D4's, the note hatched across (read off the
+    // rendered pixels) where one on the scale (C3, at 0) is filled plain.
+    {
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Start), 2.0);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Length), 1.5);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Pitch), 61.0);
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool offShot = renderer.save(view, dir / "36d-seq-fold-off-scale.png");
+        // Folded from C3: C3 D3 D#3 F3 G3 G#3 A#3 C4, then C#4 at the 9th row.
+        auto rowY = [&](int index) { return kSeqGrid.y + kSeqGrid.h - (static_cast<float>(index) + 0.5f) * rh; };
+        auto colors = [&](float x0, float x1, float y) {
+            std::vector<uint32_t> seen;
+            for (float x = x0; x < x1; x += 1.0f) {
+                const uint32_t c = renderer.pixel({x, y});
+                if (std::find(seen.begin(), seen.end(), c) == seen.end())
+                    seen.push_back(c);
+            }
+            return seen.size();
+        };
+        const size_t off = colors(at(2.2, 48).x, at(3.3, 48).x, rowY(8));
+        const size_t plain = colors(at(0.15, 48).x, at(0.85, 48).x, rowY(0));
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Length), 0.0);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Start), 0.0);
+        model.set(seqNoteIndex(0, 40, SeqNoteParam::Pitch), 60.0);
+        view.poll();
+        std::printf("      folded, a note off the scale in %zu colors across, one on it in %zu\n", off, plain);
+        check(offShot && off >= 3 && plain <= 2, "folded, a note off the scale keeps its row, marked");
+    }
+    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 27.0f, detail::kSeqScaleY + 11.0f});
+
+    // With the modulation panel and the keyboard collapsed, the editor too short for the list under its button: it opens
+    // above it, all of it inside the editor, and its last entry picks Blues.
+    model.ui.sourcesCollapsed = true;
+    model.ui.keysCollapsed = true;
+    click(view, rectCenter(scaleButton));
+    view.mouseMove({600.0f, 100.0f}, {});
+    const bool shortShot = renderer.save(view, dir / "36d-seq-scale-short.png");
+    const Point blues{scaleButton.x + 60.0f, scaleButton.y - 4.0f - 4.0f - 22.0f + 11.0f}; // its last row, just above
+    click(view, blues);
+    check(shortShot && view.height() < scaleButton.y + 22.0f + 4.0f + 8.0f + 12.0f * 22.0f &&
+              model.value(paramIndex(SeqParam::Scale)) == static_cast<double>(SeqScale::Blues),
+          "the scale's list opens above its button where it would reach past the editor's bottom");
+    model.ui.sourcesCollapsed = false;
+    model.ui.keysCollapsed = false;
+
+    // Zoomed in across by its + twice (2.25 times, about the middle step 8), the roll shows from step 4.4: a
+    // double-click at its left edge puts a note on step 4. The middle button dragged half the roll to the right shows
+    // from step 0.9, where a double-click there puts one on step 0; and dragged three rows down, the rows start three
+    // higher. Shift+wheel scrolls across too, and the bar under the roll shows while it is zoomed in.
+    {
+        const Rect zoomInX{detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 60.0f - 22.0f, detail::kSeqLaneTabs.y + 2.0f,
+                           18.0f, detail::kSeqLaneTabs.h - 4.0f};
+        const Rect zoomOutX{zoomInX.x - 20.0f, zoomInX.y, zoomInX.w, zoomInX.h};
+        click(view, rectCenter(zoomInX));
+        click(view, rectCenter(zoomInX));
+        view.mouseMove({600.0f, 600.0f}, {});
+        const bool zoomShot = renderer.save(view, dir / "36h-seq-zoomed.png");
+        const Point left{kSeqGrid.x + 2.0f, at(0.0, 60).y};
+        doubleClick(view, left);
+        const int zoomed = slotAt(4.0, 60);
+        view.undo();
+        view.middleDown({kSeqGrid.x + 100.0f, at(0.0, 52).y});
+        view.mouseMove({kSeqGrid.x + 100.0f + kSeqGrid.w * 0.5f, at(0.0, 52).y}, {});
+        view.middleUp({kSeqGrid.x + 100.0f + kSeqGrid.w * 0.5f, at(0.0, 52).y});
+        doubleClick(view, left);
+        const int panned = slotAt(0.0, 60);
+        view.undo();
+        const int lowBefore = model.ui.seqLow;
+        view.middleDown({kSeqGrid.x + 100.0f, at(0.0, 52).y});
+        view.mouseMove({kSeqGrid.x + 100.0f, at(0.0, 52).y + 3.0f * rh}, {});
+        view.middleUp({kSeqGrid.x + 100.0f, at(0.0, 52).y + 3.0f * rh});
+        const int lowPanned = model.ui.seqLow;
+        model.ui.seqLow = lowBefore;
+        check(zoomShot && zoomed >= 0 && panned >= 0 && lowPanned == lowBefore + 3,
+              "the roll zooms in across, and the middle button pans it across and up and down");
+        for (int i = 0; i < 4; ++i) // back to the whole pattern across
+            click(view, rectCenter(zoomOutX));
+        // Alt+wheel at the bottom row zooms in up and down from there: that row stays, and the point five old rows up
+        // falls on a lower row than the fifth.
+        const Point bottom{kSeqGrid.x + 300.0f, kSeqGrid.y + kSeqGrid.h - 2.0f};
+        view.wheel(bottom, 3.0f, {false, false, true});
+        const Point fiveUp{at(9.4, 48).x, kSeqGrid.y + kSeqGrid.h - 5.5f * rh};
+        doubleClick(view, fiveUp);
+        int pitch = -1;
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            if (field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Start) >= 9.0 &&
+                field(slot, SeqNoteParam::Start) < 10.0 && field(slot, SeqNoteParam::Pitch) != 51.0)
+                pitch = static_cast<int>(field(slot, SeqNoteParam::Pitch));
+        view.undo();
+        check(model.ui.seqLow == lowBefore && pitch > lowBefore && pitch < lowBefore + 5,
+              "Alt+wheel zooms the rows in, the row under the mouse staying");
+        view.wheel(bottom, -3.0f, {false, false, true}); // back as it was
+        // The rows' bar at the roll's right: its thumb dragged up a twelfth of the 128 rows' track shows them from an
+        // octave higher (read off the rendered pixels: the thumb lit at its new place).
+        const Rect track = detail::kSeqScrollYTrack;
+        const float thumbY = track.y + track.h - (static_cast<float>(lowBefore) + 11.0f) / 128.0f * track.h;
+        view.mouseDown({track.x + 3.0f, thumbY}, {});
+        view.mouseMove({track.x + 3.0f, thumbY - track.h * 6.0f / 128.0f}, {});
+        view.mouseMove({track.x + 3.0f, thumbY - track.h * 12.0f / 128.0f}, {});
+        const bool barShot = renderer.save(view, dir / "36j-seq-rows-bar.png");
+        view.mouseUp({track.x + 3.0f, thumbY - track.h * 12.0f / 128.0f}, {});
+        const int barLow = model.ui.seqLow;
+        model.ui.seqLow = lowBefore;
+        check(barShot && barLow == lowBefore + 12, "the rows' bar scrolls the rows up and down");
+    }
+
+    // The snap's list picks 1/8.
+    const Rect snapButton{detail::kSeqTools.x + 108.0f, detail::kSeqTools.y, 76.0f, detail::kSeqTools.h};
+    click(view, rectCenter(snapButton));
+    const bool snapOpen = renderer.save(view, dir / "36e-seq-snap.png");
+    click(view, rectCenter(detail::listMenuItem(snapButton, kSeqSnapCount, 2)));
+    check(snapOpen && model.ui.seqSnap == 2, "the snap's list picks the grid");
+
+    // The roll's lines fall at the snap's length: at 1/32 one between two steps that 1/16 hasn't; and with GRID at 0
+    // there are none (read off the rendered pixels).
+    {
+        const Point between{at(0.5, 66).x, at(0.5, 66).y};
+        auto lineAt = [&](int snap) {
+            model.ui.seqSnap = snap;
+            view.mouseMove({600.0f, 600.0f}, {});
+            renderer.save(view, dir / "36k-seq-grid.png");
+            return renderer.pixel(between);
+        };
+        const uint32_t at32 = lineAt(4), at16 = lineAt(3);
+        model.grid = 0.0;
+        const uint32_t none32 = lineAt(4), none16 = lineAt(3);
+        model.grid = Controller::kDefaultGridIntensity;
+        model.ui.seqSnap = 2;
+        check(at32 != at16 && none32 == none16, "the roll's lines fall at the snap's length, as strong as GRID says");
+    }
+
+    // Copied, the pattern fills B; picked, B shows in the roll.
+    click(view, {detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 13.0f, detail::kSeqPatternY + 11.0f});
+    const bool copied = model.value(seqNoteIndex(1, 2, SeqNoteParam::Length)) == 2.0 &&
+                        model.value(seqNoteIndex(1, 2, SeqNoteParam::Pitch)) == 51.0;
+    click(view, {detail::kSeqCardControls + 30.0f + 14.0f, detail::kSeqPatternY + 11.0f});
+    check(copied && model.value(paramIndex(SeqParam::Pattern)) == 1.0, "a pattern copies into the next empty one");
+    click(view, {detail::kSeqCardControls + 14.0f, detail::kSeqPatternY + 11.0f});
+
+    // The bin asks, then clears the pattern; undo brings it back.
+    const Point bin{detail::kSeqTools.x + detail::kSeqTools.w - 13.0f, detail::kSeqTools.y + 12.0f};
+    const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
+    click(view, bin);
+    const bool asked = renderer.save(view, dir / "36f-seq-clear.png");
+    click(view, {confirm.right() - 64.0f, confirm.bottom() - 38.0f});
+    bool empty = true;
+    for (int slot = 0; slot < kSeqNotes; ++slot)
+        empty = empty && field(slot, SeqNoteParam::Length) == 0.0;
+    view.undo();
+    check(asked && empty && field(2, SeqNoteParam::Length) == 2.0, "the bin clears the pattern, asking first, undoably");
+}
+
 void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5014,6 +6705,24 @@ void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     const Point header{600.0f, 20.0f}; // the editor's title bar, which the dialog's backdrop dims
     renderer.save(view, dir / "40s-fx-clear-before.png");
     const uint32_t clear = renderer.pixel(header);
+
+    // The FX tab's dot while an effect in the line is switched on, and none with them switched off (read off the
+    // rendered pixels).
+    {
+        const Point dot = detail::viewTabDot(static_cast<int>(RoutingView::Fx));
+        const uint32_t lit = renderer.pixel(dot);
+        model.values[paramIndex(0, FxParam::Enabled)] = 0.0;
+        model.values[paramIndex(1, FxParam::Enabled)] = 0.0;
+        view.poll();
+        renderer.save(view, dir / "40s-fx-tab-off.png");
+        const uint32_t unlit = renderer.pixel(dot);
+        model.values[paramIndex(0, FxParam::Enabled)] = 1.0;
+        model.values[paramIndex(1, FxParam::Enabled)] = 1.0;
+        view.poll();
+        renderer.save(view, dir / "40s-fx-clear-before.png");
+        check(lit != unlit && renderer.pixel(dot) == lit,
+              "the FX tab shows a dot while an effect in the line is switched on, and none with them all off");
+    }
 
     // The chain: asked, kept by a click around the dialog, then removed, and back by undo.
     click(view, bin);
@@ -5640,6 +7349,30 @@ void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(cabsShot && bass && model.value(at(FxParam::AmpCab)) == static_cast<double>(AmpCab::Closed4x12),
           "the amp's cabinet list picks a cabinet, undoably");
+    {
+        // The arrows in the model's list: on through every model and round to Crunch again, a change and an undo step
+        // each click; back from Clean round to Fuzz. The cabinet's: on to the next cabinet, and back.
+        const int amp = at(FxParam::AmpModel), cab = at(FxParam::AmpCab);
+        bool each = true;
+        for (int k = 1; k <= kModels; ++k) {
+            click(view, listStep(detail::ampModelButton(card), 1));
+            each = each && std::lround(model.value(amp)) == (static_cast<int>(AmpModel::Crunch) + k) % kModels;
+        }
+        view.undo();
+        const bool undone = std::lround(model.value(amp)) == static_cast<long>(AmpModel::Blues);
+        model.set(amp, static_cast<double>(AmpModel::Clean));
+        click(view, listStep(detail::ampModelButton(card), -1));
+        const bool fuzz = std::lround(model.value(amp)) == static_cast<long>(AmpModel::Fuzz);
+        model.set(amp, static_cast<double>(AmpModel::Crunch));
+        click(view, listStep(detail::ampCabButton(card), 1));
+        const bool onCab = std::lround(model.value(cab)) == static_cast<long>(AmpCab::Bass4x10);
+        view.mouseMove(away, {});
+        const bool stepsShot = renderer.save(view, dir / "9f3-amp-steps.png");
+        click(view, listStep(detail::ampCabButton(card), -1));
+        check(each && undone && fuzz && onCab && stepsShot &&
+                  std::lround(model.value(cab)) == static_cast<long>(AmpCab::Closed4x12),
+              "the arrows in the amp's model and cabinet lists step them round the lists' ends, undoably");
+    }
     // The mic's three under the cabinet's display.
     click(view, centerOf(detail::ampMicChoice(card, static_cast<int>(AmpMic::Ribbon))));
     const bool ribbon = model.value(at(FxParam::AmpMic)) == static_cast<double>(AmpMic::Ribbon);
@@ -6677,7 +8410,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotAmountIndex(kMaxSources, 0), 0.35);
     view.poll();
     // The tab, after FX; the first row's middle at y 154, its cells across from x 28 (see layout.h's kMods...).
-    click(view, {314.0f, 116.0f});
+    click(view, {382.0f, 116.0f});
     view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "35-mods.png");
     check(model.ui.view == RoutingView::Mods && shot, "the MODS tab shows every modulation as a row");
@@ -6903,7 +8636,7 @@ void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, MacroParam::Bipolar), 0.0);
     model.set(paramIndex(0, MacroParam::Value), 0.0);
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     auto shoot = [&](const char *name, float y) {
         view.poll();
         view.mouseMove({600.0f, 468.0f}, {});
@@ -7146,7 +8879,7 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotTargetIndex(1, 0), slotTargetValue(slotAmountIndex(0, 0)));
     model.set(slotAmountIndex(1, 0), 0.25);
     view.poll();
-    click(view, {314.0f, 116.0f}); // MODS
+    click(view, {382.0f, 116.0f}); // MODS
     auto moveTo = [&](int category) {
         const float y = 202.0f + 22.0f * static_cast<float>(category) + 11.0f;
         click(view, {90.0f, 182.0f});
@@ -7274,21 +9007,22 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         View curveView(fresh);
         click(curveView, detail::sourceMenuButton().center());
         curveView.mouseMove(sourceMenuEntry(SourceType::Curve), {});
-        const bool listShot = renderer.save(curveView, dir / "11k-source-menu-curve.png");
+        const bool curveListShot = renderer.save(curveView, dir / "11k-source-menu-curve.png");
         click(curveView, sourceMenuEntry(SourceType::Curve));
         const int unipolarParam = paramIndex(0, SourceParam::Unipolar);
-        const bool added = fresh.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Curve) &&
-                           fresh.value(unipolarParam) == 1.0;
+        const bool curveAdded =
+            fresh.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Curve) &&
+            fresh.value(unipolarParam) == 1.0;
         const Point widePower = detail::sourcePower(0, detail::kWideSource).center();
         click(curveView, widePower);
         const bool wide = fresh.value(sourceEnabledIndex(0)) == 0.0;
         click(curveView, widePower);
         curveView.mouseMove({600.0f, 328.0f}, {});
-        const bool shot = renderer.save(curveView, dir / "11l-curve-source.png");
+        const bool curveShot = renderer.save(curveView, dir / "11l-curve-source.png");
         click(curveView, {cardX(0) + 16.0f + 61.0f * 1.5f, 564.0f + 42.0f + 11.0f}); // Bipolar
         const bool bipolar = fresh.value(unipolarParam) == 0.0;
         curveView.undo();
-        check(listShot && added && wide && shot && bipolar && fresh.value(unipolarParam) == 1.0,
+        check(curveListShot && curveAdded && wide && curveShot && bipolar && fresh.value(unipolarParam) == 1.0,
               "+ SOURCE adds a Curve source, unipolar and widened to draw its shape, its polarity set by its switch");
         // Folded, its name down the strip is CRV and its number, four lines and nothing after them (read off the
         // rendered pixels), as a Random card's RND.
@@ -7314,7 +9048,7 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     // The columns' names, their middle at y 126: along it, under SOURCE (from x 54), the text's pixels differ from
     // the panel's (read off the rendered pixels).
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     view.mouseMove({600.0f, 468.0f}, {});
     const bool noneShot = renderer.save(view, dir / "35e2-mods-none.png");
     bool headed = false;
@@ -7326,7 +9060,7 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
     model.set(slotAmountIndex(0, 0), 0.4);
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     // Under LFO 1's row (its middle at y 154), the button adds a second: its source's menu opens under its source,
     // at x 54 and y 200. Over Macros, the second entry, the macros show beside it; Macro 1 is picked.
     const float y = 212.0f;
@@ -7419,7 +9153,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     for (auto [source, slot] : {std::pair{0, 0}, {0, 1}, {1, 0}, {kMaxSources, 0}})
         model.set(slotAmountIndex(source, slot), 0.3);
     view.poll();
-    click(view, {314.0f, 116.0f}); // the MODS tab
+    click(view, {382.0f, 116.0f}); // the MODS tab
     auto slotIs = [&](int source, int slot, int target) {
         return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
     };
@@ -7692,7 +9426,7 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a hundredth as fast; half
     // its width (164 px from x 474) is 1 % then.
-    click(view, {314.0f, 116.0f});
+    click(view, {382.0f, 116.0f});
     const Point bar{474.0f + 82.0f, 182.0f};
     view.mouseDown(bar, {true, false});
     view.mouseMove({bar.x + 82.0f, bar.y}, {true, false});
@@ -8919,6 +10653,75 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.opTab == InspectorTab::Unison, "the UNISON tab shows the operator's unison");
     drag(view, kUnisonKnob, {kUnisonKnob.x, kUnisonKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Unison)) == 4.0, "the unison knob steps through copy counts");
+
+    // Its count is a stepper, as every stepped number is: a field reaching out half a column less 6 px either side (the
+    // first of its row, with nothing at its left), its - and + at the ends stepping it as a notch of the wheel does,
+    // each an undo step, a quick second click stepping again, and - doing nothing at 1 copy; its + faint at rest and lit
+    // under the mouse (read off the rendered pixels). The hand over - and +, up and down over its number (and while
+    // it is dragged from there, wherever the mouse goes), and the arrow over its label.
+    {
+        const int unison = paramIndex(0, OpParam::Unison);
+        const float d = detail::kOpKnobD, half = 268.0f / 5.0f * 0.5f - 6.0f;
+        const float bottom = kUnisonKnob.y + 0.5f * d - 5.5f, top = bottom - 20.0f;
+        const Point plus{kUnisonKnob.x + half - 7.5f, top + 7.5f}, minus{kUnisonKnob.x - half + 7.5f, top + 7.5f};
+        const Point away{600.0f, 328.0f};
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "3s-stepper.png");
+        const int rest = ringLevel(renderer, {plus.x, plus.y - 3.0f}, 6.0f);
+        view.mouseMove(plus, {});
+        const bool hoverShot = renderer.save(view, dir / "3s-stepper-hover.png");
+        const int lit = ringLevel(renderer, {plus.x, plus.y - 3.0f}, 6.0f);
+        const bool plusHand = view.cursor() == CursorKind::Hand;
+        view.mouseMove(minus, {});
+        const bool minusHand = view.cursor() == CursorKind::Hand;
+        view.mouseMove({kUnisonKnob.x, top + 7.5f}, {});
+        const bool numberVertical = view.cursor() == CursorKind::Vertical;
+        view.mouseMove({kUnisonKnob.x, bottom + 14.0f}, {}); // its label
+        const bool labelArrow = view.cursor() == CursorKind::Arrow;
+        view.mouseDown({kUnisonKnob.x, top + 7.5f}, {});
+        view.mouseMove({plus.x, top + 2.0f}, {}); // over its + while dragged: a step up
+        const bool draggedVertical = view.cursor() == CursorKind::Vertical;
+        view.mouseUp({plus.x, top + 2.0f}, {});
+        view.undo();
+        const bool cursors = plusHand && minusHand && numberVertical && labelArrow && draggedVertical;
+        click(view, plus);
+        const bool up = model.value(unison) == 5.0;
+        doubleClick(view, plus);
+        const bool twice = model.value(unison) == 7.0;
+        click(view, minus);
+        const bool down = model.value(unison) == 6.0;
+        view.undo();
+        view.undo();
+        view.undo();
+        const bool undone = model.value(unison) == 5.0;
+        view.undo();
+        const bool back = model.value(unison) == 4.0;
+        model.set(unison, 1.0);
+        view.poll();
+        click(view, minus);
+        const bool floor = model.value(unison) == 1.0;
+        // At 16, too long to leave - and + room at rest, they still show under the mouse on its number, which clears
+        // their glyphs (read off the rendered pixels).
+        model.set(unison, 16.0);
+        view.poll();
+        view.mouseMove(away, {});
+        renderer.save(view, dir / "3s-stepper-16.png");
+        const int minusRest = ringLevel(renderer, {minus.x, minus.y - 1.0f}, 2.0f);
+        view.mouseMove({kUnisonKnob.x, top + 7.5f}, {});
+        renderer.save(view, dir / "3s-stepper-16-hover.png");
+        const int minusShown = ringLevel(renderer, {minus.x, minus.y - 1.0f}, 2.0f);
+        std::printf("      a stepper at 16's - at %d resting, %d with the mouse on its number\n", minusRest, minusShown);
+        check(minusShown > minusRest + 40, "a stepper's - and + show under the mouse where its number leaves room");
+        model.set(unison, 4.0);
+        view.poll();
+        view.mouseMove(away, {});
+        std::printf("      a stepper's + at %d resting, %d under the mouse\n", rest, lit);
+        check(hoverShot && up && twice && down && undone && back && floor && lit > rest + 40,
+              "a stepper's - and + step it, an undo step each, and its + lights under the mouse");
+        check(cursors && model.value(unison) == 4.0,
+              "a stepper shows the hand over its - and +, up and down over its number and while dragged, and the "
+              "arrow over its label");
+    }
     drag(view, kPhaseKnob, {kPhaseKnob.x, kPhaseKnob.y - 100.0f});
     check(std::abs(model.value(paramIndex(0, OpParam::PhaseRandom)) - 0.5) < 1e-6,
           "the phase knob sets the operator's phase randomization");
@@ -8928,6 +10731,54 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(GlobalParam::Voices)) == 64.0, "the voices knob doubles every 40 px");
     view.mouseMove(kUnisonKnob, {});
     check(renderer.save(view, dir / "3b-unison.png"), "render an operator with unison");
+
+    // How the copies spread in pitch and where they sit, by the buttons along the display's bottom, and Blend by its
+    // knob, each an undo step; the display's lowest copy (of four) on the right under Alternate, the pan a new
+    // operator starts with, and moving to the left as Ramp takes it there (read off the rendered pixels).
+    {
+        const int curve = paramIndex(0, OpParam::UnisonCurve), pan = paramIndex(0, OpParam::UnisonPan);
+        const int blend = paramIndex(0, OpParam::UnisonBlend);
+        const int detune = paramIndex(0, OpParam::UnisonDetune), spread = paramIndex(0, OpParam::UnisonSpread);
+        const double detuneWas = model.value(detune), spreadWas = model.value(spread);
+        model.set(detune, kMaxUnisonDetune);
+        model.set(spread, 1.0);
+        view.poll();
+        const Rect r = detail::kUnisonRect;
+        const float half = r.w * 0.5f - 24.0f, down = r.h * 0.5f - 10.0f;
+        const Point lowLeft{r.center().x - half, r.center().y + down - 1.0f};
+        const Point lowRight{r.center().x + half, r.center().y + down - 1.0f};
+        const Point away{600.0f, 328.0f};
+        view.mouseMove(away, {});
+        const bool started = std::lround(model.value(pan)) == static_cast<long>(UniPan::Alternate);
+        renderer.save(view, dir / "3b-unison-alternate.png");
+        const int altLeft = ringLevel(renderer, lowLeft, 2.0f), altRight = ringLevel(renderer, lowRight, 2.0f);
+        click(view, detail::uniCurveButton(static_cast<int>(UniCurve::Supersaw)).center());
+        click(view, detail::uniPanButton(static_cast<int>(UniPan::Ramp)).center());
+        drag(view, kBlendKnob, {kBlendKnob.x, kBlendKnob.y - 100.0f});
+        const bool set = std::lround(model.value(curve)) == static_cast<long>(UniCurve::Supersaw) &&
+                         std::lround(model.value(pan)) == static_cast<long>(UniPan::Ramp) &&
+                         std::abs(model.value(blend) - 0.5) < 1e-6;
+        view.mouseMove(away, {});
+        const bool shot = renderer.save(view, dir / "3b-unison-modes.png");
+        const int rampLeft = ringLevel(renderer, lowLeft, 2.0f), rampRight = ringLevel(renderer, lowRight, 2.0f);
+        std::printf("      the lowest copy's place, left and right: %d and %d under Alternate, %d and %d under Ramp\n",
+                    altLeft, altRight, rampLeft, rampRight);
+        check(started && set && shot && altRight > altLeft + 60 && rampLeft > rampRight + 60,
+              "the UNISON tab starts on Alternate, its buttons pick the copies' curve and pan, its knob Blend, and its "
+              "display follows");
+        view.mouseMove(detail::uniPanButton(static_cast<int>(UniPan::Random)).center(), {});
+        check(renderer.save(view, dir / "3b-unison-tip.png"), "render a unison pan button's tooltip");
+        view.undo();
+        const bool blendUndone = model.value(blend) == 0.0 && std::lround(model.value(pan)) == 0;
+        view.undo();
+        const bool panUndone = std::lround(model.value(pan)) == 1 && std::lround(model.value(curve)) == 2;
+        view.undo();
+        check(blendUndone && panUndone && std::lround(model.value(curve)) == 0,
+              "the unison curve, pan and Blend are each an undo step");
+        model.set(detune, detuneWas);
+        model.set(spread, spreadWas);
+        view.poll();
+    }
 
     // Noise: the slope knob takes the ratio knob's place, and the unison row shows the spectrum.
     click(view, kNoiseButton);
@@ -9272,6 +11123,31 @@ void run(const std::filesystem::path &dir, float scale) {
             check(backspaced && deleted && model.value(mult) == 3.0,
                   "typing into Mult steps over its × whole, Backspace and Delete taking all of it");
         }
+        // Mult is a stepper, its field between Freq's knob and Pitch's less 4 px either side. At ×0.001 its number is
+        // too long for - and + both: under the mouse on +, the + alone shows and the number moves off it, as it does
+        // off - (the column between each one's glyph and where the number may reach left clear of it, read off the
+        // rendered pixels).
+        {
+            const float d = detail::kOpKnobD;
+            const float half = std::clamp(std::min(kPitchKnob.x - kMultKnob.x, kMultKnob.x - detail::opKnobCenter(-2).x) - 0.5f * d - 4.0f, 18.0f, 28.0f);
+            const float h = d >= 32.0f ? 22.0f : 20.0f, top = kMultKnob.y + 0.5f * d - 5.5f - h;
+            const float y = top + 0.5f * (h - 5.0f); // the middle of its number, above its steps
+            const float right = kMultKnob.x + half, left = kMultKnob.x - half;
+            model.set(mult, 0.0); // ×0.001
+            view.poll();
+            view.mouseMove({right - 7.5f, y}, {});
+            const bool shot = renderer.save(view, dir / "3f-stepper-long.png");
+            const int byPlus = ringLevel(renderer, {right - 11.5f, y - 5.0f}, 10.0f);
+            view.mouseMove({left + 7.5f, y}, {});
+            renderer.save(view, dir / "3f-stepper-long-minus.png");
+            const int byMinus = ringLevel(renderer, {left + 11.5f, y - 5.0f}, 10.0f);
+            model.set(mult, 3.0);
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            std::printf("      a long stepper number beside + at %d, beside - at %d\n", byPlus, byMinus);
+            check(shot && byPlus < 140 && byMinus < 140,
+                  "a stepper's number too long for - and + both moves off the one under the mouse");
+        }
         // A source's handle held meanwhile rings the knobs it can be dropped on, Freq among them, but not the dimmed
         // Pitch, which takes no drop (read off the rendered pixels: a strip across the top of each ring, with the
         // handle held and after the drag was called off).
@@ -9381,10 +11257,10 @@ void run(const std::filesystem::path &dir, float scale) {
           "clicking a switched-off filter's tab switches it on");
     model.set(paramIndex(1, FilterParam::Enabled), 0.0);
     click(view, kF1Tab);
-    click(view, typeButton(static_cast<int>(FilterType::Comb)));
+    pickType(view, FilterType::Comb);
     check(std::lround(model.value(paramIndex(0, FilterParam::Type))) == static_cast<long>(FilterType::Comb),
-          "type buttons set the filter type");
-    click(view, typeButton(static_cast<int>(FilterType::LowPass)));
+          "the type's list sets the filter type");
+    pickType(view, FilterType::LowPass);
     // The slope's list: a low-pass comes in 6 to 24 dB per octave; a band-pass only in 12 and 24, the others faint
     // in its list, where a click on one leaves the list open.
     const int slope = paramIndex(0, FilterParam::Slope);
@@ -9396,7 +11272,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kSlopeButton);
     click(view, slopeItem(0));
     const bool gentle = model.value(slope) == 0.0;
-    click(view, typeButton(static_cast<int>(FilterType::BandPass)));
+    pickType(view, FilterType::BandPass);
     click(view, kSlopeButton);
     view.mouseMove(slopeItem(2), {});
     const bool bandListShot = renderer.save(view, dir / "4b-slope-list-band.png");
@@ -9415,10 +11291,123 @@ void run(const std::filesystem::path &dir, float scale) {
     const bool refused = model.value(slope) == 0.0;
     click(view, slopeItem(3)); // the list is still open
     const bool bandSteep = model.value(slope) == 3.0;
-    click(view, typeButton(static_cast<int>(FilterType::LowPass)));
+    pickType(view, FilterType::LowPass);
     model.set(slope, kDefaultSlope);
     check(listShot && steep && gentle && bandListShot && refused && bandSteep,
           "the slope's list picks 6 to 24 dB, a band-pass's only 12 and 24");
+    // The type's list: every type with its icon before its name (read off the rendered pixels: a stroke in each row's
+    // icon box, brighter than the row's empty right end), Ladder picked from it and shown on its button, and the
+    // wheel over the button stepping the type, a run of notches one undo step, held at the list's ends.
+    {
+        const int type = paramIndex(0, FilterParam::Type);
+        constexpr int kTypes = static_cast<int>(FilterType::Count);
+        auto lit = [](uint32_t px) { return ((px >> 16 & 255) + (px >> 8 & 255) + (px & 255)) / 3; };
+        click(view, kTypeButton);
+        view.mouseMove({detail::kFilterTypeButton.x - 8.0f, detail::kFilterTypeButton.center().y}, {});
+        const bool typeListShot = renderer.save(view, dir / "4c-type-list.png");
+        bool icons = true;
+        for (int t = 0; t < kTypes; ++t) {
+            const Rect row = detail::listMenuItem(detail::kFilterTypeButton, kTypes, t);
+            const Rect box = detail::filterTypeIconRect(row);
+            uint32_t most = 0;
+            for (float x = box.x; x <= box.right(); x += 1.0f)
+                for (float y = box.y; y <= box.bottom(); y += 1.0f)
+                    most = std::max(most, lit(renderer.pixel({x, y})));
+            const uint32_t empty = lit(renderer.pixel({row.right() - 6.0f, row.center().y}));
+            if (most < empty + 40) {
+                std::printf("      type %d's icon: brightest %u, the row's end %u\n", t, most, empty);
+                icons = false;
+            }
+        }
+        click(view, typeItem(FilterType::Ladder));
+        const bool ladder = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
+        const bool ladderShot = renderer.save(view, dir / "4d-type-ladder.png");
+        view.wheel(kTypeButton, -1.0f, {});
+        view.wheel(kTypeButton, -1.0f, {});
+        const bool stepped = std::lround(model.value(type)) == static_cast<long>(FilterType::Notch);
+        view.undo();
+        const bool undone = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
+        pickType(view, FilterType::Morph); // the last in the list
+        view.wheel(kTypeButton, 1.0f, {});
+        const bool held = std::lround(model.value(type)) == static_cast<long>(FilterType::Morph);
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        check(typeListShot && icons && ladder && ladderShot && stepped && undone && held,
+              "the type's list shows each type with its icon and picks Ladder, and the wheel steps it");
+        // Its arrows: back from the first type round to the last, on round to the first again and on to the second,
+        // each click an undo step; the arrow under the mouse lit (read off the rendered pixels, in its corner, clear
+        // of its glyph).
+        const Rect button = detail::kFilterTypeButton;
+        const Rect next = detail::listStepButton(button, 1);
+        const Point corner{next.x + 2.5f, next.y + 3.0f};
+        view.mouseMove({button.x - 8.0f, button.center().y}, {});
+        renderer.save(view, dir / "4e-type-steps.png");
+        const uint32_t idle = lit(renderer.pixel(corner));
+        view.mouseMove(next.center(), {});
+        const bool stepsShot = renderer.save(view, dir / "4e-type-steps-hover.png");
+        const uint32_t hovered = lit(renderer.pixel(corner));
+        click(view, listStep(button, -1));
+        const bool wrapped = std::lround(model.value(type)) == static_cast<long>(kTypes - 1);
+        click(view, listStep(button, 1));
+        const bool round = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        click(view, listStep(button, 1));
+        const bool on = std::lround(model.value(type)) == static_cast<long>(FilterType::HighPass);
+        view.undo();
+        const bool stepUndone = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        view.undo();
+        // Clicked quickly, the second click comes as a double-click (as Windows sends it): a step all the same.
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        click(view, listStep(button, 1));
+        view.doubleClick(listStep(button, 1), {});
+        view.mouseUp(listStep(button, 1), {});
+        const bool quick = std::lround(model.value(type)) == static_cast<long>(FilterType::BandPass);
+        model.set(type, static_cast<double>(kTypes - 1));
+        if (hovered <= idle + 8)
+            std::printf("      the arrow's corner: %u idle, %u under the mouse\n", idle, hovered);
+        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone && quick &&
+                  std::lround(model.value(type)) == static_cast<long>(kTypes - 1),
+              "the arrows in a filter's type list step it round the list's ends, undoably, lit under the mouse, and a "
+              "quick second click steps again");
+        model.set(type, static_cast<double>(FilterType::LowPass));
+    }
+    // A morph's slope's list and notch switch, side by side where the slope's list is: 24 dB picked from the list
+    // (18 refused), the switch going through the notch and back; its six knobs, its Morph's after Resonance turning;
+    // then a formant's, its Vowel's turning.
+    {
+        const int type = paramIndex(0, FilterParam::Type), mode = paramIndex(0, FilterParam::MorphMode),
+                  morph = paramIndex(0, FilterParam::Morph), vowel = paramIndex(0, FilterParam::Vowel),
+                  slopeIndex = paramIndex(0, FilterParam::Slope);
+        const Rect slopeButton = detail::morphSlopeButton(detail::kFilterDisplay);
+        const Point notchButton = detail::morphNotchButton(detail::kFilterDisplay).center();
+        pickType(view, FilterType::Morph);
+        click(view, slopeButton.center());
+        view.mouseMove(detail::listMenuItem(slopeButton, kFilterSlopes, 3).center(), {});
+        const bool modeShot = renderer.save(view, dir / "4e-morph-slope.png");
+        click(view, detail::listMenuItem(slopeButton, kFilterSlopes, 2).center()); // 18 dB: refused, the list open
+        click(view, detail::listMenuItem(slopeButton, kFilterSlopes, 3).center());
+        const bool isSteep = model.value(slopeIndex) == 3.0;
+        click(view, notchButton);
+        const bool notch = morphMode(model.value(mode)) == MorphMode::Notch;
+        click(view, notchButton);
+        const bool band = morphMode(model.value(mode)) == MorphMode::Band;
+        click(view, notchButton); // through the notch, for the picture
+        const Point morphKnob = detail::filterSixKnob(2);
+        drag(view, morphKnob, {morphKnob.x, morphKnob.y - 40.0f});
+        const bool morphed = model.value(morph) > 0.1;
+        const bool morphShot = renderer.save(view, dir / "4f-morph.png");
+        pickType(view, FilterType::Formant);
+        const Point vowelKnob = detail::filterSixKnob(2);
+        drag(view, vowelKnob, {vowelKnob.x, vowelKnob.y - 40.0f});
+        const bool turned = model.value(vowel) > 0.1;
+        const bool formantShot = renderer.save(view, dir / "4g-formant.png");
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        model.set(mode, 0.0);
+        model.set(morph, 0.0);
+        model.set(vowel, 0.0);
+        model.set(slopeIndex, kDefaultSlope);
+        check(modeShot && isSteep && notch && band && morphed && morphShot && turned && formantShot,
+              "a morph's slope's list picks 24 dB, its notch switch goes through the notch and back, its Morph turns, "
+              "and a formant's Vowel turns");
+    }
     const int cutoff = paramIndex(0, FilterParam::Cutoff);
     const double cutoffBefore = model.value(cutoff);
     const Rect response = detail::kFilterDisplay; // its handle as View places it, 10 px inside the display
@@ -9507,9 +11496,25 @@ void run(const std::filesystem::path &dir, float scale) {
     model.live.modOffset[fmAmount] = 0.25f;
     model.live.modOffset[paramIndex(GlobalParam::Pan)] = -0.3f;
     model.live.modOffset[matrixIndex(1, 0)] = 0.2f; // Env 1 on the B -> A wire: it swells, its label shows where
-    for (int key : {48, 52, 55}) // the host holds a C major chord, which lights up on the keyboard
-        model.live.keys[key / 32] |= 1u << (key % 32);
-    view.poll();
+    // The host holds a C major chord, which lights up on the keyboard, easing up over a few polls (read off the
+    // rendered pixels: C3's key, clear of its name and the black keys).
+    {
+        const Point c3{detail::kKeys.x + (24 / 12 * 7) * detail::kWhiteW + 4.0f,
+                       detail::keyboardTop(false) + detail::kKeys.y + detail::kKeys.h - 4.0f};
+        renderer.save(view, dir / "5-keys-off.png");
+        const uint32_t off = renderer.pixel(c3);
+        for (int key : {48, 52, 55})
+            model.live.keys[key / 32] |= 1u << (key % 32);
+        view.poll();
+        renderer.save(view, dir / "5-keys-rising.png");
+        const uint32_t rising = renderer.pixel(c3);
+        view.poll();
+        view.poll();
+        renderer.save(view, dir / "5-keys-lit.png");
+        const uint32_t lit = renderer.pixel(c3);
+        check(rising != off && rising != lit && lit != off,
+              "a key the host holds eases up to lit on the keyboard over a few polls");
+    }
     view.mouseMove(kDecayKnob, {}); // hover Op B's decay knob
     check(renderer.save(view, dir / "5-patch.png"), "render a busier patch");
     // Unwired, F still plays but isn't heard, so it stays dark.
@@ -9795,10 +11800,26 @@ void run(const std::filesystem::path &dir, float scale) {
               "the list of effects stays inside the editor, and over a switched-off card's dimming");
     }
 
-    // The filter card's type buttons, in a row: Comb is the fifth.
-    click(view, {fxCardX(model, 3) + 14.0f + 4.0f * 29.4f + 13.0f, 180.0f + 44.0f + 10.0f});
+    // The filter card's type list, across the card under its title as the shaper card's curve list is: Comb picked
+    // from it.
+    {
+        const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
+        click(view, button.center());
+        click(view, detail::listMenuItem(button, static_cast<int>(FilterType::Count), static_cast<int>(FilterType::Comb))
+                        .center());
+    }
     check(std::lround(model.value(paramIndex(3, FxParam::FilterType))) == static_cast<long>(FilterType::Comb),
-          "the filter card's buttons pick the filter type");
+          "the filter card's type list picks the filter type");
+    {
+        // Its arrows step the type, back to the type before Comb and on again.
+        const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
+        const int type = paramIndex(3, FxParam::FilterType);
+        click(view, listStep(button, -1));
+        const bool back = std::lround(model.value(type)) == static_cast<long>(FilterType::Comb) - 1;
+        click(view, listStep(button, 1));
+        check(back && std::lround(model.value(type)) == static_cast<long>(FilterType::Comb),
+              "the arrows in the filter card's type list step the type");
+    }
 
     // The parametric EQ's first band: dragging its handle 30 px up is +10 dB.
     const float peqW = fxCardW(model, 2) - 44.0f; // its display's plot, inside the wider card
@@ -9914,7 +11935,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // The shaper's curve comes from a list under its button.
     const Point clipButton{fxCardX(model, 0) + 60.0f, 180.0f + 44.0f + 11.0f};
     auto clipItem = [&](ClipMode mode) {
-        return Point{fxCardX(model, 0) + 40.0f, 180.0f + 44.0f + 22.0f + 4.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f};
+        return Point{fxCardX(model, 0) + 40.0f, 180.0f + 44.0f + 22.0f + 4.0f + 4.0f + clipRow(mode) * 22.0f + 11.0f};
     };
     click(view, clipButton);
     view.mouseMove(clipItem(ClipMode::SineFold), {});
@@ -9922,6 +11943,38 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, clipItem(ClipMode::Asymmetric));
     check(std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
           "the shaper's list picks its curve");
+    {
+        // Its arrows step the curve along the list's order, on and back.
+        const Rect button{fxCardX(model, 0) + 14.0f, 180.0f + 44.0f, fxCardW(model, 0) - 28.0f, 22.0f};
+        const int mode = paramIndex(0, FxParam::ShaperMode);
+        click(view, listStep(button, 1));
+        const bool on = std::lround(model.value(mode)) ==
+                        static_cast<long>(detail::kClipModesOffered[clipRow(ClipMode::Asymmetric) + 1]);
+        click(view, listStep(button, -1));
+        check(on && std::lround(model.value(mode)) == static_cast<long>(ClipMode::Asymmetric),
+              "the arrows in the shaper card's curve list step the curve along the list");
+    }
+    {
+        // The Stack curve, before Custom in the list, puts its Stack knob after Drive, four knobs across the card:
+        // dragged up, it runs more stages, whole ones, undoably, the display drawing the stages' curve.
+        click(view, clipButton);
+        click(view, clipItem(ClipMode::Stack));
+        const bool picked =
+            std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Stack);
+        const int stack = paramIndex(0, FxParam::ShaperStack);
+        const Point knob{fxCardX(model, 0) + fxCardW(model, 0) / 4.0f * 1.5f, 180.0f + 240.0f};
+        drag(view, knob, {knob.x, knob.y - 40.0f});
+        const double stacked = model.value(stack);
+        view.mouseMove(knob, {});
+        const bool shot = renderer.save(view, dir / "8e-clip-stack.png");
+        view.undo();
+        const bool undone = model.value(stack) == 1.0;
+        click(view, clipButton);
+        click(view, clipItem(ClipMode::Asymmetric));
+        check(picked && stacked > 1.0 && stacked == std::round(stacked) && shot && undone &&
+                  std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
+              "the shaper effect's Stack curve shows its Stack knob after Drive, which turns in whole stages");
+    }
     // Custom draws the curve in the card, to edit right there: its plot is the display less 8 px all round
     // (the card less 44 px across, 100 down), the full swing 6 px short of its edges. A double-click adds a point, a
     // drag moves it.
@@ -9941,8 +11994,11 @@ void run(const std::filesystem::path &dir, float scale) {
           "a point of the curve drags in the card");
     view.mouseMove(cardAt(0.8, 0.6), {});
     check(renderer.save(view, dir / "8d-clip-custom.png"), "render the curve being edited in the card");
-    // Its edit button, a pencil, opens the big editor, which edits the same curve.
-    click(view, {fxCardX(model, 0) + 134.0f, 180.0f + 190.0f - 12.0f}); // the pencil, at the display's bottom right
+    // Its edit button, a pencil at the right of its curve's list, out of the display, opens the big editor, which edits
+    // the same curve.
+    const Rect pencil = detail::clipEditButton({fxCardX(model, 0), 180.0f, fxCardW(model, 0), 300.0f});
+    check(pencil.bottom() < 180.0f + 100.0f - 8.0f, "the shaper card's pencil sits beside its list, out of its display");
+    click(view, pencil.center());
     view.doubleClick(clipAt(0.3, -0.5), {});
     check(model.value(clipCurveCountIndex(0)) == 5.0 &&
               std::abs(model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X)) - 0.3) < 0.01,
@@ -9959,6 +12015,23 @@ void run(const std::filesystem::path &dir, float scale) {
         view.undo();
         click(view, {742.0f, 152.0f});
         check(snapped && !model.layout().shapeSnap, "Snap snaps a shaper curve's points in its big editor");
+    }
+    {
+        // SYM, in its title row left of Points | Steps, switches the curve symmetric here too; its left half then
+        // takes no clicks, a double-click or a Shift+click there doing nothing.
+        const int count = clipCurveCountIndex(0), symmetric = paramIndex(0, FxParam::ShaperSymmetric);
+        const double before = model.value(count);
+        click(view, {536.0f, 158.0f});
+        const bool on = model.value(symmetric) == 1.0;
+        const double points = model.value(count);
+        view.doubleClick(clipAt(0.2, 0.4), {});
+        click(view, clipAt(0.1, -0.6), {true, false});
+        const bool ignored = model.value(count) == points;
+        view.mouseMove(clipAt(0.2, 0.4), {});
+        const bool shot = renderer.save(view, dir / "8c-clip-curve-sym.png");
+        view.undo();
+        check(on && ignored && shot && model.value(symmetric) == 0.0 && model.value(count) == before,
+              "the big curve editor's SYM switches, and its mirrored half takes no clicks");
     }
     {
         // Shift+click draws steps here too, as many as on an LFO's shape: one in every column of a grid of 32.
@@ -9998,8 +12071,8 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(0, FxParam::ShaperSymmetric)) == 0.0, "the shaper's SYM is hidden but for Custom");
     {
         // For a Custom curve, SYM shows left of LINK, the two centered together: switched on, it puts a point in the middle of a drawn curve that has none there, and
-        // the curve's left half follows the right one: a double-click there adds the mirror image of a point on the
-        // right, and the middle point can't be deleted. Undone, the middle point goes with the switch.
+        // the curve's left half follows the right one and takes no clicks: a double-click there adds nothing, and the
+        // middle point can't be deleted. Undone, the middle point goes with the switch.
         const int mode = paramIndex(0, FxParam::ShaperMode), symmetric = paramIndex(0, FxParam::ShaperSymmetric);
         const int count = clipCurveCountIndex(0);
         auto point = [&](int p, PointField field) { return model.value(shapeFieldIndex(count, p, field)); };
@@ -10011,14 +12084,12 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool middled = model.value(symmetric) == 1.0 && model.value(count) == 6.0 &&
                              std::abs(point(2, PointField::X) - 0.5) < 1e-9;
         view.doubleClick(cardAt(0.15, -0.3), {});
-        const bool mirroredPoint = model.value(count) == 7.0 && std::abs(point(5, PointField::X) - 0.85) < 0.01 &&
-                                   std::abs(point(5, PointField::Y) - 0.3) < 0.03;
+        const bool leftIgnored = model.value(count) == 6.0;
         view.doubleClick(cardAt(0.5, point(2, PointField::Y)), {});
         view.mouseMove(cardAt(0.85, 0.3), {});
-        check(middled && mirroredPoint && model.value(count) == 7.0 &&
+        check(middled && leftIgnored && model.value(count) == 6.0 &&
                   renderer.save(view, dir / "8g-clip-symmetric.png"),
-              "the shaper's SYM puts a point in the middle, and the curve's left half mirrors its right");
-        view.undo();
+              "the shaper's SYM puts a point in the middle, and the curve's mirrored left half takes no clicks");
         view.undo();
         model.set(thirdX, thirdWas);
         model.set(mode, static_cast<double>(ClipMode::Asymmetric));
@@ -10105,10 +12176,10 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool hoverShot = renderer.save(view, dir / "8d-fx-insert.png");
         click(view, arrow);
         // The list's top: under the title row, or as high as keeps it (a split after the effects) inside the panel.
-        const Rect menu = detail::fxMenu({0.0f, 0.0f}, true); // its middle at the arrow, kept inside the panel
-        const float top = std::min(188.0f, detail::kFxPanel.bottom() - 4.0f - menu.h);
-        const float left = std::clamp(arrow.x - 0.5f * menu.w, detail::kFxPanel.x + 8.0f,
-                                      detail::kFxPanel.right() - 8.0f - menu.w);
+        const Rect menuRect = detail::fxMenu({0.0f, 0.0f}, true); // its middle at the arrow, kept inside the panel
+        const float top = std::min(188.0f, detail::kFxPanel.bottom() - 4.0f - menuRect.h);
+        const float left = std::clamp(arrow.x - 0.5f * menuRect.w, detail::kFxPanel.x + 8.0f,
+                                      detail::kFxPanel.right() - 8.0f - menuRect.w);
         const Point delay = rectCenter(detail::fxMenuItem({left, top}, FxType::Delay));
         view.mouseMove(delay, {});
         const bool insertListShot = renderer.save(view, dir / "8e-fx-insert-list.png");
@@ -10318,9 +12389,9 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseDown(sourceGrip(1), {});
         view.mouseMove({sourceGrip(1).x + 20.0f, 588.0f}, {});
         view.mouseMove({sourceGrip(1).x + 20.0f, 300.0f}, {});
-        const bool freeShot = renderer.save(view, dir / "11a0-source-carried-free.png");
+        const bool carriedShot = renderer.save(view, dir / "11a0-source-carried-free.png");
         view.mouseUp({sourceGrip(1).x + 20.0f, 300.0f}, {});
-        check(within && freeShot && shown(model) == order,
+        check(within && carriedShot && shown(model) == order,
               "a source card moves nothing until the mouse is clear of its place, carried anywhere");
     }
 
@@ -10483,6 +12554,13 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, overwriteOk);
     model.writeFails = false;
     check(model.writes == 2 && model.patchEdited(), "a preset that could not be written stays changed");
+    // A factory preset is built in: Save, asking nothing, opens Save As's dialog (the Save As after it taken too).
+    model.setPreset(L"factory:Bell", true);
+    click(view, kSaveButton);
+    click(view, kSaveAsButton);
+    check(model.writes == 2 && model.saves == 4 && model.patchEdited(),
+          "Save on a changed factory preset saves it as a new one, asking nothing");
+    model.saves = 2;
     model.setPreset(L""); // Init, unchanged: neither saves
     click(view, kSaveButton);
     click(view, kSaveAsButton);
@@ -10597,6 +12675,17 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseUp({linesAt(1.0f).x + 40.0f, linesAt(1.0f).y}, {});
     check(linesStart && linesKept && linesShot && linesSet && model.links == 1.0 && model.glowLevel == 0.0,
           "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
+    // GRID, under LINES: at 50 % to begin with, dragged to its end, double-clicked back to 50 %.
+    auto gridAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 181.0f}; };
+    const bool gridStart = model.grid == Controller::kDefaultGridIntensity;
+    view.mouseDown(gridAt(0.5f), {});
+    view.mouseMove({gridAt(1.0f).x + 40.0f, gridAt(1.0f).y}, {});
+    const bool gridShot = renderer.save(view, dir / "14j-settings-grid.png");
+    view.mouseUp({gridAt(1.0f).x + 40.0f, gridAt(1.0f).y}, {});
+    const bool gridSet = model.grid == 1.0 && model.links == 1.0;
+    doubleClick(view, gridAt(0.9f)); // inside its track, short of its right end
+    check(gridStart && gridShot && gridSet && model.grid == Controller::kDefaultGridIntensity,
+          "the settings dialog's GRID slider sets how strongly the roll's grid is drawn, a double-click putting it back");
     // HUE, under the themes, turns the theme's main color round the color wheel once it is let go, the theme's own to
     // begin with; the accent then takes it (read off the rendered pixels: the slider's knob, in the accent).
     auto hueAt = [&](float hue) { return Point{dialog.x + 76.0f + 200.0f * hue, dialog.y + 312.0f + 85.0f}; };
@@ -10617,10 +12706,37 @@ void run(const std::filesystem::path &dir, float scale) {
     doubleClick(view, linesAt(0.1f));
     check(model.hue < 0.0 && model.glowLevel == 0.5 && model.links == 0.75,
           "a double-click puts the HUE, GLOW and LINES sliders back to where they start");
+    // Each slider shows its tooltip under it while the mouse rests on it, and none while it is dragged (read off the
+    // rendered pixels just inside the tooltip's top, clear of its text, against the dialog with the mouse on its title).
+    {
+        const float sliderBottoms[] = {98.0f, 130.0f, 162.0f, 194.0f}; // HUE, GLOW, LINES, GRID, from the LOOK line
+        const float sliderYs[] = {85.0f, 117.0f, 149.0f, 181.0f};
+        const char *tipShots[] = {"14k-settings-hue-tip.png", "14k-settings-glow-tip.png", "14k-settings-lines-tip.png",
+                                  "14k-settings-grid-tip.png"};
+        bool tips = true;
+        for (int i = 0; i < 4; ++i) {
+            const Point under{dialog.x + 176.0f, dialog.y + 312.0f + sliderBottoms[i] + 7.0f};
+            const Point on{dialog.x + 176.0f, dialog.y + 312.0f + sliderYs[i]};
+            view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+            renderer.save(view, dir / "14k-settings-no-tip.png");
+            const uint32_t bare = renderer.pixel(under);
+            view.mouseMove(on, {});
+            tips = tips && renderer.save(view, dir / tipShots[i]) && renderer.pixel(under) != bare;
+            view.mouseDown(on, {});
+            view.mouseMove({on.x + 1.0f, on.y}, {});
+            renderer.save(view, dir / "14k-settings-dragged.png");
+            tips = tips && renderer.pixel(under) == bare;
+            view.mouseUp({on.x + 1.0f, on.y}, {});
+            doubleClick(view, on);
+        }
+        check(tips && model.hue < 0.0 && model.glowLevel == 0.5 && model.links == 0.75 &&
+                  model.grid == Controller::kDefaultGridIntensity,
+              "the settings dialog's sliders show a tooltip under them while the mouse rests on them, not while dragged");
+    }
     model.glowLevel = 0.0;
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
-    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 184.0f}; };
+    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 216.0f}; };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
     click(view, handlesButton(2));
@@ -10648,6 +12764,8 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
     renderExample(dir, renderer, "LD Screamer", "24c-screamer-example", 4, "Spectrum", true); // a note playing
     renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
+    renderExample(dir, renderer, "SQ Future Plucks", "24d-seq-example", SIZE_MAX, "Spectrum", false,
+                  true); // its SEQ view (the README's)
     renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
     renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
@@ -10655,6 +12773,9 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
     renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
     renderFactoryPresets(dir, renderer);
+    checkAlgorithms(dir, renderer);
+    checkAlgorithmMenu(dir, renderer);
+    checkLensDisplays(dir, renderer);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
     testMacroTargets(dir, renderer);
@@ -10670,6 +12791,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
+    testSeq(dir, renderer);
     testModsMoveDepth(dir, renderer);
     testModsLive(dir, renderer);
     testNodeSwitchOnPlace(dir, renderer);
@@ -10683,6 +12805,8 @@ void run(const std::filesystem::path &dir, float scale) {
     renderNewEffects(dir, renderer);
     testChorus(dir, renderer);
     testShapers(dir, renderer);
+    testShapePick(dir, renderer);
+    testSeqCurvePick(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);

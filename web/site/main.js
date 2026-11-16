@@ -22,12 +22,22 @@ const velocityLabel = document.getElementById('velocity');
 const ctx = canvas.getContext('2d');
 const draw = createCanvas2d(ctx);
 
-const CURSORS = ['default', 'pointer', 'ns-resize', 'ew-resize', 'move', 'text']; // gui::CursorKind
+// gui::CursorKind: the last a pencil, its tip at the lower left the hot spot.
+const PEN_CURSOR =
+  'url("data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'>' +
+      '<path d=\'M2 22l1.5-5.5L16 4l4 4L7.5 20.5z\' fill=\'black\' stroke=\'white\' stroke-width=\'1.5\' ' +
+      'stroke-linejoin=\'round\'/></svg>'
+  ) +
+  '") 2 22, crosshair';
+const CURSORS = ['default', 'pointer', 'ns-resize', 'ew-resize', 'move', 'text', PEN_CURSOR];
 const TYPING_KEYS = { // View::Key
   Enter: 0, NumpadEnter: 0, Escape: 1, Backspace: 2, Delete: 3, ArrowLeft: 4, ArrowRight: 5, Home: 6, End: 7,
   ArrowUp: 9, ArrowDown: 10,
 };
 const SELECT_ALL = 8;
+const SEQ_CTRL_KEYS = { KeyA: SELECT_ALL, KeyC: 11, KeyX: 12, KeyV: 13 }; // View::Key: Select All, Copy, Cut, Paste
 
 // --- Audio --------------------------------------------------------------------------------------------------
 
@@ -211,9 +221,10 @@ const host = {
     pending = []; // all of them, as they are now
     send({type: 'all', values}, [values.buffer]);
   },
-  note(key, on, velocity = 100) { // the editor's keyboard plays at 100, as the plugin's does
+  // The editor's keyboard plays at 100, as the plugin's does; `audition`, a note the SEQ view plays to be heard alone.
+  note(key, on, velocity = 100, audition = false) {
     flush(); // after the edits made before it
-    send({type: 'note', key, on, velocity});
+    send({type: 'note', key, on, velocity, audition});
   },
   scope(op, cycles) {
     scopeAsked = {type: 'scope', op, cycles};
@@ -245,6 +256,36 @@ const host = {
     }
   },
 };
+
+// --- Tempo --------------------------------------------------------------------------------------------------
+
+// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow. The editor's
+// title bar shows it, to drag, scroll or type (ui.cpp hands it here), and it is kept in the browser's storage like
+// the theme, which the editor reads it from too. An example saved at a tempo sets it as it loads, the first one too
+// as the editor starts, so this comes before the editor does.
+const TEMPO_MIN = 20;
+const TEMPO_MAX = 999;
+let tempo = 140;
+
+function clampTempo(bpm) {
+  return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(bpm * 100) / 100));
+}
+
+function setTempo(bpm) {
+  if (!Number.isFinite(bpm))
+    return;
+  tempo = clampTempo(bpm);
+  send({type: 'tempo', bpm: tempo});
+  host.setSetting('tempo', String(tempo));
+}
+
+{
+  const stored = parseFloat(host.setting('tempo') ?? '');
+  if (Number.isFinite(stored))
+    tempo = clampTempo(stored);
+}
+
+// --- The editor's start -------------------------------------------------------------------------------------
 
 let ui;
 let dirty = true;
@@ -424,7 +465,7 @@ canvas.addEventListener('wheel', (e) => {
     return;
   const [x, y] = viewPoint(e);
   if (delta !== 0)
-    ui._ui_wheel(x, y, -notchesOf(e, delta), e.shiftKey, ctrlOf(e));
+    ui._ui_wheel(x, y, -notchesOf(e, delta), e.shiftKey, ctrlOf(e), e.altKey);
   if (across !== 0)
     ui._ui_wheel_across(x, y, notchesOf(e, across));
   afterInput();
@@ -585,33 +626,6 @@ document.addEventListener('mousedown', (e) => {
   }
 });
 
-// --- Tempo --------------------------------------------------------------------------------------------------
-
-// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow. The editor's
-// title bar shows it, to drag, scroll or type (ui.cpp hands it here), and it is kept in the browser's storage like
-// the theme, which the editor reads it from too.
-const TEMPO_MIN = 20;
-const TEMPO_MAX = 999;
-let tempo = 140;
-
-function clampTempo(bpm) {
-  return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(bpm * 100) / 100));
-}
-
-function setTempo(bpm) {
-  if (!Number.isFinite(bpm))
-    return;
-  tempo = clampTempo(bpm);
-  send({type: 'tempo', bpm: tempo});
-  host.setSetting('tempo', String(tempo));
-}
-
-{
-  const stored = parseFloat(host.setting('tempo') ?? '');
-  if (Number.isFinite(stored))
-    tempo = clampTempo(stored);
-}
-
 // --- Keyboard -----------------------------------------------------------------------------------------------
 
 // The computer keyboard's piano: by key position, so it works on any layout. A is C, W the C# above it...
@@ -681,6 +695,16 @@ window.addEventListener('keydown', (e) => {
       ui._ui_undo();
     afterInput();
     return;
+  }
+  // The SEQ view's keys: Ctrl+A picks every note, the arrows move those picked (Shift: an octave up or down), Ctrl+C,
+  // Ctrl+X and Ctrl+V copy, cut and paste them.
+  if (!e.altKey && ((ctrlOf(e) && e.code in SEQ_CTRL_KEYS) || (!ctrlOf(e) && (e.key.startsWith('Arrow') || e.key === 'Delete')))) {
+    const key = ctrlOf(e) ? SEQ_CTRL_KEYS[e.code] : TYPING_KEYS[e.key];
+    if (key !== undefined && ui._ui_seq_key(key, e.shiftKey ? 1 : 0) !== 0) {
+      e.preventDefault();
+      afterInput();
+      return;
+    }
   }
   if (ctrlOf(e) || e.altKey)
     return;

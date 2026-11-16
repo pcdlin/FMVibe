@@ -44,6 +44,8 @@ public:
     // A key the host's window took in, which the editor's keyboard hook passes on: true if it was
     // an undo or redo shortcut meant for this editor, which the host then doesn't see.
     bool shortcut(WPARAM key, bool up);
+    // The View::Key the SEQ view takes for a key (Ctrl+A, the arrows without Ctrl), if any.
+    static std::optional<View::Key> seqKeyOf(WPARAM key, bool ctrl);
     // A message the host's loop took off the queue, which the editor's message hook passes on: true if it was
     // a key for a value being typed here, which the host then doesn't see.
     bool typedKey(const MSG &msg);

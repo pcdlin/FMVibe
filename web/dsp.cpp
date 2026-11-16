@@ -93,9 +93,10 @@ EMSCRIPTEN_KEEPALIVE void dsp_set(int index, double value) {
         values[index] = value;
 }
 
-// Notes from the editor's keyboard and the computer's, like MIDI notes without a note id, at a MIDI velocity.
-EMSCRIPTEN_KEEPALIVE void dsp_note(int key, int on, int velocity) {
-    const NoteRef note{-1, 0, 0, static_cast<int16_t>(std::clamp(key, 0, 127))};
+// Notes from the editor's keyboard and the computer's, like MIDI notes without a note id, at a MIDI velocity; with
+// `audition`, one the SEQ view plays to be heard alone, which the sequencer leaves be (see kAuditionPort).
+EMSCRIPTEN_KEEPALIVE void dsp_note(int key, int on, int velocity, int audition) {
+    const NoteRef note{-1, audition ? kAuditionPort : int16_t{0}, 0, static_cast<int16_t>(std::clamp(key, 0, 127))};
     if (on)
         synth.noteOn(note, std::clamp(velocity, 1, 127) / 127.0);
     else

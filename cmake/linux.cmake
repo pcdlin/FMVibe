@@ -29,6 +29,7 @@ add_library(fmvibe-core STATIC
     src/gui/icons.cpp
     src/gui/icons.h
     src/gui/mods.cpp
+    src/gui/seq.cpp
     src/gui/layout.h
     src/gui/routing.cpp
     src/gui/routing.h
@@ -60,7 +61,9 @@ enable_testing()
 add_executable(fmvibe-quality tests/quality.cpp)
 target_link_libraries(fmvibe-quality PRIVATE fmvibe-core)
 fmvibe_options(fmvibe-quality)
-add_test(NAME quality COMMAND fmvibe-quality)
+# The stack the Windows build links it with (/STACK in CMakeLists.txt): it keeps whole engines on the stack, more
+# at once than a shell's usual 8 MB holds. A main thread's stack on Linux is the shell's limit, so the test raises it.
+add_test(NAME quality COMMAND sh -c "ulimit -s 65536 && exec \"$1\"" sh $<TARGET_FILE:fmvibe-quality>)
 
 add_executable(fmvibe-uishot tools/uishot.cpp)
 target_link_libraries(fmvibe-uishot PRIVATE fmvibe-core)

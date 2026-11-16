@@ -437,6 +437,12 @@ void Effects::prepare(double sampleRate) {
         for (ZeroBuffer &comb : slot.filter.combs)
             comb.assign(static_cast<size_t>(combLength(sampleRate)), 0.0f);
         slot.filter.settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // for this rate
+        // Flat up to 20 kHz (or as near the host rate's half as it is), as the voices' decimator is.
+        const double transition = std::clamp(0.25 - 20000.0 / (2.0 * sampleRate), 0.01, 0.24);
+        for (HalfBand &band : slot.shaperUp)
+            band.design(HalfBand::kMaxCoefs, transition);
+        for (HalfBand &band : slot.shaperDown)
+            band.design(HalfBand::kMaxCoefs, transition);
 
         // Room behind the longest line for its wavering, the most of any algorithm.
         const double reach = kReverbLongest + 2.0 * kReverbWander * reverbStyle(ReverbType::Shimmer).wander;
@@ -542,6 +548,9 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.shaper.drive = settings.drive;
         s.shaper.output = settings.output;
         s.shaper.mix = settings.mix;
+        s.shaper.between = settings.between;
+        s.shaperRan = false; // its path starts as it is, from silence, fading in from nothing it left
+        s.shaperWasFade = 0.0;
         break;
     }
     case FxType::Delay: {
@@ -1487,7 +1496,31 @@ void Effects::clearGraph() {
         sp.running = false;
 }
 
-// The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them.
+namespace {
+
+// How long a shaper effect's path, going to Stack or leaving it, takes to fade over to the other (see runShaper()), as
+// the amp's settings do: long enough to hide the few samples the Stack path's half-bands are late by.
+constexpr double kShaperPathFade = 0.01; // seconds
+
+// One sample of a side of a shaper effect, at the host rate or, `doubled` (for Stack), at twice it: up through `up`,
+// both samples through the curve, and back down through `down`.
+double shapeSample(ClipState &side, const ClipCurve &curve, double x, double drive, double output, double mix,
+                   bool block, double pole, double between, bool doubled, HalfBand &up, HalfBand &down) {
+    if (!doubled)
+        return side.run(curve, x, drive, output, mix, block, pole, between);
+    double first, second;
+    up.processUp(x, first, second);
+    first = side.run(curve, first, drive, output, mix, block, pole, between);
+    second = side.run(curve, second, drive, output, mix, block, pole, between);
+    return down.process(first, second);
+}
+
+} // namespace
+
+// The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them. The Stack stages run at
+// twice the rate, as the voices' do at their oversampling: the anti-aliasing's average over each step (see
+// kStackLift) would dull a stack's top at the host rate, 15 dB at 15 kHz stacked eight high at 48 kHz. Going to Stack
+// or leaving it under sound, the path it leaves runs on for kShaperPathFade, fading out as the new one fades in.
 void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Slot &place = slots_[slot];
     Shaper &sh = place.shaper;
@@ -1498,21 +1531,64 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
         place.curve.update(get, fields.curve);
         place.curve.advance(n / sampleRate_);
     }
+    const bool doubled = settings.mode == ClipMode::Stack;
+    if (place.shaperRan && doubled != place.shaperDoubled) {
+        // The path it leaves fades out from where it is (one already fading out, which this one replaces, goes).
+        place.shaperWas = place.shaperLast;
+        place.shaperWasSides = sh.sides;
+        place.shaperWasFade = 1.0;
+    }
+    if (doubled && (!place.shaperRan || !place.shaperDoubled)) // from silence, rather than from what they last held
+        for (int ch = 0; ch < 2; ++ch) {
+            place.shaperUp[ch].reset();
+            place.shaperDown[ch].reset();
+        }
+    place.shaperDoubled = doubled;
+    place.shaperRan = true;
+    place.shaperLast = {settings.mode, settings.symmetric, settings.stack};
+    const double rate = doubled ? 2.0 * sampleRate_ : sampleRate_;
     ClipCurve curve = place.curve.curve(settings.mode, settings.symmetric);
+    curve.stack(settings.stack, rate);
     const double fadeStep = 1.0 / n;
     const bool block = clipNeedsBlocker(settings.mode);
-    const double pole = clipBlockerPole(sampleRate_);
+    const double pole = clipBlockerPole(rate);
+    // The path it left, at the other rate.
+    const ShaperPath &was = place.shaperWas;
+    const double wasRate = doubled ? sampleRate_ : 2.0 * sampleRate_;
+    ClipCurve wasCurve = place.curve.curve(was.mode, was.symmetric);
+    wasCurve.stack(was.stack, wasRate);
+    const bool wasBlock = clipNeedsBlocker(was.mode);
+    const double wasPole = clipBlockerPole(wasRate);
+    const double wasStep = 1.0 / (kShaperPathFade * sampleRate_);
     const double driveStep = rampStep(sh.drive, settings.drive, n, rampShortest_);
     const double outputStep = rampStep(sh.output, settings.output, n, rampShortest_);
     const double mixStep = rampStep(sh.mix, settings.mix, n, rampShortest_);
+    const double betweenStep = rampStep(sh.between, settings.between, n, rampShortest_);
     for (uint32_t s = 0; s < n; ++s) {
         sh.drive += driveStep;
         sh.output += outputStep;
         sh.mix += mixStep;
+        sh.between += betweenStep;
         if (curve.from)
             curve.fade = (s + 1) * fadeStep;
-        for (int ch = 0; ch < 2; ++ch)
-            io[ch][s] = static_cast<float>(sh.sides[ch].run(curve, io[ch][s], sh.drive, sh.output, sh.mix, block, pole));
+        const bool fading = place.shaperWasFade > 0.0;
+        double w = 0.0; // the path it left's share, along a raised cosine
+        if (fading) {
+            if (wasCurve.from)
+                wasCurve.fade = (s + 1) * fadeStep;
+            place.shaperWasFade = std::max(place.shaperWasFade - wasStep, 0.0);
+            w = 0.5 - 0.5 * std::cos(std::numbers::pi * place.shaperWasFade);
+        }
+        for (int ch = 0; ch < 2; ++ch) {
+            const double x = io[ch][s];
+            double y = shapeSample(sh.sides[ch], curve, x, sh.drive, sh.output, sh.mix, block, pole, sh.between,
+                                   doubled, place.shaperUp[ch], place.shaperDown[ch]);
+            if (fading)
+                y = y * (1.0 - w) + w * shapeSample(place.shaperWasSides[ch], wasCurve, x, sh.drive, sh.output,
+                                                    sh.mix, wasBlock, wasPole, sh.between, !doubled,
+                                                    place.shaperUp[ch], place.shaperDown[ch]);
+            io[ch][s] = static_cast<float>(y);
+        }
     }
 }
 
@@ -1677,20 +1753,28 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
     // Worked out again only when its params, or the pitch it tracks, move. Without key tracking the pitch moves
     // nothing (2 to the power of 0 is exactly 1), and is left out.
     const double keyTrack = p[paramIndex(slot, FxParam::FilterKeyTrack)];
-    const std::array<double, 7> inputs{p[paramIndex(slot, FxParam::FilterType)],
+    // The Formant type's vowel and the Morph type's place and mode go in for those types alone, as a voice filter's.
+    const int typeNumber = static_cast<int>(std::lround(p[paramIndex(slot, FxParam::FilterType)]));
+    const auto playing = static_cast<FilterType>(std::clamp(typeNumber, 0, static_cast<int>(FilterType::Count) - 1));
+    const bool formant = playing == FilterType::Formant, morph = playing == FilterType::Morph;
+    const std::array<double, 10> inputs{p[paramIndex(slot, FxParam::FilterType)],
                                        p[paramIndex(slot, FxParam::FilterCutoff)],
                                        keyTrack,
                                        keyTrack != 0.0 ? pitch : 0.0,
                                        p[paramIndex(slot, FxParam::FilterSlope)],
                                        p[paramIndex(slot, FxParam::FilterResonance)],
-                                       p[paramIndex(slot, FxParam::FilterDrive)]};
+                                       p[paramIndex(slot, FxParam::FilterDrive)],
+                                       formant ? p[paramIndex(slot, FxParam::FilterVowel)] : 0.0,
+                                       morph ? p[paramIndex(slot, FxParam::FilterMorph)] : 0.0,
+                                       morph ? p[paramIndex(slot, FxParam::FilterMorphMode)] : 0.0};
     if (std::memcmp(inputs.data(), filter.settingsFor.data(), sizeof inputs) != 0) {
         filter.settingsFor = inputs;
         const auto type = static_cast<FilterType>(
             std::clamp(static_cast<int>(std::lround(inputs[0])), 0, static_cast<int>(FilterType::Count) - 1));
         // Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
         const double cutoffHz = cutoffFromNorm(inputs[1]) * std::exp2((pitch - 60.0) / 12.0 * keyTrack);
-        filter.settings = filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], sampleRate_);
+        filter.settings = filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], sampleRate_,
+                                         inputs[7], inputs[8], morphMode(inputs[9]));
     }
     const FilterSettings &settings = filter.settings;
     const double mixStep = rampStep(filter.mix, p[paramIndex(slot, FxParam::FilterMix)], n, rampShortest_);

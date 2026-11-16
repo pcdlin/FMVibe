@@ -1,7 +1,13 @@
 #include "view.h"
 
+#include "algorithms.h"
+#include "arrange.h"
 #include "layout.h"
 #include "routing.h"
+
+#include <bit>
+#include <limits>
+#include <memory>
 
 #include <algorithm>
 #include <array>
@@ -436,6 +442,116 @@ void View::placeSwitchedOn(int node) {
         layout.nodeX[node] = x;
         layout.nodeY[node] = y;
     }
+}
+
+bool View::outThroughBox(int op) const {
+    for (int box = kOps; box < kNodes; ++box)
+        if (nodeOn(box) && value(routeParam(op, box)) > 0.0 && boxGoesOut(box))
+            return true;
+    return false;
+}
+
+void View::applyAlgorithm(int index) {
+    if (index < 0 || index >= static_cast<int>(kAlgorithms.size()))
+        return;
+    const Algorithm &a = kAlgorithms[index];
+    const UndoScope step(controller_);
+    // The operators it uses on, the others off, their settings and routes kept for when they come back.
+    for (int op = 0; op < kOps; ++op)
+        if (const double on = op < a.ops ? 1.0 : 0.0; value(enabledParam(op)) != on)
+            edit(enabledParam(op), on);
+    for (int to = 0; to < a.ops; ++to)
+        for (int from = 0; from < a.ops; ++from) {
+            const int param = routeParam(from, to);
+            const bool feedback = from == a.feedbackFrom && to == a.feedbackTo;
+            if ((a.mods[to] >> from & 1) || feedback) {
+                if (value(param) <= 0.0)
+                    edit(param, feedback ? kAlgorithmFeedback : kAlgorithmDepth);
+            } else if (wired(param)) {
+                disconnect(param);
+            }
+        }
+    const double level = 1.0 / std::sqrt(static_cast<double>(std::popcount(a.carriers)));
+    for (int op = 0; op < a.ops; ++op) {
+        const int out = outParam(op);
+        if (a.carriers >> op & 1) {
+            if (value(out) <= 0.0 && !outThroughBox(op))
+                edit(out, level);
+        } else {
+            // A modulator isn't heard: neither straight out nor through a filter or shaper that goes out. What it
+            // sends into one that only modulates stays.
+            if (wired(out))
+                disconnect(out);
+            for (int box = kOps; box < kNodes; ++box)
+                if (nodeOn(box) && wired(routeParam(op, box)) && boxGoesOut(box))
+                    disconnect(routeParam(op, box));
+        }
+    }
+    keepRoutes();
+    // Laid out afresh: in its places, the wires among its operators and their lines to OUT bowing as new ones do.
+    UiLayout &layout = controller_.layout();
+    std::erase_if(layout.wireBends, [&](const auto &bend) {
+        for (int from = 0; from < a.ops; ++from) {
+            if (bend.first == outParam(from))
+                return true;
+            for (int to = 0; to < a.ops; ++to)
+                if (bend.first == routeParam(from, to))
+                    return true;
+        }
+        return false;
+    });
+    const AlgorithmPlaces places = algorithmPlaces(a);
+    for (int op = 0; op < a.ops; ++op) {
+        layout.nodeX[op] = (places.col[op] + 0.5f) / static_cast<float>(kRoutingGridCols);
+        layout.nodeY[op] = std::clamp(places.y[op], 0.0f, 1.0f);
+    }
+    for (int op = 0; op < a.ops; ++op) // clear of a filter or shaper shown where it lands
+        placeSwitchedOn(op);
+    if (a.feedbackFrom != a.feedbackTo) {
+        // A loop back up a stack would run straight through the operators between: it bows round them, as far and
+        // which way the layout's clashes and cost are least.
+        const auto values = std::make_unique<ParamValues>();
+        for (int i = 0; i < kParamCount; ++i)
+            (*values)[i] = value(i);
+        const int param = routeParam(a.feedbackFrom, a.feedbackTo);
+        auto bendTo = [&](float bend) {
+            std::erase_if(layout.wireBends, [&](const auto &b) { return b.first == param; });
+            if (bend != kDefaultWireBend)
+                layout.wireBends.push_back({param, bend});
+        };
+        float best = kDefaultWireBend;
+        ArrangeScore least{std::numeric_limits<int>::max(), 0.0f};
+        for (float bend : {kDefaultWireBend, -kDefaultWireBend, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f}) {
+            bendTo(bend);
+            const ArrangeScore s = arrangeScore(*values, layout);
+            if (s.clashes < least.clashes || (s.clashes == least.clashes && s.cost < least.cost)) {
+                least = s;
+                best = bend;
+            }
+        }
+        bendTo(best);
+    }
+    controller_.layoutChanged();
+}
+
+int View::currentAlgorithm() const {
+    OpShape now;
+    for (int op = 0; op < kOps; ++op)
+        if (nodeOn(op))
+            now.on |= static_cast<uint8_t>(1 << op);
+    for (int from = 0; from < kOps; ++from) {
+        if (!(now.on >> from & 1))
+            continue;
+        if (wired(outParam(from)) || outThroughBox(from))
+            now.out |= static_cast<uint8_t>(1 << from);
+        for (int to = 0; to < kOps; ++to)
+            if ((now.on >> to & 1) && wired(routeParam(from, to)))
+                now.routes |= routeBit(from, to);
+    }
+    for (size_t i = 0; i < kAlgorithms.size(); ++i)
+        if (shapeOf(kAlgorithms[i]) == now)
+            return static_cast<int>(i);
+    return -1;
 }
 
 int View::nodeAt(Point p) const {

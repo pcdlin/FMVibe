@@ -105,6 +105,9 @@ enum class OpParam {
                                     // at Phase each cycle of the note's pitch; see OpSync)
     Warp,                           // one of OpWarp, by number: how its wave's cycle is read (see warpPhase())
     WarpAmount,                     // -1..1, 0 (every warp's plain wave) to begin with
+    UnisonCurve,                    // one of UniCurve, by number: how the copies spread in pitch (see unison.h)
+    UnisonPan,                      // one of UniPan, by number: where the copies sit across the stereo field
+    UnisonBlend,                    // 0..1: how far the outer copies are turned down under the middle ones
     // The Wavetable and Sample waves' (see OpWave). TablePos is where along a table's frames it plays, 0..1, smoothed
     // per sample. Table and Sample are data keys: Table below kUserDataBase a factory table (FactoryTable), from it the
     // patch's own data (its DATA chunk, see state.h); Sample 0 for none. They are kept apart, so switching between the
@@ -143,6 +146,9 @@ enum class FilterParam {
     Slope,
     Shapers,
     Mix = Shapers + kShapers,
+    Vowel,     // the Formant type's vowel, 0..1 from A through E, I and O to U (see formantVowel())
+    Morph,     // the Morph type's place, 0..1 from low-pass to high-pass (see morphWeights())
+    MorphMode, // one of MorphMode, by number: what the Morph type passes through on the way
     Count
 };
 // A shaper in each voice: the shaper effect's curves (see ClipMode), drive, output, mix and link,
@@ -151,7 +157,8 @@ enum class FilterParam {
 // filter), modulates operators like an
 // operator does (Mods, one per operator) and goes straight to the output by Out, like an operator (Output is
 // its level after the curve). Symmetric mirrors a Custom curve's upper half onto its lower one (see ClipCurve).
-// Shapers, one per shaper, feed the shapers, itself among them (see shaperShaperIndex()).
+// Shapers, one per shaper, feed the shapers, itself among them (see shaperShaperIndex()). Stack is how many times
+// the Stack curve runs in a row (1 to kMaxShaperStack, see ClipCurve::stages).
 // Stored in projects by number: only append.
 enum class ShaperParam {
     Enabled,
@@ -165,14 +172,15 @@ enum class ShaperParam {
     Out = Mods + kOps,
     Symmetric,
     Shapers,
-    Count = Shapers + kShapers
+    Stack = Shapers + kShapers,
+    Count
 };
 // Modulation sources: LFOs and mod envelopes. Like the effect slots, each of
 // the kMaxSources places holds a source of either type, or none, and has the
 // fields of both; only those of its type are used (and shown to hosts). Stored
 // in projects by number: only append.
-// Random and Midi came later. Random is a random LFO: it runs as an LFO does, with the LFO's Rate, Sync, Division,
-// Free, One-Shot and Anchor, and takes a new value each cycle (see RandomChaos and RandomSmooth below); at a Rate of
+// Random and Midi came later. Random is a random LFO: it runs as an LFO does, with the LFO's Rate, Sync, Division
+// and Free (never anchored nor one-shot: see lfoAnchored()), and takes a new value each cycle (see RandomChaos and RandomSmooth below); at a Rate of
 // 0 Hz (unsynced) it takes one as each note starts (see lfoHeld()) and holds it. It has no Shape, Phase or Unipolar,
 // but its Bipolar. Curve, added after them, is an LFO of a drawn shape: it runs as an LFO with the Custom shape does
 // (see lfoShape()), with every LFO field but Shape, its points the place's freeform shape (see ShapeParam). Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice; pressure,
@@ -368,8 +376,89 @@ enum class OpSync { Off, Note, Count };
 // into a share of the cycle about its middle (a square's pulse width), squeezed into a pulse that then rests, in
 // steps, or played several times through and cut off (Sync). Stored by number: only append.
 enum class OpWarp { Off, Bend, Squeeze, Pulse, Steps, Sync, Count };
-// Stored in projects by number: only append.
-enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
+// How an operator's unison copies spread in pitch (see unison.h): evenly, bunched about the middle, as a supersaw's
+// uneven seven, or anywhere along the range, new for every note. Stored by number: only append.
+enum class UniCurve { Linear, Center, Supersaw, Random, Count };
+// Where its copies sit across the stereo field: from left to right as their pitch rises, copies next to each other in
+// pitch on opposite sides, or anywhere, new for every note. Stored by number: only append.
+enum class UniPan { Ramp, Alternate, Random, Count };
+
+// The sequencer (see sequencer.h): a piano roll of kSeqPatterns patterns, each of up to kSeqNotes notes over up to
+// kSeqBars bars of kSeqStepsPerBar steps, one of which plays. Its settings (SeqParam), each pattern's length and loop
+// (SeqPatternParam) and each pattern's notes (SeqNoteParam), a block of fields a note, an empty slot's Length 0.
+constexpr int kSeqPatterns = 4;
+constexpr int kSeqNotes = 128;
+constexpr int kSeqBars = 8;
+constexpr int kSeqStepsPerBar = 16;
+constexpr int kSeqMaxSteps = kSeqBars * kSeqStepsPerBar;
+enum class SeqParam { Enabled, Pattern, Play, Rate, Swing, Gate, Velocity, Humanize, Octave, Transpose, Order, Root, Scale, Count };
+// Length in bars; the loop in steps, LoopEnd's 0 the pattern's end.
+enum class SeqPatternParam { Length, LoopStart, LoopEnd, Count };
+// Start and Length in steps, Pitch a MIDI note, Velocity and Chance 0..1, Slide and Mute 0 or 1.
+enum class SeqNoteParam { Start, Length, Pitch, Velocity, Chance, Slide, Mute, Count };
+// Each pattern's curves, which the sequencer plays as it plays the pattern: the pitch bend (-1..1, a share of Bend
+// Range, on top of the bend wheel and the host's) and the mod wheel (0..1, on top of the Mod Wheel param). Stored by
+// number: only append.
+enum class SeqCurve { Bend, ModWheel, Count };
+// A curve: PointCount points (0: none, and the curve does nothing), then kSeqCurvePoints (x, y, curve) triples (see
+// PointField), sorted by x: x in steps, y the value, curve the bend of the segment to the next point (see shapeBend()).
+// Before its first point the curve holds that point's value, and after its last that one's.
+constexpr int kSeqCurvePoints = 64;
+enum class SeqCurveParam { PointCount, Points, Count = Points + 3 * kSeqCurvePoints };
+// When it plays: with the host's transport, from a key held (transposed by it from Root) or from a key until stopped.
+// Stored by number: only append.
+enum class SeqPlay { Host, Key, Latch, Count };
+// How long a step is, slowest first. Stored by number: only append.
+enum class SeqRate { Quarter, EighthDotted, Eighth, SixteenthDotted, EighthTriplet, Sixteenth, SixteenthTriplet,
+                     ThirtySecond, Count };
+// Which way the steps run. Stored by number: only append.
+enum class SeqOrder { Forward, Reverse, PingPong, Random, Count };
+// The scale the roll snaps notes to and shades rows outside of. Stored by number: only append.
+enum class SeqScale { Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, HarmonicMinor, MelodicMinor,
+                      PentatonicMajor, PentatonicMinor, Blues, Count };
+constexpr int kSeqParamCount = static_cast<int>(SeqParam::Count);
+constexpr int kSeqPatternParamCount = static_cast<int>(SeqPatternParam::Count);
+constexpr int kSeqNoteParamCount = static_cast<int>(SeqNoteParam::Count);
+constexpr int kSeqCurves = static_cast<int>(SeqCurve::Count);
+constexpr int kSeqCurveParamCount = static_cast<int>(SeqCurveParam::Count);
+// Steps a beat (a quarter note) at each rate.
+constexpr double kSeqStepsPerBeat[] = {1.0, 4.0 / 3.0, 2.0, 8.0 / 3.0, 3.0, 4.0, 6.0, 8.0};
+static_assert(std::size(kSeqStepsPerBeat) == static_cast<size_t>(SeqRate::Count));
+// The pitch classes of each scale, a bit each from its root (bit 0 the root).
+constexpr uint16_t kSeqScaleMasks[] = {0xfff, 0xab5, 0x5ad, 0x6ad, 0x5ab, 0xad5, 0x6b5, 0x9ad, 0xaad, 0x295, 0x4a9, 0x4e9};
+static_assert(std::size(kSeqScaleMasks) == static_cast<size_t>(SeqScale::Count));
+inline bool seqInScale(int scale, int root, int pitch) {
+    const int s = std::clamp(scale, 0, static_cast<int>(SeqScale::Count) - 1);
+    return (kSeqScaleMasks[s] >> (((pitch - root) % 12 + 12) % 12) & 1u) != 0;
+}
+
+// A filter's type. The first four are the state-variable filter's responses; Comb a tuned delay; Ladder a four-pole
+// transistor ladder, a low-pass with its resonance in a loop around its four stages, which self-oscillates at the top
+// of its range; Diode a four-pole diode ladder, its stages loading each other; SallenKeyLow and SallenKeyHigh a
+// two-pole Sallen-Key low- and high-pass with a clipper in its resonance's loop, as in Korg's MS-20; Formant three
+// band-passes at a vowel's formants (FilterParam::Vowel); Morph the state-variable filter going from its low-pass to
+// its high-pass through its band-pass or its notch (FilterParam::Morph and MorphMode). Stored in projects by number:
+// only append.
+enum class FilterType {
+    LowPass,
+    HighPass,
+    BandPass,
+    Notch,
+    Comb,
+    Ladder,
+    Diode,
+    SallenKeyLow,
+    SallenKeyHigh,
+    Formant,
+    Morph,
+    Count
+};
+// What the Morph type passes through on its way from low-pass to high-pass: the band-pass or the notch. Stored in
+// projects by number: only append.
+enum class MorphMode { Band, Notch, Count };
+inline MorphMode morphMode(double value) {
+    return static_cast<MorphMode>(std::clamp(std::lround(value), 0L, static_cast<long>(MorphMode::Count) - 1L));
+}
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
 // the source to where the operator reads its wave (phase modulation, what FM synths call FM); Linear FM adds it to the
 // operator's frequency, through zero once deep enough; Exp FM moves its pitch by octaves; Ring multiplies its output
@@ -379,19 +468,43 @@ enum class RouteMode { Phase, LinearFm, ExpFm, Ring, Count };
 inline RouteMode routeMode(double value) {
     return static_cast<RouteMode>(std::clamp(std::lround(value), 0L, static_cast<long>(RouteMode::Count) - 1L));
 }
-// The types that come in more than one slope.
-constexpr bool hasSlope(FilterType type) { return type <= FilterType::Notch; }
 // A filter's slope (FilterParam::Slope, and the filter effect's): 6, 12, 18 or 24 dB per octave, stored by number,
-// 12 to begin with. Low- and high-passes come in all four; a band-pass or notch only in 12 and 24, so 6 and 18 play
-// as the slope above them. Stored in projects by number: only append.
+// 12 to begin with. Each type comes in the slopes kFilterTypeSlopes gives it, a bit each: low- and high-passes and the
+// ladder (its stages tapped) in all four, a band-pass, notch or morph only in 12 and 24, the diode in 24, the
+// Sallen-Key's in 12, and a comb or formant in none. A stored slope a
+// type doesn't come in plays as the next one up it does (see playedSlope()). Stored in projects by number: only append.
 constexpr int kFilterSlopes = 4;
 constexpr int kDefaultSlope = 1;
+constexpr unsigned kAllSlopes = 0b1111, kEvenSlopes = 0b1010, kSlope12 = 0b0010, kSlope24 = 0b1000;
+constexpr unsigned kFilterTypeSlopes[] = {kAllSlopes, kAllSlopes, kEvenSlopes, kEvenSlopes, 0, kAllSlopes,
+                                          kSlope24,   kSlope12,   kSlope12,    0,           kEvenSlopes};
+static_assert(std::size(kFilterTypeSlopes) == static_cast<size_t>(FilterType::Count), "a slope set for each type");
 inline int filterSlope(double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, kFilterSlopes - 1L)); }
 constexpr int slopeDb(int slope) { return 6 * (slope + 1); }
-constexpr bool slopeFits(FilterType type, int slope) {
-    return type <= FilterType::HighPass || (hasSlope(type) && slope % 2 == 1);
+constexpr unsigned filterTypeSlopes(FilterType type) {
+    return type < FilterType::Count ? kFilterTypeSlopes[static_cast<int>(type)] : 0;
 }
-constexpr int playedSlope(FilterType type, int slope) { return type <= FilterType::HighPass ? slope : slope | 1; }
+// The types that come in more than one slope.
+constexpr bool hasSlope(FilterType type) { return filterTypeSlopes(type) != 0; }
+constexpr bool slopeFits(FilterType type, int slope) { return (filterTypeSlopes(type) >> slope & 1) != 0; }
+// The slope as it plays: the stored one if the type comes in it, else the next one up it does, else its steepest.
+constexpr int playedSlope(FilterType type, int slope) {
+    const unsigned slopes = filterTypeSlopes(type);
+    if (slopes == 0)
+        return slope;
+    for (int s = slope; s < kFilterSlopes; ++s)
+        if (slopes >> s & 1)
+            return s;
+    for (int s = kFilterSlopes - 1; s >= 0; --s)
+        if (slopes >> s & 1)
+            return s;
+    return slope;
+}
+static_assert(playedSlope(FilterType::BandPass, 0) == 1 && playedSlope(FilterType::BandPass, 2) == 3 &&
+                  playedSlope(FilterType::Notch, 3) == 3 && playedSlope(FilterType::LowPass, 0) == 0 &&
+                  playedSlope(FilterType::Ladder, 2) == 2 && playedSlope(FilterType::Comb, 2) == 2 &&
+                  playedSlope(FilterType::Diode, 1) == 3 && playedSlope(FilterType::SallenKeyLow, 3) == 1,
+              "slopes play as before");
 
 // Effects, run on the sum of all voices. Each slot of the chain holds one
 // effect of any type, or none, so a type can be used several times. A slot has
@@ -420,8 +533,12 @@ enum class FxType {
 };
 // Stored in projects by number: only append. Cubic is x - x^3/3 scaled to reach 1 at 1;
 // Gentle is x / (1 + |x|), which never quite gets there; the folds fold back what goes
-// past 1, smoothly (Sine Fold) or in straight lines (Fold); Custom is a drawn curve.
-enum class ClipMode { Hard, Soft, Asymmetric, Cubic, Gentle, SineFold, Fold, Custom, Count };
+// past 1, smoothly (Sine Fold) or in straight lines (Fold); Custom is a drawn curve. Stack is a soft curve biased off
+// its middle, run as a few gain stages in a row, each with a high-pass before it (see ClipCurve::stages and
+// StackStage); the editor lists it before Custom (kClipModesOffered).
+enum class ClipMode { Hard, Soft, Asymmetric, Cubic, Gentle, SineFold, Fold, Custom, Stack, Count };
+// How many Stack stages a shaper's Stack can run in a row, each driven by its Drive.
+constexpr int kMaxShaperStack = 8;
 // A parametric EQ band's shape: a bell, a shelf, a 12 dB per octave cut (where Q is the resonance and the gain does
 // nothing) or a notch (where Q sets the width and the gain does nothing). Stored in projects by number: only append.
 enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Notch, Count };
@@ -685,6 +802,13 @@ enum class FxParam {
     ChorusSpread,
     ChorusMix,
     ChorusVoices,
+    // The shaper's Stack curve run this many times in a row (1 to kMaxShaperStack), as ShaperParam::Stack.
+    ShaperStack,
+    // The filter's, past the fields it came with: its Formant type's vowel and its Morph type's place and mode, as a
+    // voice filter's (see FilterParam::Vowel, Morph and MorphMode).
+    FilterVowel,
+    FilterMorph,
+    FilterMorphMode,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -781,6 +905,10 @@ constexpr double kMdLiftHeadroom = 12.0;
 // kMdRetiredThresholdMinDb, so a modulation's depth on one loads scaled (see readParams()).
 constexpr double kMdThresholdMinDb = -80.0;
 constexpr double kMdRetiredThresholdMinDb = -60.0;
+// An operator's Unison Detune reaches up to here (cents, the outermost copies' offset); before state version 13, to
+// kRetiredMaxUnisonDetune, so a modulation's depth on it loads scaled (see readParams()).
+constexpr double kMaxUnisonDetune = 200.0;
+constexpr double kRetiredMaxUnisonDetune = 100.0;
 
 // --- Layout. An *index* is a position in the param table, used by the DSP.
 // An *id* is what hosts store in projects and automation; ids are grouped per
@@ -858,7 +986,13 @@ constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
 // order they ran (see fxOrder()). Loading one wires them as the effects graph's line (see readParams()); since then the
 // graph's wires alone hold the order, and these do nothing.
 constexpr int kFxPositionBase = kRouteModeBase + kRouteSources * kOps;
-constexpr int kParamCount = kFxPositionBase + kFxSlots;
+// The sequencer: its settings, each pattern's length and loop, then each pattern's notes, then each pattern's curves
+// (see SeqParam). Only ever read as set; the notes and curves are hidden from hosts, like the drawn shapes.
+constexpr int kSeqBase = kFxPositionBase + kFxSlots;
+constexpr int kSeqPatternBase = kSeqBase + kSeqParamCount;
+constexpr int kSeqNoteBase = kSeqPatternBase + kSeqPatterns * kSeqPatternParamCount;
+constexpr int kSeqCurveBase = kSeqNoteBase + kSeqPatterns * kSeqNotes * kSeqNoteParamCount;
+constexpr int kParamCount = kSeqCurveBase + kSeqPatterns * kSeqCurves * kSeqCurveParamCount;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -866,6 +1000,24 @@ constexpr int kModulatedCount = kShapeBase;
 constexpr int kVoiceParamCount = kFxBase;
 
 constexpr int paramIndex(GlobalParam p) { return static_cast<int>(p); }
+constexpr int paramIndex(SeqParam p) { return kSeqBase + static_cast<int>(p); }
+constexpr int paramIndex(int pattern, SeqPatternParam p) {
+    return kSeqPatternBase + pattern * kSeqPatternParamCount + static_cast<int>(p);
+}
+// Note `note` of pattern `pattern`.
+constexpr int seqNoteIndex(int pattern, int note, SeqNoteParam p) {
+    return kSeqNoteBase + (pattern * kSeqNotes + note) * kSeqNoteParamCount + static_cast<int>(p);
+}
+// Pattern `pattern`'s curve `curve`: its point count, and a field of a point.
+constexpr int seqCurveCountIndex(int pattern, SeqCurve curve) {
+    return kSeqCurveBase + (pattern * kSeqCurves + static_cast<int>(curve)) * kSeqCurveParamCount;
+}
+constexpr int seqCurveIndex(int pattern, SeqCurve curve, int point, PointField field) {
+    return seqCurveCountIndex(pattern, curve) + static_cast<int>(SeqCurveParam::Points) + 3 * point +
+           static_cast<int>(field);
+}
+constexpr bool isSeqParam(int index) { return index >= kSeqBase && index < kParamCount; }
+constexpr bool isSeqNote(int index) { return index >= kSeqNoteBase && index < kSeqCurveBase; }
 constexpr int paramIndex(int op, OpParam p) { return kOpBase + op * kOpParamCount + static_cast<int>(p); }
 // Amount by which operator `from` modulates operator `to`; from == to is feedback.
 constexpr int matrixIndex(int from, int to) { return kMatrixBase + from * kOps + to; }
@@ -1003,9 +1155,10 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::Sync:
     case SourceParam::Division:
     case SourceParam::Free:
-    case SourceParam::OneShot:
-    case SourceParam::Anchor:
         return runsLfo(t);
+    case SourceParam::OneShot:
+    case SourceParam::Anchor: // Random only retriggers or runs free (see lfoClock())
+        return runsLfo(t) && t != SourceType::Random;
     case SourceParam::RandomSmooth:
     case SourceParam::RandomChaos:
         return t == SourceType::Random;
@@ -1018,29 +1171,6 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     default:
         return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
     }
-}
-// Whether the LFO in place `source` follows the host's transport (see SourceParam), or runs on one clock all voices
-// share (an anchored one too, while the transport is stopped), reading its params through `get`. A one-shot is
-// neither.
-template <class Get>
-bool lfoAnchored(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::Anchor)) >= 0.5 && get(paramIndex(source, SourceParam::OneShot)) < 0.5;
-}
-template <class Get>
-bool lfoShared(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
-           (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
-            get(paramIndex(source, SourceParam::Anchor)) >= 0.5);
-}
-// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free): the
-// editor picks one, setting the switches for it.
-enum class LfoClock { Retrigger, Free, Anchor, OneShot, Count };
-template <class Get>
-LfoClock lfoClock(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5  ? LfoClock::OneShot
-           : get(paramIndex(source, SourceParam::Anchor)) >= 0.5 ? LfoClock::Anchor
-           : get(paramIndex(source, SourceParam::Free)) >= 0.5   ? LfoClock::Free
-                                                                 : LfoClock::Retrigger;
 }
 inline SourceType sourceType(double value) {
     const long t = std::lround(value);
@@ -1057,6 +1187,38 @@ LfoShape lfoShape(const Get &get, int source) {
         return LfoShape::Custom;
     const long shape = std::lround(get(paramIndex(source, SourceParam::Shape)));
     return static_cast<LfoShape>(std::clamp(shape, 0l, static_cast<long>(LfoShape::Count) - 1));
+}
+// Whether the LFO in place `source` follows the host's transport (see SourceParam), or runs on one clock all voices
+// share (an anchored one too, while the transport is stopped), reading its params through `get`. A one-shot is
+// neither. A random one (Random, or the retired Random shape) is never anchored nor one-shot: its values can't be
+// told ahead, so neither means anything to it. Anchored, it runs free; one-shot, it retriggers (as lfoShared() says).
+template <class Get>
+bool lfoAnchored(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::Anchor)) >= 0.5 &&
+           get(paramIndex(source, SourceParam::OneShot)) < 0.5 && lfoShape(get, source) != LfoShape::Random;
+}
+template <class Get>
+bool lfoOneShot(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5 && lfoShape(get, source) != LfoShape::Random;
+}
+template <class Get>
+bool lfoShared(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
+           (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
+            get(paramIndex(source, SourceParam::Anchor)) >= 0.5);
+}
+// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free): the
+// editor picks one, setting the switches for it. A random one only retriggers or runs free (kRandomClocks).
+enum class LfoClock { Retrigger, Free, Anchor, OneShot, Count };
+constexpr int kRandomClocks = static_cast<int>(LfoClock::Anchor);
+template <class Get>
+LfoClock lfoClock(const Get &get, int source) {
+    if (lfoShape(get, source) == LfoShape::Random)
+        return lfoShared(get, source) ? LfoClock::Free : LfoClock::Retrigger;
+    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5  ? LfoClock::OneShot
+           : get(paramIndex(source, SourceParam::Anchor)) >= 0.5 ? LfoClock::Anchor
+           : get(paramIndex(source, SourceParam::Free)) >= 0.5   ? LfoClock::Free
+                                                                 : LfoClock::Retrigger;
 }
 // Whether the LFO in place `source` stands still: unsynced, at a Rate of 0 Hz. A random one then takes a value of its
 // own as each note starts, at once, and holds it.
@@ -1120,6 +1282,8 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::AmpModel, FxParam::AmpOversampling, FxType::Amp},
     {FxParam::UtilityGain, FxParam::UtilityMonoBass, FxType::Utility},
     {FxParam::ChorusRate, FxParam::ChorusVoices, FxType::Chorus},
+    {FxParam::ShaperStack, FxParam::ShaperStack, FxType::Shaper},
+    {FxParam::FilterVowel, FxParam::FilterMorphMode, FxType::Filter},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1195,19 +1359,19 @@ constexpr int clipCurveCountIndex(int slot) { return kClipCurveBase + slot * kSh
 // (0..kFxSlots - 1), or kFxSlots + a voice shaper; its fields, `curve` being its drawn curve's point count.
 constexpr int kShaperUnits = kFxSlots + kShapers;
 struct ShaperParams {
-    int mode, drive, output, mix, link, curve, symmetric;
+    int mode, drive, output, mix, link, curve, symmetric, stack;
 };
 constexpr ShaperParams shaperParams(int unit) {
     if (unit < kFxSlots)
         return {paramIndex(unit, FxParam::ShaperMode),  paramIndex(unit, FxParam::ShaperDrive),
                 paramIndex(unit, FxParam::ShaperOutput), paramIndex(unit, FxParam::ShaperMix),
                 paramIndex(unit, FxParam::ShaperLink),   clipCurveCountIndex(unit),
-                paramIndex(unit, FxParam::ShaperSymmetric)};
+                paramIndex(unit, FxParam::ShaperSymmetric), paramIndex(unit, FxParam::ShaperStack)};
     const int shaper = unit - kFxSlots;
     return {paramIndex(shaper, ShaperParam::Mode),   paramIndex(shaper, ShaperParam::Drive),
             paramIndex(shaper, ShaperParam::Output), paramIndex(shaper, ShaperParam::Mix),
             paramIndex(shaper, ShaperParam::Link),   shaperCurveCountIndex(shaper),
-            paramIndex(shaper, ShaperParam::Symmetric)};
+            paramIndex(shaper, ShaperParam::Symmetric), paramIndex(shaper, ShaperParam::Stack)};
 }
 // Every source's slots can be bypassed: the places' with their own, the others' after the slots' auxes.
 constexpr int slotBypassIndex(int source, int slot) {
@@ -1290,10 +1454,10 @@ constexpr int slotCurveIndex(int source, int slot) { return kSlotCurveBase + sou
 constexpr int routeModeIndex(int from, int to) { return kRouteModeBase + from * kOps + to; }
 // The node a route's mode param comes from and the operator it goes into, or -1 for other params.
 constexpr int routeModeFrom(int index) {
-    return index >= kRouteModeBase && index < kParamCount ? (index - kRouteModeBase) / kOps : -1;
+    return index >= kRouteModeBase && index < kFxPositionBase ? (index - kRouteModeBase) / kOps : -1;
 }
 constexpr int routeModeTo(int index) {
-    return index >= kRouteModeBase && index < kParamCount ? (index - kRouteModeBase) % kOps : -1;
+    return index >= kRouteModeBase && index < kFxPositionBase ? (index - kRouteModeBase) % kOps : -1;
 }
 // The source an aux or Amount param belongs to; -1 for other params.
 constexpr int auxSourceOf(int index) {
@@ -1383,6 +1547,11 @@ constexpr Section kSections[] = {
     // Its sums, then the wires into them.
     {kFxSumBase, kFxSums, kSumParamCount, 35100, 20},
     {kFxSumInputBase, kFxSums, kFxSumInputs * kFxInputFields, 35200, 20},
+    // The sequencer: its settings, its patterns' lengths and loops, then their notes, pattern by pattern.
+    {kSeqBase, 1, kSeqParamCount, 40000, 100},
+    {kSeqPatternBase, kSeqPatterns, kSeqPatternParamCount, 40100, 10},
+    {kSeqNoteBase, kSeqPatterns * kSeqNotes, kSeqNoteParamCount, 41000, 10},
+    {kSeqCurveBase, kSeqPatterns * kSeqCurves, kSeqCurveParamCount, 47000, 200},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1528,15 +1697,39 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount <= 8 * 3000);
-static_assert(idsRoundTrip(0, 3000), "param id layout overlaps");
-static_assert(idsRoundTrip(3000, 6000), "param id layout overlaps");
-static_assert(idsRoundTrip(6000, 9000), "param id layout overlaps");
-static_assert(idsRoundTrip(9000, 12000), "param id layout overlaps");
-static_assert(idsRoundTrip(12000, 15000), "param id layout overlaps");
-static_assert(idsRoundTrip(15000, 18000), "param id layout overlaps");
-static_assert(idsRoundTrip(18000, 21000), "param id layout overlaps");
-static_assert(idsRoundTrip(21000, 24000), "param id layout overlaps");
+static_assert(kParamCount <= 9 * 3000);
+static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
+static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
+static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
+static_assert(idsRoundTrip(4500, 6000), "param id layout overlaps");
+static_assert(idsRoundTrip(6000, 7500), "param id layout overlaps");
+static_assert(idsRoundTrip(7500, 9000), "param id layout overlaps");
+static_assert(idsRoundTrip(9000, 10500), "param id layout overlaps");
+static_assert(idsRoundTrip(10500, 12000), "param id layout overlaps");
+static_assert(idsRoundTrip(12000, 13500), "param id layout overlaps");
+static_assert(idsRoundTrip(13500, 15000), "param id layout overlaps");
+static_assert(idsRoundTrip(15000, 16500), "param id layout overlaps");
+static_assert(idsRoundTrip(16500, 18000), "param id layout overlaps");
+static_assert(idsRoundTrip(18000, 19500), "param id layout overlaps");
+static_assert(idsRoundTrip(19500, 21000), "param id layout overlaps");
+static_assert(idsRoundTrip(21000, 22500), "param id layout overlaps");
+static_assert(idsRoundTrip(22500, 24000), "param id layout overlaps");
+static_assert(idsRoundTrip(24000, 25500), "param id layout overlaps");
+static_assert(idsRoundTrip(25500, 27000), "param id layout overlaps");
+// The sequencer's ids.
+static_assert(idOfIndex(paramIndex(SeqParam::Enabled)) == 40000 && idOfIndex(paramIndex(SeqParam::Scale)) == 40012 &&
+                  idOfIndex(paramIndex(0, SeqPatternParam::Length)) == 40100 &&
+                  idOfIndex(paramIndex(kSeqPatterns - 1, SeqPatternParam::LoopEnd)) == 40132 &&
+                  idOfIndex(seqNoteIndex(0, 0, SeqNoteParam::Start)) == 41000 &&
+                  idOfIndex(seqNoteIndex(1, 0, SeqNoteParam::Start)) == 42280 &&
+                  idOfIndex(seqNoteIndex(kSeqPatterns - 1, kSeqNotes - 1, SeqNoteParam::Mute)) == 46116 &&
+                  kSeqNoteParamCount <= 10 && kSeqParamCount <= 100 &&
+                  idOfIndex(seqCurveCountIndex(0, SeqCurve::Bend)) == 47000 &&
+                  idOfIndex(seqCurveCountIndex(0, SeqCurve::ModWheel)) == 47200 &&
+                  idOfIndex(seqCurveIndex(kSeqPatterns - 1, SeqCurve::ModWheel, kSeqCurvePoints - 1, PointField::Curve)) ==
+                      48592 &&
+                  kSeqCurveParamCount <= 200 && static_cast<int>(SeqCurve::ModWheel) == 1,
+              "sequencer param ids moved");
 // Projects store params by id: effect fields keep theirs as later ones come (the 80th was the last in the
 // first section),
 static_assert(idOfIndex(paramIndex(1, FxParam::ReverbType)) == 1400 + 80 + 79 &&
@@ -1604,12 +1797,14 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 &&
                   idOfIndex(paramIndex(0, OpParam::Sync)) == 131 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 &&
-                  idOfIndex(paramIndex(0, OpParam::TablePos)) == 134 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::TablePos)) == 384 &&
-                  idOfIndex(paramIndex(0, OpParam::SampleMode)) == 143 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 393 &&
-                  idOfIndex(paramIndex(0, OpParam::SampleReverse)) == 144 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleReverse)) == 394 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(0, OpParam::UnisonCurve)) == 134 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::UnisonBlend)) == 386 &&
+                  idOfIndex(paramIndex(0, OpParam::TablePos)) == 137 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::TablePos)) == 387 &&
+                  idOfIndex(paramIndex(0, OpParam::SampleMode)) == 146 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 396 &&
+                  idOfIndex(paramIndex(0, OpParam::SampleReverse)) == 147 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::SampleReverse)) == 397 && kOpParamCount <= 50,
               "operator param ids moved");
 // The operators' fields past the 50th, should more come, go on from 38000, 50 an operator: free ids, past the highest
 // that was ever in use (37000 and a little).
@@ -1634,7 +1829,9 @@ static_assert(idOfIndex(paramIndex(0, ShaperParam::Enabled)) == 600 && idOfIndex
                   idOfIndex(shaperModIndex(0, 0)) == 608 && idOfIndex(paramIndex(0, ShaperParam::Out)) == 614 &&
                   idOfIndex(paramIndex(kShapers - 1, ShaperParam::Symmetric)) == 665 &&
                   idOfIndex(shaperShaperIndex(0, 0)) == 616 &&
-                  idOfIndex(shaperShaperIndex(kShapers - 1, kShapers - 1)) == 667,
+                  idOfIndex(shaperShaperIndex(kShapers - 1, kShapers - 1)) == 667 &&
+                  idOfIndex(paramIndex(0, ShaperParam::Stack)) == 618 &&
+                  idOfIndex(paramIndex(kShapers - 1, ShaperParam::Stack)) == 668,
               "shaper param ids moved");
 static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kFirstSlots - 1)) == 3409 &&
@@ -1681,7 +1878,10 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::ChorusVoices)) == 36400 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ChorusVoices)) == 37000 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::ChorusRate)) == 26154 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160 &&
+                  idOfIndex(paramIndex(0, FxParam::ShaperStack)) == 36401 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ShaperStack)) == 37001 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperStack)) == 29161,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1779,9 +1979,31 @@ static_assert(numberedInOrder({OpSync::Off, OpSync::Note, OpSync::Count}), "OpSy
 static_assert(numberedInOrder({OpWarp::Off, OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps,
                                OpWarp::Sync, OpWarp::Count}),
               "OpWarp is stored by number: only append");
+static_assert(numberedInOrder({UniCurve::Linear, UniCurve::Center, UniCurve::Supersaw, UniCurve::Random,
+                               UniCurve::Count}),
+              "UniCurve is stored by number: only append");
+static_assert(numberedInOrder({UniPan::Ramp, UniPan::Alternate, UniPan::Random, UniPan::Count}),
+              "UniPan is stored by number: only append");
+static_assert(numberedInOrder({SeqPlay::Host, SeqPlay::Key, SeqPlay::Latch, SeqPlay::Count}),
+              "SeqPlay is stored by number: only append");
+static_assert(numberedInOrder({SeqRate::Quarter, SeqRate::EighthDotted, SeqRate::Eighth, SeqRate::SixteenthDotted,
+                               SeqRate::EighthTriplet, SeqRate::Sixteenth, SeqRate::SixteenthTriplet,
+                               SeqRate::ThirtySecond, SeqRate::Count}),
+              "SeqRate is stored by number: only append");
+static_assert(numberedInOrder({SeqOrder::Forward, SeqOrder::Reverse, SeqOrder::PingPong, SeqOrder::Random,
+                               SeqOrder::Count}),
+              "SeqOrder is stored by number: only append");
+static_assert(numberedInOrder({SeqScale::Chromatic, SeqScale::Major, SeqScale::Minor, SeqScale::Dorian,
+                               SeqScale::Phrygian, SeqScale::Lydian, SeqScale::Mixolydian, SeqScale::HarmonicMinor,
+                               SeqScale::MelodicMinor, SeqScale::PentatonicMajor, SeqScale::PentatonicMinor,
+                               SeqScale::Blues, SeqScale::Count}),
+              "SeqScale is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
-                               FilterType::Comb, FilterType::Count}),
+                               FilterType::Comb, FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
+                               FilterType::SallenKeyHigh, FilterType::Formant, FilterType::Morph, FilterType::Count}),
               "FilterType is stored by number: only append");
+static_assert(numberedInOrder({MorphMode::Band, MorphMode::Notch, MorphMode::Count}),
+              "MorphMode is stored by number: only append");
 static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
                                FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
@@ -1806,7 +2028,8 @@ static_assert(numberedInOrder({LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw
                                LfoShape::Custom, LfoShape::Count}),
               "LfoShape is stored by number: only append");
 static_assert(numberedInOrder({ClipMode::Hard, ClipMode::Soft, ClipMode::Asymmetric, ClipMode::Cubic, ClipMode::Gentle,
-                               ClipMode::SineFold, ClipMode::Fold, ClipMode::Custom, ClipMode::Count}),
+                               ClipMode::SineFold, ClipMode::Fold, ClipMode::Custom, ClipMode::Stack,
+                               ClipMode::Count}),
               "ClipMode is stored by number: only append");
 static_assert(numberedInOrder({PeqType::Peak, PeqType::LowShelf, PeqType::HighShelf, PeqType::LowCut, PeqType::HighCut,
                                PeqType::Notch, PeqType::Count}),
@@ -1968,14 +2191,21 @@ inline double normFromRatio(double ratio) {
 // The ratio as the editor shows and sets it: in hundredths, 50 to 6400.
 inline long ratioHundredths(double norm) { return std::clamp(std::lround(ratioFromNorm(norm) * 100.0), 50L, 6400L); }
 
-// Note values for tempo sync, from 4/1 dotted down to a 1/64 triplet, slowest
-// first. Stored in projects by number.
+// Note values for tempo sync, from 4/1 dotted (0) down to a 1/64 triplet (kDivisions - 1), slowest first. Stored in
+// projects by number. The sources' synced rates also reach two slower ones, 8/1 (eight bars, kSlowestDivision) and
+// 8/1T, numbered -2 and -1 so that the numbers stored before them keep their note values; the effects' start at 0.
 constexpr int kDivisions = 27;
+constexpr int kSlowestDivision = -2;
+// Before state version 13, the sources' Division reached from 0 up only, so a modulation's depth on it loads scaled
+// (see readParams()).
+constexpr double kRetiredSourceDivisionSteps = kDivisions - 1.0;
+constexpr double kSourceDivisionSteps = kDivisions - 1.0 - kSlowestDivision;
 // Length of a division in quarter notes: each power of two comes dotted, straight and as a triplet.
 inline double divisionBeats(int division) {
     constexpr double kFactors[] = {1.5, 1.0, 2.0 / 3.0};
-    division = division < 0 ? 0 : (division >= kDivisions ? kDivisions - 1 : division);
-    return 16.0 / static_cast<double>(1 << (division / 3)) * kFactors[division % 3];
+    division = division < kSlowestDivision ? kSlowestDivision : (division >= kDivisions ? kDivisions - 1 : division);
+    const int from8 = division + 3; // from 8/1 dotted, which is -3
+    return 32.0 / static_cast<double>(1 << (from8 / 3)) * kFactors[from8 % 3];
 }
 inline double divisionSeconds(double division, double tempo) {
     return divisionBeats(static_cast<int>(std::lround(division))) * 60.0 / tempo;
@@ -2125,6 +2355,34 @@ inline double shapeBend(double t, double curve) {
         return t;
     const double a = 8.0 * curve;
     return std::expm1(a * t) / std::expm1(a);
+}
+// A point of a sequencer curve (see SeqCurveParam), and where a curve of `count` points, `point(i)` its i-th, stands at
+// `step`: the first point's value before it, the last's after it, and between two the segment bent by the first's
+// curve. NaN for a curve without points, which does nothing.
+struct SeqCurvePoint {
+    double x, y, curve;
+};
+template <class PointAt> double seqCurveAt(int count, const PointAt &point, double step) {
+    if (count <= 0)
+        return std::numeric_limits<double>::quiet_NaN();
+    SeqCurvePoint a = point(0);
+    if (step <= a.x)
+        return a.y;
+    for (int i = 1; i < count; ++i) {
+        const SeqCurvePoint b = point(i);
+        if (step < b.x) {
+            const double span = b.x - a.x;
+            const double t = span > 1e-9 ? (step - a.x) / span : 1.0;
+            return a.y + (b.y - a.y) * shapeBend(t, a.curve);
+        }
+        a = b;
+    }
+    return a.y;
+}
+// The points a pattern's curve has, as stored (0 to kSeqCurvePoints). `get(index)` returns a param value.
+template <class Get> int seqCurvePointCount(const Get &get, int pattern, SeqCurve curve) {
+    const double n = get(seqCurveCountIndex(pattern, curve));
+    return std::isfinite(n) ? std::clamp(static_cast<int>(std::lround(n)), 0, kSeqCurvePoints) : 0;
 }
 inline int shapePointCount(double value, int most = kMaxShapePoints) { // the note curve's: kMaxNotePoints
     const long n = std::lround(value);
@@ -2419,6 +2677,14 @@ enum class ParamKind {
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
     OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
+    UniCurve,     // stepped: how an operator's unison copies spread in pitch (see UniCurve)
+    UniPan,       // stepped: where they sit across the stereo field (see UniPan)
+    MorphMode,    // stepped: what a Morph filter passes through (see MorphMode)
+    SeqPattern,   // stepped: the sequencer's pattern playing, A to D
+    SeqPlay,      // stepped: when the sequencer plays (see SeqPlay)
+    SeqRate,      // stepped: how long its step is (see SeqRate)
+    SeqOrder,     // stepped: which way its steps run (see SeqOrder)
+    SeqBars,      // stepped: a pattern's length in bars, set in the editor and hidden from hosts
     DataKey,      // stepped: a Wavetable or Sample operator's data (see OpParam::Table), set in the editor, hidden
     SampleLoop,   // stepped: how a Sample operator loops (see SampleLoop)
     SampleMode,   // stepped: how a Sample operator plays a note (see SampleMode)
@@ -2736,6 +3002,8 @@ constexpr int waveParamOp(int index) {
                ? (index - kOpBase) / kOpParamCount
                : -1;
 }
+const char *uniCurveName(UniCurve curve);
+const char *uniPanName(UniPan pan);
 const char *filterTypeName(FilterType type);
 const char *filterTypeShortName(FilterType type);
 const char *divisionName(int division);
@@ -2746,7 +3014,12 @@ const char *ampModelName(AmpModel model);
 const char *ampCabName(AmpCab cab);
 const char *ampMicName(AmpMic mic);
 const char *routeModeName(RouteMode mode);
+const char *morphModeName(MorphMode mode);
 const char *midiInputName(MidiInput input);
+// The sequencer's scales, rates and patterns by number, as its settings show them.
+const char *seqScaleName(int scale);
+const char *seqRateName(int rate);
+const char *seqPatternName(int pattern);
 const char *sourceTypeName(SourceType type);
 const char *fxName(FxType fx);
 

@@ -62,7 +62,15 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 12: The Curve source is an LFO of a drawn shape, and the LFO's Custom shape is retired for it. An earlier state's
 //    LFO with the Custom shape loads as a Curve source running as the LFO ran, its points and polarity kept (see
 //    loadCurveSources()).
-constexpr uint32_t kStateVersion = 12;
+// 13: An operator's Unison Detune reaches 200 cents rather than 100 (kMaxUnisonDetune), so an earlier state's
+//    depths on it load half as deep, to swing it as far as they did. And the unison copies' Unison Pan, new with it,
+//    is Alternate to begin with: an earlier state, which has none, loads Ramp, its copies from left to right as they
+//    played. And a source's synced Division reaches two note values slower, 8/1T and 8/1 (-1 and -2, see
+//    kSlowestDivision), so its stored values keep their note values, but an earlier state's depths on it load smaller
+//    (by 26 steps over 28), to step it as far as they did.
+// One version a release at most: what changes between two tagged releases goes into a single step, so the version
+// rises once from one release to the next (see AGENTS.md, Plugin facts).
+constexpr uint32_t kStateVersion = 13;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -287,7 +295,7 @@ void layoutFields(Io &io, Layout &ui) {
     io.numbers(ui.boxY, 0.0f, 1.0f);
     io.number(ui.selectedNode, 0.0f, gui::kNodes - 1.0f, truncated<int>);
     io.number(ui.zoom, 0.5f, 3.0f);
-    io.number(ui.view, 0.0f, 3.0f, rounded<gui::RoutingView>);
+    io.number(ui.view, 0.0f, static_cast<float>(gui::RoutingView::Seq), rounded<gui::RoutingView>);
     io.number(ui.sourcesCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     // The source order lists every place once; anything else falls back to the default.
     io.numbers(ui.sourceOrder, 0.0f, kMaxSources - 1.0f, rounded<int>, everyPlaceOnce);
@@ -320,6 +328,15 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.fxGraphView, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     io.numbers(ui.splitBand, 0.0f, 2.0f, rounded<int>); // 0 low, 1 high, 2 middle
     io.number(ui.splitsFolded, 0.0f, 15.0f, rounded<uint32_t>);
+    // The SEQ view's roll: drawing or selecting, its snap, its lane, its lowest row and its folding.
+    io.number(ui.seqDraw, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    io.number(ui.seqSnap, 0.0f, gui::kSeqSnapCount - 1.0f, rounded<int>);
+    io.number(ui.seqLane, 0.0f, static_cast<float>(gui::SeqLane::Count) - 1.0f, rounded<gui::SeqLane>);
+    io.number(ui.seqLow, 0.0f, 127.0f, rounded<int>);
+    io.number(ui.seqFold, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    // The tempo the patch was saved as a preset at: 0 for none, or a tempo the editor offers.
+    io.number(ui.savedTempo, 0.0f, static_cast<float>(gui::kMaxTempo), AsIs{},
+              [](float bpm) { return bpm == 0.0f || bpm >= static_cast<float>(gui::kMinTempo); });
     // The wave each operator's source switch goes back to (any but the data waves, which come after Vowel).
     io.numbers(ui.plainWave, 0.0f, static_cast<float>(OpWave::Vowel), rounded<int>);
 }
@@ -526,6 +543,11 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     const ParamTable &table = paramTable();
     for (int i = 0; i < kParamCount; ++i)
         loaded[i] = table[i].def;
+    // Before version 13 there was no Unison Pan: the copies sat from left to right, which is what a state without one
+    // loads (one that has it, as saved).
+    if (header[1] < 13)
+        for (int op = 0; op < kOps; ++op)
+            loaded[paramIndex(op, OpParam::UnisonPan)] = static_cast<double>(UniPan::Ramp);
     const int volume = paramIndex(GlobalParam::Volume);
     // Whether the state wires the effects graph's output: before version 9, only one saved with them as a graph does.
     bool outWired = false;
@@ -588,6 +610,23 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                     threshold = threshold || target == mdAboveIndex(fx, band) || target == mdBelowIndex(fx, band);
                 if (threshold)
                     loaded[slotAmountIndex(source, slot)] *= kMdRetiredThresholdMinDb / kMdThresholdMinDb;
+            }
+    if (header[1] < 13) // as far as they swung an operator's Unison Detune: its range was 0 to kRetiredMaxUnisonDetune
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                bool detune = false;
+                for (int op = 0; op < kOps; ++op)
+                    detune = detune || target == paramIndex(op, OpParam::UnisonDetune);
+                if (detune)
+                    loaded[slotAmountIndex(source, slot)] *= kRetiredMaxUnisonDetune / kMaxUnisonDetune;
+            }
+    if (header[1] < 13) // as far as they stepped a source's Division: it reached from 4/1D (0) up only
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                if (target >= 0 && modulatedInSteps(target))
+                    loaded[slotAmountIndex(source, slot)] *= kRetiredSourceDivisionSteps / kSourceDivisionSteps;
             }
     if (header[1] < 8) { // the chain's order onto its places
         const int retired = paramIndex(GlobalParam::RetiredFxOrder);

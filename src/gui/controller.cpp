@@ -400,6 +400,7 @@ void Controller::apply(const UndoStep &step, bool forward) {
 }
 
 void Controller::clearHistory() {
+    ++patchLoads_;
     undo_.clear();
     redo_.clear();
     refreshData();

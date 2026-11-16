@@ -78,6 +78,7 @@ public:
     gui::UiLayout &layout() override { return layout_; }
     void layoutChanged() override;
     void playNote(int note, bool on) override;
+    void auditionNote(int note, bool on) override;
     void setScope(int op, int cycles) override {
         scopeOp_.store(op, std::memory_order_relaxed);
         scopeCycles_.store(cycles, std::memory_order_relaxed);
@@ -86,6 +87,9 @@ public:
     void resetPreset() override;
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
+    bool presetWritable() const override {
+        return presetHasFile() && !presetFile().starts_with(PresetLibrary::kFactoryPrefix);
+    }
     void choosePreset(bool save) override;
     void rescanPresets() override { presets_.rescan(); }
     const std::vector<gui::PresetEntry> &presets() const override { return presets_.entries(); }
@@ -123,6 +127,11 @@ public:
     double linkIntensity() const override { return userSettings.links; }
     void setLinkIntensity(double amount) override {
         userSettings.links = std::clamp(amount, 0.0, 1.0);
+        writeUserSettings();
+    }
+    double gridIntensity() const override { return userSettings.grid; }
+    void setGridIntensity(double amount) override {
+        userSettings.grid = std::clamp(amount, 0.0, 1.0);
         writeUserSettings();
     }
 
@@ -256,11 +265,14 @@ private:
     // What a preset leaves as it is (gui::keepEditorLayout()): how big the editor is, whether the modulation panel
     // is collapsed, the shape editor's grid, the view shown.
     void keepEditorLayout(const gui::UiLayout &from);
+    // Loads a preset's bytes, which came from `path` (a file, or a factory preset's), as the patch's preset.
+    bool loadPresetFrom(const clap_istream_t *stream, const std::wstring &path);
 
     // A key of the editor's virtual keyboard, on its way to the audio thread.
     struct KeyEvent {
         int note;
         bool on;
+        bool audition = false; // heard on its own (see Controller::auditionNote())
     };
 
     Synth synth_;
@@ -313,6 +325,8 @@ private:
     const std::unique_ptr<const Telemetry> noTelemetry_ = std::make_unique<const Telemetry>(); // what nothing playing shows
     std::atomic<bool> editorOpen_{false};
     std::atomic<bool> idleLfosShown_{false}; // see setIdleLfosShown()
+    // The tempo the synth played the last block at (the host's), 0 before the first: what a preset saved records.
+    std::atomic<double> playedTempo_{0.0};
     std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
     std::atomic<int> scopeCycles_{2};
     unsigned int csr_ = 0; // the audio thread's floating-point control word, while a block is processed

@@ -7,6 +7,7 @@
 #include "opdata.h"
 #include "oversampler.h"
 #include "params.h"
+#include "sequencer.h"
 #include "wavetable.h"
 
 #include <algorithm>
@@ -149,6 +150,10 @@ struct Telemetry {
     // The output scope's last whole span (see kOutScopeBins), as the output's level: all 0 while the synth doesn't
     // analyze (see Synth::setAnalyzing()).
     std::array<float, kOutScopeBins> outScope{};
+    // Where the sequencer plays, in its pattern's steps, and which pattern; -1 while it doesn't (see Sequencer).
+    float seqPosition = -1.0f;
+    int seqPattern = 0;
+    std::array<uint32_t, 4> seqKeys{}; // the pitches the notes the sequencer holds on are written at, as `keys` has keys
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -249,6 +254,8 @@ public:
     // Param `index` changed since the last render(), which is told sameParams: what render() works out from the
     // params is worked out again for that param alone, where that is all it touches (see changesShared()).
     void paramChanged(int index) {
+        if (isSeqParam(index))
+            seqStale_ = true;
         if (sharedStale_ || index < 0 || index >= kParamCount)
             return;
         if (changedCount_ < kMaxChanged)
@@ -261,6 +268,8 @@ public:
     // keeps it alive; with note ids, an overlapping note on the same key is a voice of its own.
     bool isActive(const NoteRef &note) const;
     int activeVoiceCount() const;
+    // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
+    bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
     // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects
@@ -286,8 +295,24 @@ public:
     const DataRegistry &registry() const { return registry_; }
 
 private:
+    // What render() does for each stretch between the sequencer's notes.
+    void renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams);
+    void applySeqEvent(const SeqEvent &e);
+    void applySeqEvents(int count);
+    // The host's notes the sequencer took as keys (in Key and Latch), which no voice plays: they end as their keys come
+    // up, or a reset, choke or All Sound Off ends them. Whether any matched `match`; `report` reports their ends.
+    bool releaseKeys(const NoteRef &match);
+    void stopLatch();
+    Sequencer seq_;
+    // Whether a sequencer param changed since the last render() (see paramChanged()), so it reads its pattern again.
+    bool seqStale_ = true;
+    std::array<SeqEvent, Sequencer::kMaxEvents> seqEvents_{};
+    std::array<NoteRef, 64> keysTaken_{};
+    int keysTakenCount_ = 0;
+
     // An operator's unison copies: each one's phase increment, and apart from those, which follow its pitch, their
-    // stereo gains, which follow only the spread and the number of copies (see renderBlock()).
+    // stereo gains, which follow only the spread, the number of copies and how they spread (see unison.h and
+    // renderBlock()). Each copy's weight in the mono sum other operators hear goes beside them, in the voice.
     struct UnisonIncs {
         std::array<double, kMaxUnison> inc;
     };
@@ -304,8 +329,8 @@ private:
         bool incKnown = false; // incNow holds the last block's, not stale: false for a new note and after being off
         Envelope env;
         Memo<EnvRates, 8> rates; // its envelope's, from its params
-        Memo<UnisonIncs, 3> unisonIncs;   // its copies' increments, from its pitch, detune and copies
-        Memo<UnisonGains, 2> unisonGains; // and their gains, from its spread and copies
+        Memo<UnisonIncs, 4> unisonIncs;   // its copies' increments, from its pitch, detune, copies and modes
+        Memo<UnisonGains, 4> unisonGains; // and their gains, from its spread, copies, modes and blend
         std::array<NoiseColor::State, 2> noise{}; // the Noise wave's color filters: middle and sides
         // Hard sync: each copy's master, a cycle of the note (as detuned as the copy), restarts the copy at the phase
         // the note started it at. A restart's step, and the bend in its slope, are smoothed over the samples either
@@ -367,7 +392,6 @@ private:
         double held = 0.0; // the Random shape's value for this cycle
         double from = 0.0; // and for the last one, which it glides from
         bool restart = false; // a note (re)started it: its next block moves it to its Phase
-        double cycle = 0.0;   // an anchored one's cycle since the song's start, whole: Random steps as it changes
     };
 
     // One LFO/envelope slot's contribution to a param, in plain units.
@@ -397,6 +421,7 @@ private:
         std::array<double, kShapers> shaperDrive{};  // gains
         std::array<double, kShapers> shaperOutput{};
         std::array<double, kShapers> shaperMix{};
+        std::array<double, kShapers> shaperBetween{}; // after each Stack stage but the last
     };
 
     struct Voice {
@@ -436,8 +461,8 @@ private:
         std::array<Lfo, kMaxSources> lfos{};
         std::array<Envelope, kMaxSources> modEnvs{};
         std::array<Memo<EnvRates, 8>, kMaxSources> modEnvRates{};
-        std::array<Memo<FilterSettings, 7>, kFilters> filterSettings{};
-        std::array<Memo<ShaperSettings, 6>, kShapers> shaperSettings{};
+        std::array<Memo<FilterSettings, 10>, kFilters> filterSettings{};
+        std::array<Memo<ShaperSettings, 7>, kShapers> shaperSettings{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
         // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's
         // line's length past the last time it put out more than kFilterRingFloor (see renderBlock()).
@@ -450,6 +475,11 @@ private:
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]
         std::array<double, kShapers> shaperOut{};               // latest mono shaper output (what operators hear)
         std::array<std::array<double, 2>, kShapers> shaperLast{}; // latest shaper output per channel (what shapers hear)
+        // Whether a filter's or shaper's state above may hold anything since it last ran: one that stops is cleared
+        // once, as it stops, rather than every block it stays off (a Filter and a ClipState are large, see
+        // renderBlock()).
+        std::array<bool, kFilters> filterHeld{};
+        std::array<bool, kShapers> shaperHeld{};
         // Channel 1 of the filters and shapers stood still through a block without stereo spread: it takes channel 0's
         // state before it runs again, rather than carrying on from where it stopped (a comb would ring again).
         bool rightStale = false;
@@ -476,6 +506,9 @@ private:
         int moddedCount = 0;
         std::bitset<kVoiceParamCount> modSet;
         std::array<PlayState, kOps> plays{}; // the operators' (see PlayState)
+        // Each operator's copies' weights in the mono sum other operators hear, as its unison gains last worked them
+        // out (1 until Blend moves them): beside the operators, which grew slower in renderBlock() as they grew.
+        std::array<std::array<double, kMaxUnison>, kOps> copyWeights{};
     };
 
     struct HeldNote {
@@ -551,21 +584,35 @@ private:
     }
     template <class Reader>
     static OpSample warpedSample(Operator &op, const Reader &reader, double offset, double factor, int copies,
-                                 const UnisonGains *gains, bool sides, const std::array<double, kMaxUnison> &syncIncStep,
-                                 double warpStep);
+                                 const UnisonGains *gains, const double *weights, bool sides,
+                                 const std::array<double, kMaxUnison> &syncIncStep, double warpStep);
     // A Wavetable operator's sample, neither synced nor warped: as the plain loop's, through its frames.
     static OpSample tableSample(Operator &op, PlayState &play, const FrameTable &table, double offset, double factor,
-                                int copies, const UnisonGains *gains, bool sides);
+                                int copies, const UnisonGains *gains, const double *weights, bool sides);
     static OpSample sampleSample(Operator &op, PlayState &play, const SampleRead &read, double offset, double factor,
-                                 int copies, const UnisonGains *gains, bool sides);
+                                 int copies, const UnisonGains *gains, const double *weights, bool sides);
     // A Sample operator's reading for this block (`data` null for an operator playing none, which only lets go of a
     // One-Shot it was), and its copies started over for a new note.
     void prepareSample(Voice &v, Operator &op, PlayState &play, int i, const double *p, const OpData *data,
                        double highest, int copies) const;
     // The sample of an operator renderBlock() doesn't read in its plain loops: synced, warped, a table or a sample.
     OpSample specialSample(Operator &op, PlayState &play, int i, const float *wave, bool warped, bool table,
-                           bool sample, double offset, double factor, int copies, const UnisonGains *gains, bool sides,
+                           bool sample, double offset, double factor, int copies, const UnisonGains *gains,
+                           const double *weights, bool sides,
                            const std::array<double, kMaxUnison> &syncIncStep, double warpStep) const;
+    // An operator's copies' increments and gains for a block, from its memos, as its Unison Curve, Pan and Blend
+    // spread them (see unison.h); and each copy's share of the detune alone, for the sync's masters. Out of
+    // renderBlock()'s way, which MSVC compiles the slower the more it holds.
+    struct UnisonModes {
+        UniCurve curve;
+        UniPan pan;
+        double blend;
+        uint32_t seed; // the note's, which the Random modes draw from
+    };
+    static void unisonCopies(Operator &op, int index, int copies, double inc, double detune, double spread,
+                             double monoGain, const UnisonModes &modes, const UnisonIncs *&incs,
+                             const UnisonGains *&gains, std::array<double, kMaxUnison> &weights);
+    static std::array<double, kMaxUnison> unisonDetunes(int index, int copies, const UnisonModes &modes);
     // Brings the filters' block down to the host rate and measures it.
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
     // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.
@@ -601,6 +648,15 @@ private:
     int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
     double bendSet_ = 0.0; // the Pitch Bend param as the last render() had it (see Telemetry::bendSet)
+    // What the sequencer's curves add as its pattern plays (see Sequencer::curve()): to the pitch bend, and to the Mod
+    // Wheel param, as the host's modulation of it would; 0 while they don't.
+    double seqBend_ = 0.0;
+    double seqWheel_ = 0.0;
+    // Where a curve stands as the last plan()'s stretch starts, 0 where it does nothing; whether either stands elsewhere
+    // than the voices hear it; and the voices taking them up.
+    double seqCurveValue(SeqCurve c) const;
+    bool seqCurvesMoved() const;
+    void followSeqCurves();
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
     double channelPressure_ = 0.0;
     // MPE (see setMpe()): whether it is on, its bend range, and each member channel's bend (-1..1), pressure (0..1, or
@@ -662,7 +718,8 @@ private:
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
     // note source read their knobs, depths and range.
     double hostValue(const ParamValues &params, int index) const {
-        return std::clamp(params[index] + globalMod_[index], table_[index].min, table_[index].max);
+        const double wheel = index == paramIndex(GlobalParam::ModWheel) ? seqWheel_ : 0.0;
+        return std::clamp(params[index] + globalMod_[index] + wheel, table_[index].min, table_[index].max);
     }
     // The params the voices read, with the host's modulation for every voice and the macros' added: as summed
     // (voiceBase_), and in their ranges (voiceClamped_). None of it changes during a render(), so it is worked out
@@ -806,6 +863,24 @@ private:
     int fxTailBlock(const ParamValues &params, uint32_t frames);
     double volumeGain_ = -1.0; // Volume's gain after the effects, gliding toward the knob (-1: not yet set)
     double volumeGlide_ = 0.0;
+    // The DC blocker on the voices' sum going into the effects, a channel each: pulses off 50 %, a Ring route at
+    // unison, feedback and Exp FM all put out DC, which would bias the effects' detectors and drive, build up in
+    // their feedback and take headroom at the output. (The effects that make DC of their own, the shapers and the
+    // amp, block it themselves.) A Butterworth high-pass of two poles at 5 Hz (-0.02 dB at 20 Hz): what it holds
+    // of a note is about (5 Hz / its pitch) squared of its level, so a note cut short (a choke, modulation taking it
+    // away) leaves next to nothing ringing on, where one pole would leave 5 Hz / its pitch. With no voice sounding
+    // it is cleared (see renderSpan()), which takes that little away at once: silence stays silence.
+    struct DcBlocker {
+        double z1 = 0.0, z2 = 0.0;
+        float run(float x, const std::array<double, 5> &k) { // b0, b1, b2, a1, a2
+            const double y = k[0] * x + z1;
+            z1 = k[1] * x - k[3] * y + z2;
+            z2 = k[2] * x - k[4] * y;
+            return static_cast<float>(y);
+        }
+    };
+    std::array<DcBlocker, 2> dcBlockers_{};
+    std::array<double, 5> dcCoefs_{};
     // The output meter's peaks and clip light (see Telemetry), taken off what render() puts out.
     std::array<double, 2> outPeak_{};
     double clipHold_ = 0.0;

@@ -371,6 +371,7 @@ int main(int argc, char **argv) {
     if (!params || !state || !remote)
         return 1;
 
+    std::printf("      %u of the %d params given to hosts\n", params->count(plugin), kParamCount);
     check(params->count(plugin) < static_cast<uint32_t>(kParamCount) && paramInfosAreSane(plugin, params),
           "param infos: unique ids, names, defaults within range");
     {
@@ -540,6 +541,9 @@ int main(int argc, char **argv) {
         return peak;
     };
     const uint32_t blocksPerSecond = static_cast<uint32_t>(kSampleRate / kBlock);
+    // How long a note taken down by modulation takes to fall silent: the DC blocker before the effects lets a
+    // note cut short ring on, far below hearing at 5 Hz, for a fifth of a second (see Synth::DcBlocker).
+    const uint32_t blockerSettle = blocksPerSecond / 4;
     const auto chokeAll = [] {
         clap_event_note_t ev = noteEvent(CLAP_EVENT_NOTE_CHOKE, -1, -1);
         ev.port_index = -1;
@@ -603,6 +607,7 @@ int main(int argc, char **argv) {
     note7Peak = std::max(note7Peak, runBlocks(8));
     const clap_event_param_mod_t duck7 = paramModEvent(carrierOut, 7, -1.0);
     runBlock({&duck7.header});
+    runBlocks(blockerSettle);
     check(runBlocks(4) < note7Peak / 100.0f, "per-voice param modulation reaches its voice");
     runBlock({&on8.header});
     check(runBlocks(4) > note7Peak / 2.0f, "a new voice starts without the other voice's modulation");
@@ -620,14 +625,14 @@ int main(int argc, char **argv) {
     const clap_event_param_value_t envSustain = paramEvent(paramIndex(env1, SourceParam::Sustain), 1.0);
     const clap_event_note_t on9 = noteEvent(CLAP_EVENT_NOTE_ON, 9, 60);
     runBlock({&envType.header, &envTarget.header, &envAmount.header, &envSustain.header, &on9.header});
-    runBlocks(2);
+    runBlocks(blockerSettle);
     check(runBlocks(8) < 1e-4f, "mod envelope slot drives its target param");
     const clap_event_param_value_t envBypass = paramEvent(slotBypassIndex(env1, 0), 1.0);
     runBlock({&envBypass.header});
     const bool bypassed = runBlocks(4) > 0.05f;
     const clap_event_param_value_t envActive = paramEvent(slotBypassIndex(env1, 0), 0.0);
     runBlock({&envActive.header});
-    runBlocks(2);
+    runBlocks(blockerSettle);
     check(bypassed && runBlocks(4) < 1e-4f, "a bypassed slot stops modulating, and modulates again once let go");
     // Bipolar, the envelope swings its target about its middle level: at full sustain, -100 % takes A's output
     // down by half rather than all the way.
@@ -694,7 +699,7 @@ int main(int argc, char **argv) {
         const clap_event_param_value_t type =
             paramEvent(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Env));
         runBlock({&type.header});
-        runBlocks(2);
+        runBlocks(blockerSettle);
         const bool heardOnceFilled = runBlocks(8) < 1e-4f;
         const clap_event_param_value_t switchOff = paramEvent(sourceEnabledIndex(place), 0.0);
         runBlock({&switchOff.header});
@@ -725,6 +730,10 @@ int main(int argc, char **argv) {
         double ratio = 1.0;    // A's ratio
         OpWarp warp = OpWarp::Off; // A's warp, and its amount
         double warpAmount = 0.0;
+        double drive = 0.0; // that filter's Drive
+        double vowel = 0.0; // and its Vowel, Morph and Morph Mode
+        double morph = 0.0;
+        MorphMode morphMode = MorphMode::Band;
     };
     // Plays the patch for ~0.1 s; returns the left channel after a short settle.
     auto play = [&](const Patch &patch) {
@@ -746,6 +755,10 @@ int main(int argc, char **argv) {
             paramEvent(paramIndex(patch.filter, FilterParam::Cutoff), normFromCutoff(patch.cutoffHz)),
             paramEvent(paramIndex(patch.filter, FilterParam::Resonance), patch.resonance),
             paramEvent(paramIndex(patch.filter, FilterParam::KeyTrack), 0.0),
+            paramEvent(paramIndex(patch.filter, FilterParam::Drive), patch.drive),
+            paramEvent(paramIndex(patch.filter, FilterParam::Vowel), patch.vowel),
+            paramEvent(paramIndex(patch.filter, FilterParam::Morph), patch.morph),
+            paramEvent(paramIndex(patch.filter, FilterParam::MorphMode), static_cast<double>(patch.morphMode)),
             paramEvent(filterLinkIndex(std::min(patch.filter, last - 1), last), patch.intoLast ? 1.0 : 0.0),
         };
         for (int f = 0; f < kFilters; ++f)
@@ -1258,6 +1271,217 @@ int main(int argc, char **argv) {
     check(std::abs(band6 - band12) < 1e-6 * band12 && std::abs(band18 - band24) < 1e-6 * band24 &&
               std::abs(band12 - band24) > 0.01 * band12,
           "a band-pass set to 6 or 18 dB plays 12 or 24");
+    // The ladder: without resonance each slope taps one more of its four one-pole stages, so the saw's 2nd harmonic
+    // against its 1st comes out at that many one-poles' worth, an octave and a half past the cutoff.
+    {
+        std::array<double, kFilterSlopes> ladderBySlope{};
+        bool poles = true;
+        for (int slope = 0; slope < kFilterSlopes; ++slope) {
+            ladderBySlope[slope] = secondHarmonicRatio(
+                {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::Ladder, .slope = slope, .cutoffHz = 300.0});
+            const double expected =
+                0.5 * std::pow((1.0 + std::pow(440.0 / 300.0, 2.0)) / (1.0 + std::pow(880.0 / 300.0, 2.0)), 0.5 * (slope + 1));
+            poles = poles && std::abs(ladderBySlope[slope] / expected - 1.0) < 0.12;
+        }
+        std::printf("      ladder at 300 Hz, 6 to 24 dB: 880/440 Hz %.3f %.3f %.3f %.3f\n", ladderBySlope[0],
+                    ladderBySlope[1], ladderBySlope[2], ladderBySlope[3]);
+        check(poles, "the ladder's slopes tap one to four of its one-pole stages");
+    }
+    // At full resonance the ladder, the diode and the Sallen-Key's self-oscillate: plucked by a saw that dies away in
+    // 20 ms while its key stays down, each rings on at a tone of its own near its cutoff, steady and finite, where at
+    // 80 % (below where it oscillates) it has fallen silent.
+    for (FilterType oscillator : {FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
+                                  FilterType::SallenKeyHigh}) {
+        auto ringing = [&](double resonance) {
+            play({.wave = OpWave::Saw, .throughFilter = true, .type = oscillator, .slope = 3, .cutoffHz = 1500.0,
+                  .resonance = resonance}); // the routing; the note it plays is over
+            const clap_event_param_value_t pluck[] = {paramEvent(paramIndex(0, OpParam::Sustain), 0.0),
+                                                      paramEvent(paramIndex(0, OpParam::Decay), normFromTime(0.02))};
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 32, 69);
+            runBlock({&pluck[0].header, &pluck[1].header, &on.header});
+            runBlocks(blocksPerSecond / 2);
+            std::vector<float> signal;
+            for (int b = 0; b < 16; ++b) {
+                if (!std::isfinite(runBlock()))
+                    return std::vector<float>{};
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            return signal;
+        };
+        const std::vector<float> oscillating = ringing(1.0), resonant = ringing(0.8);
+        double tone = 0.0, toneHz = 0.0;
+        for (double f = 1000.0; f <= 1800.0; f += 5.0)
+            if (const double m = magnitude(oscillating, f); m > tone) {
+                tone = m;
+                toneHz = f;
+            }
+        std::printf("      %s at 1.5 kHz, plucked: rings at %.0f Hz, peak %.3f at full resonance, %.5f at 80 %%\n",
+                    filterTypeName(oscillator), toneHz, peakOf(oscillating), peakOf(resonant));
+        const clap_event_param_value_t restore[] = {paramEvent(paramIndex(0, OpParam::Sustain), 1.0),
+                                                    paramEvent(paramIndex(0, OpParam::Decay), normFromTime(1.5))};
+        runBlock({&restore[0].header, &restore[1].header});
+        char what[96];
+        std::snprintf(what, sizeof what, "the %s self-oscillates at full resonance near its cutoff, and stays finite",
+                      filterTypeName(oscillator));
+        check(!oscillating.empty() && peakOf(oscillating) > 0.05f && peakOf(oscillating) < 4.0f &&
+                  std::abs(toneHz / 1500.0 - 1.0) < 0.1 && peakOf(resonant) < 0.001f,
+              what);
+    }
+    // The diode comes in 24 dB alone: set to any slope, it plays the same. The Sallen-Key's are 12 dB: without
+    // resonance two real poles at the cutoff, so a saw's 2nd harmonic against its 1st comes out at two one-poles'
+    // worth past a 300 Hz cutoff, and its high-pass at 2 kHz lifts it as a high-pass does.
+    {
+        std::array<double, kFilterSlopes> diode{};
+        for (int slope = 0; slope < kFilterSlopes; ++slope)
+            diode[slope] = secondHarmonicRatio(
+                {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::Diode, .slope = slope, .cutoffHz = 600.0});
+        const double skLow = secondHarmonicRatio(
+            {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::SallenKeyLow, .cutoffHz = 300.0});
+        const double skHigh = secondHarmonicRatio(
+            {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::SallenKeyHigh, .cutoffHz = 2000.0});
+        const double twoPoles = 0.5 * (1.0 + std::pow(440.0 / 300.0, 2.0)) / (1.0 + std::pow(880.0 / 300.0, 2.0));
+        std::printf("      saw 880/440 Hz: diode at 600 Hz %.4f %.4f %.4f %.4f; Sallen-Key LP at 300 Hz %.3f (two poles "
+                    "%.3f), HP at 2 kHz %.2f\n",
+                    diode[0], diode[1], diode[2], diode[3], skLow, twoPoles, skHigh);
+        check(diode[0] == diode[3] && diode[1] == diode[3] && diode[2] == diode[3] && diode[3] < 0.5,
+              "the diode plays 24 dB whatever its slope says");
+        check(std::abs(skLow / twoPoles - 1.0) < 0.12 && skHigh > 1.0,
+              "the Sallen-Key low-pass is two poles at its cutoff, and its high-pass lifts the 2nd harmonic");
+    }
+    // The Formant type puts noise through a vowel's formants: A's first at 600 Hz, I's at 250 Hz, each louder there
+    // than at the other's (with the cutoff at its middle, where the formants aren't moved).
+    {
+        auto band = [&](const std::vector<float> &signal, double hz) { // the mean magnitude 30 Hz either side
+            double sum = 0.0;
+            int n = 0;
+            for (double f = hz - 30.0; f <= hz + 30.0; f += 5.0, ++n)
+                sum += magnitude(signal, f);
+            return sum / n;
+        };
+        const Patch noise{.wave = OpWave::Noise,
+                          .throughFilter = true,
+                          .type = FilterType::Formant,
+                          .cutoffHz = cutoffFromNorm(kDefaultCutoff),
+                          .resonance = 0.3};
+        Patch a = noise, i = noise;
+        i.vowel = 0.5;
+        const std::vector<float> atA = play(a), atI = play(i);
+        const double aRatio = band(atA, 600.0) / band(atA, 250.0), iRatio = band(atI, 250.0) / band(atI, 600.0);
+        std::printf("      formant on noise: A 600 Hz over 250 Hz %.1f, I 250 Hz over 600 Hz %.1f\n", aRatio, iRatio);
+        check(aRatio > 3.0 && iRatio > 3.0, "the Formant type puts noise through a vowel's formants, as Vowel picks it");
+    }
+    // The Morph type plays the state-variable filter's responses at its ends and middle, at 12 and at 24 dB: the
+    // low-pass at 0, the high-pass at 1, and at 0.5 the band-pass or the notch, as its mode says; and between, between
+    // them (a saw's 2nd harmonic against its 1st, through a resonant 1 kHz cutoff). Set to 6 or 18 dB, it plays 12 or
+    // 24, as the band-pass and notch do.
+    {
+        auto ratio = [&](FilterType type, int slope, double morph, MorphMode mode) {
+            return secondHarmonicRatio({.wave = OpWave::Saw, .throughFilter = true, .type = type, .slope = slope,
+                                        .cutoffHz = 1000.0, .resonance = 0.3, .morph = morph, .morphMode = mode});
+        };
+        auto same = [](double a, double b) { return std::abs(a - b) <= 1e-4 * std::max(std::abs(b), 1e-6); };
+        bool plays = true, along = true;
+        for (int slope : {1, 3}) {
+            const double low = ratio(FilterType::LowPass, slope, 0.0, MorphMode::Band),
+                         band = ratio(FilterType::BandPass, slope, 0.0, MorphMode::Band),
+                         notch = ratio(FilterType::Notch, slope, 0.0, MorphMode::Band),
+                         high = ratio(FilterType::HighPass, slope, 0.0, MorphMode::Band);
+            const double atLow = ratio(FilterType::Morph, slope, 0.0, MorphMode::Band),
+                         atBand = ratio(FilterType::Morph, slope, 0.5, MorphMode::Band),
+                         atNotch = ratio(FilterType::Morph, slope, 0.5, MorphMode::Notch),
+                         atHigh = ratio(FilterType::Morph, slope, 1.0, MorphMode::Notch),
+                         between = ratio(FilterType::Morph, slope, 0.75, MorphMode::Band);
+            std::printf("      saw 880/440 Hz through 1 kHz at %d dB: morph at 0 %.4f (low-pass %.4f), 0.5 %.4f (band-pass "
+                        "%.4f), 0.5 notch %.4f (notch %.4f), 1 %.4f (high-pass %.4f), 0.75 %.4f\n",
+                        slopeDb(slope), atLow, low, atBand, band, atNotch, notch, atHigh, high, between);
+            plays = plays && same(atLow, low) && same(atBand, band) && same(atNotch, notch) && same(atHigh, high);
+            along = along && between > std::min(band, high) && between < std::max(band, high);
+        }
+        const bool stepped = ratio(FilterType::Morph, 0, 0.3, MorphMode::Band) ==
+                                 ratio(FilterType::Morph, 1, 0.3, MorphMode::Band) &&
+                             ratio(FilterType::Morph, 2, 0.3, MorphMode::Band) ==
+                                 ratio(FilterType::Morph, 3, 0.3, MorphMode::Band);
+        check(plays, "the Morph type plays the low-pass, the band-pass or notch and the high-pass at its ends and "
+                     "middle, at 12 and 24 dB");
+        check(along && stepped, "the Morph type goes between them along the way, and set to 6 or 18 dB plays 12 or 24");
+    }
+    // The regular low-pass (at 12 and 24 dB), the ladder (at 24), the diode and the Sallen-Key low-pass sound unlike one
+    // another, at the same cutoff and resonance: a saw's harmonics through each (its response's shape), the 3rd
+    // harmonic a sine under each one's cutoff comes out with (its saturation), and how far the note falls as the
+    // resonance rises (its loss of bass). Each pair differs by at least 3 dB in one of them.
+    {
+        struct Measured {
+            const char *name;
+            FilterType type;
+            int slope;
+            std::array<double, 6> harmonics{}; // the saw's 2nd to 7th against its 1st, in dB
+            double third = 0.0, thinning = 0.0;
+        };
+        std::array<Measured, 5> lows{{{"low-pass 12", FilterType::LowPass, 1},
+                                      {"low-pass 24", FilterType::LowPass, 3},
+                                      {"ladder 24", FilterType::Ladder, 3},
+                                      {"diode", FilterType::Diode, 3},
+                                      {"Sallen-Key LP", FilterType::SallenKeyLow, 1}}};
+        auto db = [](double ratio) { return 20.0 * std::log10(std::max(ratio, 1e-9)); };
+        for (Measured &m : lows) {
+            const std::vector<float> sawn = play({.wave = OpWave::Saw, .throughFilter = true, .type = m.type,
+                                                 .slope = m.slope, .cutoffHz = 1000.0, .resonance = 0.6});
+            for (int h = 2; h <= 7; ++h)
+                m.harmonics[h - 2] = db(magnitude(sawn, 440.0 * h) / magnitude(sawn, 440.0));
+            const std::vector<float> sine =
+                play({.throughFilter = true, .type = m.type, .slope = m.slope, .cutoffHz = 3000.0, .resonance = 0.3});
+            m.third = db(magnitude(sine, 1320.0) / magnitude(sine, 440.0));
+            m.thinning = db(magnitude(play({.throughFilter = true, .type = m.type, .slope = m.slope,
+                                            .cutoffHz = 3000.0, .resonance = 0.9}),
+                                      440.0) /
+                            magnitude(play({.throughFilter = true, .type = m.type, .slope = m.slope,
+                                            .cutoffHz = 3000.0, .resonance = 0.0}),
+                                      440.0));
+            std::printf("      %-14s saw through 1 kHz at 60 %%, 2nd-7th: %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f dB; sine's 3rd "
+                        "%6.1f dB; note at 90 %% %+5.1f dB\n",
+                        m.name, m.harmonics[0], m.harmonics[1], m.harmonics[2], m.harmonics[3], m.harmonics[4],
+                        m.harmonics[5], m.third, m.thinning);
+        }
+        bool apart = true;
+        for (size_t i = 0; i < lows.size(); ++i)
+            for (size_t j = i + 1; j < lows.size(); ++j) {
+                double most = std::max(std::abs(lows[i].third - lows[j].third),
+                                       std::abs(lows[i].thinning - lows[j].thinning));
+                for (size_t h = 0; h < lows[i].harmonics.size(); ++h)
+                    most = std::max(most, std::abs(lows[i].harmonics[h] - lows[j].harmonics[h]));
+                if (most < 3.0) {
+                    std::printf("      %s and %s differ by only %.1f dB\n", lows[i].name, lows[j].name, most);
+                    apart = false;
+                }
+            }
+        check(apart, "the low-pass, the ladder, the diode and the Sallen-Key low-pass each sound unlike the others");
+    }
+    // The ladder colours what goes through it where the low-pass doesn't: an A4 sine well under both cutoffs comes
+    // out of the low-pass clean and out of the ladder with a 3rd harmonic from its saturation, more with Drive; and as
+    // its resonance rises the ladder thins the note, which the low-pass leaves as it was.
+    {
+        auto at = [&](FilterType type, double resonance, double drive) {
+            return play({.throughFilter = true, .type = type, .slope = 3, .cutoffHz = 3000.0, .resonance = resonance,
+                         .drive = drive});
+        };
+        auto db = [](double ratio) { return 20.0 * std::log10(std::max(ratio, 1e-9)); };
+        auto third = [&](const std::vector<float> &signal) { return db(magnitude(signal, 1320.0) / magnitude(signal, 440.0)); };
+        const std::vector<float> low = at(FilterType::LowPass, 0.3, 0.0), ladder = at(FilterType::Ladder, 0.3, 0.0),
+                                 driven = at(FilterType::Ladder, 0.3, 0.5);
+        const double lowThird = third(low), ladderThird = third(ladder), drivenThird = third(driven);
+        const double lowThin = db(magnitude(at(FilterType::LowPass, 0.9, 0.0), 440.0) /
+                                  magnitude(at(FilterType::LowPass, 0.0, 0.0), 440.0));
+        const double ladderThin = db(magnitude(at(FilterType::Ladder, 0.9, 0.0), 440.0) /
+                                     magnitude(at(FilterType::Ladder, 0.0, 0.0), 440.0));
+        std::printf("      A4 sine under a 3 kHz cutoff, 3rd harmonic: low-pass %.0f dB, ladder %.0f dB, driven ladder "
+                    "%.0f dB; the note at 90 %% resonance: low-pass %+.1f dB, ladder %+.1f dB\n",
+                    lowThird, ladderThird, drivenThird, lowThin, ladderThin);
+        check(lowThird < -80.0 && ladderThird > -45.0 && drivenThird > ladderThird + 6.0,
+              "the ladder saturates what goes through it, more with Drive, where the low-pass stays clean");
+        check(std::abs(lowThin) < 0.5 && ladderThin < -2.0,
+              "the ladder thins the note as its resonance rises, where the low-pass doesn't");
+    }
     bool filtersSound = true;
     for (int t = 0; t < static_cast<int>(FilterType::Count); ++t) {
         for (int slope = 0; slope < kFilterSlopes; ++slope) {
@@ -1601,6 +1825,27 @@ int main(int argc, char **argv) {
         runBlock(events);
     }
 
+    // A voice through a self-oscillating ladder, diode or Sallen-Key still ends after its release: once its operators
+    // have faded, the filter is held below where it oscillates, and rings out.
+    for (FilterType oscillator : {FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
+                                  FilterType::SallenKeyHigh}) {
+        play({.wave = OpWave::Saw, .throughFilter = true, .type = oscillator, .slope = 3, .cutoffHz = 800.0,
+              .resonance = 1.0});
+        const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 31, 57);
+        const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 31, 57);
+        out.noteEnds.clear();
+        bool finite = std::isfinite(runBlock({&on.header}));
+        for (int b = 0; b < 8; ++b)
+            finite = std::isfinite(runBlock()) && finite;
+        finite = std::isfinite(runBlock({&off.header})) && finite;
+        for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+            finite = std::isfinite(runBlock()) && finite;
+        char what[96];
+        std::snprintf(what, sizeof what, "a voice through a self-oscillating %s ends after its release",
+                      filterTypeName(oscillator));
+        check(finite && out.noteEnds.size() == 1 && runBlock() == 0.0f, what);
+    }
+
     // A voice ringing through a resonant comb still ends after its release.
     {
         play({.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::Comb, .resonance = 1.0});
@@ -1653,7 +1898,7 @@ int main(int argc, char **argv) {
             float left = 0.0f, right = 0.0f;
             std::vector<float> samples;
         };
-        auto play = [&](const std::vector<std::pair<int, double>> &values) {
+        auto run = [&](const std::vector<std::pair<int, double>> &values) {
             std::vector<clap_event_param_value_t> evs;
             for (const auto &[index, value] : values)
                 evs.push_back(paramEvent(index, value));
@@ -1676,30 +1921,30 @@ int main(int argc, char **argv) {
             return take;
         };
         const int aPan = paramIndex(0, OpParam::Pan), bPan = paramIndex(1, OpParam::Pan);
-        const Take centered = play({{aPan, 0.0}});
-        const Take hardLeft = play({{aPan, -1.0}});
-        const Take hardRight = play({{aPan, 1.0}});
-        const Take filtered = play({{aPan, -1.0},
+        const Take middle = run({{aPan, 0.0}});
+        const Take hardLeft = run({{aPan, -1.0}});
+        const Take hardRight = run({{aPan, 1.0}});
+        const Take filtered = run({{aPan, -1.0},
                                     {paramIndex(0, OpParam::Out), 0.0},
                                     {sendIndex(0, 0), 1.0},
                                     {paramIndex(0, FilterParam::Enabled), 1.0},
                                     {paramIndex(0, FilterParam::Out), 1.0}});
         std::printf("      pan: centered %.3f/%.3f, left %.3f/%.4f, right %.4f/%.3f, filtered left %.3f/%.4f\n",
-                    centered.left, centered.right, hardLeft.left, hardLeft.right, hardRight.left, hardRight.right,
+                    middle.left, middle.right, hardLeft.left, hardLeft.right, hardRight.left, hardRight.right,
                     filtered.left, filtered.right);
-        check(centered.left > 0.05f && std::abs(centered.left - centered.right) < 1e-6f &&
-                  std::abs(hardLeft.left / centered.left - std::sqrt(2.0f)) < 0.01f && hardLeft.right < 1e-6f &&
-                  std::abs(hardRight.right / centered.left - std::sqrt(2.0f)) < 0.01f && hardRight.left < 1e-6f,
+        check(middle.left > 0.05f && std::abs(middle.left - middle.right) < 1e-6f &&
+                  std::abs(hardLeft.left / middle.left - std::sqrt(2.0f)) < 0.01f && hardLeft.right < 1e-6f &&
+                  std::abs(hardRight.right / middle.left - std::sqrt(2.0f)) < 0.01f && hardRight.left < 1e-6f,
               "an operator's Pan places it, equal-power");
         check(filtered.left > 0.01f && filtered.right < 1e-6f, "an operator panned through a filter stays panned");
-        const Take modulated = play({{aPan, 0.0},
+        const Take modulated = run({{aPan, 0.0},
                                      {paramIndex(0, OpParam::Out), 1.0},
                                      {sendIndex(0, 0), 0.0},
                                      {paramIndex(0, FilterParam::Enabled), 0.0},
                                      {paramIndex(0, FilterParam::Out), 0.0},
                                      {paramIndex(1, OpParam::Enabled), 1.0},
                                      {matrixIndex(1, 0), 0.5}});
-        const Take modulatorPanned = play({{bPan, 1.0}});
+        const Take modulatorPanned = run({{bPan, 1.0}});
         check(modulated.samples == modulatorPanned.samples && modulated.left > 0.05f,
               "a modulator's Pan leaves what it modulates alone");
         const clap_event_param_value_t back[] = {paramEvent(bPan, 0.0), paramEvent(matrixIndex(1, 0), 0.0),
@@ -1839,15 +2084,15 @@ int main(int argc, char **argv) {
         std::printf("      synced square LFO at 0.35 s: %.3f at 120 bpm, %.3f at 60 bpm\n", fast, slow);
         check(early == 0.0f && fast > 0.1f && slow == 0.0f, "a synced LFO follows the host tempo");
 
-        // Modulated, its note value moves in steps: a macro at 10 % of the 27 values takes 1/4 to 1/8 turned up (2.6
-        // steps, rounded to 3), where 0.35 s in falls in the muted half of its third cycle, and turned a little (0.4
-        // of a step) leaves it at 1/4, still sounding. Host modulation does the same.
+        // Modulated, its note value moves in steps: a macro at 10 % of the 29 values (8/1 to 1/64T) takes 1/4 to 1/8
+        // turned up (2.8 steps, rounded to 3), where 0.35 s in falls in the muted half of its third cycle, and turned a
+        // little (0.4 of a step) leaves it at 1/4, still sounding. Host modulation does the same.
         const int division = paramIndex(0, SourceParam::Division);
         setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(division)},
                    {slotAmountIndex(kMaxSources, 0), 0.1},
                    {paramIndex(0, MacroParam::Value), 1.0}});
         const float eighth = levelAt(120.0, 0.35);
-        setParams({{paramIndex(0, MacroParam::Value), 0.4 / 2.6}});
+        setParams({{paramIndex(0, MacroParam::Value), 0.4 / 2.8}});
         const float withinStep = levelAt(120.0, 0.35);
         setParams({{slotTargetIndex(kMaxSources, 0), 0.0},
                    {slotAmountIndex(kMaxSources, 0), 0.0},
@@ -1965,6 +2210,60 @@ int main(int argc, char **argv) {
         setParams({{paramIndex(0, SourceParam::Shape), 0.0}, {paramIndex(0, SourceParam::Type), 0.0},
                    {paramIndex(0, SourceParam::Unipolar), 0.0}, {paramIndex(0, OpParam::Out), 1.0},
                    {slotTargetIndex(0, 0), 0.0}, {slotAmountIndex(0, 0), 0.0}});
+    }
+
+    // The sequencer. In Host, it plays with the host's transport: with no key held, its note on the first step sounds,
+    // processing doesn't sleep while it may start notes, and no NOTE_END comes for a note of its own. In Key, a key held
+    // plays the pattern, and its NOTE_END comes once it is let go.
+    {
+        clap_event_transport_t transport{};
+        transport.header = {sizeof(transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0};
+        transport.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_IS_PLAYING | CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
+        transport.tempo = 120.0;
+        double beats = 0.0;
+        proc.transport = &transport;
+        auto playFor = [&](double seconds, std::vector<const clap_event_header_t *> events = {}) {
+            float peak = 0.0f;
+            for (uint32_t b = 0; b < static_cast<uint32_t>(seconds * kSampleRate / kBlock); ++b) {
+                transport.song_pos_beats = static_cast<clap_beattime>(std::llround(beats * CLAP_BEATTIME_FACTOR));
+                peak = std::max(peak, runBlock(b == 0 ? events : std::vector<const clap_event_header_t *>{}));
+                beats += kBlock / kSampleRate * transport.tempo / 60.0;
+            }
+            return peak;
+        };
+        out.noteEnds.clear();
+        setParams({{paramIndex(SeqParam::Enabled), 1.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Length), 2.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 69.0}});
+        beats = 0.0;
+        const float hostPlayed = playFor(0.2);
+        const float hostAfter = playFor(1.0); // the note ended at 0.25 s, the next comes at 2 s
+        const bool awake = status == CLAP_PROCESS_CONTINUE;
+        const bool noOwnEnds = out.noteEnds.empty();
+        std::printf("      sequencer with the transport: %.3f, then %.4f, %s\n", hostPlayed, hostAfter,
+                    awake ? "still processing" : "asleep");
+        check(hostPlayed > 0.05f && awake && noOwnEnds,
+              "the sequencer plays with the host's transport, keeps processing and reports no ends of its own");
+
+        transport.flags = CLAP_TRANSPORT_HAS_TEMPO; // stopped
+        setParams({{paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Key)}});
+        const float idle = playFor(0.5);
+        const clap_event_note_t keyOn = noteEvent(CLAP_EVENT_NOTE_ON, 7, 64);
+        const clap_event_note_t keyOff = noteEvent(CLAP_EVENT_NOTE_OFF, 7, 64);
+        const float keyed = playFor(0.2, {&keyOn.header});
+        const bool heldNoEnd = out.noteEnds.empty();
+        playFor(0.1, {&keyOff.header});
+        const bool keyEnded = out.noteEnds.size() == 1 && out.noteEnds[0].note_id == 7;
+        const float after = (playFor(1.0), playFor(0.1));
+        check(idle == 0.0f && keyed > 0.05f && heldNoEnd && keyEnded && after == 0.0f,
+              "in Key, a key held plays the pattern, and its end is reported as it is let go");
+        setParams({{paramIndex(SeqParam::Enabled), 0.0},
+                   {paramIndex(SeqParam::Play), 0.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Length), 0.0},
+                   {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0}});
+        out.noteEnds.clear();
+        proc.transport = nullptr;
     }
 
     // Hold: with a short decay to silence, A still sounds 0.2 s in while a 0.3 s hold lasts.
@@ -2562,7 +2861,7 @@ int main(int argc, char **argv) {
             runBlock({&chokeAll.header});
             return peak;
         };
-        const float quarter = peakAt(0.25), half = peakAt(0.5), whole = peakAt(1.0);
+        const float quarter = peakAt(0.25), mid = peakAt(0.5), whole = peakAt(1.0);
         setParams({{paramIndex(VelocityParam::Bipolar), 1.0}});
         const float bipolarHalf = peakAt(0.5), bipolarWhole = peakAt(1.0);
         setParams({{paramIndex(VelocityParam::Bipolar), 0.0},
@@ -2576,8 +2875,8 @@ int main(int argc, char **argv) {
                    {slotAmountIndex(kVelocitySource, 0), 0.0}});
         std::printf("      A's output by velocity: peak %.3f / %.3f / %.3f at 0.25 / 0.5 / 1; bipolar %.3f / %.3f at "
                     "0.5 / 1; curve flipped %.3f at 0.25, %.3f at 1\n",
-                    quarter, half, whole, bipolarHalf, bipolarWhole, flippedSoft, flippedHard);
-        check(whole > 0.2f && std::abs(quarter / whole - 0.25f) < 0.03f && std::abs(half / whole - 0.5f) < 0.03f,
+                    quarter, mid, whole, bipolarHalf, bipolarWhole, flippedSoft, flippedHard);
+        check(whole > 0.2f && std::abs(quarter / whole - 0.25f) < 0.03f && std::abs(mid / whole - 0.5f) < 0.03f,
               "velocity takes its target as far as the note's velocity, in a straight line as it starts");
         check(bipolarHalf < 0.005f && std::abs(bipolarWhole / whole - 0.5f) < 0.03f,
               "bipolar velocity swings about the middle of what it puts out");
@@ -3031,9 +3330,9 @@ int main(int argc, char **argv) {
         setParams({{fx(1, FxParam::EqMid), -1.0}});
         const std::vector<float> killed = play({});
         setParams({{fx(1, FxParam::Enabled), 0.0}});
-        const std::vector<float> dry = play({});
-        const double flatRatio = magnitude(flat, 440.0) / magnitude(dry, 440.0);
-        const double killRatio = magnitude(killed, 440.0) / magnitude(dry, 440.0);
+        const std::vector<float> plain = play({});
+        const double flatRatio = magnitude(flat, 440.0) / magnitude(plain, 440.0);
+        const double killRatio = magnitude(killed, 440.0) / magnitude(plain, 440.0);
         std::printf("      EQ at 440 Hz: %.3f flat, %.3f with the mid killed\n", flatRatio, killRatio);
         check(std::abs(flatRatio - 1.0) < 0.02 && killRatio < 0.15, "the EQ is flat at unity and kills its bands");
         setParams({{type(1), static_cast<double>(FxType::None)}});
@@ -3042,7 +3341,7 @@ int main(int argc, char **argv) {
         // the mid band, and boosting it before a hard shaper in slot 0 comes out quieter than after it.
         const int last = kFxSlots - 1;
         setParams({{type(last), static_cast<double>(FxType::Eq)}, {fx(last, FxParam::EqMid), -1.0}});
-        const double lastKill = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double lastKill = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(last, FxParam::EqMid), 1.0},
                    {type(0), static_cast<double>(FxType::Shaper)},
                    {fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
@@ -3069,11 +3368,11 @@ int main(int argc, char **argv) {
                    {fx(6, FxParam::CompKnee), 0.0},
                    {fx(6, FxParam::CompAttack), 0.0},
                    {fx(6, FxParam::CompRelease), normFromTime(0.1)}});
-        const double squeezed = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double squeezed = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(6, FxParam::CompMakeup), 12.0}});
-        const double madeUp = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double madeUp = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(6, FxParam::CompMakeup), 0.0}, {fx(6, FxParam::CompMix), 0.0}});
-        const double parallel = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double parallel = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      compressor at 440 Hz: x%.3f at 4:1, x%.3f with +12 dB makeup, x%.3f at 0 %% mix\n", squeezed,
                     madeUp, parallel);
         check(squeezed > 0.17 && squeezed < 0.27 && std::abs(madeUp / squeezed - 3.98) < 0.15 &&
@@ -3091,11 +3390,11 @@ int main(int argc, char **argv) {
                    {mdUpIndex(6, 2), normFromDynRatio(1.0)},
                    {fx(6, FxParam::MdRms), 0.0},
                    {fx(6, FxParam::MdAttack), 0.0}});
-        const double untouched = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double untouched = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{mdAboveIndex(6, 1), -30.0}, {mdDownIndex(6, 1), normFromDynRatio(4.0)}});
-        const double midSqueezed = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double midSqueezed = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{mdGainIndex(6, 1), 6.0}});
-        const double midLifted = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double midLifted = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      3-band dynamics at 440 Hz: x%.3f with the mid band idle, x%.3f at 4:1, x%.3f with +6 dB\n",
                     untouched, midSqueezed, midLifted);
         check(std::abs(untouched - 1.0) < 0.05 && midSqueezed > 0.15 && midSqueezed < 0.3 &&
@@ -3108,11 +3407,11 @@ int main(int argc, char **argv) {
                    {peqFreqIndex(4, 0), normFromCutoff(440.0)},
                    {peqGainIndex(4, 0), 12.0},
                    {peqGainIndex(4, 1), 0.0}});
-        const double oneBell = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double oneBell = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{type(5), static_cast<double>(FxType::ParamEq)},
                    {peqFreqIndex(5, 0), normFromCutoff(440.0)},
                    {peqGainIndex(5, 0), 12.0}});
-        const double twoBells = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double twoBells = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      +12 dB bell at 440 Hz: x%.2f, two of them x%.2f\n", oneBell, twoBells);
         check(std::abs(oneBell - 3.98) < 0.3, "a parametric EQ band boosts at its frequency");
         check(std::abs(twoBells - oneBell * oneBell) < 1.0, "two instances of an effect both work");
@@ -3121,9 +3420,9 @@ int main(int argc, char **argv) {
                    {peqTypeIndex(4, 0), static_cast<double>(PeqType::LowCut)},
                    {peqFreqIndex(4, 0), normFromCutoff(2000.0)},
                    {peqQIndex(4, 0), normFromQ(0.7071)}});
-        const double lowCut = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double lowCut = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::LowShelf)}, {peqFreqIndex(4, 0), normFromCutoff(4000.0)}});
-        const double lowShelf = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double lowShelf = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      440 Hz through a low cut at 2 kHz: x%.3f, a +12 dB low shelf at 4 kHz: x%.2f\n", lowCut, lowShelf);
         check(lowCut < 0.1 && std::abs(lowShelf - 3.98) < 0.4, "the EQ's bands also cut and shelve");
         setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
@@ -3134,11 +3433,11 @@ int main(int argc, char **argv) {
                        {peqFreqIndex(4, 0), normFromCutoff(440.0)},
                        {peqFreqIndex(4, 2), normFromCutoff(440.0)},
                        {peqGainIndex(4, 2), -12.0}});
-            const double thirdOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double thirdOff = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{peqOnIndex(4, 2), 1.0}});
-            const double thirdOn = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double thirdOn = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{peqOnIndex(4, 0), 0.0}});
-            const double firstOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double firstOff = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             std::printf("      440 Hz under a +12 dB bell: x%.2f, a -12 dB third band on too x%.2f, the first band "
                         "off x%.3f\n", thirdOff, thirdOn, firstOff);
             check(std::abs(thirdOff - 3.98) < 0.4 && std::abs(thirdOn - 1.0) < 0.15 &&
@@ -3151,9 +3450,9 @@ int main(int argc, char **argv) {
             setParams({{peqGainIndex(4, 0), 12.0},
                        {peqTypeIndex(4, 0), static_cast<double>(PeqType::Notch)},
                        {peqQIndex(4, 0), normFromQ(1.0)}});
-            const double notched = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double notched = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{peqFreqIndex(4, 0), normFromCutoff(880.0)}});
-            const double octaveUp = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double octaveUp = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             std::printf("      440 Hz through a notch on it: x%.3f, through one an octave up x%.2f\n", notched,
                         octaveUp);
             check(notched < 0.05 && std::abs(octaveUp - 0.83) < 0.06,
@@ -3164,11 +3463,11 @@ int main(int argc, char **argv) {
         // at half is x2.49, and at 0 nothing.
         {
             setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)}, {fx(4, FxParam::PeqAmount), 0.5}});
-            const double half = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            const double partway = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
             setParams({{fx(4, FxParam::PeqAmount), 0.0}});
-            const double none = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-            std::printf("      a +12 dB bell on 440 Hz at half its Amount: x%.2f, at none x%.3f\n", half, none);
-            check(std::abs(half - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
+            const double none = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
+            std::printf("      a +12 dB bell on 440 Hz at half its Amount: x%.2f, at none x%.3f\n", partway, none);
+            check(std::abs(partway - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
                   "the EQ's Amount mixes it with what goes in");
             setParams({{fx(4, FxParam::PeqAmount), 1.0}});
         }
@@ -3301,17 +3600,17 @@ int main(int argc, char **argv) {
                    {fx(7, FxParam::PhaserStages), 2.0},
                    {fx(7, FxParam::PhaserFeedback), 0.0},
                    {fx(7, FxParam::PhaserMix), 1.0}});
-        const double phased = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double phased = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(7, FxParam::PhaserMix), 0.0}});
-        const double unphased = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double unphased = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{type(7), static_cast<double>(FxType::Flanger)},
                    {fx(7, FxParam::FlangerDepth), 0.0},
                    {fx(7, FxParam::FlangerDelay), normFromTime(1.0 / 880.0)},
                    {fx(7, FxParam::FlangerFeedback), 0.0},
                    {fx(7, FxParam::FlangerMix), 1.0}});
-        const double flanged = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double flanged = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         setParams({{fx(7, FxParam::FlangerMix), 0.5}});
-        const double halfFlanged = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double halfFlanged = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      440 Hz through a notch on it: x%.3f phaser (x%.3f at 0 %% mix), x%.3f flanger (x%.3f at "
                     "50 %% mix)\n",
                     phased, unphased, flanged, halfFlanged);
@@ -3398,7 +3697,7 @@ int main(int argc, char **argv) {
             setParams({{fx(7, FxParam::UtilityPan), 0.0}, {fx(7, FxParam::UtilityWidth), 0.0}});
             const auto narrow = levels(69);
             setParams({{fx(7, FxParam::UtilityWidth), 2.0}});
-            const auto wide = levels(69);
+            const auto widened = levels(69);
             setParams({{fx(7, FxParam::UtilityWidth), 1.0}, {fx(7, FxParam::UtilityMonoBass), normFromCutoff(500.0)}});
             const auto lowMono = levels(45), highMono = levels(93); // A2 and A6 around a high-pass at 500 Hz
             setParams({{fx(7, FxParam::UtilityMonoBass), 0.0}});
@@ -3409,7 +3708,7 @@ int main(int argc, char **argv) {
                         "half left R x%.3f; sides x%.2g at 0 %% width, x%.3f at 200 %%; mono bass at 500 Hz: A2's "
                         "sides x%.3f, A6's x%.3f\n",
                         quieter[0] / asIs[0], louder[0] / asIs[0], silent[0] + silent[1], toRight[0], toRight[1] / asIs[1],
-                        halfLeft[1] / asIs[1], narrow[3] / asIs[3], wide[3] / asIs[3], lowMono[3] / lowAsIs[3],
+                        halfLeft[1] / asIs[1], narrow[3] / asIs[3], widened[3] / asIs[3], lowMono[3] / lowAsIs[3],
                         highMono[3] / highAsIs[3]);
             const double middle = 0.125 * kMaxUtilityGain; // -6 dB
             check(std::abs(quieter[0] / asIs[0] / middle - 1.0) < 0.01 &&
@@ -3421,7 +3720,7 @@ int main(int argc, char **argv) {
                       std::abs(halfLeft[0] / asIs[0] - 1.0) < 0.01 && std::abs(halfLeft[1] / asIs[1] - 0.5) < 0.01,
                   "the utility's Pan turns the other side down");
             check(narrow[3] < 1e-4 * narrow[2] && std::abs(narrow[2] / asIs[2] - 1.0) < 0.01 &&
-                      std::abs(wide[3] / asIs[3] - 2.0) < 0.02 && std::abs(wide[2] / asIs[2] - 1.0) < 0.01,
+                      std::abs(widened[3] / asIs[3] - 2.0) < 0.02 && std::abs(widened[2] / asIs[2] - 1.0) < 0.01,
                   "the utility's Width scales the sides and keeps the middle");
             check(lowMono[3] / lowAsIs[3] < 0.1 && std::abs(lowMono[2] / lowAsIs[2] - 1.0) < 0.01 &&
                       std::abs(highMono[3] / highAsIs[3] - 1.0) < 0.05,
@@ -3446,7 +3745,7 @@ int main(int argc, char **argv) {
         // stay together in the middle. Its bass goes past the voices: with them alone and spread full, an A1's sides
         // are far narrower against it than an A4's.
         setParams({{type(7), static_cast<double>(FxType::Chorus)}, {fx(7, FxParam::ChorusMix), 0.0}});
-        const double chorusDry = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double chorusDry = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         const auto chorusLevels = [&](int16_t key) { // the RMS of the middle and the sides
             const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 82, key);
             runBlock({&on.header});
@@ -3577,7 +3876,7 @@ int main(int argc, char **argv) {
                    {fx(7, FxParam::DisperserStages), 16.0},
                    {fx(7, FxParam::DisperserPinch), 0.8},
                    {fx(7, FxParam::DisperserMix), 1.0}});
-        const double dispersed = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        const double dispersed = magnitude(play({}), 440.0) / magnitude(plain, 440.0);
         std::printf("      disperser on a 440 Hz sine: level x%.3f\n", dispersed);
         check(dispersed > 0.93 && dispersed < 1.07, "the disperser keeps a steady tone at its level");
 
@@ -4128,6 +4427,45 @@ int main(int argc, char **argv) {
         params->get_value(plugin, idOfIndex(volume), &volumeKept);
         check(volumeKept == volumeAfter, "a value from the host just after the plugin told it one is not taken");
         in.events.clear();
+
+        // The SEQ tab: the wheel with Ctrl in its message's keys (and this thread's own idea of Ctrl up, as while the
+        // host has the keyboard) zooms the roll in about its middle, so a double-click at its left edge puts a note
+        // further on than step 0, where it put one before. (Coordinates in view units, scaled by 0.75.)
+        if (editor) {
+            auto at = [](float x, float y) { return MAKELPARAM(std::lround(x * 0.75f), std::lround(y * 0.75f)); };
+            auto doubleClick = [&](LPARAM p) {
+                SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, p);
+                SendMessageW(editor, WM_LBUTTONUP, 0, p);
+                SendMessageW(editor, WM_LBUTTONDBLCLK, MK_LBUTTON, p);
+                SendMessageW(editor, WM_LBUTTONUP, 0, p);
+            };
+            const int onset = seqNoteIndex(0, 0, SeqNoteParam::Start), length = seqNoteIndex(0, 0, SeqNoteParam::Length);
+            auto read = [&](int index) {
+                double v = 0.0;
+                params->get_value(plugin, idOfIndex(index), &v);
+                return v;
+            };
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(308.0f, 116.0f)); // the SEQ tab
+            SendMessageW(editor, WM_LBUTTONUP, 0, at(308.0f, 116.0f));
+            const LPARAM edge = at(382.0f, 290.0f); // the grid's left edge, on C4's row
+            doubleClick(edge);
+            const double unzoomed = read(onset);
+            const bool put = read(length) > 0.0;
+            doubleClick(edge); // taken away again
+            POINT middle{std::lround(770.0f * 0.75f), std::lround(300.0f * 0.75f)};
+            ClientToScreen(editor, &middle); // the wheel's position comes on the screen
+            const bool ctrlUp = GetKeyState(VK_CONTROL) >= 0;
+            SendMessageW(editor, WM_MOUSEWHEEL, MAKEWPARAM(MK_CONTROL, 3 * WHEEL_DELTA), MAKELPARAM(middle.x, middle.y));
+            doubleClick(edge);
+            const double zoomed = read(onset);
+            doubleClick(edge);
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(64.0f, 116.0f)); // back to ROUTING
+            SendMessageW(editor, WM_LBUTTONUP, 0, at(64.0f, 116.0f));
+            std::printf("      a note at the roll's left edge: step %.2f, zoomed in by Ctrl+wheel step %.2f\n", unzoomed,
+                        zoomed);
+            check(put && ctrlUp && unzoomed == 0.0 && zoomed >= 2.0 && read(length) == 0.0,
+                  "Ctrl in a wheel message's keys zooms the SEQ view's roll, whatever this thread thinks of Ctrl");
+        }
         Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
 
         // With nothing sounding, processing sleeps; but not while the editor shows a free LFO running on its own,
@@ -4738,6 +5076,9 @@ int main(int argc, char **argv) {
         for (int split = 0; split < kFxSplits; ++split)
             layout.push_back(static_cast<float>(split % 2 == 0)); // the band each split shows, some the high one
         layout.push_back(5.0f);                                   // splits' containers folded
+        // The SEQ view's roll: drawing, at 1/8, on the chance lane, from C2 up, folded to the scale.
+        layout.insert(layout.end(), {1.0f, 2.0f, 1.0f, 36.0f, 1.0f});
+        layout.push_back(128.5f); // the tempo it was saved at as a preset
         for (int op = 0; op < kOps; ++op) // the wave each operator's source switch goes back to
             layout.push_back(static_cast<float>(op % 4));
 

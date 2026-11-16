@@ -7,9 +7,12 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, warp, filter type, effect type, source type, amp model, cabinet, mic, fixed Mult,
-  factory table, sample loop and sample mode lists, and the state layout (its DATA chunk too) are
+- Parameter ids, the wave, warp, unison curve and pan, filter type, effect type, source type, amp model, cabinet,
+  mic, morph mode, fixed Mult, factory table, sample loop and sample mode lists, and the state layout (its DATA chunk
+  too) are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
+  The state version rises at most once between two tagged releases: look at `git diff <last tag> -- src/state.cpp`
+  before raising it, and add to the step already made if there is one.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
   what only the VST3 plugin does a check in `tests/vst3_host.cpp`.
@@ -62,8 +65,18 @@ the plain CMake commands and installing into a host are in the [README](README.m
     playing an A4's 3rd harmonic alone and at 3.5 times its harmonics, not 1540 Hz; a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
+  - the ladder's slopes tapping one to four of its one-pole stages; the ladder, the diode and both Sallen-Key's, at
+    full resonance and plucked, ringing on at their cutoff, steady and finite (silent by then at 80 %); an A4 sine
+    under the ladder's cutoff coming out with a 3rd harmonic from its saturation, more with Drive, where the
+    low-pass's stays clean, and its resonance thinning the note, where the low-pass's leaves it as it was; the diode
+    playing 24 dB whatever its slope says, the Sallen-Key low-pass two poles at its cutoff and its high-pass lifting
+    a saw's 2nd harmonic; the Formant type putting noise through a vowel's formants (A's first at 600 Hz, I's at 250);
+    the Morph type playing exactly the low-pass, the band-pass or notch and the high-pass at its ends and middle, at
+    12 and 24 dB, between them along the way, and set to 6 or 18 dB playing 12 or 24; and the low-pass (12 and 24 dB), the ladder, the diode and the Sallen-Key low-pass each
+    sounding unlike the others, by at least 3 dB in a saw's harmonics through them, the 3rd harmonic they give a sine or
+    how far the note falls with resonance (the figures printed);
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
-    still ends;
+    or a self-oscillating ladder, diode or Sallen-Key still ends;
   - an operator's Ratio taking modulation on its log curve, continuously (a seventh of its range an octave), and one
     set to 64 modulated on to 128 and no further;
   - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
@@ -137,6 +150,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Pan turning the other side down, its Width scaling the sides and keeping the middle, and its Mono Bass making a
     low note's sides mono and leaving a high one's;
   - unison copies spread across the stereo field (and match when centered);
+  - the sequencer in Host playing its note with the host's transport, no key held, processing kept awake and no
+    NOTE_END for a note of its own; and in Key, a key held playing the pattern and its NOTE_END coming as it is let
+    go;
   - an operator's Pan placing it, equal-power, through a filter too, and a modulator's leaving what it modulates
     alone;
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
@@ -156,7 +172,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
-  value the host hands back right after isn't taken; that with nothing sounding processing sleeps, but not while the
+  value the host hands back right after isn't taken; that on the SEQ tab a wheel message with Ctrl in its keys zooms
+  the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
+  sounding processing sleeps, but not while the
   editor shows a free LFO running (the plugin asking the host to process again as one comes on); and that an editor
   sized at the system's DPI and given a window
   at another (one not DPI aware) asks the host for the size at the window's, its zoom kept (at the same DPI, for
@@ -180,9 +198,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **Audio quality** (`tests/quality.cpp`): drives the engine directly and measures, at every oversampling factor:
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
-    feedback and a driven filter;
-  - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff and a wire of the
-    effects graph;
+    feedback, a driven filter and a driven, resonant ladder, diode and Sallen-Key;
+  - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff, a resonant ladder's
+    cutoff, a formant's vowel, a morph's place and a wire of the effects graph;
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain (0 to
@@ -220,7 +238,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     from 60 dB to 80, a version 10 state's as saved; and a version 10 state's Random source loading as one standing
     still at 0 Hz and its LFO with the retired Random shape as a Random source running as it ran, a version 11
     state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
-    it ran (its points and polarity kept), a version 12 state's as saved;
+    it ran (its points and polarity kept), a version 12 state's as saved; and a version 12 state's depth on an
+    operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
+    saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
+    Alternate, the pan a new operator starts with, and its depth on a source's Division loading 26/28 as deep, as it
+    grew two note values slower, a version 13 state's as saved;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -241,12 +263,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
     longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again
     once the reverb has rung out bringing back nothing of the tail before;
   - a shaper effect switched off, its drawn curve changed and on again playing the new curve from its start;
+  - the Stack curve: a stack of three playing about as three linked shapers of one stage in a row (far nearer
+    them than one stage), one stage passing a quiet sine at its level and saturating a loud tone unevenly, a stack of
+    eight passing quiet sines from 1 to 15 kHz within a dB (no low-pass, the top lifted back), a stack of
+    eight at full drive ringing on past a note longer than one stage does and then stopping (the effects too), and
+    thumping far more between 10 and 60 Hz after the note, the stack turned up and down under a note in single frames
+    staying finite and within the curve's reach, a shaper effect switched from Soft to Stack and back under a quiet
+    sine crossfading rather than clicking (no sample stepping further than the sine's own do), and a voice's shaper
+    stacked eight high ending with its voice;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
     curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
     silence, and an input that isn't a number reading inside its table;
-  - the filter effect switched to another type or slope and back, and a plate switched to a hall and back,
+  - the filter effect switched to another type or slope and back (every newer type among them, and the analog
+    types, which share their stages, from one another and from a morph), and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
@@ -259,7 +290,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
+  - the tempo a preset was saved at reading back as written, and as none below 20 BPM or from a layout before it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
+  - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
+    a hard shaper as its octave alone (clipped evenly, no 4th harmonic), and the output exactly silent once the
+    note has rung out, the effects resting;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;
@@ -295,7 +330,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the newest voice plays its table and its sample reaching the editor through `SharedTelemetry`, as the plugin
     hands it; and a recording of middle C played on middle C at its own pitch (within a cent, at every oversampling
     factor), its Root where a new Sample operator starts it;
-  - the operators' new fields at their ids (op A's Position 134, op F's Sample Mode 393, 38000 on free for them);
+  - the operators' new fields at their ids (op A's Position 137, op F's Sample Mode 396, 38000 on free for them);
   - the file readers: WAVs at 16, 24 and 32 bits and float with Serum's `clm` (its frame size read, 2048 guessed
     without one, the folder's taken), stereo summed, past 512 frames thinned, `uhWT`, `srge`, cue and `smpl` frame
     sizes, FLAC, `.wt` (full, quarter and float, and a sample), `.vitaltable` keyframes filled in between and a Vital
@@ -316,8 +351,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (in single frames too) no rougher than the sound before, after or the plain wave between, and an LFO on
     Squeeze's amount and on a synced operator's ratio leaving only the note's harmonics and their sidebands;
   - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
-    not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
-    transport is stopped, and a random one stepping as the transport passes a cycle;
+    not (a one-shot not anchored), synced down to 8/1 (a cycle every eight bars, 4/1D's number as it was),
+    following it through a block split into pieces, running on from there while the
+    transport is stopped, and a Random source anchored running free and one-shot retriggering;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, a low note's (an A0's)
@@ -330,6 +366,23 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a host's automation and modulation splitting blocks into pieces as they move params (some chosen, the rest any
     param that can be modulated, wiring too): the synth told param by param which changed playing sample for sample
     as one working everything out again for every piece;
+  - the unison modes: Linear and Ramp spreading the copies evenly, to the bit, as unison always did; Center
+    bunching them about the pitch, Supersaw spacing seven as a supersaw does, Random putting one in each stretch of
+    the detune (the same through a note, new for another), Alternate putting copies next in pitch on opposite sides
+    and Random pan dealing them the even places; and on an A4, Center's inner copies nearer the pitch than Linear's,
+    Alternate's lowest copy on the other side from Ramp's, and full Blend taking the outermost copy 20 dB under the
+    middle one, in what a modulator's carrier plays too;
+  - the sequencer: its notes on their steps with the host's transport, the bar round again and alike whatever the
+    stretches it plans, Swing at 75 % delaying the step after the beat by half a step and Gate at 50 % halving a note,
+    Reverse playing a note on the first step on the last (the playhead moving steadily backward, as on Ping-Pong's way
+    back, and forward otherwise), a loop playing only the notes in it, a muted note and one at
+    no chance silent and one at half playing about half the passes (alike each time), another pattern taking over where
+    the loop comes round, in Key a key playing the pattern transposed from Root and stopping it when let go (its end
+    reported, the sequencer's notes' never, the playhead in the telemetry, and the keys its notes are written on, not those they play), the keys the telemetry shows held leaving
+    its notes out, and through the synth a note sounding from its sample however the blocks are split; its curves
+    standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
+    before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
+    bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -501,19 +554,38 @@ the plain CMake commands and installing into a host are in the [README](README.m
     after (read off the rendered pixels);
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
-    a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor;
+    a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor, whose pencil sits beside the curve's list (on the
+    shaper effect's card too), lit while it is open (read off the rendered pixels);
+  - a shaper's Stack curve, between Fold and Custom in its list, on its page and on the shaper effect's card,
+    showing its Stack knob after Drive, turned in whole stages, undoably, and the wheel over the list's button
+    stepping along the list's order;
   - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
-    mirrored left half adding a point on the right, the middle point refusing to be deleted, and the switch
-    undoing with its point;
+    mirrored left half doing nothing, the middle point refusing to be deleted, and the switch
+    undoing with its point; the big curve editor's SYM (a shaper effect's and a voice shaper's) switching, its
+    mirrored half taking neither a double-click nor a Shift+click's step, undone off again;
   - dragging the filter response handle, the filter's Mix knob (where Out was) moving its response and undone
     putting it back (read off the rendered pixels), switching between the graph and matrix views (the tab shown opening its
     panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell: undone, its
     route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing; a shaper's
     row routing it into the other shaper and, on the diagonal, into itself;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused, the hand cursor showing only over
-    an entry it can pick (not over a refused one, the list's edge or around it);
+    an entry it can pick (not over a refused one, the list's edge or around it); its type's list (as a shaper's
+    curve's) showing each type with its icon (read off the rendered pixels) and picking Ladder, and the wheel over it
+    stepping the type, a run of notches one undo step, held at the list's end; and the filter card's type list
+    picking Comb; a morph's slope's list picking 24 dB (18 refused) and its notch switch beside it (the notch's icon)
+    going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
+  - points picked in a shape editor: in a Curve source's full-size editor a box from empty space picking the points
+    it reaches (drawn filled, read off the rendered pixels), one of them dragged moving them all as far, one undo
+    step, stopping as a whole at a neighbor not picked and at the top, Ctrl+click adding a point and taking one away,
+    a click on one of several picked picking it alone, Ctrl+A and Delete removing all but the two kept, undoably, and a
+    click on empty space letting them go; on a symmetric voice shaper's page the middle point picked with another
+    staying in the middle; with the Curve card still widened beside the SEQ view, Ctrl+A over the roll picking its
+    notes, not the shape's points, and Delete removing them; and on the SEQ view's BEND lane, with Select, a box picking its points (ringed, read off
+    the rendered pixels), moved together and stopping at a neighbor, undoably, Shift+click adding one, with Draw a
+    picked point moving the others too, Ctrl+A over the lane and Delete removing them, undoably, and a click off the
+    lane letting them go, as Ctrl+A over the roll does (Delete then removing the notes);
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q; its bands' chips: a click on one, its shape
@@ -547,11 +619,19 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
+  - the UNISON tab starting on Alternate, its buttons picking the copies' curve (Supersaw) and pan (Ramp) and its
+    Blend knob, each an undo step, the display's lowest copy moving from the right to the left (read off the rendered
+    pixels), and a pan button's tooltip;
+  - a stepper (the unison count's): its - and + stepping it, an undo step each, a quick
+    second click stepping again and - doing nothing at 1 copy, its + faint at rest and lit under the mouse (read off
+    the rendered pixels), the hand over its - and +, up and down over its number and while dragged, and the arrow
+    over its label; and a number too long for - and + both (a fixed Mult's ×0.001) moving off the one under the mouse, which
+    alone shows (read off the rendered pixels);
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes
     going one at a time, undoably, a click on the one lit leaving it and the wheel stepping along them, and its
-    Unipolar switch standing apart;
+    Unipolar switch standing apart; a Random source's only Retrigger and Free;
   - the three-band dynamics' card: a band's row picking the band its knobs set, its threshold lines dragged
     across (Above stopping at Below) undoably, Alt-dragged for the ratio and double-clicked back, a line on another
     band picking that band, its zones dragged for their ratios (the upward one up for more, the downward one down, undoably, picking their
@@ -566,6 +646,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     setting Position and Distance in one undo step and double-clicked back; its drive meter following the telemetry
     and its display following Treble and the mic's position (read off the rendered pixels); and its title's menu
     picking its oversampling, the one in force checked;
+  - the arrows in a list's button: a filter's type (on its page and the filter effect's card), a shaper's curve (on
+    its page and the shaper effect's card), the amp's model and cabinet, the reverb's algorithm and an LFO's shape
+    stepping along the list, round its ends,
+    each click an undo step (a quick second click, which comes as a double-click, a step too), the arrow lit under
+    the mouse (read off the rendered pixels);
   - the utility's card: added last from the list of effects (under STEREO & PHASE), leaving the sound as it is (Mono
     Bass Off); the handles on its display setting Mono Bass, Pan, Width and Gain, each drag an undo step, the band
     narrowing into its middle below Mono Bass's line (read off the rendered pixels), and a double-click putting Mono
@@ -594,7 +679,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
-    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard
+    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
     strip to its top row by its chevron or title, the wheels' handles staying in it and still mapping the wheels; and
     Bend's knob, in the header after Pitch, turning; the bend wheel dragged editing the Pitch Bend param in one
     gesture (the host following it), springing back to the middle and leaving nothing to undo;
@@ -603,13 +688,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
-    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider and the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels), a double-click putting each back where it starts, in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
+    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
     loads); Save greyed out (read off the rendered pixels) and doing nothing while the preset is unchanged, asking
-    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), and
+    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), on a changed factory
+    preset opening Save As's dialog without asking, and
     doing nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which loading a preset closes; its search narrowing the list as words are
     typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
@@ -655,6 +741,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a knob's modulation ring cut off at the knob's end ending in a line across it, and one within range not (read
     off the rendered pixels);
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
+  - in every theme, Porcelain among them, a filter's and a shaper's display on the inspector's lens standing apart from
+    the lens's face (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn
     lighter, and Midnight's ring in its source's own color (read off the rendered pixels);
   - in the flat themes, every source in a color of its own and no effect in the dim text's, and an aux that is set
@@ -666,10 +754,59 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - every factory preset's routing graph rendered (in Spectrum, into `presets/`), none with a node on or near
     another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
     other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
+  - every algorithm (`src/gui/algorithms.h`: six operators' 32, four's 8, three's 5 and two's 2, set by
+    `View::applyAlgorithm()`) on a new patch: laid out with
+    no clash as arrange.h counts them, found again as the one the operators form, and taken back, params and
+    layout, by one undo; and onto a patch of its own, a route it has kept at its depth, the others disconnected with
+    their mode and modulation (undone back), a carrier going out through a filter left so and counted as one, the
+    filters and the carriers' sends left alone, and a four-operator one switching E and F off and a modulator's send
+    into a filter that goes out disconnected;
+  - ALGORITHM, at the tabs' row's right with ROUTING and MATRIX (not FX or MODS, another view closing its panel):
+    its panel drawn over the graph, the foot naming the thumbnail under the mouse, a click setting the operators to
+    it in one undo step, closing the panel and putting its number on the button, the one in force lit when it opens
+    again (read off the rendered pixels), the 4 of its Operators switch showing the four operators' eight (the panel
+    opening on them while one is in force), its 3 and 2 theirs, which switch the operators past theirs off, Escape and a click
+    around closing it without a change and Enter left to the host;
   - the title bar's tempo: none for a plugin host, and for a host that lets the editor set it a field (read off the
     rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
     text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
+  - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
+    off the rendered pixels), as on FX's while an effect in the line is switched on; a double-click putting a note down on its step (a
+    step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
+    the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered
+    pixels); a note landing on another's start and pitch (dragged, or by the arrows) taking its place,
+    undoably; a note dragged past the roll's top scrolling the rows, the note going along; a patch loaded fitting the
+    roll to its notes; a note dragged moving on the grid by steps and rows, undoably, its end dragged setting
+    its length and its start moving it with its end staying (the cursor left-right over either end), and either with Shift set off the
+    grid, as a note moved with Shift lands (a Shift+click on a note picked, not dragged, unpicking it); a box picking the notes it reaches and the field's VEL dragged up turning every one picked up; the
+    field's VEL and OFFSET double-clicked back to 100 and onto the grid; a key the sequencer plays lit in the roll's
+    keys, easing up over a few polls and back down once its note ends (read off the rendered pixels); the loop dragged by its ends and its middle (with their cursors) and a new
+    one drawn across the bars outside it; the draw tool's cursor a pen over the empty grid (and over a note what a drag does to it), a note it draws and holds
+    taking the velocity the mouse sets up and down (one undo step with the note), and with Shift painting a note in
+    each step dragged across; the card's switches showing tooltips of their own (read off the rendered pixels); the
+    roll zoomed in across by its +, Ctrl+A picking every note and the arrows moving them a step, a semitone and with
+    Shift an octave (the rows following only as far as shows every note moved; with none picked, going on to the
+    host), each undoably; a picked note's dot
+    ringed in the lane (read off the rendered pixels) and, with Draw, the picked notes' velocities dragged together
+    there (where notes start together, the picked one's alone), the
+    lane's cursor a pen and up and down over a dot and while one is dragged; with Select, a box from the lane's empty
+    space picking the notes whose dots it holds (ringed, read off the rendered pixels; over their stems alone, none), a dot dragged moving
+    every one picked together, one undo step, Shift+click adding a dot's note and Ctrl+click letting it go, a click on
+    one of several picked picking it alone, and the arrow over empty space; Delete removing the notes picked; a note or key clicked in the
+    roll heard alone while held (not played as the keyboard's, a key clicked quickly twice heard twice), a note moved heard on its new row; the middle button
+    panning it across and up and down, and Alt+wheel zooming the rows
+    in about the row under the mouse, the rows' bar at its right scrolling them; the scale's list opening above its button with both panels collapsed; a note put down by a double-click heard
+    while the button is held; the lane
+    on CHANCE setting a note's chance; on BEND the lane's grid lines (read off the rendered pixels), with Select a
+    click doing nothing (no pen) and a Ctrl+double-click putting a point down on the grid and a Ctrl+drag moving it
+    onto the grid (the cursor moving over it), undoably, with Draw a click putting one down where the mouse is (a pen)
+    and a double-click there leaving it, a segment's middle dragged up bending it (the cursor up and down) and
+    double-clicked straightening it, with Select a point double-clicked going, and the curve drawn where the lane was
+    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
+    only its rows, and a note off it keeping its row, hatched (read off the rendered pixels); the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
+    says (read off the rendered pixels); copying the pattern into the next empty one; and the bin clearing the pattern,
+    asking first, undoably.
   - an operator's source switch: on its title row, left of the edit button, the knobs, the well and the controls' labels inside
     the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place); TABLE making the operator a Wavetable and opening its tab, WAVE
     bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
@@ -798,10 +935,12 @@ pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK 
 
 The factory presets are preset files, `presets/Factory/<name>.fmv`, which the build compiles in:
 `cmake/embed_presets.cmake` turns them into byte arrays (`factoryPresets()` in `src/factory.h`), for the plugin and
-the browser demo alike, again whenever one changes. The plugin writes their bytes as they are into a new preset folder.
-`presets/factory.txt` names them in the order they came, which counts: the settings file counts the examples a folder
-was given, so a new one goes at the end and none is reordered or taken out. The build fails on a file the list
-doesn't name, or a name without its file.
+the browser demo alike, again whenever one changes. Neither writes them out: the preset library lists them from
+memory under Factory, beside the preset folder's files (`PresetLibrary::rescan()`), and a factory preset's "file" is
+`factory:` and its name (`PresetLibrary::kFactoryPrefix`), which the host's state names as it would a file. So a
+name, once released, is stored in projects: none is renamed or taken out. `presets/factory.txt` names them in the
+order they came; a new one goes at the end. The build fails on a file the list doesn't name, or a name without its
+file.
 
 They are stored sparse: only the params that differ from their defaults (which is what loading a preset gives the
 others), then the editor layout, a kilobyte or so where a preset the plugin saves holds every param (about 128 KB).
@@ -816,10 +955,10 @@ To add or change one:
 3. For a new one, add its name at the end of `presets/factory.txt`.
 4. Build and run `ctest`.
 
-A user's preset folder gets the factory presets once, and again as a newer version brings them: the settings file
-notes the version that last wrote them out (`examplesVersion`), and a newer one writes those still in the folder's
-`Factory` subfolder over their files where they differ (`PresetLibrary::rescan()`). So a factory preset changed here
-reaches users with the next release, and a user's own change saved over one is lost then.
+A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
+on one opens Save As (`Controller::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
+preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
+there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
@@ -883,7 +1022,7 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
 LD Screamer's routing view over `docs/editor.png`, PD Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
-BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`. It then lists what it would do and asks; only an answer of `yes` commits
+BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and SQ Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
 Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
 branch: it builds and runs `fmvibe-uishot` and copies its renders over the three, leaving the version, the other tests
@@ -930,13 +1069,14 @@ breakpoints in `src/` then hit.
 | `src/vst3iids.cpp` | The ids of the VST3 interfaces the plugin and its test host use |
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks, and the DATA chunk of the patch's tables and samples; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
-| `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them, the table browser's folders) |
+| `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, the table browser's folders) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
 | `src/uistrings.inc` | The wording of every piece of text the plugin shows, by name; `src/uistrings.h` looks it up |
 | `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of the plugin formats |
+| `src/sequencer.h`, `src/sequencer.cpp` | The sequencer: plans the notes of its pattern for each stretch the synth renders, from the host's transport or a key |
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
 | `src/opdata.h`, `src/opdata.cpp` | What a Wavetable or Sample operator plays (`OpData`): a table's frames by level, a sample's halved copies; the registry that hands them to the audio thread and the store that keeps them on the main thread |
 | `src/tables.h`, `src/tables.cpp` | The factory wavetables, generated from their spectra |
@@ -949,6 +1089,7 @@ breakpoints in `src/` then hit.
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
 | `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
 | `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
 | `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
@@ -959,6 +1100,7 @@ breakpoints in `src/` then hit.
 | `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
 | `src/gui/tableview.cpp` | The Wavetable and Sample operators' part of the editor: the source switch, the pickers, the TABLE and SAMPLE tabs, and the table browser |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
+| `src/gui/seq.cpp` | The SEQ view: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
@@ -1009,9 +1151,9 @@ itself.
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
-  Sync, Warp and Warp Amount, then TablePos, Table, Sample, SampleStart, SampleRoot, LoopMode, LoopStart, LoopEnd,
-  LoopFade, SampleMode and SampleReverse, the 35th to 45th fields; past the 50th, an operator's fields go at 38000 + 50·op, as
-  `ids::kSplitSections` has it; the
+  Sync, Warp, Warp Amount, Unison Curve, Unison Pan and Unison Blend, then TablePos, Table, Sample, SampleStart,
+  SampleRoot, LoopMode, LoopStart, LoopEnd, LoopFade, SampleMode and SampleReverse, the 38th to 48th fields; past the
+  50th, an operator's fields go at 38000 + 50·op, as `ids::kSplitSections` has it; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -1044,12 +1186,16 @@ itself.
   number, whose first two inputs take the high band and the low band. The effects always run as the graph: a chain
   is a line of it (the output's first wire comes from the input to begin with), and the FX view's row and graph are
   two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
-  read when loading a state from before version 9.
+  read when loading a state from before version 9. The sequencer's settings are 40000+, each pattern's length and
+  loop 40100 + 10·pattern, each pattern's notes 41000 + 10·(128·pattern + note), and each pattern's curves
+  47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, a point count and 64 (x, y, curve) points each
+  (see `SeqParam`, `SeqCurveParam`).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
-  warp (`OpWarp`), factory table (`FactoryTable`), sample loop (`SampleLoop`) and sample mode (`SampleMode`) lists,
-  the routing views and the operator page's tabs,
+  warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`), morph mode (`MorphMode`), factory table
+  (`FactoryTable`), sample loop (`SampleLoop`) and sample mode (`SampleMode`) and the sequencer's play
+  mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -1070,13 +1216,13 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,292 of the 19,689 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,329 of the 24,996 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, a Sample operator's
   root, loop, mode and reverse, the chain's retired order, the feedback's route modes and the retired fields), the operators'
   Table and Sample (wiring, as a slot's target is), every slot's target, aux, curve and bypass, the effect slots'
-  fields, the effects graph (its splits, joins and wires) and the source places' own fields (a place's slot
-  depths are listed, whatever it holds). Nothing hosts
+  fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
+  depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes and curves. Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
@@ -1096,7 +1242,11 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 12: version 1's Volume loads 12 dB
+- The state version rises at most once between two tagged releases. A change that needs older states loaded
+  differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
+  and the checks that load a state from before it), rather than adding another. States saved by a build between two
+  tags are not kept loading as they were: only released versions are.
+- The state blob holds `(id, value)` pairs with a version number (currently 13: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1113,16 +1263,23 @@ itself.
   than -60; before version 11, a Random source, which then took a value for each note, loads unsynced at 0 Hz (the
   LFO fields it now uses otherwise at their defaults), standing still and taking one for each note, and an LFO with
   the retired Random shape as a Random source running as it ran (`loadRandomSources()`); before version 12, an LFO
-  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`)), followed by the
-  editor layout:
+  with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`); before version 13,
+  a modulation's depth on an operator's Unison Detune loads scaled by `kRetiredMaxUnisonDetune / kMaxUnisonDetune`,
+  since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
+  its copies played, and a modulation's depth on a source's Division loads scaled by
+  `kRetiredSourceDivisionSteps / kSourceDivisionSteps`, since it now reaches two note values slower, 8/1T and 8/1,
+  numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values), followed by the editor
+  layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
   effect cards past the 16th slot are folded, the node the effects graph's inspector shows, whether the FX view shows
-  the graph, the band each split shows and which splits' containers are folded, and the wave each operator's source
-  switch goes back to (`UiLayout::plainWave`).
+  the graph, the band each split shows and which splits' containers are folded, the SEQ view's roll (whether it
+  draws, its snap, its lane, its lowest row and whether it is folded to the scale), the tempo the patch was last
+  saved as a preset at (0 for none), which a host that lets the editor set the tempo (`Controller::hasTempo()`)
+  takes up as the preset loads, and the wave each operator's source switch goes back to (`UiLayout::plainWave`).
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Last, in both, comes the DATA chunk

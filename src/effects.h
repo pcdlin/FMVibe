@@ -4,6 +4,7 @@
 #include "analyzer.h"
 #include "clipcurve.h"
 #include "filter.h"
+#include "oversampler.h"
 #include "params.h"
 #include "zerobuffer.h"
 
@@ -188,6 +189,13 @@ private:
         double drive = 1.0; // gains, ramped
         double output = 1.0;
         double mix = 1.0;
+        double between = 1.0; // after each Stack stage but the last
+    };
+    // A shaper's curve as a chunk ran it: what its path (at twice the rate for Stack, see runShaper()) is built from.
+    struct ShaperPath {
+        ClipMode mode = ClipMode::Soft;
+        bool symmetric = false;
+        int stack = 1;
     };
 
     struct Delay {
@@ -230,7 +238,7 @@ private:
         // Its settings, and the params (and pitch, while it tracks the key) they were worked out from: NaN until the
         // first chunk, so worked out again only when one moves (see runFilter()).
         FilterSettings settings;
-        std::array<double, 7> settingsFor{std::numeric_limits<double>::quiet_NaN()};
+        std::array<double, 10> settingsFor{std::numeric_limits<double>::quiet_NaN()};
     };
 
     // The gain reduction (dB, 0 or below) follows the static curve at the attack
@@ -437,6 +445,19 @@ private:
         Analyzed analyzed;
         // The shaper's drawn curve as a table (see runShaper()).
         ClipTable curve;
+        // The shaper's Stack stages run at twice the rate (see runShaper()): up to it and back down, a side each,
+        // designed in prepare(), and whether the last chunk ran there.
+        std::array<HalfBand, 2> shaperUp, shaperDown;
+        bool shaperDoubled = false;
+        // Whether the last chunk ran the shaper (start() clears it), and its curve then.
+        bool shaperRan = false;
+        ShaperPath shaperLast;
+        // For a moment after its curve goes to Stack or leaves it, the path it left, fading out as the new one fades
+        // in: at the rate it ran at, with its curve and its sides as they were. Only one of the two is ever at twice
+        // the rate, and it runs through shaperUp and shaperDown.
+        ShaperPath shaperWas;
+        std::array<ClipState, 2> shaperWasSides{};
+        double shaperWasFade = 0.0; // 1 .. 0
     };
 
     // A slot's effect in place on `io`, fading as it is switched; `keep` grows while it rings on.

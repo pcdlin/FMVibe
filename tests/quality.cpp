@@ -13,10 +13,7 @@
 #include "tables.h"
 #include "tables/library.h"
 #include "tables/readers.h"
-
-#include <filesystem>
-#include <fstream>
-#include <thread>
+#include "unison.h"
 
 #include <algorithm>
 #include <chrono>
@@ -25,16 +22,27 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <numbers>
 #include <string>
+#include <thread>
+#include <tuple>
 #include <vector>
 
 using namespace fmvibe;
 
 namespace {
+
+// Every operator's unison copies from left to right, as they sat before version 13 brought Unison Pan (Alternate to
+// begin with): a patch saved so, relabeled as an older version, loads as saved.
+void asBeforeUnisonPan(ParamValues &p) {
+    for (int op = 0; op < kOps; ++op)
+        p[paramIndex(op, OpParam::UnisonPan)] = static_cast<double>(UniPan::Ramp);
+}
 
 // The effects in `slots` one after another from the input to the output: a chain, as the effects graph wires it.
 void chain(ParamValues &p, const std::vector<int> &slots) {
@@ -1734,6 +1742,7 @@ void effectsChainChecks() {
         p[paramIndex(3, FxParam::McLink)] = 1.0;
         p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(mcThresholdIndex(3, 1))) + 1.0;
         p[slotAmountIndex(0, 0)] = 0.25;
+        asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -1846,6 +1855,7 @@ void effectsChainChecks() {
         }
         set(3, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(3, SourceParam::Shape, static_cast<double>(LfoShape::Saw));
+        asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -1898,6 +1908,7 @@ void effectsChainChecks() {
         }
         set(2, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(2, SourceParam::Shape, static_cast<double>(LfoShape::Triangle));
+        asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -1950,9 +1961,20 @@ void effectsChainChecks() {
         const float comb = stale(FilterType::LowPass, 1, FilterType::Comb, 1);
         const float slope = stale(FilterType::LowPass, 3, FilterType::LowPass, 1);
         const float back = stale(FilterType::Comb, 1, FilterType::LowPass, 1);
-        std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g\n", comb, slope,
-                    back);
-        check(comb < 1e-4f && slope < 1e-4f && back < 1e-4f,
+        const float ladder = stale(FilterType::Ladder, 3, FilterType::LowPass, 1);
+        // The newer types, back from a low-pass, and the analog types, which share their stages, back from one another,
+        // and from a morph.
+        float newer = 0.0f;
+        for (FilterType t : {FilterType::Diode, FilterType::SallenKeyLow, FilterType::SallenKeyHigh, FilterType::Formant,
+                             FilterType::Morph})
+            newer = std::max(newer, stale(t, 1, FilterType::LowPass, 1));
+        newer = std::max({newer, stale(FilterType::Diode, 3, FilterType::Ladder, 3),
+                          stale(FilterType::Morph, 1, FilterType::SallenKeyLow, 1),
+                          stale(FilterType::Ladder, 3, FilterType::Morph, 1)});
+        std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g, ladder %.1g, the "
+                    "newer types %.1g\n",
+                    comb, slope, back, ladder, newer);
+        check(comb < 1e-4f && slope < 1e-4f && back < 1e-4f && ladder < 1e-4f && newer < 1e-4f,
               "the filter effect switched to another type or slope and back plays nothing it held before");
     }
     {
@@ -2342,13 +2364,15 @@ void noteAndVoiceChecks() {
                 e.synth().noteOn({-1, 0, 0, 60}, 1.0);
             if (soft)
                 e.synth().noteOn({-1, 0, 0, 64}, 0.05);
-            const std::vector<float> rendered = e.render(9600);
+            // (Half a second, measured over its second half: the loud note's first moment, before its knob is down,
+            // has rung out of the DC blocker before the effects by then.)
+            const std::vector<float> rendered = e.render(24000);
             if (knobs) {
                 auto t = std::make_unique<Telemetry>();
                 e.synth().telemetry(*t);
                 (*knobs)[1] = t->macroOffset[1];
             }
-            return std::vector<float>(rendered.begin() + 4800, rendered.end());
+            return std::vector<float>(rendered.begin() + 12000, rendered.end());
         };
         MacroKnobs softKnob{};
         const std::vector<float> loudAlone = voiced(true, false, nullptr), softAlone = voiced(false, true, &softKnob),
@@ -2736,7 +2760,7 @@ template <class Span> ScopeMotion lowNoteMotion(Engine &e, Telemetry &t, const S
     };
     e.p[paramIndex(0, OpParam::Release)] = normFromEnvTime(2.0);
     e.noteOn(21); // A0, 27.5 Hz: two cycles take 73 ms
-    e.render(9600);
+    e.render(24000); // the DC blocker before the effects settled from the note's start (see Synth::DcBlocker)
     ScopeMotion motion;
     const std::vector<float> held = take();
     e.render(kBlock * 3 + 7);
@@ -3722,7 +3746,7 @@ void sampleChecks(const int (&factors)[4]) {
 
     // The operators' ids past their 50th field go on from 38000 (no field is there yet: the static_asserts in
     // params.h pin the ranges), and their fields so far keep theirs.
-    check(idOfIndex(paramIndex(0, OpParam::TablePos)) == 134 && idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 393 &&
+    check(idOfIndex(paramIndex(0, OpParam::TablePos)) == 137 && idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 396 &&
               indexOfId(38000) == -1,
           "the operators' new fields have their ids, and 38000 on is theirs to grow into");
 }
@@ -4322,10 +4346,1004 @@ void libraryChecks() {
     fs::remove_all(root, error);
 }
 
+// Unison Curve, Unison Pan and Blend: the spreads unison.h works out, and what an A4's copies then play.
+void unisonModeChecks() {
+    std::printf("unison modes:\n");
+    {
+        bool linear = true, center = true, supersaw = true, random = true, alternate = true, shuffled = true;
+        bool blended = true;
+        for (int n = 1; n <= kMaxUnison; ++n) {
+            const UnisonSpreadOut even = unisonSpread(n, UniCurve::Linear, UniPan::Ramp, 0.0, 7u, 0);
+            const UnisonSpreadOut mid = unisonSpread(n, UniCurve::Center, UniPan::Alternate, 0.0, 7u, 0);
+            const UnisonSpreadOut a = unisonSpread(n, UniCurve::Random, UniPan::Random, 0.0, 7u, 2);
+            const UnisonSpreadOut again = unisonSpread(n, UniCurve::Random, UniPan::Random, 0.0, 7u, 2);
+            const UnisonSpreadOut other = unisonSpread(n, UniCurve::Random, UniPan::Random, 0.0, 8u, 2);
+            std::vector<double> places, evenPlaces, dealt;
+            bool differs = n == 1;
+            for (int k = 0; k < n; ++k) {
+                // Linear and Ramp are the even spread the copies always had, to the bit.
+                const double was = n > 1 ? 2.0 * k / (n - 1) - 1.0 : 0.0;
+                linear = linear && even.detune[k] == was && even.pan[k] == was && even.weight[k] == 1.0;
+                center = center && std::abs(std::abs(mid.detune[k]) - was * was) < 1e-12 &&
+                         (mid.detune[k] < 0.0) == (was < 0.0);
+                // Random: one copy in each even stretch, the same for a seed, another for another seed.
+                const double lo = -1.0 + 2.0 * k / n, hi = -1.0 + 2.0 * (k + 1) / n;
+                random = random && (n == 1 ? a.detune[k] == 0.0 : a.detune[k] >= lo && a.detune[k] < hi) &&
+                         a.detune[k] == again.detune[k] && a.pan[k] == again.pan[k];
+                differs = differs || a.detune[k] != other.detune[k];
+                // Alternate: copies next in pitch on opposite sides (or one in the middle), no two in one place.
+                if (k > 0)
+                    alternate = alternate && mid.pan[k] * mid.pan[k - 1] <= 0.0;
+                places.push_back(mid.pan[k]);
+                evenPlaces.push_back(was);
+                dealt.push_back(a.pan[k]);
+            }
+            random = random && differs;
+            std::sort(places.begin(), places.end());
+            alternate = alternate && std::adjacent_find(places.begin(), places.end()) == places.end();
+            // Random pan: the even places, dealt out.
+            std::sort(dealt.begin(), dealt.end());
+            shuffled = shuffled && dealt == evenPlaces;
+            // Blend: the outer copies quieter than the middle ones, the squares summing to the count as before.
+            const UnisonSpreadOut full = unisonSpread(n, UniCurve::Linear, UniPan::Ramp, 1.0, 7u, 0);
+            double squares = 0.0;
+            for (int k = 0; k < n; ++k)
+                squares += full.weight[k] * full.weight[k];
+            const double ratio = n % 2 ? 0.1 : 0.1 / (1.0 - 0.9 / (n - 1)); // the outermost over the middle one
+            blended = blended && std::abs(squares - n) < 1e-9 &&
+                      (n < 3 || std::abs(full.weight[0] / full.weight[n / 2] - ratio) < 1e-9);
+        }
+        const UnisonSpreadOut saw = unisonSpread(7, UniCurve::Supersaw, UniPan::Ramp, 0.0, 0u, 0);
+        for (int k = 0; k < 7; ++k)
+            supersaw = supersaw && std::abs(saw.detune[k] - kSupersawDetune[k]) < 1e-12;
+        check(linear, "Linear and Ramp spread the copies evenly, as unison always did");
+        check(center, "Center bunches the copies about the pitch, the outer ones as far out");
+        check(supersaw, "Supersaw spaces seven copies as a supersaw does");
+        check(random, "Random puts a copy in each stretch of the detune, the same through a note and new for another");
+        check(alternate, "Alternate puts copies next in pitch on opposite sides, none in one place");
+        check(shuffled, "Random pan deals the copies the even places");
+        check(blended, "Blend turns the outer copies down, as loud together as before");
+    }
+    {
+        // Unison Detune reaches 200 cents since version 13, 100 before: a version 12 state's depth on it (on operator
+        // C's) loads half as deep, swinging it as far as it did, and a version 13 state's as saved. Unison Pan, new with
+        // version 13 and Alternate to begin with: a version 12 state (which has none) loads Ramp, as its copies played,
+        // and a version 13 state that leaves it out, as a sparse one does at its default, Alternate.
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(2, OpParam::UnisonDetune));
+        p[slotAmountIndex(0, 0)] = 0.4;
+        p[slotTargetIndex(0, 1)] = slotTargetValue(paramIndex(2, OpParam::Detune)); // not Unison Detune: as saved
+        p[slotAmountIndex(0, 1)] = 0.4;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto depths = [&bytes](uint32_t version) { // the two depths, from the patch as saved by that version
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            const bool read = readParams(&in, loaded);
+            return std::tuple(read ? loaded[slotAmountIndex(0, 0)] : -1.0, loaded[slotAmountIndex(0, 1)],
+                              loaded[paramIndex(4, OpParam::UnisonPan)]);
+        };
+        const auto [older, olderDetune, olderPan] = depths(12);
+        const auto [now, nowDetune, nowPan] = depths(13);
+        std::printf("      a depth of 0.4 on Unison Detune: %.2f from a version 12 state, %.2f from 13\n", older, now);
+        check(older == 0.2 && olderDetune == 0.4 && now == 0.4 && nowDetune == 0.4,
+              "a version 12 state's depth on Unison Detune loads half as deep, a version 13 state's as saved");
+        check(paramTable()[paramIndex(4, OpParam::UnisonPan)].def == static_cast<double>(UniPan::Alternate) &&
+                  olderPan == static_cast<double>(UniPan::Ramp) && nowPan == static_cast<double>(UniPan::Alternate),
+              "Unison Pan starts on Alternate, and a version 12 state loads Ramp, as its copies played");
+    }
+    {
+        // A source's Division reaches 8/1 since version 13, two steps below 4/1D: a version 12 state's depth on it (on
+        // Mod 3's) loads 26/28 as deep, stepping it as far as it did, and its value as saved, a version 13 state's
+        // depth as saved too. A depth on its Rate loads as saved.
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(2, SourceParam::Division)] = 7.0; // 1/1
+        p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(2, SourceParam::Division));
+        p[slotAmountIndex(0, 0)] = 0.28;
+        p[slotTargetIndex(0, 1)] = slotTargetValue(paramIndex(2, SourceParam::Rate)); // not Division: as saved
+        p[slotAmountIndex(0, 1)] = 0.28;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto loadedAt = [&bytes](uint32_t version) { // the two depths and the Division, as saved by that version
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            const bool read = readParams(&in, loaded);
+            return std::tuple(read ? loaded[slotAmountIndex(0, 0)] : -1.0, loaded[slotAmountIndex(0, 1)],
+                              loaded[paramIndex(2, SourceParam::Division)]);
+        };
+        const auto [older, olderRate, olderDivision] = loadedAt(12);
+        const auto [now, nowRate, nowDivision] = loadedAt(13);
+        std::printf("      a depth of 0.28 on a source's Division: %.4f from a version 12 state, %.4f from 13\n", older,
+                    now);
+        auto near = [](double a, double b) { return std::abs(a - b) < 1e-12; };
+        check(near(older, 0.26) && olderRate == 0.28 && olderDivision == 7.0 && now == 0.28 && nowRate == 0.28 &&
+                  nowDivision == 7.0,
+              "a version 12 state's depth on a source's Division loads 26/28 as deep, a version 13 state's as saved");
+    }
+
+    // An A4's copies at 100 cents: what each one plays where, from a sine's lines.
+    auto level = [](const std::vector<float> &signal, double hz) { // the loudest bin near it, in dB
+        const std::vector<double> power = powerSpectrum(signal);
+        const long center = std::lround(hz / (kSampleRate / kFftSize));
+        double most = 1e-30;
+        for (long b = center - 2; b <= center + 2; ++b)
+            most = std::max(most, power[static_cast<size_t>(b)]);
+        return 10.0 * std::log10(most);
+    };
+    struct Sides {
+        std::vector<float> left, right;
+    };
+    auto play = [](int copies, UniCurve curve, UniPan pan, double blend, double spread = 1.0) {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Unison)] = copies;
+        e.p[paramIndex(0, OpParam::UnisonDetune)] = 100.0;
+        e.p[paramIndex(0, OpParam::UnisonSpread)] = spread;
+        e.p[paramIndex(0, OpParam::UnisonCurve)] = static_cast<double>(curve);
+        e.p[paramIndex(0, OpParam::UnisonPan)] = static_cast<double>(pan);
+        e.p[paramIndex(0, OpParam::UnisonBlend)] = blend;
+        e.noteOn(69);
+        e.render(4800);
+        Sides s{std::vector<float>(kFftSize), std::vector<float>(kFftSize)};
+        for (size_t done = 0; done < kFftSize; done += kBlock)
+            e.synth().render(s.left.data() + done, s.right.data() + done, kBlock, e.p);
+        return s;
+    };
+    auto cents = [](double c) { return 440.0 * std::exp2(c / 1200.0); };
+    {
+        // Five copies: Linear's inner pair at 50 cents, Center's at 25.
+        const Sides lin = play(5, UniCurve::Linear, UniPan::Ramp, 0.0);
+        const Sides mid = play(5, UniCurve::Center, UniPan::Ramp, 0.0);
+        const double lin50 = level(lin.left, cents(-50.0)), lin25 = level(lin.left, cents(-25.0));
+        const double mid50 = level(mid.left, cents(-50.0)), mid25 = level(mid.left, cents(-25.0));
+        std::printf("      5 copies, -50 and -25 cents: Linear %.0f and %.0f dB, Center %.0f and %.0f dB\n", lin50, lin25,
+                    mid50, mid25);
+        check(lin50 - lin25 > 30.0 && mid25 - mid50 > 30.0, "Center plays its inner copies nearer the pitch than Linear");
+    }
+    {
+        // Three copies: Ramp puts the lowest on the left, Alternate (mirrored outward from the middle) on the right.
+        const Sides ramp = play(3, UniCurve::Linear, UniPan::Ramp, 0.0);
+        const Sides alt = play(3, UniCurve::Linear, UniPan::Alternate, 0.0);
+        const double rampSide = level(ramp.left, cents(-100.0)) - level(ramp.right, cents(-100.0));
+        const double altSide = level(alt.left, cents(-100.0)) - level(alt.right, cents(-100.0));
+        std::printf("      3 copies, the lowest left over right: Ramp %+.0f dB, Alternate %+.0f dB\n", rampSide, altSide);
+        check(rampSide > 30.0 && altSide < -30.0, "Alternate moves the copies to other sides than Ramp");
+    }
+    {
+        // Five copies, in the middle: at full Blend the outermost a tenth of the middle one, 20 dB under it; with
+        // none, as loud.
+        auto mono = [](const Sides &s) {
+            std::vector<float> m(kFftSize);
+            for (size_t i = 0; i < kFftSize; ++i)
+                m[i] = s.left[i] + s.right[i];
+            return m;
+        };
+        const std::vector<float> flat = mono(play(5, UniCurve::Linear, UniPan::Ramp, 0.0, 0.0));
+        const std::vector<float> full = mono(play(5, UniCurve::Linear, UniPan::Ramp, 1.0, 0.0));
+        const double flatGap = level(flat, 440.0) - level(flat, cents(100.0));
+        const double fullGap = level(full, 440.0) - level(full, cents(100.0));
+        std::printf("      5 copies, the outermost under the middle one: Blend 0 %.1f dB, full %.1f dB\n", flatGap,
+                    fullGap);
+        check(std::abs(flatGap) < 1.5 && std::abs(fullGap - 20.0) < 1.5,
+              "Blend turns the outer copies down under the middle ones");
+    }
+    {
+        // A modulator's copies at full Blend: in what its carrier plays, the outermost's sideband 20 dB under the
+        // middle one's, as heard.
+        auto modulated = [](double blend) {
+            Engine e(2);
+            e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+            e.p[paramIndex(1, OpParam::Out)] = 0.0;
+            e.p[paramIndex(1, OpParam::Ratio)] = normFromRatio(0.5);
+            e.p[paramIndex(1, OpParam::Unison)] = 5.0;
+            e.p[paramIndex(1, OpParam::UnisonDetune)] = 100.0;
+            e.p[paramIndex(1, OpParam::UnisonBlend)] = blend;
+            e.p[matrixIndex(1, 0)] = 0.3;
+            e.noteOn(69);
+            e.render(4800);
+            return e.render(kFftSize);
+        };
+        const std::vector<float> flat = modulated(0.0), full = modulated(1.0);
+        // The first sideband above the carrier from the middle copy (220 Hz) and from the outermost (100 cents up).
+        const double outer = 440.0 + 220.0 * std::exp2(100.0 / 1200.0);
+        const double flatGap = level(flat, 660.0) - level(flat, outer);
+        const double fullGap = level(full, 660.0) - level(full, outer);
+        std::printf("      a modulator's outermost copy under its middle one, in its carrier: Blend 0 %.1f dB, full %.1f dB "
+                    "(the middle one's sideband %.0f dB under the carrier)\n",
+                    flatGap, fullGap, level(flat, 440.0) - level(flat, 660.0));
+        check(std::abs(flatGap) < 1.5 && std::abs(fullGap - 20.0) < 2.0,
+              "Blend turns a modulator's outer copies down in what its carrier plays");
+    }
+}
+
 } // namespace
+
+// The shaper effects in slots 0..slots-1 one after another, each Stack at `stack` and `driveDb`, all wet, the last
+// unlinked at 0 dB output and (if `linkedRow`) the ones before it linked.
+ParamValues stackParams(int slots, int stack, double driveDb, bool linkedRow = false) {
+    ParamValues p{};
+    for (int i = 0; i < kParamCount; ++i)
+        p[i] = paramTable()[i].def;
+    std::vector<int> order;
+    for (int slot = 0; slot < slots; ++slot) {
+        p[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(slot, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Stack);
+        p[paramIndex(slot, FxParam::ShaperStack)] = stack;
+        p[paramIndex(slot, FxParam::ShaperDrive)] = driveDb;
+        p[paramIndex(slot, FxParam::ShaperLink)] = linkedRow && slot + 1 < slots ? 1.0 : 0.0;
+        p[paramIndex(slot, FxParam::ShaperOutput)] = 0.0;
+        p[paramIndex(slot, FxParam::ShaperMix)] = 1.0;
+        order.push_back(slot);
+    }
+    chain(p, order);
+    return p;
+}
+
+// `in` through the effects as `p` sets them, on both sides, in pieces of `piece` frames, `change` called before each
+// with the frame it starts at; the left side, then (if `ringing`) whether the effects still ran at the end.
+template <class Change>
+std::vector<float> throughEffects(ParamValues p, const std::vector<float> &in, uint32_t piece, const Change &change,
+                                  bool *ringing = nullptr) {
+    Effects fx;
+    fx.prepare(kSampleRate);
+    std::vector<float> left = in, right = in;
+    for (size_t t = 0; t < in.size(); t += piece) {
+        change(p, t);
+        const uint32_t n = static_cast<uint32_t>(std::min<size_t>(piece, in.size() - t));
+        fx.process(left.data() + t, right.data() + t, n, p, 120.0, 60.0);
+    }
+    if (ringing)
+        *ringing = fx.ringing();
+    return left;
+}
+std::vector<float> throughEffects(const ParamValues &p, const std::vector<float> &in, bool *ringing = nullptr) {
+    return throughEffects(p, in, kBlock, [](ParamValues &, size_t) {}, ringing);
+}
+
+void stackChecks() {
+    std::printf("stack:\n");
+    // A saw-like tone at 110 Hz, its first eight harmonics, half a second at -6 dB, then a release of 50 ms and two
+    // seconds of silence.
+    const size_t held = static_cast<size_t>(kSampleRate / 2), release = static_cast<size_t>(0.05 * kSampleRate);
+    std::vector<float> tone(held + release + static_cast<size_t>(2.0 * kSampleRate), 0.0f);
+    for (size_t i = 0; i < held + release; ++i) {
+        double x = 0.0;
+        for (int k = 1; k <= 8; ++k)
+            x += std::sin(2.0 * std::numbers::pi * 110.0 * k * static_cast<double>(i) / kSampleRate) / k;
+        const double level = i < held ? 1.0 : 1.0 - static_cast<double>(i - held) / release;
+        tone[i] = static_cast<float>(0.3 * level * x);
+    }
+    auto peakIn = [](const std::vector<float> &x, size_t from, size_t to) {
+        float peak = 0.0f;
+        bool finite = true;
+        for (size_t i = from; i < std::min(to, x.size()); ++i) {
+            finite = finite && std::isfinite(x[i]);
+            peak = std::max(peak, std::abs(x[i]));
+        }
+        return finite ? peak : std::numeric_limits<float>::infinity();
+    };
+    {
+        // A stack of three plays about as three shapers of one stage in a row, the first two linked (once the row's
+        // DC blockers between them, which the stack hasn't, have settled; at a gentle drive, as the row cuts what its
+        // stages put out past 20 kHz between them, and the stack, at twice the rate, not), and isn't one.
+        const std::vector<float> stacked = throughEffects(stackParams(1, 3, 6.0), tone);
+        const std::vector<float> row = throughEffects(stackParams(3, 1, 6.0, true), tone);
+        const std::vector<float> single = throughEffects(stackParams(1, 1, 6.0), tone);
+        // How far apart, in RMS against the stack's own, in dB, `other` taken as many samples later as matches best
+        // (each shaper in the row going up to twice the rate and back adds a few samples).
+        auto apartDb = [&](const std::vector<float> &other) {
+            double best = std::numeric_limits<double>::infinity();
+            for (size_t lag = 0; lag < 32; ++lag) {
+                double diff = 0.0, own = 0.0;
+                for (size_t i = held / 2; i < held; ++i) {
+                    const double d = static_cast<double>(stacked[i]) - other[i + lag];
+                    diff += d * d;
+                    own += static_cast<double>(stacked[i]) * stacked[i];
+                }
+                best = std::min(best, 10.0 * std::log10(diff / own + 1e-30));
+            }
+            return best;
+        };
+        const double fromRow = apartDb(row), fromSingle = apartDb(single);
+        std::printf("      a stack of 3 at 6 dB against 3 shapers in a row: %.1f dB apart; against 1: %.1f dB\n",
+                    fromRow, fromSingle);
+        check(fromRow < -18.0 && fromRow < fromSingle - 8.0,
+              "a Stack curve's stack plays about as as many linked shapers in a row");
+    }
+    {
+        // One stage at 0 dB passes a quiet 1 kHz sine at its level (its filters far from it), and at full drive
+        // saturates a loud tone unevenly, one half reaching further than the other (once the DC blocker has centered
+        // it), neither past 1.8 (its edges, nothing rounding them off, overshooting a little).
+        std::vector<float> quiet(static_cast<size_t>(kSampleRate / 2));
+        for (size_t i = 0; i < quiet.size(); ++i)
+            quiet[i] = static_cast<float>(0.01 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / kSampleRate));
+        const std::vector<float> passed = throughEffects(stackParams(1, 1, 0.0), quiet);
+        double inSq = 0.0, outSq = 0.0;
+        for (size_t i = 4800; i < quiet.size(); ++i) {
+            inSq += static_cast<double>(quiet[i]) * quiet[i];
+            outSq += static_cast<double>(passed[i]) * passed[i];
+        }
+        const double gainDb = 10.0 * std::log10(outSq / inSq);
+        const std::vector<float> driven = throughEffects(stackParams(1, 1, 36.0), tone);
+        float top = 0.0f, bottom = 0.0f;
+        for (size_t i = 12000; i < held; ++i) { // once the DC blocker has settled
+            top = std::max(top, driven[i]);
+            bottom = std::min(bottom, driven[i]);
+        }
+        std::printf("      one stage: a quiet sine %.2f dB; at 36 dB of drive from %.3f to %.3f\n", gainDb, bottom, top);
+        check(std::abs(gainDb) < 0.1 && std::abs(top + bottom) > 0.1f && top < 1.8f && -bottom < 1.8f,
+              "a Stack curve's stage passes a quiet sine at its level and saturates a loud one unevenly");
+    }
+    {
+        // No low-pass: stacked eight high at 0 dB, quiet sines from 1 to 15 kHz come out within a dB of their level
+        // (at twice the rate, each stage lifting back what its anti-aliasing takes off the top).
+        std::printf("      stacked 8 high, quiet sines:");
+        double worst = 0.0;
+        for (double hz : {1000.0, 5000.0, 10000.0, 15000.0}) {
+            std::vector<float> quiet(static_cast<size_t>(kSampleRate / 4));
+            for (size_t i = 0; i < quiet.size(); ++i)
+                quiet[i] = static_cast<float>(0.01 * std::sin(2.0 * std::numbers::pi * hz * i / kSampleRate));
+            const std::vector<float> passed = throughEffects(stackParams(1, 8, 0.0), quiet);
+            double inSq = 0.0, outSq = 0.0;
+            for (size_t i = 4800; i < quiet.size(); ++i) {
+                inSq += static_cast<double>(quiet[i]) * quiet[i];
+                outSq += static_cast<double>(passed[i]) * passed[i];
+            }
+            const double db = 10.0 * std::log10(outSq / inSq);
+            worst = std::max(worst, std::abs(db));
+            std::printf(" %.0f kHz %+.2f dB", hz / 1000.0, db);
+        }
+        std::printf("\n");
+        check(worst < 1.0, "a Stack curve keeps its top: quiet sines to 15 kHz within a dB, stacked 8 high");
+    }
+    {
+        // Stacked eight high and fully driven, what the stages' high-passes still hold as the note ends is driven on
+        // by the stages after them: it rings on a moment past the note, further than a single stage, then stops.
+        bool ringing8 = true, ringing1 = true;
+        const std::vector<float> eight = throughEffects(stackParams(1, 8, 36.0), tone, &ringing8);
+        const std::vector<float> one = throughEffects(stackParams(1, 1, 36.0), tone, &ringing1);
+        const size_t end = held + release, ms = static_cast<size_t>(kSampleRate / 1000.0);
+        auto lastHeard = [&](const std::vector<float> &x) { // ms after the note's end it last came over -60 dB
+            size_t last = end;
+            for (size_t i = end; i < x.size(); ++i)
+                if (std::abs(x[i]) > 1e-3f)
+                    last = i;
+            return static_cast<double>(last - end) / ms;
+        };
+        const double heard8 = lastHeard(eight), heard1 = lastHeard(one);
+        const float after8 = peakIn(eight, end + 1000 * ms, eight.size());
+        const float after1 = peakIn(one, end + 1000 * ms, one.size());
+        std::printf("      after the note, over -60 dB for %.0f ms stacked 8 high, %.0f ms with one stage; a second "
+                    "on %.1e and %.1e, %s\n",
+                    heard8, heard1, after8, after1, ringing8 || ringing1 ? "still running" : "stopped");
+        check(heard8 > 20.0 && heard8 > 2.0 * heard1 && heard8 < 1000.0 && after8 < 1e-6f && after1 < 1e-6f &&
+                  !ringing8 && !ringing1,
+              "a Stack curve stacked high rings on past the note, longer than one stage, then stops");
+    }
+    {
+        // The stack turned from 1 up to 8 and back down under the tone, in single frames: nothing louder than full
+        // scale, nothing that isn't a number.
+        const std::vector<float> moved =
+            throughEffects(stackParams(1, 1, 24.0), tone, 1, [&](ParamValues &p, size_t t) {
+                const double along = static_cast<double>(t) / static_cast<double>(held);
+                p[paramIndex(0, FxParam::ShaperStack)] = along < 1.0 ? 1.0 + 7.0 * (1.0 - std::abs(2.0 * along - 1.0))
+                                                                     : 1.0;
+            });
+        const float peak = peakIn(moved, 0, moved.size());
+        std::printf("      the stack moved from 1 to 8 and back under a note: peak %.4f\n", peak);
+        check(peak <= 2.0f, "a Stack curve's stack moved under a note stays finite, within the curve's reach");
+    }
+    {
+        // A shaper effect switched from Soft to Stack and back under a quiet sine, which either curve passes about as
+        // it is: the Stack path, at twice the rate, its half-bands a few samples late, fades in and out over the other
+        // rather than jumping to it, so no sample steps further than the sine's own do.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperLink)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperOutput)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+        p[paramIndex(0, FxParam::ShaperStack)] = 1.0;
+        chain(p, {0});
+        constexpr double kHz = 440.0, kLevel = 0.05;
+        const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+        std::vector<float> left(kBlock), right(kBlock);
+        double most = 0.0, last = 0.0, peak = 0.0;
+        uint32_t t = 0;
+        for (ClipMode mode : {ClipMode::Soft, ClipMode::Stack, ClipMode::Soft, ClipMode::Stack, ClipMode::Soft}) {
+            p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(mode);
+            for (uint32_t done = 0; done < each; done += kBlock, t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] =
+                        static_cast<float>(kLevel * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s) {
+                    if (t + s > kSampleRate / 10) { // past the effect's fading in
+                        most = std::max(most, static_cast<double>(std::abs(left[s] - last)));
+                        peak = std::max(peak, static_cast<double>(std::abs(left[s])));
+                    }
+                    last = left[s];
+                }
+            }
+        }
+        const double steepest = most / (peak * 2.0 * std::numbers::pi * kHz / kSampleRate);
+        std::printf("      Soft to Stack and back twice under a sine: steepest step x%.3f of the sine's\n", steepest);
+        check(steepest < 1.15, "a shaper effect switched to Stack and back under a sine crossfades rather than clicks");
+    }
+    {
+        // The low end thumps: as the note ends, what the stages' high-passes hold the stages after them drive on, so
+        // far more comes out between 10 and 60 Hz in the 150 ms after it stacked eight high than with one stage.
+        auto thump = [&](int stack) {
+            const std::vector<float> out = throughEffects(stackParams(1, stack, 24.0), tone);
+            const double low = 1.0 - std::exp(-2.0 * std::numbers::pi * 60.0 / kSampleRate);
+            const double slow = 1.0 - std::exp(-2.0 * std::numbers::pi * 10.0 / kSampleRate);
+            double a = 0.0, b = 0.0, c = 0.0, d = 0.0, end = 0.0;
+            const size_t window = static_cast<size_t>(0.15 * kSampleRate), ended = held + release;
+            for (size_t i = 0; i < ended + window; ++i) {
+                a += (out[i] - a) * low;
+                b += (a - b) * low;
+                c += (out[i] - c) * slow;
+                d += (c - d) * slow;
+                if (i >= ended)
+                    end = std::max(end, std::abs(b - d));
+            }
+            return end;
+        };
+        const double one = thump(1), eight = thump(8);
+        std::printf("      10-60 Hz after the note: %.3f with one stage, %.3f stacked 8 high\n", one, eight);
+        check(eight > 3.0 * one && eight > 0.3, "a Stack curve stacked high thumps its low end after the note");
+    }
+    {
+        // A voice's shaper, the Stack curve stacked eight high at full drive, the operator heard only through it: the
+        // voice rings on, and ends once the stages have rung out.
+        Engine e(2);
+        e.p[paramIndex(0, ShaperParam::Enabled)] = 1.0;
+        e.p[paramIndex(0, ShaperParam::Mode)] = static_cast<double>(ClipMode::Stack);
+        e.p[paramIndex(0, ShaperParam::Stack)] = 8.0;
+        e.p[paramIndex(0, ShaperParam::Drive)] = 36.0;
+        e.p[paramIndex(0, ShaperParam::Out)] = 1.0;
+        e.p[shaperSendIndex(0, 0)] = 0.5;
+        e.p[paramIndex(0, OpParam::Out)] = 0.0;
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.05);
+        e.noteOn(45);
+        const std::vector<float> note = e.render(static_cast<size_t>(kSampleRate / 2));
+        const float notePeak = peakIn(note, 4800, note.size());
+        e.noteOff(45);
+        const std::vector<float> after = e.render(static_cast<size_t>(3.0 * kSampleRate));
+        std::printf("      a voice's shaper stacked 8 high: peak %.3f, %d voice(s) left 3 s after its release\n",
+                    notePeak, e.synth().activeVoiceCount());
+        check(notePeak > 0.3f && std::isfinite(peakIn(after, 0, after.size())) && e.synth().activeVoiceCount() == 0,
+              "a voice's Stack curve sounds stacked high, and the voice ends once it has rung out");
+    }
+}
+
+// The sequencer: where its notes start and end, against the host's transport and from keys.
+void sequencerChecks() {
+    std::printf("sequencer:\n");
+    constexpr double kStep = kSampleRate * 60.0 / 120.0 / 4.0; // a 1/16 step at 120 bpm: 6000 samples
+    auto blank = [] {
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(SeqParam::Enabled)] = 1.0;
+        return p;
+    };
+    auto note = [](ParamValues &p, int slot, double start, double length, int pitch, int pattern = 0) {
+        p[seqNoteIndex(pattern, slot, SeqNoteParam::Start)] = start;
+        p[seqNoteIndex(pattern, slot, SeqNoteParam::Length)] = length;
+        p[seqNoteIndex(pattern, slot, SeqNoteParam::Pitch)] = pitch;
+    };
+    struct Event {
+        double frame;
+        bool on;
+        int key;
+    };
+    // Plans `frames` from the song's start with the transport playing at 120 bpm, in stretches of `piece`.
+    auto plan = [](const ParamValues &p, double frames, uint32_t piece = 512) {
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        std::vector<Event> events;
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        for (double done = 0.0; done < frames;) {
+            uint32_t covered = 0;
+            const int n = seq.plan(piece, 120.0, true, done / kSampleRate * 2.0, out, covered);
+            for (int i = 0; i < n; ++i)
+                events.push_back({done + out[i].frame, out[i].on, out[i].key});
+            done += covered;
+        }
+        return events;
+    };
+    auto near = [](double a, double b) { return std::abs(a - b) <= 1.0; };
+
+    // Two notes, at steps 0 and 4, a step long each: on at their steps, off a step later, the bar over and again.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 1.0, 60);
+        note(p, 1, 4.0, 1.0, 64);
+        const std::vector<Event> e = plan(p, 16.5 * kStep);
+        std::printf("      %zu events; the second note on at %.0f, off at %.0f; the first again at %.0f\n", e.size(),
+                    e.size() > 3 ? e[2].frame : -1.0, e.size() > 3 ? e[3].frame : -1.0, e.size() > 4 ? e[4].frame : -1.0);
+        check(e.size() == 5 && e[0].on && e[0].key == 60 && near(e[0].frame, 0.0) && !e[1].on &&
+                  near(e[1].frame, kStep) && e[2].on && e[2].key == 64 && near(e[2].frame, 4 * kStep) && !e[3].on &&
+                  near(e[3].frame, 5 * kStep) && e[4].on && near(e[4].frame, 16 * kStep),
+              "the sequencer plays its notes on their steps with the host's transport, the bar round again");
+        // Planned in other stretches, the same.
+        const std::vector<Event> odd = plan(p, 16.5 * kStep, 37);
+        bool same = odd.size() == e.size();
+        for (size_t i = 0; same && i < e.size(); ++i)
+            same = odd[i].on == e[i].on && odd[i].key == e[i].key && near(odd[i].frame, e[i].frame);
+        check(same, "the sequencer plans alike whatever the stretches");
+    }
+    // Swing at 75 % puts the step after the beat three quarters of the way to the next; Gate at 50 % halves a note.
+    {
+        ParamValues p = blank();
+        note(p, 0, 1.0, 1.0, 60);
+        p[paramIndex(SeqParam::Swing)] = 0.75;
+        p[paramIndex(SeqParam::Gate)] = 0.5;
+        const std::vector<Event> e = plan(p, 4 * kStep);
+        std::printf("      swung at 75 %%, gated at 50 %%: on at %.0f, off at %.0f\n", e.size() > 1 ? e[0].frame : -1.0,
+                    e.size() > 1 ? e[1].frame : -1.0);
+        check(e.size() == 2 && near(e[0].frame, 1.5 * kStep) && near(e[1].frame, 1.75 * kStep),
+              "Swing delays every other step and Gate shortens the notes");
+    }
+    // Reversed, the step a bar plays first is its last: a note on step 0 plays at step 15. Its loop from step 4 to 8
+    // leaves out a note on step 0, and plays one on step 5 every four steps.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 0.5, 60);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Reverse);
+        const std::vector<Event> back = plan(p, 16 * kStep);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Forward);
+        note(p, 1, 5.0, 0.5, 62);
+        p[paramIndex(0, SeqPatternParam::LoopStart)] = 4.0;
+        p[paramIndex(0, SeqPatternParam::LoopEnd)] = 8.0;
+        const std::vector<Event> looped = plan(p, 8 * kStep);
+        int ons = 0;
+        bool only62 = true;
+        for (const Event &ev : looped)
+            if (ev.on) {
+                ++ons;
+                only62 = only62 && ev.key == 62;
+            }
+        check(!back.empty() && near(back[0].frame, 15 * kStep) && ons == 2 && only62 && near(looped[0].frame, kStep),
+              "Reverse plays the loop backward, and the loop plays only the notes in it");
+    }
+    // The playhead moves on steadily, backward through each step reversed (and on Ping-Pong's way back), forward
+    // otherwise: from one stretch of 512 frames to the next, never further than a stretch's share of a step (but where
+    // the loop comes round, or Ping-Pong turns, by a step).
+    for (SeqOrder order : {SeqOrder::Forward, SeqOrder::Reverse, SeqOrder::PingPong}) {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 0.5, 60);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(order);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        const double share = 512.0 / kStep;
+        float last = -1.0f;
+        int jumps = 0, wrongWay = 0;
+        for (double done = 0.0; done < 40 * kStep;) {
+            uint32_t covered = 0;
+            seq.plan(512, 120.0, true, done / kSampleRate * 2.0, out, covered);
+            done += covered;
+            const float now = seq.position();
+            if (last >= 0.0f) {
+                const double moved = now - last;
+                if (std::abs(moved) > share + 1e-3)
+                    ++jumps;
+                else if ((order == SeqOrder::Reverse) != (moved < 0.0) && order != SeqOrder::PingPong)
+                    ++wrongWay;
+            }
+            last = now;
+        }
+        // 40 steps: the loop round twice (Forward, Reverse at steps 16 and 32), or Ping-Pong turning twice (16 and 32).
+        const int expected = 2;
+        std::printf("      playhead, %s: %d jumps, %d the wrong way\n",
+                    order == SeqOrder::Forward ? "forward" : order == SeqOrder::Reverse ? "reversed" : "ping-pong", jumps,
+                    wrongWay);
+        check(jumps <= expected && wrongWay == 0, "the playhead moves on steadily the way the pattern plays");
+    }
+    // The curves read where the playhead is: a bend from -1 at step 0 to 1 at step 16 stands at -0.5 on step 4 (and at
+    // 0.5 played reversed, back through step 12), a segment bent by 1 lower than straight, a mod wheel of one point at
+    // 0.75 everywhere, and a curve without points, or a sequencer not playing, nothing.
+    {
+        auto curveAt = [&](const ParamValues &p, double step, SeqCurve curve) {
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(p);
+            std::array<SeqEvent, Sequencer::kMaxEvents> out;
+            uint32_t covered = 0;
+            seq.plan(64, 120.0, true, step / 4.0, out, covered); // a 1/16 step is a quarter of a beat
+            return seq.curve(curve);
+        };
+        auto point = [](ParamValues &p, SeqCurve curve, int i, double x, double y, double bend = 0.0) {
+            p[seqCurveIndex(0, curve, i, PointField::X)] = x;
+            p[seqCurveIndex(0, curve, i, PointField::Y)] = y;
+            p[seqCurveIndex(0, curve, i, PointField::Curve)] = bend;
+            p[seqCurveCountIndex(0, curve)] = std::max(p[seqCurveCountIndex(0, curve)], i + 1.0);
+        };
+        ParamValues p = blank();
+        const double none = curveAt(p, 4.0, SeqCurve::Bend);
+        point(p, SeqCurve::Bend, 0, 0.0, -1.0);
+        point(p, SeqCurve::Bend, 1, 16.0, 1.0);
+        point(p, SeqCurve::ModWheel, 0, 3.0, 0.75);
+        const double bend = curveAt(p, 4.0, SeqCurve::Bend), wheel = curveAt(p, 9.0, SeqCurve::ModWheel);
+        const double before = curveAt(p, 1.0, SeqCurve::ModWheel); // before its only point: that point's value
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Reverse);
+        const double reversed = curveAt(p, 4.0, SeqCurve::Bend);
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Forward);
+        p[seqCurveIndex(0, SeqCurve::Bend, 0, PointField::Curve)] = 1.0;
+        const double bent = curveAt(p, 8.0, SeqCurve::Bend);
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key); // no key held: not playing
+        const double idle = curveAt(p, 4.0, SeqCurve::Bend);
+        std::printf("      curves: bend %.3f on step 4, %.3f reversed, %.3f bent on step 8; mod wheel %.3f, %.3f\n", bend,
+                    reversed, bent, wheel, before);
+        check(std::isnan(none) && std::abs(bend + 0.5) < 1e-3 && std::abs(reversed - 0.5) < 1e-3 && bent < -0.5 &&
+                  std::abs(wheel - 0.75) < 1e-9 && std::abs(before - 0.75) < 1e-9 && std::isnan(idle),
+              "the sequencer's curves stand where the playhead is, and do nothing without points");
+    }
+    // Through the synth, in Key: a bend curve at 1 bends an A4 the sequencer plays up by Bend Range (two semitones, to
+    // B4); a mod wheel curve at 1 takes the mod wheel's slot on A's level all the way, silencing it.
+    {
+        auto play = [&](double bend, double wheel) {
+            Engine e(1);
+            e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+            e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+            note(e.p, 0, 0.0, 16.0, 69);
+            e.p[slotTargetIndex(kWheelSource, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+            e.p[slotAmountIndex(kWheelSource, 0)] = -1.0;
+            for (const auto &[curve, v] : {std::pair{SeqCurve::Bend, bend}, std::pair{SeqCurve::ModWheel, wheel}})
+                if (std::isfinite(v)) {
+                    e.p[seqCurveCountIndex(0, curve)] = 1.0;
+                    e.p[seqCurveIndex(0, curve, 0, PointField::Y)] = v;
+                }
+            e.synth().setTempo(120.0);
+            e.render(256); // the sequencer on, taking keys
+            e.synth().noteOn({1, 0, 0, 60}, 1.0);
+            e.render(4800);
+            return e.render(8192);
+        };
+        auto power = [](const std::vector<float> &x, double hz) {
+            std::complex<double> sum = 0.0;
+            for (size_t i = 0; i < x.size(); ++i)
+                sum += static_cast<double>(x[i]) *
+                       std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / kSampleRate);
+            return std::norm(sum);
+        };
+        auto rms = [](const std::vector<float> &x) {
+            double sum = 0.0;
+            for (float s : x)
+                sum += static_cast<double>(s) * s;
+            return std::sqrt(sum / static_cast<double>(x.size()));
+        };
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const std::vector<float> plain = play(nan, nan), bent = play(1.0, nan), quiet = play(nan, 1.0);
+        const double b4 = 440.0 * std::pow(2.0, 2.0 / 12.0);
+        std::printf("      through the synth: bent, B4 %.1f dB over A4; the mod wheel curve leaving %.4f of %.4f\n",
+                    10.0 * std::log10(power(bent, b4) / power(bent, 440.0)), rms(quiet), rms(plain));
+        check(power(plain, 440.0) > 100.0 * power(plain, b4) && power(bent, b4) > 100.0 * power(bent, 440.0) &&
+                  rms(quiet) < 0.01 * rms(plain),
+              "the bend curve bends what the sequencer plays, and the mod wheel curve moves the mod wheel");
+    }
+    // Muted or at no chance, a note doesn't play; at half, it plays some passes and not others, alike each time.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 0.5, 60);
+        note(p, 1, 2.0, 0.5, 62);
+        note(p, 2, 4.0, 0.5, 64);
+        p[seqNoteIndex(0, 0, SeqNoteParam::Mute)] = 1.0;
+        p[seqNoteIndex(0, 1, SeqNoteParam::Chance)] = 0.0;
+        p[seqNoteIndex(0, 2, SeqNoteParam::Chance)] = 0.5;
+        const std::vector<Event> e = plan(p, 64 * 16 * kStep, 4096);
+        int played = 0, others = 0;
+        for (const Event &ev : e)
+            if (ev.on)
+                (ev.key == 64 ? played : others)++;
+        std::printf("      at half a chance, %d of 64 passes\n", played);
+        check(others == 0 && played > 16 && played < 48 && plan(p, 64 * 16 * kStep, 4096).size() == e.size(),
+              "a muted note or one at no chance doesn't play, and at half it plays about half the passes");
+    }
+    // Pattern B picked mid-bar takes over at the bar's end, and A's note on step 8 still plays before it.
+    {
+        ParamValues p = blank();
+        note(p, 0, 8.0, 0.5, 60);
+        note(p, 0, 0.0, 0.5, 72, 1);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        std::vector<Event> e;
+        double done = 0.0;
+        auto run = [&](double until) {
+            while (done < until) {
+                uint32_t covered = 0;
+                const int n = seq.plan(512, 120.0, true, done / kSampleRate * 2.0, out, covered);
+                for (int i = 0; i < n; ++i)
+                    e.push_back({done + out[i].frame, out[i].on, out[i].key});
+                done += covered;
+            }
+        };
+        run(4 * kStep);
+        p[paramIndex(SeqParam::Pattern)] = 1.0;
+        seq.configure(p);
+        run(17 * kStep);
+        check(e.size() == 4 && e[0].key == 60 && near(e[0].frame, 8 * kStep) && e[2].key == 72 &&
+                  near(e[2].frame, 16 * kStep) && seq.pattern() == 1,
+              "another pattern takes over where the loop comes round");
+    }
+    // In Key, a key starts the pattern from its first step, transposed by the key from Root, and letting it go stops
+    // it: through the synth, the key's end is reported, the sequencer's notes' never.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        note(e.p, 0, 0.0, 1.0, 60);
+        note(e.p, 1, 2.0, 1.0, 67);
+        e.synth().setTempo(120.0);
+        const std::vector<float> before = e.render(4800);
+        e.synth().noteOn({5, 0, 0, 64}, 1.0);
+        std::vector<float> held = e.render(static_cast<size_t>(2.5 * kStep));
+        Telemetry t;
+        e.synth().telemetry(t);
+        // The roll lights the key the note is written on, not the key it plays: G4, not B4.
+        auto lit = [&](int key) { return (t.seqKeys[static_cast<size_t>(key / 32)] >> (key % 32) & 1u) != 0; };
+        const bool programmedLit = lit(67) && !lit(71);
+        const std::vector<float> rest = e.render(static_cast<size_t>(1.5 * kStep));
+        held.insert(held.end(), rest.begin(), rest.end());
+        e.synth().telemetry(t);
+        const float position = t.seqPosition;
+        e.synth().noteOff({5, 0, 0, 64});
+        bool keyEnded = false, seqEnded = false;
+        for (const NoteRef &n : e.synth().endedNotes()) {
+            keyEnded = keyEnded || (n.noteId == 5 && n.port == 0);
+            seqEnded = seqEnded || n.port == kSeqPort;
+        }
+        e.synth().clearEndedNotes();
+        e.render(48000);
+        for (const NoteRef &n : e.synth().endedNotes())
+            seqEnded = seqEnded || n.port == kSeqPort;
+        const std::vector<float> after = e.render(4800);
+        auto peak = [](const std::vector<float> &x) {
+            float most = 0.0f;
+            for (float s : x)
+                most = std::max(most, std::abs(s));
+            return most;
+        };
+        // The second note (G4 + 4 = B4, 493.9 Hz) sounds two steps in.
+        const size_t from = static_cast<size_t>(2.2 * kStep);
+        auto at = [&](double hz) { // the power at `hz` over 4096 samples from there
+            std::complex<double> sum = 0.0;
+            for (size_t i = 0; i < 4096; ++i)
+                sum += static_cast<double>(held[from + i]) *
+                       std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / kSampleRate);
+            return std::norm(sum);
+        };
+        std::printf("      Key: %.3f before, %.3f held, %.4f after; at its pattern's step %.2f\n", peak(before),
+                    peak(held), peak(after), position);
+        check(peak(before) == 0.0f && peak(held) > 0.1f && peak(after) == 0.0f && at(493.9) > 100.0 * at(392.0) &&
+                  keyEnded && !seqEnded && std::abs(position - 4.0f) < 0.1f,
+              "in Key, a key plays the pattern transposed by it and stops it when let go");
+        check(programmedLit, "the telemetry gives the keys of the notes playing as written, not as transposed");
+    }
+    // A slide holds on into the next note, which ends it as it starts; one the next note starts within ends at its own
+    // end, as written, not a step after.
+    {
+        ParamValues p = blank();
+        note(p, 0, 0.0, 1.0, 60);
+        p[seqNoteIndex(0, 0, SeqNoteParam::Slide)] = 1.0;
+        note(p, 1, 1.5, 0.5, 62);
+        note(p, 2, 4.0, 4.0, 64);
+        p[seqNoteIndex(0, 2, SeqNoteParam::Slide)] = 1.0;
+        note(p, 3, 6.0, 1.0, 65);
+        const std::vector<Event> e = plan(p, 9 * kStep);
+        auto offOf = [&](int key) {
+            for (const Event &ev : e)
+                if (!ev.on && ev.key == key)
+                    return ev.frame;
+            return -1.0;
+        };
+        std::printf("      slides: held into the next note to %.2f steps, overlapped ending at %.2f\n", offOf(60) / kStep,
+                    offOf(64) / kStep);
+        check(near(offOf(60), 1.5 * kStep) && near(offOf(64), 8.0 * kStep),
+              "a slide holds on into the next note, and one the next note starts within ends as written");
+    }
+    // In Latch, a pattern a key started plays on once it is let go, and All Notes Off stops it.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Latch);
+        for (int step = 0; step < 16; step += 2)
+            note(e.p, step / 2, step, 1.0, 60);
+        e.synth().setTempo(120.0);
+        e.render(480);
+        e.synth().noteOn({5, 0, 0, 60}, 1.0);
+        e.render(static_cast<size_t>(kStep));
+        e.synth().noteOff({5, 0, 0, 60});
+        auto peak = [](const std::vector<float> &x) {
+            float most = 0.0f;
+            for (float s : x)
+                most = std::max(most, std::abs(s));
+            return most;
+        };
+        const float latched = peak(e.render(static_cast<size_t>(4 * kStep)));
+        e.synth().allNotesOff(-1);
+        e.render(48000);
+        const float stopped = peak(e.render(static_cast<size_t>(4 * kStep)));
+        std::printf("      Latch: %.3f let go, %.4f after All Notes Off\n", latched, stopped);
+        check(latched > 0.1f && stopped == 0.0f && !e.synth().sequencerAwake(),
+              "in Latch, the pattern plays on once the key is let go, and All Notes Off stops it");
+    }
+    // In Key, with an empty pattern, a note the editor plays to be heard (on kAuditionPort) sounds as a note rather
+    // than starting the pattern (which would play nothing), and no end is reported for it.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        e.render(480);
+        e.synth().noteOn({-1, kAuditionPort, 0, 69}, 0.8);
+        const std::vector<float> heard = e.render(4800);
+        e.synth().noteOff({-1, kAuditionPort, 0, 69});
+        e.render(48000);
+        bool reported = false;
+        for (const NoteRef &n : e.synth().endedNotes())
+            reported = reported || n.port == kAuditionPort;
+        float peak = 0.0f;
+        for (float s : heard)
+            peak = std::max(peak, std::abs(s));
+        check(peak > 0.1f && !reported, "in Key, a note the editor auditions sounds alone, its end not reported");
+    }
+    // The keys the telemetry shows held (the keyboard strip's) leave out the sequencer's notes: with the transport
+    // playing its note, none, though a voice sounds; a key played shows.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        note(e.p, 0, 0.0, 4.0, 69);
+        e.synth().setTempo(120.0);
+        e.synth().setTransport(true, 0.0, 0.0);
+        e.render(static_cast<size_t>(kStep));
+        Telemetry t;
+        e.synth().telemetry(t);
+        const bool seqHidden = t.voices > 0 && !t.keyDown(69);
+        e.noteOn(50);
+        e.render(480);
+        e.synth().telemetry(t);
+        check(seqHidden && t.keyDown(50) && !t.keyDown(69),
+              "the keys shown held leave the sequencer's notes out and show a key played");
+    }
+    // With the host's transport, through the synth: silent until the note's step, then sounding at its sample.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        note(e.p, 0, 1.0, 1.0, 69);
+        e.synth().setTempo(120.0);
+        e.synth().setTransport(true, 0.0, 0.0);
+        const std::vector<float> out = e.render(static_cast<size_t>(2 * kStep), 100);
+        size_t first = out.size();
+        for (size_t i = 0; i < out.size() && first == out.size(); ++i)
+            if (out[i] != 0.0f)
+                first = i;
+        std::printf("      first sound at sample %zu (its step at %.0f)\n", first, kStep);
+        check(first >= static_cast<size_t>(kStep) && first < static_cast<size_t>(kStep) + 64,
+              "the sequencer's note sounds from its sample, however the blocks are split");
+    }
+}
+
+// The tempo a preset was saved at, which the layout keeps for the hosts that let the editor set the tempo: read back
+// as written, a tempo the editor doesn't offer as none, and a layout from before it (cut short of it) as none too.
+void savedTempoChecks() {
+    std::printf("saved tempo:\n");
+    auto roundTrip = [](float bpm, bool cut) {
+        gui::UiLayout ui;
+        ui.savedTempo = bpm;
+        const auto values = std::make_unique<ParamValues>();
+        for (int i = 0; i < kParamCount; ++i)
+            (*values)[i] = paramTable()[i].def;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, *values, ui, true);
+        // The layout, the patch's last chunk, as saved before the field came: short of it and of the operators' plain
+        // waves after it.
+        constexpr uint32_t kCut = 1 + kOps;
+        if (cut)
+            for (size_t at = bytes.size() - 4; at >= 4; at -= 4) {
+                uint32_t count = 0;
+                std::memcpy(&count, bytes.data() + at - 4, 4);
+                if ((at + count * sizeof(float)) == bytes.size()) {
+                    count -= kCut;
+                    std::memcpy(bytes.data() + at - 4, &count, 4);
+                    bytes.resize(bytes.size() - kCut * sizeof(float));
+                    break;
+                }
+            }
+        MemoryReader reader{bytes.data(), bytes.size(), 0};
+        const clap_istream_t in = memoryIn(reader);
+        const auto loaded = std::make_unique<ParamValues>();
+        readParams(&in, *loaded);
+        return readLayout(&in).savedTempo;
+    };
+    const float kept = roundTrip(128.5f, false), none = roundTrip(0.0f, false), slow = roundTrip(5.0f, false);
+    const float before = roundTrip(128.5f, true);
+    std::printf("      128.5 -> %.2f, 0 -> %.2f, 5 -> %.2f, from before it -> %.2f\n", kept, none, slow, before);
+    check(kept == 128.5f && none == 0.0f && slow == 0.0f && before == 0.0f,
+          "a preset's saved tempo reads back as written, and as none below 20 BPM or from before it was kept");
+}
+
+// --- DC: the voices' sum going into the effects has its DC taken out. A square squeezed to a narrow pulse comes
+// out with none; a Ring route at unison (a sine squared: DC and the octave) goes into a hard shaper as the octave
+// alone, clipped evenly (no 4th harmonic of the note), not lifted onto one side of the curve; and the output falls
+// silent, exactly, once the note has rung out, so the effects can rest.
+void dcChecks() {
+    {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Square);
+        e.p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+        e.p[paramIndex(0, OpParam::WarpAmount)] = 0.8;
+        e.noteOn(57);
+        e.render(96000);
+        const std::vector<float> out = e.render(48000);
+        double mean = 0.0, peak = 0.0;
+        for (float x : out) {
+            mean += x;
+            peak = std::max(peak, static_cast<double>(std::abs(x)));
+        }
+        mean /= static_cast<double>(out.size());
+        std::printf("      a squeezed square's DC at the output: %.2e (peak %.2f)\n", mean, peak);
+        check(std::abs(mean) < 1e-3, "a squeezed square comes out with no DC");
+    }
+    {
+        Engine e(2);
+        e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+        e.p[matrixIndex(1, 0)] = 1.0;
+        e.p[routeModeIndex(1, 0)] = static_cast<double>(RouteMode::Ring);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        e.p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Hard);
+        e.p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
+        chain(e.p, {0});
+        const int key = 57;
+        e.noteOn(key);
+        e.render(48000);
+        const std::vector<double> power = powerSpectrum(e.render(kFftSize));
+        auto level = [&](double hz) {
+            const long center = std::lround(hz * kFftSize / kSampleRate);
+            double most = 1e-30;
+            for (long b = center - 3; b <= center + 3; ++b)
+                most = std::max(most, power[static_cast<size_t>(b)]);
+            return 10.0 * std::log10(most);
+        };
+        const double octave = level(2.0 * keyHz(key)), uneven = level(4.0 * keyHz(key)) - octave;
+        std::printf("      a ring at unison clipped hard: its 4th harmonic %.1f dB under the octave\n", -uneven);
+        check(uneven < -40.0, "the voices' DC is taken out before the effects");
+        e.noteOff(key);
+        e.render(96000);
+        std::vector<float> left(kBlock), right(kBlock);
+        e.synth().render(left.data(), right.data(), kBlock, e.p);
+        const bool silent = std::all_of(left.begin(), left.end(), [](float x) { return x == 0.0f; }) &&
+                            std::all_of(right.begin(), right.end(), [](float x) { return x == 0.0f; });
+        check(silent && !e.synth().effectsRinging(), "the DC blocker leaves silence once the note ends, and the effects rest");
+    }
+}
 
 int main() {
     const int factors[] = {1, 2, 4, 8};
+    dcChecks();
+    sequencerChecks();
+    savedTempoChecks();
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
     for (int factor : {2, 4, 8}) {
@@ -4427,6 +5445,52 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -45.0},
+        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level), resonant
+        // here and cut off above the note's 4th harmonic: its stages' harmonics, which are what it sounds of, alias
+        // some 6 dB more than the driven low-pass's at 2x, falling as the oversampling rises.
+        {"saw into driven ladder at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Ladder);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(6000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -40.0},
+        // The diode, saturating at its input, and the Sallen-Key, clipping in its loop, driven and resonant likewise.
+        // The diode's one saturation takes its input less all of its feedback, so it clips harder there than the
+        // ladder's stages do, and aliases some 6 dB more at 2x, falling as the oversampling rises.
+        {"saw into driven diode at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Diode);
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(6000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -35.0},
+        {"saw into driven Sallen-Key at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::SallenKeyLow);
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(6000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -40.0},
     };
     std::printf("aliasing (energy off the harmonics, dB):\n");
     for (const AliasCase &c : cases) {
@@ -4442,6 +5506,7 @@ int main() {
     }
 
     syncWarpChecks(factors);
+    unisonModeChecks();
 
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should
@@ -4486,6 +5551,37 @@ int main() {
         const double cutoff = unexpectedDb(steadyTone(1, key, cutoffMod), partials);
         std::printf("      %-30s %7.1f\n", "LFO on filter cutoff", cutoff);
         check(cutoff < -80.0, "LFO on a filter cutoff doesn't zipper");
+        // The same on a resonant ladder's.
+        auto ladderMod = [&](ParamValues &p) {
+            cutoffMod(p);
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Ladder);
+            p[paramIndex(0, FilterParam::Resonance)] = 0.5;
+        };
+        const double ladder = unexpectedDb(steadyTone(1, key, ladderMod), partials);
+        std::printf("      %-30s %7.1f\n", "LFO on ladder cutoff", ladder);
+        check(ladder < -80.0, "LFO on a ladder's cutoff doesn't zipper");
+        // And on a formant's vowel, which moves all three band-passes at once (the LFO taken off the cutoff onto it).
+        auto vowelMod = [&](ParamValues &p) {
+            cutoffMod(p);
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Formant);
+            p[paramIndex(0, FilterParam::Cutoff)] = kDefaultCutoff;
+            p[paramIndex(0, FilterParam::Vowel)] = 0.5;
+            lfoOn(p, paramIndex(0, FilterParam::Vowel), 0.2, lfo);
+        };
+        const double vowel = unexpectedDb(steadyTone(1, key, vowelMod), partials);
+        std::printf("      %-30s %7.1f\n", "LFO on formant vowel", vowel);
+        check(vowel < -80.0, "LFO on a formant's vowel doesn't zipper");
+        // And on a morph's place, which shares out the stage's outputs anew.
+        auto morphMod = [&](ParamValues &p) {
+            cutoffMod(p);
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Morph);
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(440.0);
+            p[paramIndex(0, FilterParam::Morph)] = 0.5;
+            lfoOn(p, paramIndex(0, FilterParam::Morph), 0.3, lfo);
+        };
+        const double morph = unexpectedDb(steadyTone(1, key, morphMod), partials);
+        std::printf("      %-30s %7.1f\n", "LFO on filter morph", morph);
+        check(morph < -80.0, "LFO on a morph's place doesn't zipper");
 
         // An operator's Pan, swept: its left channel's gain moves with it, smoothly.
         auto panMod = [&](ParamValues &p) { lfoOn(p, paramIndex(0, OpParam::Pan), 0.3, lfo); };
@@ -4647,7 +5743,8 @@ int main() {
 
     // --- An anchored LFO stands where the host's transport puts it, as if it had started at its Phase at the song's
     // start: synced, by the beats, else by the seconds, whenever a note starts; a block split into pieces keeps the
-    // position moving; stopped, it runs on from where it was; a one-shot isn't anchored; Random steps each cycle.
+    // position moving; stopped, it runs on from where it was; a one-shot isn't anchored. Random is neither anchored nor one-shot: anchored,
+    // it runs free, and one-shot, it retriggers, running on past its cycle's end.
     std::printf("anchored LFO:\n");
     {
         auto telemetry = std::make_unique<Telemetry>();
@@ -4686,6 +5783,20 @@ int main() {
         check(near(atBeat, 0.25) && near(offset, 0.75) && near(later, 0.6) && near(free, 0.1) && oneShot < 0.01,
               "an anchored LFO stands where the transport puts it, from its Phase, synced or not; a one-shot doesn't");
 
+        // Its slowest note values, below the effects' 4/1D: at beat 40, an 8/1 (32 beats, eight bars) is a quarter into
+        // its second cycle, an 8/1T (21 1/3 beats) seven eighths, and a 4/1D (24 beats) two thirds, as it was.
+        auto atDivision = [&](double division) {
+            return phaseAt(40.0, [division](Engine &e) { e.p[paramIndex(0, SourceParam::Division)] = division; });
+        };
+        const double eightBars = atDivision(kSlowestDivision), eightTriplet = atDivision(kSlowestDivision + 1.0),
+                     sixBars = atDivision(0.0);
+        std::printf("      at beat 40: %.4f at 8/1, %.4f at 8/1T, %.4f at 4/1D\n", eightBars, eightTriplet, sixBars);
+        check(near(eightBars, 0.25) && near(eightTriplet, 0.875) && near(sixBars, 2.0 / 3.0) &&
+                  paramTable()[paramIndex(0, SourceParam::Division)].min == kSlowestDivision &&
+                  divisionName(kSlowestDivision) == std::string("8/1") && divisionName(-1) == std::string("8/1T") &&
+                  divisionName(0) == std::string("4/1D"),
+              "a synced LFO reaches down to 8/1, a cycle every eight bars, its numbers from 4/1D on as they were");
+
         // 0.1 s from the song's start, rendered in blocks of 480 and in pieces of 7, the transport set once: both at
         // a fifth of a cycle. Then stopped: on from there, another fifth a tenth of a second later.
         Engine whole(1), pieces(1);
@@ -4708,20 +5819,31 @@ int main() {
               "an anchored LFO follows the transport through blocks split into pieces");
         check(near(stopped, 0.4), "an anchored LFO runs on from where it is while the transport is stopped");
 
-        // Random: the value it holds through a cycle, and a new one in the next.
-        Engine random(1);
-        anchored(random);
-        random.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
-        random.noteOn(57);
-        auto heldAt = [&](double beats) {
-            random.synth().setTransport(true, beats, beats * 0.5);
-            random.render(32);
-            random.synth().telemetry(*telemetry);
-            return telemetry->lfoTo[0];
+        // Random, anchored, runs on the free clock (standing nowhere the transport puts it), and as a one-shot runs
+        // on past its cycle's end: after 1.5 cycles from the note, half way through its second.
+        auto randomPhase = [&](auto setup) {
+            Engine e(1);
+            anchored(e);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
+            setup(e);
+            e.synth().setTransport(true, 2.25, 2.25 * 0.5);
+            e.noteOn(57);
+            e.render(36000); // 0.75 s: 1.5 cycles at 2 Hz
+            return phase(e);
         };
-        const float first = heldAt(4.2), same = heldAt(4.9), next = heldAt(5.1);
-        std::printf("      random: %.3f at beat 4.2, %.3f at 4.9, %.3f at 5.1\n", first, same, next);
-        check(first == same && next != same, "an anchored random LFO steps as the transport passes a cycle");
+        const double randomAnchored = randomPhase(none), randomFree = randomPhase([](Engine &e) {
+            e.p[paramIndex(0, SourceParam::Anchor)] = 0.0;
+            e.p[paramIndex(0, SourceParam::Free)] = 1.0;
+        });
+        const double randomOneShot = randomPhase([](Engine &e) {
+            e.p[paramIndex(0, SourceParam::Anchor)] = 0.0;
+            e.p[paramIndex(0, SourceParam::OneShot)] = 1.0;
+        });
+        std::printf("      random: anchored %.4f, free %.4f; one-shot %.4f\n", randomAnchored, randomFree,
+                    randomOneShot);
+        check(near(randomAnchored, randomFree) && !near(randomAnchored, 0.25),
+              "an anchored Random source runs free, not where the transport puts it");
+        check(std::abs(randomOneShot - 0.5) < 0.01, "a one-shot Random source retriggers, running on past its cycle");
     }
 
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ
@@ -4952,10 +6074,10 @@ int main() {
                             : 0.0f;
                 fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
                 for (uint32_t s = 0; s < kBlock; ++s) {
-                    const double level = std::max(std::abs(left[s]), std::abs(right[s]));
+                    const double peak = std::max(std::abs(left[s]), std::abs(right[s]));
                     double &into = done < second ? before : done < second + second / 4 ? during : after;
                     if (done < 2 * second)
-                        into = std::max(into, level);
+                        into = std::max(into, peak);
                 }
             }
             double last = 0.0; // the last block's peak, a second after the sine stopped
@@ -5471,6 +6593,7 @@ int main() {
     }
 
     effectsChainChecks();
+    stackChecks();
     ampChecks();
 
     // --- The mod wheel leaves the FM alone until it is assigned: an FM pair sounds the same with it all the way up.

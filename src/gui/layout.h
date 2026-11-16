@@ -146,13 +146,10 @@ constexpr Rect kRatioTrack{kRatioBox.x + 6.0f, kRatioBox.y + 4.0f, kRatioBox.w -
 // A Custom wave's edit button (a pencil, as big as the keyboard switch, left of it): opens its partial editor.
 constexpr Rect kPartialEditButton{kFixedSwitch.x - 4.0f - kFixedSwitch.w, kFixedSwitch.y, kFixedSwitch.w,
                                   kFixedSwitch.h};
-// The edit buttons in a display's corner, a pencil each: a Custom LFO's top right, a drawn shaper curve's bottom right.
+// The edit button in a Custom LFO's display, a pencil in its top right corner.
 constexpr float kEditButtonW = 24.0f, kEditButtonH = 16.0f;
 inline Rect lfoEditButton(Rect display) {
     return {display.right() - 4.0f - kEditButtonW, display.y + 4.0f, kEditButtonW, kEditButtonH};
-}
-inline Rect clipEditButton(Rect display) {
-    return {display.right() - 6.0f - kEditButtonW, display.bottom() - 5.0f - kEditButtonH, kEditButtonW, kEditButtonH};
 }
 // An operator's page: under its block, a line across, then a well whose top edge holds the tabs (one per
 // InspectorTab) and whose display under them shows what the tab picks; the tab's controls in a row under the well.
@@ -223,9 +220,18 @@ inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0
 inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
 // Envelope: the curve, its knobs under the well.
 constexpr Rect kOpEnvRect = kOpDisplay;
-// Unison: where the copies sit, its knobs under the well.
+// Unison: where the copies sit, over a row of buttons along the well's bottom (how they spread in pitch, then, past a
+// rule, where they sit across), its knobs under the well.
 constexpr float kUnisonKnobsY = kOpControlsY;
-constexpr Rect kUnisonRect = kOpDisplay;
+constexpr float kUnisonButtonsH = 28.0f; // the row, at the display's bottom
+constexpr Rect kUnisonRect{kOpDisplay.x, kOpDisplay.y, kOpDisplay.w, kOpDisplay.h - kUnisonButtonsH};
+inline Rect uniCurveButton(int curve) {
+    return {kOpDisplay.x + 6.0f + curve * 26.0f, kOpDisplay.bottom() - kUnisonButtonsH + 2.0f, 26.0f, 22.0f};
+}
+constexpr float kUniRuleX = kOpDisplay.x + 6.0f + 4 * 26.0f + 8.0f; // between the curves and the pans
+inline Rect uniPanButton(int pan) {
+    return {kUniRuleX + 8.0f + pan * 26.0f, kOpDisplay.bottom() - kUnisonButtonsH + 2.0f, 26.0f, 22.0f};
+}
 // A noise operator's spectrum, in Unison's place.
 constexpr Rect kNoiseRect = kOpDisplay;
 inline Rect scopeCycleButton(int choice) {
@@ -236,19 +242,39 @@ inline Rect scopeCycleButton(int choice) {
 inline Rect slopeButton(Rect display) {
     return {display.center().x - 36.0f, display.bottom() + 4.0f, 72.0f, 18.0f};
 }
-// A filter's page: its type buttons across the row under the summary, its response with the slope's list under it.
-inline Rect filterTypeButton(int type) {
-    constexpr float kStep = (kInspector.w - 32.0f + 4.0f) / static_cast<float>(FilterType::Count);
-    return {kInspector.x + 16.0f + type * kStep, kInspector.y + 62.0f, kStep - 4.0f, 22.0f};
+// A Morph filter's slope's list and its notch switch (through the notch rather than the band-pass, the notch's icon),
+// side by side in its place, centered together.
+inline Rect morphSlopeButton(Rect display) {
+    return {display.center().x - 57.0f, display.bottom() + 4.0f, 72.0f, 18.0f};
+}
+inline Rect morphNotchButton(Rect display) {
+    return {display.center().x + 21.0f, display.bottom() + 4.0f, 36.0f, 18.0f};
+}
+// A filter's page: its type's list across the row under the summary (where a shaper's curve's is), its response with
+// the slope's list under it.
+constexpr Rect kFilterTypeButton{kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f, 22.0f};
+// A Formant or Morph filter's six knobs (its Vowel or Morph after Resonance), a little smaller and closer together
+// than the five the others have.
+constexpr float kFilterSixKnobD = 30.0f;
+inline Point filterSixKnob(int i) {
+    return {kInspector.x + 29.0f + i * 48.0f, kInspector.y + 110.0f};
+}
+// A filter type's icon before its name, on a type list's button or one of its rows.
+inline Rect filterTypeIconRect(Rect row) {
+    return {row.x + 9.0f, row.center().y - 5.0f, 22.0f, 10.0f};
 }
 constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 90.0f};
 inline const Rect kFilterSlopeButton = slopeButton(kFilterDisplay);
-// A shaper's page: its curve's list and the link switch in the row under the summary, with the symmetric switch
-// between them for a Custom curve, then its transfer curve where a filter's response shows.
+// A shaper's page: its curve's list and the link switch in the row under the summary, with a Custom curve's edit
+// button (a pencil, opening its big editor) and symmetric switch between them, then its transfer curve where a filter's
+// response shows.
 constexpr Rect kShaperLinkButton{kInspector.x + kInspector.w - 16.0f - 44.0f, kInspector.y + 62.0f, 44.0f, 22.0f};
 constexpr Rect kShaperSymButton{kShaperLinkButton.x - 50.0f, kShaperLinkButton.y, 44.0f, 22.0f};
+constexpr float kClipEditW = 28.0f; // a Custom curve's edit button beside its list, on a shaper's page and card
+constexpr Rect kShaperEditButton{kShaperSymButton.x - 6.0f - kClipEditW, kShaperLinkButton.y, kClipEditW, 22.0f};
 inline Rect shaperModeButton(bool custom) {
-    return {kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f - (custom ? 100.0f : 50.0f), 22.0f};
+    return {kInspector.x + 16.0f, kInspector.y + 62.0f,
+            kInspector.w - 32.0f - (custom ? kShaperLinkButton.right() - kShaperEditButton.x + 6.0f : 50.0f), 22.0f};
 }
 constexpr Rect kShaperDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
 // An operator's wave buttons: the common waves, then "..." with a list of the others.
@@ -297,12 +323,47 @@ constexpr float kTopRowH = 24.0f; // the preset bar's and the toolbar's height, 
 // Tabs of the routing panel, one per RoutingView: folder tabs from the row's top down onto the panels' top edge,
 // the first one's left side over the panel's left edge, which it runs on into while it is shown.
 constexpr float kViewTabH = kPanelsTop - kTopRowY;
+// By RoutingView: SEQ's sits between FX's and MODS's.
 constexpr Rect kViewTabs[] = {{16.0f, kTopRowY, 96.0f, kViewTabH},
                                {116.0f, kTopRowY, 88.0f, kViewTabH},
                                {208.0f, kTopRowY, 64.0f, kViewTabH},
-                               {276.0f, kTopRowY, 76.0f, kViewTabH}};
+                               {344.0f, kTopRowY, 76.0f, kViewTabH},
+                               {276.0f, kTopRowY, 64.0f, kViewTabH}};
 constexpr float kViewTabRadius = kRadiusCard; // its top corners
+// The dot in a view tab's upper right while what it shows is at work (an effect switched on, the sequencer on).
+inline Point viewTabDot(int view) {
+    return {kViewTabs[view].x + kViewTabs[view].w - 9.0f, kViewTabs[view].y + kViewTabs[view].h * 0.5f - 4.0f};
+}
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
+// ALGORITHM, at the row's right end over the routing panel's, with ROUTING and MATRIX: it opens the panel of the
+// classic algorithms (kAlgorithms) under it, right-aligned with the routing panel and over the graph or matrix, the
+// inspector left in view. The panel has a title row with a switch between the sets at its right (6 | 4 | 3 | 2, how
+// many operators they use, "Operators" before it), a thumbnail a cell, kAlgorithmCols to a row, and a foot under a
+// line, which names the thumbnail under the mouse.
+constexpr Rect kAlgorithmButton{kRouting.x + kRouting.w - 190.0f, kTopRowY + 4.0f, 190.0f, 24.0f}; // "4-OP 8" fits on it
+constexpr int kAlgorithmCols = 8;
+constexpr float kAlgorithmCellW = 72.0f, kAlgorithmCellH = 58.0f, kAlgorithmGap = 6.0f, kAlgorithmPad = 14.0f;
+constexpr float kAlgorithmTitleH = 36.0f, kAlgorithmFootH = 40.0f;
+constexpr float kAlgorithmPanelW = 2.0f * kAlgorithmPad + kAlgorithmCols * kAlgorithmCellW + (kAlgorithmCols - 1) * kAlgorithmGap;
+inline Rect algorithmPanel(int count) {
+    const int rows = (count + kAlgorithmCols - 1) / kAlgorithmCols;
+    return {kRouting.x + kRouting.w - kAlgorithmPanelW, kPanelsTop + 4.0f, kAlgorithmPanelW,
+            kAlgorithmPad + kAlgorithmTitleH + rows * kAlgorithmCellH + (rows - 1) * kAlgorithmGap + kAlgorithmFootH};
+}
+inline Rect algorithmCell(int count, int i) {
+    const Rect p = algorithmPanel(count);
+    return {p.x + kAlgorithmPad + (i % kAlgorithmCols) * (kAlgorithmCellW + kAlgorithmGap),
+            p.y + kAlgorithmPad + kAlgorithmTitleH + (i / kAlgorithmCols) * (kAlgorithmCellH + kAlgorithmGap),
+            kAlgorithmCellW, kAlgorithmCellH};
+}
+// The switch's button for the set at `set` in kAlgorithmSets (6 first), in the title row at its right; its label
+// goes before the first.
+constexpr int kAlgorithmSetCount = 4;
+inline Rect algorithmSetButton(int count, int set) {
+    constexpr float kW = 32.0f;
+    const Rect p = algorithmPanel(count);
+    return {p.right() - kAlgorithmPad - (kAlgorithmSetCount - set) * kW, p.y + kAlgorithmPad, kW, 22.0f};
+}
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
 constexpr Rect kFxPanel{16.0f, kPanelsTop, kRouting.x + kRouting.w - 16.0f, kRouting.h};
@@ -312,6 +373,39 @@ constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between
 constexpr float kFxRowLeft = 8.0f + kFxGap;
 constexpr float kFxCardW = (kFxPanel.w - kFxRowLeft - 16.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
+// The SEQ view covers them too: the sequencer's settings on a card where the inspector floats, and the roll of the
+// pattern picked in the rest, under a row of tools: the piano keys at its left, the bars over it, a lane of one value a
+// note under it and the lane's tabs under that. Its rows are kSeqRowH high, as many as fit.
+constexpr Rect kSeqCard = kInspector;
+constexpr float kSeqCardX = kSeqCard.x + 12.0f;       // the card's labels
+constexpr float kSeqCardControls = kSeqCard.x + 76.0f; // and the controls after them
+constexpr Rect kSeqTools{kRouting.x + 4.0f, kPanelsTop + 10.0f, 1172.0f - kRouting.x - 4.0f, 24.0f};
+constexpr Rect kSeqBox{kSeqTools.x, kSeqTools.y + kSeqTools.h + 8.0f, kSeqTools.w,
+                       kPanelsTop + 372.0f - 10.0f - (kSeqTools.y + kSeqTools.h + 8.0f)};
+constexpr float kSeqKeysW = 44.0f, kSeqRulerH = 20.0f, kSeqLaneH = 52.0f, kSeqLaneTabsH = 22.0f, kSeqRowH = 10.0f;
+constexpr float kSeqScrollW = 12.0f; // the rows' scroll bar, at the grid's right
+constexpr Rect kSeqKeys{kSeqBox.x, kSeqBox.y + kSeqRulerH, kSeqKeysW,
+                        kSeqBox.h - kSeqRulerH - kSeqLaneH - kSeqLaneTabsH};
+constexpr Rect kSeqGrid{kSeqKeys.x + kSeqKeys.w, kSeqKeys.y, kSeqBox.x + kSeqBox.w - kSeqKeys.x - kSeqKeys.w - kSeqScrollW,
+                        kSeqKeys.h};
+constexpr Rect kSeqScrollYTrack{kSeqGrid.x + kSeqGrid.w + 3.0f, kSeqGrid.y + 2.0f, 6.0f, kSeqGrid.h - 4.0f};
+constexpr Rect kSeqRuler{kSeqGrid.x, kSeqBox.y, kSeqGrid.w, kSeqRulerH};
+constexpr Rect kSeqLaneArea{kSeqGrid.x, kSeqGrid.y + kSeqGrid.h, kSeqGrid.w, kSeqLaneH};
+constexpr Rect kSeqLaneTabs{kSeqBox.x, kSeqLaneArea.y + kSeqLaneArea.h, kSeqBox.w, kSeqLaneTabsH};
+// The card's rows, from its top: its title, PATTERN, PLAY, two rows of knobs, ORDER and ROOT, SCALE and FOLD.
+constexpr float kSeqTitleY = kSeqCard.y + 12.0f;
+constexpr float kSeqPatternY = kSeqCard.y + 46.0f;
+constexpr float kSeqPlayY = kSeqCard.y + 76.0f;
+constexpr float kSeqKnobD = 42.0f;                 // the knobs' size
+constexpr float kSeqKnobsY = kSeqCard.y + 142.0f; // the first row's knobs' centers
+constexpr float kSeqKnobStep = 78.0f;              // to the second row's
+constexpr float kSeqOrderY = kSeqCard.y + 290.0f;
+constexpr float kSeqScaleY = kSeqCard.y + 322.0f;
+inline Rect seqKnobCenterRect(int i) { // the place of knob `i` of the eight, as knobRect() takes it
+    return {kSeqCard.x + 16.0f + 268.0f / 4.0f * (static_cast<float>(i % 4) + 0.5f), kSeqKnobsY + (i / 4) * kSeqKnobStep,
+            0.0f, 0.0f};
+}
+
 // The MODS view covers them too: a row per modulation under the columns' names (the count at the right of their
 // row), scrolling with a bar at the right. Within a row, from its left: the bypass dot, the source and its polarity
 // switch, an arrow, the target, the depth bar with its value, the Amount bar with its value, the aux and the remove
@@ -669,11 +763,13 @@ inline Rect lfoWidenButton(float card) {
 }
 
 // An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes
-// (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide.
+// (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide. A random
+// one has only the first `modes` (retrigger and free), each as much wider.
 constexpr int kLfoModes = static_cast<int>(LfoClock::Count);
-inline Rect lfoModeSwitch(float card, int mode) {
+inline Rect lfoModeSwitch(float card, int mode, int modes = kLfoModes) {
     const Rect p = sourceCard(card);
-    return {p.x + 16.0f + mode * 30.5f, p.y + 72.0f, 30.5f, 16.0f};
+    const float w = 30.5f * kLfoModes / modes;
+    return {p.x + 16.0f + mode * w, p.y + 72.0f, w, 16.0f};
 }
 
 inline Rect lfoShapeButton(float card) {
@@ -685,6 +781,12 @@ inline Rect lfoShapeButton(float card) {
 // Curve sources took over.
 constexpr LfoShape kLfoShapesOffered[] = {LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square};
 constexpr int kLfoShapeItems = static_cast<int>(std::size(kLfoShapesOffered));
+// The curves a shaper's list offers, in its order: Stack, which came after Custom (they are stored by number), before
+// it.
+constexpr ClipMode kClipModesOffered[] = {ClipMode::Hard,   ClipMode::Soft,     ClipMode::Asymmetric,
+                                          ClipMode::Cubic,  ClipMode::Gentle,   ClipMode::SineFold,
+                                          ClipMode::Fold,   ClipMode::Stack,    ClipMode::Custom};
+static_assert(std::size(kClipModesOffered) == static_cast<size_t>(ClipMode::Count), "the list offers every curve");
 
 // A Random or Curve card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over
 // its clock modes as an LFO's.
@@ -811,11 +913,15 @@ inline Rect fxMenuNodeItem(Point at, int bands = 2) {
     return {head.x, head.bottom() + (bands == 3 ? kFxMenuPitch : 0.0f), head.w, kFxMenuPitch - 2.0f};
 }
 
-// A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
-// under its display LINK, which ties the Output knob to the drive, centered on the card; for a Custom curve SYM
-// left of it, the two centered together. The reverb's row: its algorithm's button.
-inline Rect clipModeButton(Rect card) {
-    return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
+// A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it (for a
+// Custom curve, the curve's edit button at its right, a pencil opening its big editor); under its display LINK, which
+// ties the Output knob to the drive, centered on the card; for a Custom curve SYM left of it, the two centered together.
+// The reverb's row: its algorithm's button.
+inline Rect clipModeButton(Rect card, bool custom = false) {
+    return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f - (custom ? kClipEditW + 6.0f : 0.0f), 22.0f};
+}
+inline Rect clipEditButton(Rect card) {
+    return {card.right() - 14.0f - kClipEditW, card.y + 44.0f, kClipEditW, 22.0f};
 }
 inline Rect clipSymButton(Rect card) {
     return {card.center().x - 47.0f, card.y + 194.0f, 44.0f, 20.0f};
@@ -825,6 +931,18 @@ inline Rect clipLinkButton(Rect card, bool custom) {
 }
 inline Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
+}
+// The filter effect's type, in the same place: a list, as a voice filter's is.
+inline Rect filterTypeListButton(Rect card) {
+    return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
+}
+
+// A list button's arrows, which step its choice along the list (see View::stepList()): `dir` -1 the one before, at its
+// left end, and 1 the one after, at its right end, where other lists' chevron is. Its name goes between them.
+constexpr float kListStepW = 18.0f;
+inline Rect listStepButton(Rect button, int dir) {
+    return {dir > 0 ? button.right() - 1.0f - kListStepW : button.x + 1.0f, button.y + 1.0f, kListStepW,
+            button.h - 2.0f};
 }
 
 inline Rect listMenu(Rect button, int count) {
@@ -1288,7 +1406,7 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 594.0f;
+constexpr float kSettingsH = 626.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
 constexpr float kSettingsLookY = 312.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -1326,9 +1444,13 @@ inline Rect settingsGlow(Rect panel) {
 inline Rect settingsLinks(Rect panel) {
     return {panel.x + 76.0f, panel.y + kSettingsLookY + 136.0f, 200.0f, 26.0f};
 }
+// Under it, the GRID slider, like it: how strongly the SEQ view's roll draws its grid.
+inline Rect settingsGrid(Rect panel) {
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 168.0f, 200.0f, 26.0f};
+}
 // Under that, HANDLES and the depth handles' sizes: small, medium and large.
 inline Rect settingsHandles(Rect panel, int size) {
-    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 170.0f, 64.0f, 28.0f};
+    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 202.0f, 64.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

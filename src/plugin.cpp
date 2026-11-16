@@ -256,7 +256,10 @@ clap_process_status Plugin::process(const clap_process_t *process) {
     reportEndedNotes(process->out_events, frames);
     endBlock();
     // Asleep, the host stops calling until its next event: also not while the editor shows an LFO running on its own.
-    return synth().activeVoiceCount() > 0 || synth().effectsRinging() || editorWantsProcessing() ? CLAP_PROCESS_CONTINUE
+    // Nor while the sequencer may start notes of its own, from the host's transport or a key held.
+    return synth().activeVoiceCount() > 0 || synth().effectsRinging() || synth().sequencerAwake() ||
+                   editorWantsProcessing()
+               ? CLAP_PROCESS_CONTINUE
                                                                                                 : CLAP_PROCESS_SLEEP;
 }
 

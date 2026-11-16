@@ -83,6 +83,11 @@ Rect View::shapeModeButton(int mode) const {
     return mode == 2 ? snap : Rect{snap.x - 8.0f - (2 - mode) * 68.0f, snap.y, 68.0f, snap.h};
 }
 
+Rect View::shapeSymButton() const {
+    const Rect points = shapeModeButton(0);
+    return {points.x - 8.0f - 44.0f, points.y, 44.0f, points.h};
+}
+
 // A little room above and below the full swing, so its points can be grabbed: 12 px, less in a card.
 static float shapeReach(Rect area) {
     return area.h * 0.5f - std::min(12.0f, area.h * 0.06f);
@@ -238,16 +243,14 @@ bool View::middlePoint(int shape, int point) const {
     return curveSymmetric(shape) && std::abs(shapePointX(shape, point) - 0.5) < kOnMiddle;
 }
 
-Point View::unmirrored(int shape, Point p) const {
-    if (!curveSymmetric(shape) || shapeXAt(shape, p) >= 0.5)
-        return p;
-    const Point middle = shapeAt(shape, 0.5, 0.0);
-    return {2.0f * middle.x - p.x, 2.0f * middle.y - p.y};
+bool View::inMirroredHalf(int shape, Point p) const {
+    return curveSymmetric(shape) && shapeXAt(shape, p) < 0.5;
 }
 
 // Flips a shaper's Symmetric; switched on, its curve gets a point in the middle, where the curve is, if it has none
 // there and has room for one. One undo step either way.
 void View::switchSymmetric(int param) {
+    clearShapePick();
     const bool on = value(param) < 0.5;
     int unit = 0;
     while (unit + 1 < kShaperUnits && shaperParams(unit).symmetric != param)
@@ -387,6 +390,7 @@ void View::removeShapePoint(int shape, int point) {
 }
 
 void View::resetShape(int shape) {
+    clearShapePick();
     std::vector<std::pair<int, double>> changes;
     for (int f = 0; f < shapeParamCount(shape); ++f)
         changes.push_back({shapeBase(shape) + f, table_[shapeBase(shape) + f].def});
@@ -459,6 +463,8 @@ bool View::shapeCopied() {
 // point where the new start falls, or one put there on the curve (its segment split in two, each part bent as much as
 // keeps it on the same curve), becomes the first.
 void View::applyShapeTool(int lfo, ShapeTool tool) {
+    if (tool != ShapeTool::Copy) // the points move along the shape, or round it
+        clearShapePick();
     if (tool == ShapeTool::Copy) {
         copiedShape.clear();
         for (int f = 0; f < kShapeParamCount; ++f)
@@ -526,6 +532,154 @@ void View::applyShapeTool(int lfo, ShapeTool tool) {
     }
     if (!changes->empty())
         editMany(*changes);
+}
+
+// --- Picking points to move or remove together.
+
+std::vector<int> View::shapePicked(int shape) const {
+    std::vector<int> points;
+    if (shape < 0 || shapePick_.shape != shape)
+        return points;
+    const int count = shapePointCount(shape);
+    if (shapePick_.count != count)
+        return points; // points came or went since: what was picked isn't those points any more
+    for (int point : shapePick_.points)
+        if (point >= 0 && point < count && pointShown(shape, point))
+            points.push_back(point);
+    return points;
+}
+
+bool View::shapePointPicked(int shape, int point) const {
+    const std::vector<int> points = shapePicked(shape);
+    return std::find(points.begin(), points.end(), point) != points.end();
+}
+
+void View::setShapePick(int shape, std::vector<int> points) {
+    std::sort(points.begin(), points.end());
+    points.erase(std::unique(points.begin(), points.end()), points.end());
+    shapePick_ = {shape, shape >= 0 ? shapePointCount(shape) : 0, std::move(points)};
+}
+
+bool View::shapeEditable(int shape) const {
+    if (shape < 0)
+        return false;
+    for (const Widget &w : widgets())
+        if (w.kind == Kind::ShapeArea && w.a == shape)
+            return true;
+    return false;
+}
+
+bool View::shapePointPinned(int shape, int point) const {
+    return point == 0 || (isCurve(shape) && point + 1 == shapePointCount(shape)) || middlePoint(shape, point);
+}
+
+void View::moveShapePoints(int shape, int grabbed, double x, double y) {
+    // Every point moves as far as the one grabbed, as far as each can: up and down within the shape, and across
+    // between its nearest neighbors that stay (those not picked, and those that stay where they are across: the first,
+    // a curve's last, a symmetric curve's middle), so the points keep their order and their spacing.
+    const std::vector<int> &points = drag_.points;
+    const auto &origin = drag_.origin;
+    const auto at = std::find(points.begin(), points.end(), grabbed);
+    if (at == points.end() || origin.size() != points.size())
+        return;
+    const size_t g = static_cast<size_t>(at - points.begin());
+    const int count = shapePointCount(shape);
+    const double apart = isCurve(shape) ? 0.002 : 0.0;
+    auto moving = [&](int point) {
+        return std::find(points.begin(), points.end(), point) != points.end() && !shapePointPinned(shape, point);
+    };
+    double dx = x - origin[g].first, dy = y - origin[g].second;
+    for (size_t i = 0; i < points.size(); ++i) {
+        dy = std::clamp(dy, std::min(-1.0 - origin[i].second, 0.0), std::max(1.0 - origin[i].second, 0.0));
+        const int point = points[i];
+        if (!moving(point))
+            continue;
+        int below = point - 1, above = point + 1;
+        while (below >= 0 && moving(below))
+            --below;
+        while (above < count && moving(above))
+            ++above;
+        const double low = std::max(below >= 0 ? shapePointX(shape, below) : 0.0, curveSymmetric(shape) ? 0.5 : 0.0);
+        const double high = above < count ? shapePointX(shape, above) : 1.0;
+        dx = std::clamp(dx, std::min(low + apart - origin[i].first, 0.0), std::max(high - apart - origin[i].first, 0.0));
+    }
+    auto set = [&](int index, double v) { // within its range, as applyDrag() sets a value dragged
+        v = std::clamp(v, table_[index].min, table_[index].max);
+        if (v != value(index))
+            controller_.setValue(index, v);
+    };
+    for (size_t i = 0; i < points.size(); ++i) {
+        if (moving(points[i]))
+            set(shapeIndex(shape, points[i], PointField::X), origin[i].first + dx);
+        set(shapeIndex(shape, points[i], PointField::Y), origin[i].second + dy);
+    }
+}
+
+void View::removeShapePoints(int shape, const std::vector<int> &points) {
+    const int count = shapePointCount(shape);
+    std::vector<bool> gone(static_cast<size_t>(count), false);
+    int left = count;
+    for (int point : points)
+        if (point >= 0 && point < count && !shapePointPinned(shape, point) && !gone[static_cast<size_t>(point)] &&
+            left > 2) {
+            gone[static_cast<size_t>(point)] = true;
+            --left;
+        }
+    if (left == count) { // none of them can go: say why, as for one
+        if (!points.empty())
+            removeShapePoint(shape, points.front());
+        return;
+    }
+    // Those that stay close up, in order; the places past them are left as they were, unused.
+    std::vector<std::pair<int, double>> changes;
+    int to = 0;
+    for (int point = 0; point < count; ++point) {
+        if (gone[static_cast<size_t>(point)])
+            continue;
+        if (to != point) {
+            changes.push_back({shapeIndex(shape, to, PointField::X), shapePointX(shape, point)});
+            for (PointField field : {PointField::Y, PointField::Curve})
+                changes.push_back({shapeIndex(shape, to, field), value(shapeIndex(shape, point, field))});
+        }
+        ++to;
+    }
+    changes.push_back({shapeBase(shape), static_cast<double>(left)});
+    editMany(changes);
+    clearShapePick();
+}
+
+bool View::shapeKey(Key key) {
+    if (typing() || dialogOpen() || drag_.kind != DragKind::None)
+        return false;
+    if (key == Key::Delete) {
+        const int shape = shapePick_.shape;
+        const std::vector<int> points = shapePicked(shape);
+        if (points.empty() || !shapeEditable(shape))
+            return false;
+        removeShapePoints(shape, points);
+        return true;
+    }
+    if (key == Key::SelectAll) {
+        // The shape under the mouse, else the big editor's, else a widened card's, unless the SEQ view shows beside
+        // it: Ctrl+A there picks the roll's notes.
+        int shape = -1;
+        if (hover_ && (hover_->kind == Kind::ShapeArea || hover_->kind == Kind::ShapePoint ||
+                       hover_->kind == Kind::ShapeCurve))
+            shape = hover_->a;
+        else if (shapeEditing() >= 0)
+            shape = shapeEditing();
+        else if (wideLfo() >= 0 && !seqWide())
+            shape = wideLfo();
+        if (shape < 0 || !shapeEditable(shape))
+            return false;
+        std::vector<int> points;
+        for (int point = 0; point < shapePointCount(shape); ++point)
+            if (pointShown(shape, point))
+                points.push_back(point);
+        setShapePick(shape, points);
+        return true;
+    }
+    return false;
 }
 
 } // namespace fmvibe::gui

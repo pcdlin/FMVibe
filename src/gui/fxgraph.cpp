@@ -1961,6 +1961,7 @@ void View::paintFxGraph(Canvas &c) {
         return value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? fxTypeColor(fxSlotType(slot)) : kFaint;
     };
     c.pushClip(area);
+    paintFxBackdrop(c, area, at.out);
     // The grid's places, faintly: a dot where a node can sit.
     for (int col = 1; col < grid.outCol; ++col)
         for (int row = -1; row <= 1; ++row)

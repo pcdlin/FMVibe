@@ -43,6 +43,7 @@ function Copy-Screenshots {
         'editor.png'   = '24c-screamer-example-routing.png'
         'fx-chain.png' = '24-example-fx-chain-panel.png'
         'fx-graph.png' = '24b-split-example-fx-graph-panel.png'
+        'seq.png'      = '24d-seq-example-seq.png'
     }
     foreach ($doc in $shots.Keys) {
         $shot = "$PSScriptRoot\build\release\ui-shots\$($shots[$doc])"
@@ -107,7 +108,7 @@ try {
         Copy-Screenshots
 
         Write-Host "== next (the new screenshots: docs\editor.png, docs\fx-chain.png, docs\fx-graph.png):" -ForegroundColor Yellow
-        Write-Host "   git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png"
+        Write-Host "   git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png docs/seq.png"
         Write-Host "   git commit -m `"Version $Version`""
         Write-Host "   git tag $tag"
         Write-Host "   git push origin main $tag"
@@ -118,7 +119,7 @@ try {
 
         # --- Commit, tag, push.
         Write-Host "== commit, tag $tag, push" -ForegroundColor Cyan
-        Invoke-Git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png
+        Invoke-Git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png docs/seq.png
         Invoke-Git commit -m "Version $Version"
         Invoke-Git tag $tag
         Invoke-Git push origin main $tag
@@ -127,7 +128,7 @@ try {
     finally {
         # Nothing was committed (not confirmed, or a step failed): put the files back.
         if ((& git log -1 --format=%s) -ne "Version $Version") {
-            & git checkout -- CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png
+            & git checkout -- CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png docs/seq.png
         }
     }
 }

@@ -1,4 +1,5 @@
 #include "synth.h"
+#include "unison.h"
 #include "warp.h"
 
 #include <algorithm>
@@ -195,6 +196,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     bend_ = 0.0;
     globalMod_.fill(0.0);
     sharedStale_ = true;
+    seqStale_ = true;
     changedCount_ = 0;
     capacity_ = std::clamp(capacity, 1, kMaxVoices);
     voices_.assign(static_cast<size_t>(capacity_ + std::clamp(capacity_, kFadeSlots, kMaxFadeSlots)), Voice{});
@@ -215,12 +217,17 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     effects_.prepare(sampleRate);
     noiseColor_.prepare(rate_, sampleRate);
     volumeGlide_ = 1.0 - std::exp(-1.0 / (kVolumeGlide * sampleRate));
+    { // the DC blocker's high-pass (see DcBlocker)
+        const double k = std::tan(std::numbers::pi * 5.0 / sampleRate), norm = 1.0 / (1.0 + std::sqrt(2.0) * k + k * k);
+        dcCoefs_ = {norm, -2.0 * norm, norm, 2.0 * (k * k - 1.0) * norm, (1.0 - std::sqrt(2.0) * k + k * k) * norm};
+    }
     ended_.clear();
     // Every note that ends in one block is reported at its end: room for a burst of them far past the voices.
     ended_.reserve(std::max<size_t>(voices_.size() * 2 + 16, kMaxEndedNotes));
     held_.clear();
     held_.reserve(256);
     limit_ = capacity_;
+    seq_.prepare(sampleRate);
     reset();
 }
 
@@ -236,6 +243,8 @@ void Synth::reset() {
     for (const HeldNote &held : held_) // a mono note a later one took over
         reportEnded(held.note);
     held_.clear();
+    releaseKeys({-1, -1, -1, -1});
+    seq_.reset();
     lastKey_ = -1.0;
     freeLfos_ = {};
     cc_ = {};
@@ -256,6 +265,7 @@ void Synth::reset() {
     fxTail_.on = false;
     fxLast_ = nullptr;
     volumeGain_ = -1.0; // set at once, the first time round
+    dcBlockers_ = {};
     outPeak_ = {};
     clipHold_ = 0.0;
     outScope_ = {};
@@ -277,6 +287,18 @@ void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool
 void Synth::noteOn(const NoteRef &note, double velocity) {
     if (note.key < 0 || note.key > 127 || voices_.empty())
         return;
+    // In Key and Latch, the sequencer takes the host's keys: they start and transpose its pattern, and no voice plays
+    // them (their ends are reported as they come up).
+    if (note.port != kSeqPort && note.port != kAuditionPort && seq_.takesKeys()) {
+        if (keysTakenCount_ == static_cast<int>(keysTaken_.size())) { // forget the oldest, reporting its end
+            reportEnded(keysTaken_[0]);
+            std::copy(keysTaken_.begin() + 1, keysTaken_.end(), keysTaken_.begin());
+            --keysTakenCount_;
+        }
+        keysTaken_[keysTakenCount_++] = note;
+        seq_.keyDown(note.key);
+        return;
+    }
     // A velocity that isn't a number plays as 0, so the note still plays out and ends.
     const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
     // Another key is still down, or the pedal holds a note: played legato.
@@ -373,10 +395,45 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     }
 }
 
+bool Synth::releaseKeys(const NoteRef &match) {
+    bool any = false;
+    for (int i = keysTakenCount_; i-- > 0;) {
+        if (!matches(match, keysTaken_[i]))
+            continue;
+        const NoteRef note = keysTaken_[i];
+        std::copy(keysTaken_.begin() + i + 1, keysTaken_.begin() + keysTakenCount_, keysTaken_.begin() + i);
+        --keysTakenCount_;
+        reportEnded(note);
+        seq_.keyUp(note.key);
+        any = true;
+    }
+    // Let go of every key, the sequencer stops (in Key) and what it plays ends.
+    if (any && !seq_.wantsProcessing())
+        applySeqEvents(seq_.stopAll(seqEvents_));
+    return any;
+}
+
+void Synth::applySeqEvent(const SeqEvent &e) {
+    const NoteRef note{e.id, kSeqPort, 0, static_cast<int16_t>(e.key)};
+    if (e.on)
+        noteOn(note, e.velocity);
+    else
+        noteOff(note);
+}
+
+void Synth::applySeqEvents(int count) {
+    for (int i = 0; i < count; ++i)
+        applySeqEvent(seqEvents_[i]);
+}
+
 void Synth::noteOff(const NoteRef &match) {
+    if (match.port != kSeqPort)
+        releaseKeys(match);
+    // The sequencer's notes end only as it ends them: a host's note-off with wildcards leaves them alone.
+    auto hits = [&](const NoteRef &note) { return matches(match, note) && (note.port != kSeqPort || match.port == kSeqPort); };
     // Let go of the matching keys.
     for (size_t i = held_.size(); i-- > 0;) {
-        if (!matches(match, held_[i].note))
+        if (!hits(held_[i].note))
             continue;
         const NoteRef note = held_[i].note;
         held_.erase(held_.begin() + static_cast<std::ptrdiff_t>(i));
@@ -391,7 +448,7 @@ void Synth::noteOff(const NoteRef &match) {
         // notes off leaves none, and the voice releases where it is). A key another voice plays already (notes held
         // in poly as mono came on) isn't played twice: this voice releases instead.
         const auto down = std::find_if(held_.rbegin(), held_.rend(),
-                                       [&](const HeldNote &held) { return !matches(match, held.note); });
+                                       [&](const HeldNote &held) { return !hits(held.note); });
         if (mono_ && down != held_.rend() && !voicePlaying(down->note)) {
             reportEnded(note);
             moveVoice(*v, *down, !legato_, true);
@@ -400,7 +457,7 @@ void Synth::noteOff(const NoteRef &match) {
     // Release what is left, including voices whose keys weren't tracked (e.g.
     // started before a play-mode change); the pedal holds them instead while it is down.
     for (Voice *v : active_)
-        if (live(*v) && !v->released && !v->sustained && matches(match, v->note))
+        if (live(*v) && !v->released && !v->sustained && hits(v->note))
             letGo(*v);
 }
 
@@ -435,10 +492,20 @@ void Synth::setPedal(int channel, bool down) {
 
 void Synth::allNotesOff(int channel) {
     noteOff(channelMatch(channel));
+    stopLatch();
+}
+
+// After all notes off, a pattern Latch plays on stops, and the notes it holds end.
+void Synth::stopLatch() {
+    seq_.unlatch();
+    if (seq_.sounding() && !seq_.wantsProcessing())
+        applySeqEvents(seq_.stopAll(seqEvents_));
 }
 
 void Synth::allSoundOff(int channel) {
     const NoteRef match = channelMatch(channel);
+    releaseKeys(match);
+    stopLatch();
     for (size_t i = held_.size(); i-- > 0;) {
         if (!matches(match, held_[i].note))
             continue;
@@ -456,6 +523,8 @@ void Synth::allSoundOff(int channel) {
 }
 
 void Synth::choke(const NoteRef &match) {
+    if (match.port != kSeqPort)
+        releaseKeys(match);
     for (size_t i = held_.size(); i-- > 0;) {
         if (!matches(match, held_[i].note))
             continue;
@@ -713,6 +782,70 @@ void Synth::resolveData(const ParamValues &params) {
 }
 
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
+    // The sequencer plans its notes a stretch at a time, and the voices render up to each note it starts or ends, at
+    // its sample, and up to where its curves move on; through the stretches between, they run on. Its pattern is read
+    // again only when its params may have changed.
+    seq_.configure(params, seqStale_ || !sameParams);
+    seqStale_ = false;
+    if (!seq_.enabled()) {
+        if (seq_.sounding())
+            applySeqEvents(seq_.stopAll(seqEvents_));
+        if (keysTakenCount_ > 0 && !seq_.takesKeys()) // switched off: the keys it took are over
+            releaseKeys({-1, -1, -1, -1});
+        followSeqCurves();
+        renderSpan(left, right, frames, params, sameParams);
+        return;
+    }
+    constexpr uint32_t kSeqStretch = 256;
+    uint32_t rendered = 0; // the frames the voices have rendered; those planned past it, they render on through
+    for (uint32_t done = 0; done < frames;) {
+        uint32_t covered = 0;
+        // Where the transport stands as the stretch starts: renderSpan() moves it on through the frames it renders.
+        const double beats = playing_ ? songBeats_ + (done - rendered) / sampleRate_ * tempo_ / 60.0 : songBeats_;
+        const int count =
+            seq_.plan(std::min(frames - done, kSeqStretch), tempo_, playing_, beats, seqEvents_, covered);
+        if (seqCurvesMoved()) { // the voices hear the curves where they stood up to here
+            if (done > rendered) {
+                renderSpan(left + rendered, right + rendered, done - rendered, params, sameParams);
+                sameParams = true;
+                rendered = done;
+            }
+            followSeqCurves();
+        }
+        for (int i = 0; i < count; ++i) {
+            const uint32_t frame = done + std::min(seqEvents_[i].frame, covered);
+            if (frame > rendered) {
+                renderSpan(left + rendered, right + rendered, frame - rendered, params, sameParams);
+                sameParams = true;
+                rendered = frame;
+            }
+            applySeqEvent(seqEvents_[i]);
+        }
+        done += std::max(covered, 1u);
+    }
+    if (frames > rendered)
+        renderSpan(left + rendered, right + rendered, frames - rendered, params, sameParams);
+}
+
+double Synth::seqCurveValue(SeqCurve c) const {
+    const double v = seq_.curve(c);
+    return std::isfinite(v) ? v : 0.0;
+}
+
+bool Synth::seqCurvesMoved() const {
+    return seqCurveValue(SeqCurve::Bend) != seqBend_ || seqCurveValue(SeqCurve::ModWheel) != seqWheel_;
+}
+
+void Synth::followSeqCurves() {
+    seqBend_ = seqCurveValue(SeqCurve::Bend);
+    const double wheel = seqCurveValue(SeqCurve::ModWheel);
+    if (wheel != seqWheel_) { // the mod wheel's knob moved, and what it moves with it
+        seqWheel_ = wheel;
+        paramChanged(paramIndex(GlobalParam::ModWheel));
+    }
+}
+
+void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
     std::fill_n(left, frames, 0.0f);
     std::fill_n(right, frames, 0.0f);
     resolveData(params);
@@ -757,10 +890,19 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             sounding = true;
         });
         for (int c = 0; c < 2; ++c) {
-            if (sounding)
-                decimators_[c].process(mix_[c].data(), (c == 0 ? left : right) + done, static_cast<int>(n));
-            else
+            if (sounding) {
+                float *out = (c == 0 ? left : right) + done;
+                decimators_[c].process(mix_[c].data(), out, static_cast<int>(n));
+                // The voices' DC taken out before the effects (see DcBlocker); a block of silence clears it too.
+                if (std::all_of(out, out + n, [](float x) { return x == 0.0f; }))
+                    dcBlockers_[c] = {};
+                else
+                    for (uint32_t s = 0; s < n; ++s)
+                        out[s] = dcBlockers_[c].run(out[s], dcCoefs_);
+            } else {
                 decimators_[c].reset();
+                dcBlockers_[c] = {};
+            }
         }
         if (analyzing_)
             analyzeFilters(n, sounding, params);
@@ -989,7 +1131,7 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
         }
         if (!free)
             advanceLfo(lfo, lfoHz(get, s, tempo_), frames, fxTail_.rng,
-                       get(paramIndex(s, SourceParam::OneShot)) >= 0.5, get(paramIndex(s, SourceParam::RandomChaos)));
+                       lfoOneShot(get, s), get(paramIndex(s, SourceParam::RandomChaos)));
     }
     return count;
 }
@@ -1023,23 +1165,16 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
             continue;
         }
         // The cycles it has run since the song's start: synced, a note value's beats each, else at its rate. Its
-        // Phase is where it stood at the start; Random takes none, as with notes.
+        // Phase is where it stood at the start. A random one is never anchored (see lfoAnchored()).
         const double seconds = end / sampleRate_;
         const double cycles =
             shared(paramIndex(s, SourceParam::Sync)) >= 0.5
                 ? (songBeats_ + seconds * tempo_ / 60.0) /
                       divisionBeats(static_cast<int>(std::lround(shared(paramIndex(s, SourceParam::Division)))))
                 : (songSeconds_ + seconds) * sweepRateHz(shared(paramIndex(s, SourceParam::Rate)));
-        const bool random = lfoShape(shared, s) == LfoShape::Random;
-        const double at = cycles + (random ? 0.0 : shared(paramIndex(s, SourceParam::Phase)));
-        const double cycle = std::floor(at);
+        const double at = cycles + shared(paramIndex(s, SourceParam::Phase));
         lfo.hz = lfoHz(shared, s, tempo_);
-        lfo.phase = at - cycle;
-        if (cycle != lfo.cycle) { // Random takes a new value each cycle
-            lfo.cycle = cycle;
-            lfo.from = lfo.held;
-            lfo.held = randomStep(lfo.held, chaos, freeRng_);
-        }
+        lfo.phase = at - std::floor(at);
     }
 }
 
@@ -1268,6 +1403,9 @@ void Synth::telemetry(Telemetry &out) const {
     // thread about 60 times a second while the editor is open) and copy it.
     static_assert(std::is_trivially_destructible_v<Telemetry>);
     std::construct_at(&out);
+    out.seqPosition = seq_.position();
+    out.seqPattern = seq_.pattern();
+    out.seqKeys = seq_.soundingPitches();
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quicker one a whole span at a time,
         // blending into the next (see kScopeBlendSpan).
@@ -1291,12 +1429,18 @@ void Synth::telemetry(Telemetry &out) const {
     const int pitchBend = paramIndex(GlobalParam::PitchBend);
     out.bendSet = static_cast<float>(bendSet_);
     out.bend = static_cast<float>(std::clamp(
-        bend_ + std::clamp(bendSet_ + globalMod_[pitchBend], table_[pitchBend].min, table_[pitchBend].max), -1.0, 1.0));
+        bend_ + seqBend_ + std::clamp(bendSet_ + globalMod_[pitchBend], table_[pitchBend].min, table_[pitchBend].max),
+        -1.0, 1.0));
     out.clipHold = static_cast<float>(clipHold_);
     if (analyzing_)
         outScope_.blend.show(outScope_.frame, kOutScopeBins, out.outScope);
+    // The keys played: the host's and the editor's keyboard's, those the sequencer takes as keys among them; not the
+    // sequencer's own notes, nor those the editor plays to be heard.
     for (const HeldNote &held : held_)
-        out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
+        if (held.note.port != kSeqPort && held.note.port != kAuditionPort)
+            out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
+    for (int i = 0; i < keysTakenCount_; ++i)
+        out.keys[keysTaken_[i].key / 32] |= 1u << (keysTaken_[i].key % 32);
     for (int slot = 0; slot < kFxSlots; ++slot) { // effects keep working on echoes after the voices end
         for (int band = 0; band < kMcBands; ++band) {
             out.fxReduction[slot][band] = effects_.reduction(slot, band);
@@ -1463,6 +1607,8 @@ void Synth::endVoice(Voice &v) {
 }
 
 void Synth::reportEnded(const NoteRef &note) {
+    if (note.port == kSeqPort || note.port == kAuditionPort) // the sequencer's own, or the editor's: no host waits
+        return;
     if (std::find(ended_.begin(), ended_.end(), note) == ended_.end() && ended_.size() < ended_.capacity())
         ended_.push_back(note); // capacity was reserved in prepare(), so this never allocates
 }
@@ -1587,6 +1733,52 @@ WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const Reader
 
 } // namespace
 
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+void Synth::unisonCopies(Operator &op, int index, int copies, double inc, double detune, double spread,
+                         double monoGain, const UnisonModes &modes, const UnisonIncs *&incs,
+                         const UnisonGains *&gains, std::array<double, kMaxUnison> &weights) {
+    // The curve, the pan and the note's seed as one number, whole and exact: the seed only for the Random modes, so
+    // the others keep their memos from note to note.
+    const double seedKey = modes.curve == UniCurve::Random || modes.pan == UniPan::Random
+                               ? static_cast<double>(modes.seed)
+                               : 0.0;
+    const double modesKey = static_cast<double>(modes.curve) +
+                            static_cast<double>(UniCurve::Count) *
+                                (static_cast<double>(modes.pan) + static_cast<double>(UniPan::Count) * seedKey);
+    auto spreadOf = [&] { return unisonSpread(copies, modes.curve, modes.pan, modes.blend, modes.seed, index); };
+    incs = &op.unisonIncs.get({inc, detune, static_cast<double>(copies), modesKey}, [&] {
+        const UnisonSpreadOut at = spreadOf();
+        UnisonIncs c{};
+        for (int k = 0; k < copies; ++k)
+            c.inc[k] = std::min(inc * std::exp2(at.detune[k] * detune / 1200.0), 0.5);
+        return c;
+    });
+    gains = &op.unisonGains.get({spread, static_cast<double>(copies), modesKey, modes.blend}, [&] {
+        const UnisonSpreadOut at = spreadOf();
+        UnisonGains c{};
+        for (int k = 0; k < copies; ++k) {
+            const double copyAngle = (at.pan[k] * spread + 1.0) * std::numbers::pi / 4.0;
+            c.gainL[k] = std::numbers::sqrt2 * std::cos(copyAngle) * monoGain * at.weight[k];
+            c.gainR[k] = std::numbers::sqrt2 * std::sin(copyAngle) * monoGain * at.weight[k];
+        }
+        weights = at.weight;
+        return c;
+    });
+}
+
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+std::array<double, kMaxUnison> Synth::unisonDetunes(int index, int copies, const UnisonModes &modes) {
+    return unisonSpread(copies, modes.curve, modes.pan, modes.blend, modes.seed, index).detune;
+}
+
 // Each copy read through its warp, and restarted by its master.
 template <class Reader>
 #ifdef _MSC_VER
@@ -1595,7 +1787,7 @@ __declspec(noinline)
 __attribute__((noinline))
 #endif
 Synth::OpSample Synth::warpedSample(Operator &op, const Reader &table, double offset, double factor, int copies,
-                                    const UnisonGains *gains, bool sides,
+                                    const UnisonGains *gains, const double *weights, bool sides,
                                     const std::array<double, kMaxUnison> &syncIncStep, double warpStep) {
     OpSample out;
     const WarpCoefs coefs = warpCoefs(op.warp, op.warpNow);
@@ -1660,7 +1852,7 @@ Synth::OpSample Synth::warpedSample(Operator &op, const Reader &table, double of
         }
         if (op.phases[k] >= 1.0 || op.phases[k] < 0.0)
             op.phases[k] -= std::floor(op.phases[k]);
-        out.mono += x;
+        out.mono += x * weights[k];
         if (sides) {
             out.l += x * gains->gainL[k];
             out.r += x * gains->gainR[k];
@@ -1678,13 +1870,13 @@ __declspec(noinline)
 __attribute__((noinline))
 #endif
 Synth::OpSample Synth::tableSample(Operator &op, PlayState &play, const FrameTable &table, double offset, double factor,
-                                   int copies, const UnisonGains *gains, bool sides) {
+                                   int copies, const UnisonGains *gains, const double *weights, bool sides) {
     OpSample out;
     const FrameReader reader = frameReader(table, play.tableLevel, play.posNow);
     play.posNow += play.posStep;
     for (int k = 0; k < copies; ++k) {
         const double x = reader.read(op.phases[k] + offset);
-        out.mono += x;
+        out.mono += x * weights[k];
         if (sides) {
             out.l += x * gains->gainL[k];
             out.r += x * gains->gainR[k];
@@ -1708,7 +1900,7 @@ __declspec(noinline)
 __attribute__((noinline))
 #endif
 Synth::OpSample Synth::sampleSample(Operator &op, PlayState &play, const SampleRead &r, double offset, double factor,
-                                    int copies, const UnisonGains *gains, bool sides) {
+                                    int copies, const UnisonGains *gains, const double *weights, bool sides) {
     OpSample out;
     const float *x = r.mips->at(r.level);
     const double last = static_cast<double>(r.mips->levelLength(r.level) - 1);
@@ -1732,7 +1924,7 @@ Synth::OpSample Synth::sampleSample(Operator &op, PlayState &play, const SampleR
         } else if (!inLoop && r.endFade > 0.0 && play.ways[k] > 0.0f && pos > r.length - 1.0 - r.endFade) {
             y *= std::clamp((r.length - 1.0 - pos) / r.endFade, 0.0, 1.0);
         }
-        out.mono += y;
+        out.mono += y * weights[k];
         if (sides) {
             out.l += y * gains->gainL[k];
             out.r += y * gains->gainR[k];
@@ -1829,18 +2021,18 @@ __attribute__((noinline))
 #endif
 Synth::OpSample Synth::specialSample(Operator &op, PlayState &play, int i, const float *wave, bool warped, bool table,
                                      bool sample, double offset, double factor, int copies, const UnisonGains *gains,
-                                     bool sides,
+                                     const double *weights, bool sides,
                                      const std::array<double, kMaxUnison> &syncIncStep, double warpStep) const {
     if (sample)
-        return sampleSample(op, play, play.read, offset, factor, copies, gains, sides);
+        return sampleSample(op, play, play.read, offset, factor, copies, gains, weights, sides);
     if (table && warped) {
         const FrameReader reader = frameReader(opTable_[i]->table, play.tableLevel, play.posNow);
         play.posNow += play.posStep;
-        return warpedSample(op, reader, offset, factor, copies, gains, sides, syncIncStep, warpStep);
+        return warpedSample(op, reader, offset, factor, copies, gains, weights, sides, syncIncStep, warpStep);
     }
     if (table)
-        return tableSample(op, play, opTable_[i]->table, offset, factor, copies, gains, sides);
-    return warpedSample(op, CycleReader{wave}, offset, factor, copies, gains, sides, syncIncStep, warpStep);
+        return tableSample(op, play, opTable_[i]->table, offset, factor, copies, gains, weights, sides);
+    return warpedSample(op, CycleReader{wave}, offset, factor, copies, gains, weights, sides, syncIncStep, warpStep);
 }
 
 void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params) {
@@ -1918,7 +2110,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // with MPE on, a note on a member channel bends with its channel too. The bend is the host's MIDI pitch bend and the
     // Pitch Bend param (the editor's bend wheel) together, the param with the host's modulation of it for this voice
     // (a modulator per note bends each note its own way).
-    const double bend = std::clamp(bend_ + p[paramIndex(GlobalParam::PitchBend)], -1.0, 1.0);
+    const double bend = std::clamp(bend_ + seqBend_ + p[paramIndex(GlobalParam::PitchBend)], -1.0, 1.0);
     const double memberBend =
         mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] * mpeBendRange_ : 0.0;
     auto pitchNow = [&] {
@@ -1976,7 +2168,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // A free LFO takes the shared clock, which render() moves on; switched
             // back to retrigger, it carries on from there. A one-shot is never free.
             // So does an anchored one, which render() moves to where the transport stands.
-            const bool oneShot = p[paramIndex(s, SourceParam::OneShot)] >= 0.5;
+            const bool oneShot = lfoOneShot(get, s);
             const bool free = lfoShared(get, s);
             const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
             // A note takes a new value for it to glide to; so does a note retriggering it in mono while it stands
@@ -2229,14 +2421,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     std::array<double, kOps> noiseMid;
     std::array<double, kOps> noiseSide;
     // Unison: each copy has its own increment and stereo gains. The copies'
-    // mono sum, scaled by 1/sqrt(copies), is what other operators hear.
+    // mono sum, scaled by 1/sqrt(copies), is what other operators hear (each by its weight once Blend moves them).
     std::array<int, kOps> copies;
     std::array<double, kOps> monoGain;
     std::array<std::array<double, kMaxUnison>, kOps> incStep; // per sample, toward the block's increments
     std::array<bool, kOps> incMoving{}; // whether any of an operator's increments moves this block
     std::array<const UnisonIncs *, kOps> copy;
     // Sync and the warp (see Operator): the operators that read their wave through either, or still carry a sync's
-    // smoothing over, take a loop of their own (see warpedSample()). The masters' increments move like the copies' do.
+    // smoothing over, take a loop of their own (see warpedSample()), as do those whose copies Blend weighs. The
+    // masters' increments move like the copies' do.
     std::array<bool, kOps> warped{};
     std::array<double, kOps> warpStep{};
     // Wavetable and Sample operators with their data (see resolveData()), which take a loop of their own as the warped
@@ -2319,14 +2512,20 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             heard = std::max(heard, target.shaperSend[i][sh]);
         }
 
-        // Copies spread evenly from -1 to 1: detuned by up to Unison Detune
-        // cents and panned by up to Unison Spread.
+        // Copies spread from -1 to 1 as Unison Curve and Unison Pan say (see unison.h): detuned by up to Unison
+        // Detune cents and panned by up to Unison Spread, Blend turning the outer ones down.
         copies[i] = noise[i] ? 1
                              : std::clamp(static_cast<int>(std::lround(p[paramIndex(i, OpParam::Unison)])), 1,
                                           kMaxUnison);
         monoGain[i] = 1.0 / std::sqrt(static_cast<double>(copies[i]));
         const double detune = p[paramIndex(i, OpParam::UnisonDetune)];
         const double spread = p[paramIndex(i, OpParam::UnisonSpread)];
+        // The Random modes draw from the note: a seed of its own, the same every block.
+        const UnisonModes modes{
+            static_cast<UniCurve>(
+                stepped(p[paramIndex(i, OpParam::UnisonCurve)], static_cast<int>(UniCurve::Count) - 1)),
+            static_cast<UniPan>(stepped(p[paramIndex(i, OpParam::UnisonPan)], static_cast<int>(UniPan::Count) - 1)),
+            std::clamp(p[paramIndex(i, OpParam::UnisonBlend)], 0.0, 1.0), static_cast<uint32_t>(v.order)};
         // The warp: its amount ramps to this block's over a control block, as the levels do; a warp changed to another
         // first takes its amount down to 0 (the plain wave, whatever the warp), then switches and takes it up again.
         double squeeze = 1.0; // how much faster the warp reads the wave at its steepest, for the table
@@ -2368,7 +2567,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.warp = OpWarp::Off;
             op.warpNow = 0.0;
         }
-        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying;
+        // Blended copies weigh into the mono sum other operators hear, which only that loop does (and a table's and a
+        // sample's own): the plain loops below, which most operators run, sum them as they are (a multiply a copy there
+        // cost every patch 2-3 %).
+        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying ||
+                    (modes.blend > 0.0 && copies[i] > 1 && !tableOp[i] && !sampleOp[i]);
         special[i] = warped[i] || tableOp[i] || sampleOp[i];
 
         // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
@@ -2401,22 +2604,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             noiseSide[i] = spread * noiseMid[i];
         }
         // The gains apart from the increments: a pitch that moves (vibrato, a bend, glide) works out only these.
-        auto copyOffset = [&](int k) { return copies[i] > 1 ? 2.0 * k / (copies[i] - 1) - 1.0 : 0.0; };
-        copy[i] = &op.unisonIncs.get({inc, detune, static_cast<double>(copies[i])}, [&] {
-            UnisonIncs c{};
-            for (int k = 0; k < copies[i]; ++k)
-                c.inc[k] = std::min(inc * std::exp2(copyOffset(k) * detune / 1200.0), 0.5);
-            return c;
-        });
-        copyGains[i] = &op.unisonGains.get({spread, static_cast<double>(copies[i])}, [&] {
-            UnisonGains c{};
-            for (int k = 0; k < copies[i]; ++k) {
-                const double copyAngle = (copyOffset(k) * spread + 1.0) * std::numbers::pi / 4.0;
-                c.gainL[k] = std::numbers::sqrt2 * std::cos(copyAngle) * monoGain[i];
-                c.gainR[k] = std::numbers::sqrt2 * std::sin(copyAngle) * monoGain[i];
-            }
-            return c;
-        });
+        unisonCopies(op, i, copies[i], inc, detune, spread, monoGain[i], modes, copy[i], copyGains[i], v.copyWeights[i]);
         // Panned, or still ramping back from a pan, it is stereo too.
         const bool panned = opPan != 0.0 || v.levels.panL[i] != v.levels.panR[i];
         stereo = stereo || ((((copies[i] > 1 || noise[i]) && spread > 0.0) || panned) && heard > 0.0);
@@ -2434,8 +2622,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // The masters: each a cycle of the note, detuned as its copy is.
         if (op.syncOn) {
             const double noteInc = std::min(noteHz / rate_, 0.5);
+            const std::array<double, kMaxUnison> shares = unisonDetunes(i, copies[i], modes);
             for (int k = 0; k < copies[i]; ++k) {
-                const double to = std::min(noteInc * std::exp2(copyOffset(k) * detune / 1200.0), 0.5);
+                const double to = std::min(noteInc * std::exp2(shares[k] * detune / 1200.0), 0.5);
                 if (starting || !op.syncKnown || op.syncCopies != copies[i])
                     op.syncIncNow[k] = to;
                 syncIncStep[i][k] = (to - op.syncIncNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
@@ -2490,12 +2679,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         target.shaperDirect[sh] = shaperEnabled[sh] ? p[paramIndex(sh, ShaperParam::Out)] : 0.0;
         const ShaperParams fields = shaperParams(kFxSlots + sh);
         const ShaperSettings &settings = v.shaperSettings[sh].get(
-            {p[fields.drive], p[fields.mode], p[fields.output], p[fields.link], p[fields.mix], p[fields.symmetric]},
+            {p[fields.drive], p[fields.mode], p[fields.output], p[fields.link], p[fields.mix], p[fields.symmetric],
+             p[fields.stack]},
             [&] { return shaperSettings([&p](int index) { return p[index]; }, fields); });
         target.shaperDrive[sh] = settings.drive;
         target.shaperOutput[sh] = settings.output;
         target.shaperMix[sh] = settings.mix;
+        target.shaperBetween[sh] = settings.between;
         curve[sh] = shaperTables_[sh].curve(settings.mode, settings.symmetric);
+        curve[sh].stack(settings.stack, rate_);
         block[sh] = clipNeedsBlocker(settings.mode);
     }
 
@@ -2597,11 +2789,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool shaperShapes = false; // whether any shaper that runs hears one (itself among them)
     for (int sh = 0; sh < kShapers; ++sh) {
         if (!shaperOn[sh]) {
-            v.shapers[sh] = {};
+            if (v.shaperHeld[sh]) { // when it runs again, it starts from silence
+                v.shapers[sh] = {};
+                v.shaperHeld[sh] = false;
+            }
             v.shaperOut[sh] = 0.0;
             v.shaperLast[sh] = {};
             continue;
         }
+        v.shaperHeld[sh] = true;
         for (int from = 0; from < kShapers; ++from)
             shaperShapes = shaperShapes ||
                            (shaperOn[from] && routed(target.shaperShaper[from][sh], current.shaperShaper[from][sh]));
@@ -2613,27 +2809,50 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool filterBack = false; // whether any filter that runs hears itself or a later one
     for (int f = 0; f < kFilters; ++f) {
         if (!filterOn[f]) { // when it runs again, it starts from silence
-            v.filters[f] = {};
+            if (v.filterHeld[f]) {
+                v.filters[f] = {};
+                v.filterHeld[f] = false;
+            }
             v.combDirty[f] = {true, true};
             v.filterRing[f] = 0;
             v.filterHeard[f] = 0;
             v.filterLast[f] = {};
             continue;
         }
+        v.filterHeld[f] = true;
         combs[f] = {combLine(v, f, 0), combLine(v, f, 1)};
         for (int from = f; from < kFilters; ++from)
             filterBack = filterBack || (filterOn[from] && routed(target.link[from][f], current.link[from][f]));
         // Without key tracking the pitch moves nothing (2 to the power of 0 is exactly 1): left out, so a pitch that
         // moves doesn't have the settings worked out again.
         const double keyTrack = p[paramIndex(f, FilterParam::KeyTrack)];
-        const std::array<double, 7> inputs{
-            p[paramIndex(f, FilterParam::Cutoff)], keyTrack, keyTrack != 0.0 ? pitch : 0.0,
-            p[paramIndex(f, FilterParam::Type)],   p[paramIndex(f, FilterParam::Slope)],
-            p[paramIndex(f, FilterParam::Resonance)], p[paramIndex(f, FilterParam::Drive)]};
+        // The ladder, the diode and the Sallen-Key's self-oscillate at the top of their resonance, which would ring
+        // on without end: once the voice's operators have faded (see Voice::tail), it is held below that, so their
+        // ringing dies away as a loop's does.
+        const auto type = static_cast<FilterType>(
+            stepped(p[paramIndex(f, FilterParam::Type)], static_cast<int>(FilterType::Count) - 1));
+        double resonance = p[paramIndex(f, FilterParam::Resonance)];
+        if (v.tail && selfOscillates(type))
+            resonance = std::min(resonance, kTailResonance);
+        // The Formant type's vowel and the Morph type's place and mode go in for those types alone: for the others,
+        // which don't play them, a modulation of one doesn't have the settings worked out again.
+        const bool formant = type == FilterType::Formant, morph = type == FilterType::Morph;
+        const std::array<double, 10> inputs{
+            p[paramIndex(f, FilterParam::Cutoff)],
+            keyTrack,
+            keyTrack != 0.0 ? pitch : 0.0,
+            p[paramIndex(f, FilterParam::Type)],
+            p[paramIndex(f, FilterParam::Slope)],
+            resonance,
+            p[paramIndex(f, FilterParam::Drive)],
+            formant ? p[paramIndex(f, FilterParam::Vowel)] : 0.0,
+            morph ? p[paramIndex(f, FilterParam::Morph)] : 0.0,
+            morph ? p[paramIndex(f, FilterParam::MorphMode)] : 0.0};
         filter[f] = &v.filterSettings[f].get(inputs, [&] {
             const double cutoffHz = cutoffFromNorm(inputs[0]) * std::exp2((pitch - 60.0) / 12.0 * inputs[1]);
             const auto type = static_cast<FilterType>(stepped(inputs[3], static_cast<int>(FilterType::Count) - 1));
-            return filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], rate_);
+            return filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], rate_, inputs[7],
+                                  inputs[8], morphMode(inputs[9]));
         });
         if (filter[f]->type == FilterType::Comb) // its lines start silent
             for (int c = 0; c < channels; ++c)
@@ -2816,11 +3035,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;
             if (special[i]) {
-                // Synced or warped (see Operator), a table or a sample: in functions of their own, so the plain loops
-                // below are as they were.
+                // Synced or warped (see Operator), blended, a table or a sample: in functions of their own, so the
+                // plain loops below are as they were.
                 const OpSample out = specialSample(
                     op, v.plays[i], i, wave[i], warped[i], tableOp[i], sampleOp[i], offset, factor, copies[i], copyGains[i],
-                    route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i], warpStep[i]);
+                    v.copyWeights[i].data(), route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i],
+                    warpStep[i]);
                 mono = out.mono;
                 l = out.l;
                 r = out.r;
@@ -2923,7 +3143,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             std::array<double, 2> y{};
             for (int c = 0; c < channels; ++c) // as the shaper effect runs (see Effects::runShaper())
                 y[c] = v.shapers[sh][c].run(curve[sh], toShaper[sh][c], level.shaperDrive[sh], level.shaperOutput[sh],
-                                            level.shaperMix[sh], block[sh], pole);
+                                            level.shaperMix[sh], block[sh], pole, level.shaperBetween[sh]);
             if (!stereo)
                 y[1] = y[0];
             v.shaperOut[sh] = 0.5 * (y[0] + y[1]);

@@ -145,8 +145,12 @@ std::string clipboardText(HWND owner) {
     return utf8;
 }
 
-Modifiers modifiers() {
-    return {GetKeyState(VK_SHIFT) < 0, GetKeyState(VK_CONTROL) < 0, GetKeyState(VK_MENU) < 0};
+// The modifiers held with a mouse message, from the key flags it carries (`keys`, its MK_ bits): GetKeyState() would
+// read this thread's idea of the keys, which no key message updates while the host has the keyboard (in another
+// thread or process), so Ctrl+wheel and Shift+click went unseen until the editor was clicked. Alt has no flag: its
+// state as the keyboard has it now.
+Modifiers modifiers(WPARAM keys) {
+    return {(keys & MK_SHIFT) != 0, (keys & MK_CONTROL) != 0, GetAsyncKeyState(VK_MENU) < 0};
 }
 
 // A modal loop (a file dialog, a message box, a menu) lets the host go on meanwhile, and it may close the editor, or
@@ -543,7 +547,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
             TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd_, 0};
             trackingLeave_ = TrackMouseEvent(&track) != FALSE;
         }
-        const bool changed = view_.mouseMove(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
+        const bool changed = view_.mouseMove(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers(wParam));
         updateCursor();
         if (changed) // else nothing to paint again: the poll timer paints what animates meanwhile
             invalidate();
@@ -560,13 +564,13 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     case WM_LBUTTONDOWN:
         SetCapture(hwnd_);
-        view_.mouseDown(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
+        view_.mouseDown(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers(wParam));
         syncFocus();
         updateCursor();
         invalidate();
         return 0;
     case WM_LBUTTONUP:
-        view_.mouseUp(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
+        view_.mouseUp(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers(wParam));
         if (GetCapture() == hwnd_)
             ReleaseCapture();
         updateCursor();
@@ -582,7 +586,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         // Stands in for the second WM_LBUTTONDOWN, so capture like one: a key it presses
         // must still see its button-up.
         SetCapture(hwnd_);
-        view_.doubleClick(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
+        view_.doubleClick(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers(wParam));
         syncFocus();
         updateCursor();
         invalidate();
@@ -612,7 +616,8 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_MOUSEWHEEL: {
         POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         ScreenToClient(hwnd_, &p);
-        view_.wheel(toView(p.x, p.y), GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA), modifiers());
+        view_.wheel(toView(p.x, p.y), GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA),
+                    modifiers(GET_KEYSTATE_WPARAM(wParam)));
         syncFocus();
         invalidate();
         return 0;
@@ -809,9 +814,54 @@ void Editor::paint() {
         invalidate();
 }
 
+namespace {
+
+// A pencil from its tip at the lower left (the hot spot) up to the right, black outlined in white: Windows has no pen
+// among its cursors. Made once, as a 32 x 32 monochrome cursor from its AND and XOR masks.
+HCURSOR penCursor() {
+    static const HCURSOR cursor = [] {
+        constexpr int kSize = 32;
+        BYTE andMask[kSize * kSize / 8], xorMask[kSize * kSize / 8];
+        std::fill(std::begin(andMask), std::end(andMask), BYTE{0xFF}); // all transparent
+        std::fill(std::begin(xorMask), std::end(xorMask), BYTE{0x00});
+        const float tipX = 1.5f, tipY = 29.5f, endX = 25.5f, endY = 5.5f;
+        const float dx = endX - tipX, dy = endY - tipY, length = std::sqrt(dx * dx + dy * dy);
+        for (int y = 0; y < kSize; ++y)
+            for (int x = 0; x < kSize; ++x) {
+                const float px = x + 0.5f - tipX, py = y + 0.5f - tipY;
+                const float along = (px * dx + py * dy) / length;      // from the tip toward the end
+                const float across = std::abs(px * dy - py * dx) / length;
+                if (along < -1.0f || along > length + 1.0f)
+                    continue;
+                const float radius = along < 7.0f ? std::max(along, 0.0f) / 7.0f * 3.0f : 3.0f; // its point, then its body
+                const bool black = across <= radius && along >= 0.0f && along <= length &&
+                                   !(along > 6.5f && along < 7.5f) && !(along > length - 4.0f && along < length - 3.0f);
+                const bool white = !black && across <= radius + 1.3f;
+                if (!black && !white)
+                    continue;
+                const int byte = (y * kSize + x) / 8;
+                const BYTE bit = static_cast<BYTE>(0x80 >> (x % 8));
+                andMask[byte] &= static_cast<BYTE>(~bit); // drawn
+                if (white)
+                    xorMask[byte] |= bit;
+            }
+        return CreateCursor(GetModuleHandleW(nullptr), 1, 30, kSize, kSize, andMask, xorMask);
+    }();
+    return cursor;
+}
+
+} // namespace
+
 void Editor::updateCursor() {
     LPCWSTR id = IDC_ARROW;
     switch (view_.cursor()) {
+    case CursorKind::Pen:
+        if (const HCURSOR pen = penCursor()) {
+            SetCursor(pen);
+            return;
+        }
+        id = IDC_CROSS;
+        break;
     case CursorKind::Arrow:
         id = IDC_ARROW;
         break;
@@ -906,13 +956,43 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         view_.undo();
         return true;
     }
+    // The SEQ view's: Ctrl+A picks every note, the arrows move those picked, Ctrl+C, Ctrl+X and Ctrl+V copy, cut and
+    // paste them.
+    if (const std::optional<View::Key> seq = seqKeyOf(key, ctrl))
+        return view_.seqKey(*seq, shift);
     return false;
 }
 
+std::optional<View::Key> Editor::seqKeyOf(WPARAM key, bool ctrl) {
+    if (ctrl)
+        return key == 'A'   ? std::optional(View::Key::SelectAll)
+               : key == 'C' ? std::optional(View::Key::Copy)
+               : key == 'X' ? std::optional(View::Key::Cut)
+               : key == 'V' ? std::optional(View::Key::Paste)
+                            : std::nullopt;
+    switch (key) {
+    case VK_LEFT:
+        return View::Key::Left;
+    case VK_RIGHT:
+        return View::Key::Right;
+    case VK_UP:
+        return View::Key::Up;
+    case VK_DOWN:
+        return View::Key::Down;
+    case VK_DELETE:
+        return View::Key::Delete;
+    default:
+        return std::nullopt;
+    }
+}
+
 // Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, while the mouse is over the editor in the active
-// window, so the host's own shortcuts work everywhere else. A shortcut's key going up is taken too.
+// window, so the host's own shortcuts work everywhere else; so do the SEQ view's keys (see View::seqKey()), Ctrl+A,
+// Ctrl+C, Ctrl+X, Ctrl+V, the arrows and Delete, when it takes them. A shortcut's key going up is taken too.
 bool Editor::shortcut(WPARAM key, bool up) {
-    if (key != 'Z' && key != 'Y')
+    const bool undoKey = key == 'Z' || key == 'Y';
+    if (!undoKey && key != 'A' && key != 'C' && key != 'X' && key != 'V' && key != VK_LEFT && key != VK_RIGHT && key != VK_UP && key != VK_DOWN &&
+        key != VK_DELETE)
         return false;
     if (up) {
         const bool taken = shortcutKey_ == key;
@@ -920,18 +1000,24 @@ bool Editor::shortcut(WPARAM key, bool up) {
             shortcutKey_ = 0;
         return taken;
     }
-    if (!hwnd_ || view_.typing() || GetKeyState(VK_CONTROL) >= 0 || GetKeyState(VK_MENU) < 0 ||
-        !IsWindowVisible(hwnd_) || GetForegroundWindow() != GetAncestor(hwnd_, GA_ROOT))
+    const bool ctrl = GetKeyState(VK_CONTROL) < 0;
+    if (!hwnd_ || view_.typing() || (undoKey && !ctrl) || GetKeyState(VK_MENU) < 0 || !IsWindowVisible(hwnd_) ||
+        GetForegroundWindow() != GetAncestor(hwnd_, GA_ROOT))
         return false;
     POINT p;
     GetCursorPos(&p);
     const HWND under = WindowFromPoint(p);
     if (under != hwnd_ && !IsChild(hwnd_, under))
         return false;
-    if (key == 'Y' || GetKeyState(VK_SHIFT) < 0)
+    if (!undoKey) { // the SEQ view's, if it takes it
+        const std::optional<View::Key> seq = seqKeyOf(key, ctrl);
+        if (!seq || !view_.seqKey(*seq, GetKeyState(VK_SHIFT) < 0))
+            return false;
+    } else if (key == 'Y' || GetKeyState(VK_SHIFT) < 0) {
         view_.redo();
-    else
+    } else {
         view_.undo();
+    }
     shortcutKey_ = key;
     invalidate();
     return true;

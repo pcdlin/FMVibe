@@ -7,16 +7,23 @@ place of its wave.
 
 In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMVibe/)
 
-![FMVibe UI](docs/editor.png)
-
-![FMVibe UI](docs/fx-chain.png)
-
-![FMVibe UI](docs/fx-graph.png)
-
 Implemented using Claude Code.
 
 The full feature reference is in [docs/features.md](docs/features.md).
 Information about working on the code, its tests and the plugin's internals are in [AGENTS.md](AGENTS.md).
+
+#### Main UI
+![FMVibe UI](docs/editor.png)
+
+#### FX panel
+![FMVibe UI](docs/fx-chain.png)
+
+#### FX graph
+![FMVibe UI](docs/fx-graph.png)
+
+#### Sequencer panel
+![FMVibe UI](docs/seq.png)
+
 
 ## Download
 

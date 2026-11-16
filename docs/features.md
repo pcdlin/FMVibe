@@ -16,7 +16,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     Fewer partials leave the ones past them out of the sound, but keep their levels and phases for when there are
     more again. It is band-limited like the others and normalized to its
     peak; the synth builds its tables again whenever the partials change. Noise has no pitch or unison: instead a **Slope** moves it from white through pink (−3 dB per
-    octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Uni Spread param) widens it
+    octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Unison Spread param) widens it
     from mono to fully uncorrelated left and right;
   - or, in the wave's place, a **Wavetable**: frames of a single cycle each, which **Position** (0–100 %, given to
     hosts and modulated like any knob) scans, blending the two frames about it, so a Position at a frame plays that
@@ -95,9 +95,27 @@ What the plugin does and how its editor works, in full. Building and installing 
     its peak). It is read as a note starts, with the host's and the sources' modulation on it then, and holds for the
     note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
     (see Velocity, under the modulation sources), aimed at Out or wherever else;
-  - **Unison**: up to 16 copies of the operator. *Uni Detune* spreads them in pitch (the outermost copies by up to
-    ±100 cents) and *Uni Spread* across the stereo field. On a modulator, the copies' sum is what its targets
-    hear; on a carrier, every copy is modulated by the same signal.
+  - **Unison**: up to 16 copies of the operator. *Detune* (Unison Detune) spreads them in pitch (the outermost
+    copies by up to ±200 cents; patches saved while it stopped at 100, state version 12 and earlier, load a
+    modulation's depth on it half as deep, to swing it as far) and *Spread* (Unison Spread) across the stereo field. On a modulator, the copies' sum
+    is what its targets hear; on a carrier, every copy is modulated by the same signal. How they spread is the
+    operator's to pick (`src/unison.h`; to begin with, evenly in pitch and all as loud, as unison always played, and
+    Alternate across; patches saved before these, state version 12 and earlier, load Ramp, from left to right, as
+    they played):
+    - **Unison Curve**, where the copies go in pitch: *Linear* (evenly), *Center* (bunched about the pitch, the
+      outermost as far out as Linear's, each copy's share of the detune its even share squared), *Supersaw* (as a
+      classic supersaw spaces its seven: unevenly, the outer pair far out; other counts read along those seven) or
+      *Random* (one copy anywhere in each of as many even stretches of the detune, drawn new for every note and
+      each operator, held through the note);
+    - **Unison Pan**, where they sit: *Ramp* (from left to right as their pitch rises), *Alternate* (to begin with:
+      copies next to each other in pitch on opposite sides, mirrored outward from the middle copy, so the stereo field is wide
+      however few copies play, and no two sit in one place) or *Random* (the even places dealt out new for every
+      note);
+    - **Blend** (Unison Blend, 0 % to begin with): turns each copy down by how far out its detune takes it, the
+      outermost to a tenth of the middle at 100 %, all together kept as loud as before. It acts on what a modulator's
+      targets hear too, so a detuned modulator can keep a strong middle with a quiet halo.
+
+    Nothing changes for Noise, which has no copies.
   - **Note Sync** (hard sync, off by default; not the Sync warp below): each cycle of the note's pitch restarts
     the operator's wave at its Phase, as an analog oscillator synced to a master at the note. The operator's ratio
     (or its fixed Freq × Mult, Pitch and Detune) then sets the pitch inside each of those cycles, while what sounds
@@ -179,7 +197,40 @@ What the plugin does and how its editor works, in full. Building and installing 
     18, it plays the slope above;
   - Comb: a tuned feedback delay, so the cutoff sets the pitch and resonance the feedback. With its cutoff at 0
     and the note source on it at 100 %, its curve drawn along the cutoff knobs' (and Key Track left at 0), it
-    rings at the pitch of the note.
+    rings at the pitch of the note;
+  - Ladder: a four-pole transistor ladder, a low-pass whose resonance runs in a loop around its four one-pole
+    stages, solved without a sample's delay so its cutoff and peak land where the analog circuit's do. **Slope**
+    taps one to four of its stages (6 to 24 dB), the resonance coming from around all four. Each stage saturates
+    what it takes in, on a curve close to tanh, as a transistor ladder's pairs do: an operator at its usual level
+    comes out warmed (a sine's 3rd harmonic about 30 dB under it, where the low-pass leaves it clean), and Drive's
+    saturator feeds it at full level rather than taken back down, so its stages saturate on top of it (its output is
+    taken down instead). As its resonance rises its level below the cutoff falls (a quarter of that loss put back),
+    thinning the note. From about 93 % of Resonance it self-oscillates, a tone of its own at its cutoff held by its
+    stages' saturation, louder toward the top; once a released note's operators have faded, its resonance is held
+    at 90 %, so its ringing dies away and the voice ends;
+  - Diode: a four-pole diode ladder, its stages loading each other (each the one before it half as much as a passive
+    RC ladder's would), so its poles spread apart: darker than the ladder without resonance, and its peak climbs
+    toward the cutoff as the resonance rises, the cutoff where it lands at the top. 24 dB only. It saturates once, at
+    its input less the feedback, loses less of its bass than the ladder (half of the loss put back), takes Drive as the
+    ladder does, and self-oscillates from about 93 % in the same way, held at 90 % once a released note has faded;
+  - Sallen-Key LP and Sallen-Key HP: a two-pole Sallen-Key filter, as in Korg's MS-20, 12 dB only: soft without
+    resonance (two poles at the cutoff), with its resonance's loop through a clipper set low, so that as Resonance
+    rises it screams and breaks up rather than ringing clean. It takes Drive as the ladder does, and self-oscillates
+    from about 93 % in the same way, held at 90 % once a released note has faded;
+  - Formant: three band-passes at a vowel's first three formants (a bass voice's A, E, I, O and U), each at its level.
+    **Vowel** (A to begin with) goes from one vowel to the next in equal steps, moving the formants on a log scale and
+    their levels in dB, so it can be swept or modulated like any knob. Cutoff shifts the formants, half an octave for
+    each octave it moves from its middle (where they are as the table has them), and Key Track with it; Resonance
+    narrows them, from a Q of 4 to 30;
+  - Morph: the state-variable filter going from its low-pass to its high-pass as **Morph** goes from 0 to 1
+    (0 to begin with), through its band-pass or its notch as **Morph Mode** says (LP > BP > HP, the first, or
+    LP > Notch > HP, its notch switch on). **Slope** picks 12 or 24 dB, as a band-pass's or notch's does (6 and 18
+    playing as the slope above): at 24 a Butterworth stage after the resonant one, shared out the same way. Its outputs
+    are shared out: through the band-pass, the low-pass gives way to the band-pass over
+    the first half and the band-pass to the high-pass over the second; through the notch, the high-pass rises to meet
+    the low-pass (the two together the notch) and the low-pass then falls away. At 0, 0.5 and 1 it plays exactly the
+    low-pass, the band-pass or notch and the high-pass at its slope, with Resonance as theirs; Morph can be swept or
+    modulated like any knob.
 
   Every filter's Cutoff, the filter effect's too, starts (and resets) at its knob's middle, about 632 Hz: there,
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
@@ -190,9 +241,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings
   out too; when they come back, or its type or slope takes up a stage it left out, that starts from silence.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
-  voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
-  effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
-  (off), and run by the same code: anti-aliased the same way, a drawn curve gliding to moved points and its level at the middle taken out the same way, with the same DC blocker after the uneven and drawn curves. Any operator,
+  voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, Stack, or a Custom curve drawn
+  like the effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with),
+  Symmetric (off) and, for the Stack curve, Stack (1 to begin with), and run by the same code: anti-aliased the same way, a drawn curve gliding to moved points and its level at the middle taken out the same way, with the same DC blocker after the uneven and drawn curves. Any operator,
   filter or shaper can be sent into a shaper (`A → S1`, `F1 → S1`, `S1 → S2`), a shaper into itself too (`S1
   Feedback`), and a shaper's output feeds the filters (`S1 → F1`), for
   distortion into a filter or a filter's sound distorted, and modulates operators the way an operator does
@@ -215,7 +266,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     It replaces the LFO's Custom shape, which the LFOs no longer offer: a patch saved before (state version 11 and
     earlier) loads an LFO with that shape as a Curve source running as the LFO ran, its points and polarity kept.
   - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
-    in quarter notes, as an LFO does), clock modes and anchoring, and takes a new value every cycle. **Chaos** sets
+    in quarter notes, as an LFO does), and takes a new value every cycle. Of the clock modes it has only
+    **Retrigger** and **Free**: its values can't be told ahead, so standing where the transport puts it or running
+    one cycle means nothing to it (a patch or host that sets its Anchor runs it free, and its One-Shot retriggers it). **Chaos** sets
     how far it may move from the last one: up to a tenth of the range either way at 0 %, so it wanders, rising to
     anywhere at all at 100 % (the default), like sample and hold. **Smooth** glides to each new value instead of
     jumping: over that share of the cycle, easing in and out, then it holds (0 %, the default, steps). Unsynced at
@@ -327,7 +380,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
-    wins, then Anchor.
+    wins, then Anchor. A Random source has only Retrigger and Free (see Random above).
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes.
   - **Anchor** ties an LFO to the host's transport: while it plays, the LFO stands where it would had it started at
@@ -343,8 +396,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock, so it doesn't use it (nor does
     a Random source, which keeps its steps); an anchored one stands at it at the song's start. A one-shot runs from there to the cycle's
     end, so at 50 % it plays only the second half.
-  - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
-    dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
+  - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 8/1 (a cycle every eight bars) and
+    8/1T, then 4/1 down to 1/64, each straight, dotted (D) or as a triplet (T). A Random and a Curve source sync the
+    same way; the effects' synced times and sweeps stop at 4/1D. Without a tempo from the host, it assumes 120 BPM. The browser demo has no
     host: its editor's title bar has a **tempo** field instead (20–999 BPM, 140 to begin with, remembered by the
     browser; see Header), which every synced LFO, delay and sweep follows, as does `fmvibe-uihost`'s. A new LFO
     starts synced, in quarter notes. The note
@@ -415,7 +469,23 @@ What the plugin does and how its editor works, in full. Building and installing 
     its lower one, so the input below 0 is shaped as the input above it, upside down: only the right half drawn
     counts (a curve that doesn't pass through the middle jumps there, and is 0 right at the middle, so silence
     stays silent). The switch shows only while the curve is
-    Custom, and the other curves ignore it. The curves are anti-aliased (first-order antiderivative), so
+    Custom, and the other curves ignore it. **Stack**, after Fold and before Custom in the list, is a soft curve (tanh) biased off its
+    middle, as a tube stage is: it saturates gradually, passes what is quiet at its level, and its lower half reaches
+    further than its upper half (to −1.25 and 0.83), which adds even harmonics and an offset that grows as it is
+    driven harder. It runs as a gain stage of a pedal does, a high-pass at 20 Hz before the drive like the capacitor
+    between two stages, and nothing rounding its top off: each stage lifts back what its anti-aliasing's average takes
+    off the top, and the shaper effect runs the stages at twice the host rate (the voices' run at their
+    oversampling), so stacked eight high at 0 dB, quiet sines to 15 kHz come out within half a dB of their level. The
+    DC blocker follows. Its **Stack** knob (1–8, 1 to begin with), after Drive, where it shows only for the Stack curve, runs
+    that many stages in a row, each driven by Drive and brought back down after it by as much as Link would (whether
+    Link is on or not), so a stack plays about as that many linked shapers in a row; the DC blocker, Output (linked
+    or not) and Mix come once, after the last, as the stages' high-passes take out what the stages before them put
+    off the middle. Stacked high, it gets denser rather than louder, and its low end thumps: the offset each stage
+    puts out moves the next stage's high-pass, which the stages after it drive, and what the high-passes still hold
+    as a note ends rings on a moment past it as a low thump (stacked eight high at full drive, about half a second
+    above −60 dB) before it stops (what a high-pass puts out is taken 10⁻⁹ toward 0 before it is driven, so nothing
+    far below hearing is brought up for ever). The display draws the stages' curves one after another, with the
+    gain between them, without their filters. The curves are anti-aliased (first-order antiderivative), each Stack stage too, so
     high drive stays clean without oversampling, though folding at the highest drives gets duller for it.
   - **Amp**: a guitar amp, then a speaker cabinet heard through a mic. **Model** picks the amp: its preamp stages
     (each a coupling high-pass, a gain, a curve with a bias whose lower side is softer, which adds even harmonics, and
@@ -466,8 +536,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     there either), and an **On** switch. All three start on, flat (at 250 Hz, 1 kHz and 4 kHz). A band switched off leaves the sound
     alone, fading out and back in over 5 ms. **Amount** (100 % to begin with) mixes what the bands put out with
     what goes in, as a Mix knob does: at 0 % the EQ leaves the sound alone.
-  - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb; a row of icons on its
-    card, with the list of slopes under the response) and their slopes, 6 to 24 dB, on
+  - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
+    and HP, formant, morph; a list across its card under its title, as the shaper's curves are, with the list of
+    slopes under the response, a morph's with its notch switch (the notch's icon) beside it, and a formant's Vowel or a morph's Morph
+    between Drive and Mix) and their
+    slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
     the last one left it. Like the Param EQ, its display shows what it puts out behind its response.
@@ -537,7 +610,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Phaser**: 2–12 first-order all-passes (Stages) whose corner an LFO (Rate, 0–20 Hz; at 0 the sweep stands
     still) sweeps up to 2.5 octaves either way of Center (Depth), with Feedback (either sign) from the last stage
     into the first. **Sync** (off to begin with) makes the LFO go round once per note value of the host tempo
-    instead, 4/1 down to 1/64 like an LFO's (a bar to begin with; 120 BPM without a tempo from the host). **Stereo** (off to begin with, under its display) runs the right side's LFO a quarter cycle
+    instead, 4/1D down to 1/64T (an LFO's without its two slowest, 8/1 and 8/1T; a bar to begin with; 120 BPM without a tempo from the host). **Stereo** (off to begin with, under its display) runs the right side's LFO a quarter cycle
     ahead. Mix runs to 100 %, which is half wet: there the notches are deepest, and past it they would only get
     shallower again. Its polarity, **+** or **−** (+ to begin with, at the right under its display), picks whether
     the wet sound is added to the dry one or taken from it: negative turns the wet sound over, and the feedback
@@ -605,7 +678,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   for chords and stacked operators; at 0 dB a full-scale operator comes out at full scale. The voices go into the
   effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't depend on it, and Volume
   gives those 12 dB back. A project or preset saved by FMVibe 0.1, whose Volume didn't, loads it 12 dB lower, so
-  it sounds as loud as it did. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
+  it sounds as loud as it did. A DC blocker, a 5 Hz high-pass of two poles, takes the DC out of the voices' sum
+  going into the effects: a pulse squeezed off 50 %, a Ring route at unison, strong feedback or Exp FM would
+  otherwise bias the effects' compressors and drive, build up in their feedback and take headroom at the output.
+  (The effects that make DC of their own, the shapers and the amp, block it themselves.) It is cleared while no
+  voice sounds, so a choke or the last note's end is silence at once. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
   MIDI pitch bend (its knob in the header, after Pitch), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), **Pitch Bend**
   (±100 %, at rest in the middle), and **Voices**, the polyphony limit (1–512, default 16). Pitch Bend is the
@@ -660,6 +737,40 @@ What the plugin does and how its editor works, in full. Building and installing 
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob. Patches saved when it
     reached 20 s (state version 6 and earlier) load a longer glide as 6 s, and a modulation's depth on it larger by
     as much as its range shrank, so it swings Glide as far as it did.
+- **Sequencer**, off to begin with: a piano roll that plays the synth's own notes, edited in the SEQ view (see
+  [Editor](#editor)). It holds four **patterns**, A to D, saved with the preset, each up to 8 bars of 16 steps and up
+  to 128 notes; the pattern picked plays, and another one picked while it plays takes over where the loop comes round.
+  Each note has its start and length in steps (anywhere, not only on the grid), its pitch, velocity, **chance** (how
+  likely it plays each time round, drawn the same way each time a step comes round again, so a render plays alike),
+  **Slide** (it holds on into the next note, a step at most, so mono legato and glide join them; a next note starting
+  before its end leaves it ending there, as written) and **Mute** (kept,
+  silent). A pattern's **loop**, from step to step within its length (all of it to begin with), is what plays.
+  - **Play**: **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
+    play the synth on top). **Key** plays while a key is held, from the pattern's start, transposed by the newest key
+    from **Root**, and stops when the keys are let go; **Latch** starts with a key and plays on once they are let go, a
+    new key transposing it, until All Notes Off or All Sound Off (MIDI CC 123 or 120, as a host sends as it stops). In Key and Latch the keys play no notes of their own: the host is told each one has ended
+    as it is let go.
+  - **Rate** is a step's length: 1/4, 1/8 dotted, 1/8, 1/16 dotted, 1/8 triplet, 1/16 (to begin with), 1/16 triplet or
+    1/32, at the host's tempo. **Swing** (50–75 %) delays every other step; **Gate** (5–200 %) scales every note's
+    length; **Velocity** scales the notes' velocities (at 0 % every note plays at 100); **Humanize** delays the notes by
+    up to a quarter of a step and moves their velocity up to 30 % either way, the same way every time round;
+    **Octave** (±3) and **Transpose** (±24 semitones) move the whole pattern. **Order** runs the loop's steps forward,
+    backward, to and fro (the first and last steps play twice at each turn, so a loop of 16 steps takes 32 and stays
+    in its meter), or each one at random (the same way each time round), the notes starting in a step at the
+    same place in it.
+  - **Curves**: each pattern also has a **bend** curve and a **mod wheel** curve, drawn in the lane under the roll:
+    up to 64 points each, at any step, each segment straight or bent. As the pattern plays, the bend curve (±1, a share
+    of Bend Range) adds to the pitch bend, on top of the bend wheel's and the host's, and the mod wheel curve (0–1) to
+    the Mod Wheel param, as the host's modulation of it would, moving what the mod wheel modulates. Before its first
+    point a curve holds that point's value, and after its last that one's; played backward, it runs back with the
+    playhead. A curve without points does nothing, nor does either while the sequencer doesn't play.
+  - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
+    (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
+    the keys played (by the host, its own keys and the computer's), not the sequencer's notes. A jump of the transport, or a
+    change of Rate while it plays, ends what it holds and plays on from there. While it may start notes (in Host while
+    it is on; in Key and Latch while it runs), the plugin doesn't let the host put processing to sleep.
+  - Its settings but Root and Scale are given to hosts, for automation (not modulation); a pattern's length, loop,
+    notes and curves are the editor's alone.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
   parameters hosts are given accept CLAP modulation globally, the macros' knobs, the mod wheel, the note source's
   range and every modulation's depth and Amount among them (not the effects or the sources' own knobs, which hosts
@@ -697,15 +808,124 @@ sweeps and spectra the panels' row. What may show anywhere repaints the whole of
 changing, the first note or the last ending, and the host's tempo. It looks over the params for changes only when
 one may have changed since it last did.
 
-- **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panel below them shows: the routing graph
-  or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or across
-  the whole panel the effects chain or every modulation. The
+- **ROUTING / MATRIX / FX / SEQ / MODS** tabs, under the header, pick what the panel below them shows: the routing
+  graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
+  across the whole panel the effects chain, the sequencer or every modulation. The
   choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
   as it is. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
-  showing faintly under the mouse. While the full-size shape, shaper curve or partial editor has the panels, no tab
+  showing faintly under the mouse. FX shows a dot in its upper right while an effect in the line is switched on,
+  and SEQ while the sequencer is on. While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
+- **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
+  the roll of the pattern picked in the rest.
+  - **The card**: the sequencer's power switch; **PATTERN** A to D (the one picked plays and shows in the roll) and a
+    button that copies it, its length, loop, notes and curves, into the next empty pattern (no notes, and no points
+    on its curves); **PLAY** Host | Key | Latch; the
+    big knobs in two rows of four, Rate and Length (the pattern's, in bars) over Octave and Transpose at the left,
+    Swing and Gate over Humanize and Velocity at the right; **ORDER** as
+    arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
+    semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
+    Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
+    opening above it where the editor is too short for it below) and **FOLD**, which shows only the scale's rows, and
+    those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:
+    a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
+    hatched across, folded or not. Its switches say what they do in their tooltips (PLAY's what each mode does).
+  - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
+    stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
+  - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to
+    begin with, 1/32, 1/64, 1/8 triplet, 1/16 triplet; the wheel steps it), **×2** and **÷2** (the notes picked, or
+    every note, twice or half as long and as far apart; the whole pattern twice as long takes twice the bars), the
+    field of the notes picked (its NOTE, VEL, CHANCE, LEN and OFFSET, the offset a note's start off the grid in
+    hundredths of a step; each dragged up and down or scrolled, moving every note picked, one undo step; a
+    double-click puts VEL back to 100, CHANCE to full and OFFSET to 0, on the grid), **SLIDE** and
+    **MUTE** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, its notes and curves, asking first.
+    The roll's settings (the tool, the snap, the lane, the rows scrolled to and FOLD) belong to the editor: a preset
+    or Init leaves them as they are.
+  - **The roll**: the piano keys at its left (white keys across, the black ones shorter over them, every C named; with
+    FOLD, each row's name), a click playing the key, and the keys the sequencer's notes are written on lit as it plays them (as written, before Octave, Transpose or a key move them), each rising and fading a moment rather than switching; the bars
+    and beats over it, with the loop as a bar in the accent (dragged by its ends to size it and by its middle to move
+    it, the cursor left and right or moving; across the bars outside it for a new loop; a double-click loops the whole
+    pattern again), the steps outside the loop shaded; and the playhead, while the sequencer plays the pattern shown (running backward through the steps it plays
+    backward, reversed or on Ping-Pong's way back). The wheel scrolls the
+    rows; over the roll, Ctrl+wheel zooms in and out across and Alt+wheel up and down, at the mouse, as the − and +
+    after the arrows at the lane tabs' right do (across from the whole pattern to two steps, the rows from 0.6 to 3
+    times as high). A bar at the roll's right scrolls the rows (dragged, a click on its track jumping there, or the
+    wheel). Zoomed in across, a bar after the lane tabs shows and scrolls what the roll shows, as Shift+wheel
+    and the wheel turned sideways do; the middle button (or two fingers) drags the roll across and up and down. The
+    zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder (at full velocity
+    at full strength, and a little dimmer while the sequencer is off), dashed with their chance at less than full,
+    hollow while muted, a hook off their end with Slide; those picked are ringed, a handle at their end. As the
+    sequencer plays, a note glows as the playhead reaches it, fading over as long as the note lasts at the tempo, as
+    strongly as the glow setting says (not at all with it off).
+  - **Select**: a click picks a note (Shift adds it or takes it out, once let go without a drag), a drag moves the notes picked (the one grabbed
+    landing on the grid, up and down by rows; with Shift or Alt held, off it, following the mouse, its OFFSET saying how
+    far off; Ctrl carrying copies), a note's right end dragged sets
+    the length of every note picked and its left end their starts, their ends staying (on the grid; with Shift or Alt
+    held, off it, following the mouse) (the cursor left-right over
+    either end, a handle at each end of a note picked), a drag from an empty place picks the notes the box reaches (Shift adding to
+    them), and a double-click puts a note down a grid step long (on a note, deletes it), and held, the mouse up or down
+    sets its velocity, as Draw's click does, and to the right or left lengthens it that way (its end or its start). **Draw**: a click puts a note
+    down (the cursor a pen), and held, the mouse up or down sets its velocity, a step a pixel from 100; with Shift, a
+    drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
+    (the cursor saying which over it). Each edit is one undo step.
+  - **The lane** under the roll: a stem for each note at its start, as high as its velocity or its chance, as the
+    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. With **Draw**, dragged
+    across, the notes there take the height of the mouse (the cursor a pen, and up and down over a dot and while one is
+    dragged); with more than one note picked, a drag from one of their dots moves them all up or down together, each
+    from where it was. With **Select**, the dots are picked as their notes are in the roll, picking the notes: a drag
+    from empty space draws a box that picks the notes whose dots it holds (their stems alone don't count; with Shift or
+    Ctrl, it adds them to those picked); a dot clicked picks its note alone, and with Shift or Ctrl along with the others
+    (or lets it go, once let go unmoved); a click on one of several picked, let go unmoved, picks it alone; and a dot
+    dragged moves every note picked up or down together, each from where it was, one undo step (the cursor up and down
+    over a dot, the arrow elsewhere). Either way a double-click puts the notes there back (velocity 100, chance full).
+    Where notes start together and any of them is picked, the lane sets the picked ones alone (their dots drawn over
+    the others').
+    On **BEND** and **MOD WHEEL**, the lane shows the pattern's curve instead (see Sequencer), across the pattern as
+    the roll is zoomed and scrolled, in the bend's or the mod wheel's color, filled down to where it rests (the bend's
+    middle, the mod wheel's bottom), with its points and, on each segment that rises or falls and has room, a handle
+    at its middle; behind it a grid, the roll's lines running on down through the lane and a line at each quarter of
+    the curve's range, as strong as the GRID setting says. As with notes, a point dragged moves between its
+    neighbors and a segment's middle dragged up or down bends it, with either tool; with **Select** a double-click
+    puts a point down (and on a point deletes it), and with **Draw** a click puts one down and moves it while the
+    button is held, and Shift+drag draws the curve, a point on every line of the grid across it crosses (a step apart
+    with the snap off), in place of the points there. A double-click straightens a bend (and leaves a point its own
+    first click put down). Points go where the mouse is; with **Ctrl** held, onto the grid, across on the snap's lines
+    and up and down on the lane's. Each is an undo step. The cursor moves over a point, goes up and down over a bend,
+    and is a pen where Draw puts a point down. The whole pattern twice or half as long takes its curves along.
+    Points are picked as notes are: with **Select**, a drag from empty space draws a box that picks the points it
+    reaches (with Ctrl or Shift added to those picked); Ctrl+click or Shift+click on a point picks it along with the
+    others, or lets it go; a click on a point picks it alone (on one of several picked, once it is let go unmoved), and
+    with **Draw** a point put down is picked alone. Picked points are ringed in the curve's color. With either tool,
+    dragging a picked point moves every one picked as far, one undo step, keeping their spacing: across between the
+    nearest points not picked (or the pattern's ends), and up and down within the curve's range. Ctrl+A over the lane
+    picks every point, and Delete removes those picked, one undo step. A click off the lane lets them go.
+  - **Hearing notes**: a key clicked in the roll's keys (each click, however quick), and a note clicked, drawn or put down by a double-click on
+    the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
+    pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
+  - **Following what is dragged**: a note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls the
+    roll that way, faster the further past it, what is dragged going along. A patch loaded (a preset, Init, a
+    project) fits the roll to its pattern's notes: the whole pattern across, and the rows about the notes, lower where
+    they don't all fit.
+  - **No two notes on one spot**: a note put down, moved, stretched or transposed onto another's start and pitch takes
+    its place, the one there removed in the same undo step.
+  - **Keys**, while the mouse is over the editor (as for undo): **Ctrl+A** picks every note of the pattern; **Left**
+    and **Right** move the notes picked a grid step (a step with the snap off), **Up** and **Down** a row (a degree of
+    the scale while folded), and **Shift+Up** and **Shift+Down** an octave, and **Delete** removes them, each an undo step. Moved up or down, the
+    rows follow only as far as shows every note moved, and not at all while they all show. **Ctrl+C** copies the notes
+    picked, **Ctrl+X** cuts them, and **Ctrl+V** pastes what was copied or cut into the pattern shown (any pattern),
+    each note's pitch, length, velocity, chance, Slide and Mute as they were: at the step under the mouse on the roll
+    (on the grid, the first note there and the rest as far after it as they were), or with the mouse off the roll
+    where a cut took them from, or right after what was copied or pasted last (rounded up to the grid), so pasting
+    again lays them end to end. The notes pasted are picked, notes past the pattern's end are left out, and each is an
+    undo step. With no note picked, the arrows, Ctrl+C and Ctrl+X go on to the host, and so does Ctrl+V with nothing
+    copied.
+  - **The roll's right-click menu**, on a note (which it picks alone, unless it is picked) or an empty place (keeping
+    what is picked): **Cut**, **Copy**, **Paste** (where the menu was opened, on the grid), **Duplicate** (the notes
+    picked again right after them, leaving what was copied as it is) and **Delete**; **Select All**; **Slide** and
+    **Mute** (checked while every note picked has it), and **Quantize**, which puts the notes picked on the snap's
+    grid. It offers only what applies: the notes' entries while notes are picked, Paste once something is copied.
 - **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows only what is
   switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph, and the
@@ -822,6 +1042,35 @@ one may have changed since it last did.
     on, switches on the nodes it joins. A row's or column's name works like the node's tab in the
     inspector: clicking it shows that node there, switching it on if it is off, and the names of the node shown
     sit on a plate, like its tab, where a click switches it off, or on again.
+  - **Algorithms**: **ALGORITHM**, at the right end of the tabs' row while ROUTING or MATRIX is shown, opens a panel
+    of the classic FM algorithms over the graph or matrix (the inspector left in view), in four sets that the switch
+    in its title row picks, by how many operators they use (**6 | 4 | 3 | 2**, with "Operators" before them): 6, the
+    32 layouts of six, numbered as the classic charts have them; 4, the 8 of four (A to D), as the classic
+    four-operator chips number them; 3, the 5 shapes three can take (A to C: a stack, two into one, one into two, a
+    pair beside a carrier, all three out); and 2, the classic two-operator pair (B into A, or both out). The feedback of four, three and two
+    operators sits on the top one (D, C or B). Each is a
+    thumbnail drawn the way the graph runs, modulators on the left, carriers in a column and their lines into OUT on
+    the right, each operator in its color and its feedback a small loop on its top (or, for six operators' 4 and 6,
+    a dashed curve back up the stack). The panel's foot names the one under the mouse (its number, how many carriers
+    it has and where its feedback is). The algorithm the operators form now is lit, and its number shows on the
+    button (with "4-OP", "3-OP" or "2-OP" before it for fewer operators); the panel opens on its set. A click on a thumbnail sets the
+    operators to it, as one undo step, and closes the panel; Escape or a click around it closes it too. Picking one:
+    - switches on the operators it uses and the others off (their settings and routes kept, as switching off keeps
+      them);
+    - keeps each route it has as it was (depth, mode and modulation), brings in its others at 50 % (its feedback at
+      25 %), and disconnects the routes among its operators that it hasn't, their modulation with them;
+    - sends its carriers out: one going out already, straight or through a filter or shaper that goes out, as it was,
+      a new one at 100 % / √n for n carriers (71 % for two, 41 % for six); and takes the others off the output, a
+      modulator's send into a filter or shaper that goes out disconnected too (what it sends into one that only
+      modulates stays);
+    - lays its operators out afresh, their wires bowing as new ones do: the carriers in the column where A and D start,
+      clear of the shapers and filters nearer OUT, each operator two columns left of the furthest down the stack it
+      modulates, the rows spread over the graph's height (past five, every other one a column further left); an
+      operator landing on a filter or shaper shown there is moved clear of it, and a feedback route back up a stack
+      bows round the operators between.
+    Filters, shapers, their routes and places, the carriers' sends into them and every operator's own sound (wave,
+    ratio, envelope, unison) stay as they are. Nothing is stored for it: which algorithm the operators form is read
+    from the routes each time (one above 0 % or kept at 0 % counting, whatever its depth).
 
   - **FX**: takes the place of both the routing panel and the inspector. It shows a card per effect, left to right
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
@@ -834,7 +1083,8 @@ one may have changed since it last did.
     does:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
-      it faintly behind and the point under the mouse in numbers; its edit button (a pencil) opens the big editor;
+      it faintly behind and the point under the mouse in numbers; its edit button (a pencil, at the right of its curve's
+      list) opens the big editor, and is lit while it is open;
     - the delay's echoes on a timeline, left above the line and right below it;
     - the EQs' and the filter's responses; behind the Param EQ's curve, what it puts out, measured (a 2048-point
       FFT in 96 bands from 20 Hz to 20 kHz, 0 dB at the top, falling away at 55 dB a second), which it only
@@ -1033,7 +1283,11 @@ one may have changed since it last did.
     (the Param EQ's, the 3-band dynamics') takes some of its room. The graph scrolls as far as it needs beside the
     widest card, so picking a node never moves it: scrolled to its end beside a narrow card, a little room shows
     after OUT. Its hint at the top right reads "click node: edit · drag
-    node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
+    node: move · click wire: insert". Behind it, as behind the routing graph, the accent glows from OUT (one and a
+    half times as strong, from the smaller box, with the same loudness, reach and Glow setting, its distances worked
+    out again as OUT moves) inside its box's rounded corners, and three orbit rings go round OUT, closer together
+    (108, 204 and 300 px out) and fainter on the box's darker ground; they move with OUT as the graph scrolls. The
+    graph's nodes sit on a fixed grid, a column each, and
     wire themselves: wires, grey along the main line, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). A wire from one row to another runs level as
     far as it can and bends S-shaped only within the gap between two columns' nodes, so it never crosses a node: out
@@ -1198,6 +1452,19 @@ one may have changed since it last did.
     unipolar one). A point stays between its neighbors, but can reach a neighbor's time: points at one time make a
     line straight up or down (a spike, say), and at that moment the LFO takes the last of them in order, the one
     the shape goes on from. Double-click empty space to add a point and a point to delete it (or right-click it).
+    **Picking several points**, in every shape editor (a Curve source's, in its widened card and full size; a shaper
+    effect's and a voice shaper's drawn curve, on the card or page and in the big editor; the note source's and
+    velocity's curves): a drag from empty space draws a box that picks the points it reaches (with Steps, Shift+drag,
+    since a plain click draws a step there), and with Ctrl adds them to those picked already; Ctrl+click on a point
+    picks it along with the others, or lets it go if it was picked. A click on a point not picked picks it alone, and
+    on one of several picked, let go without moving, picks it alone too. Picked points are filled and ringed. Dragging
+    any of them moves them all as far as it moves, in one undo step, keeping their spacing: across, as far as the
+    nearest point not picked either side lets each go (and the first point, a curve's last and a symmetric curve's
+    middle stay where they are across, moving only up and down), and up and down as far as the shape's top and bottom
+    let every one go. Ctrl+A picks every point of the shape under the mouse (else the big editor's, else a widened
+    card's), and Delete removes those picked, all but the first, a curve's ends, a symmetric curve's middle and as many
+    as keep two points, as one undo step. A click anywhere off the shape, any change of how many points it has, and
+    the shape tools and reset let the points go. What is picked isn't saved.
     Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
     height to the grid too). The points between those lines go; a step beside another starts where that one ends,
@@ -1211,12 +1478,14 @@ one may have changed since it last did.
     editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
     the project, and presets leave it alone (so do Points | Steps and Snap). The first point always sits at the start of the cycle. A shaper
-    effect's Custom curve opens the same editor from the edit button (a pencil) on its card's display, in a panel in the middle of the
+    effect's Custom curve opens the same editor from the edit button (a pencil) beside its card's curve list, in a panel in the middle of the
     effects' (the inspector stays hidden), its plot closer to square, with input across and output up; its first
     and last points stay at the ends. While the shaper is symmetric, only the curve's right half is edited, in
     the editor and in the card alike: the left half is drawn as its mirror (behind a veil in the editor) with faint
-    rings for the points it mirrors, the points left of the middle are hidden, and a click there counts as one on
-    its mirror image. Switching Symmetric on in the editor gives the curve a point in the middle if it has none,
+    rings for the points it mirrors, the points left of the middle are hidden, and a click there does nothing (no
+    point added, no step drawn; a step held across the middle stays where it last was on the right). The editor has
+    its own **SYM** switch, left of Points | Steps (in the title row for a shaper effect, under the plot for a voice
+    shaper), as the card and the shaper's page do. Switching Symmetric on gives the curve a point in the middle if it has none,
     which then stays there: it only moves up and down, and can't be deleted (a step drawn across it keeps it, at the step's height). The note source's curve opens over the routing panel from its display in the
     keyboard strip (a second click closes it): the notes from Low to High across, the Cs among them named under
     the plot, and what the source puts out up, from nothing at the bottom to all of it at the top, with a dot
@@ -1231,8 +1500,11 @@ one may have changed since it last did.
   field sits between the name and the preset bar: a metronome, then the tempo in BPM (20–999, 140 to begin with),
   which every synced LFO, delay and sweep follows. Dragged up or down it moves a BPM every 2 px, onto whole ones (a
   tenth of one with Shift); the wheel steps it a BPM a notch (a tenth with Shift); a double-click or Ctrl+Click types
-  one, with or without `BPM` after it, held to the range. It is the host's, not the patch's: presets and undo leave
-  it alone. A plugin host's tempo is its own, so in a DAW the title bar shows none. Under it, the
+  one, with or without `BPM` after it, held to the range. It is the host's, not the patch's: undo leaves it alone,
+  but a preset saved keeps the tempo it was saved at (in any host, a DAW's tempo too), and loading one saved at a
+  tempo sets this field to it, so a sequencer pattern plays as it was made (the demo's first preset too, as the page
+  opens); Init, a preset saved before this, and a host's project restored leave it as it is. A plugin host's tempo is
+  its own, so in a DAW the title bar shows none, and a preset loaded leaves the host's tempo alone. Under it, the
   **global strip** spreads across the editor, from the output scope under the name to the voice count at its right
   end. First the output scope:
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has
@@ -1261,7 +1533,8 @@ one may have changed since it last did.
   own shortcuts keep working everywhere else.
 - **Inspector** (left): a lens, a card floating over the routing panel's left end a little in from its edges, on a
   soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 % (in Spectrum
-  and Porcelain, as their cards, on its shadow alone, without an outline); while
+  and Porcelain, as their cards, on its shadow alone, without an outline; a filter's response and a shaper's curve on
+  it a shade darker than the displays elsewhere in Porcelain, whose displays are nearly the lens's own face); while
   the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
   and S2, in three groups with a hairline between two, pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
@@ -1297,7 +1570,7 @@ one may have changed since it last did.
     dropped anywhere on the box modulates it. A keyboard on the title
     row, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out
     and lit while it is fixed. Switched on, Freq and Mult are set to where the ratio put an A4 (the smallest Mult
-    that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult knobs take the
+    that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq (a knob) and Mult (a stepper) take the
     Ratio readout's place, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
     handles), and the operator's circle in the graph shows the frequency in Hz instead of the ratio. Switched off, the ratio, Pitch and Detune count again as they were. While the wave is Custom,
     an edit button (a pencil, the same as a Curve source's and a drawn shaper curve's), left of the keyboard, opens
@@ -1310,8 +1583,11 @@ one may have changed since it last did.
     - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does.
-    - **UNISON**: a display of where the copies sit (left/right by spread, up/down by detune), and the unison knobs
-      and Rnd Phase under it.
+    - **UNISON**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
+      and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
+      its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,
+      past a rule, the three Unison Pans (five copies as dots, rising in pitch, placed across). Under it the knobs:
+      Unison (the copies), Detune, Spread, Blend and Rnd Phase.
     - **WARP**: the operator's scope, its warp and its note sync. Its display is a scope: the operator's output in
       the newest voice as it plays, with its unison copies together and everything that moves it (the FM it gets,
       its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output. It
@@ -1407,14 +1683,19 @@ one may have changed since it last did.
     second. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
   - Shapers: the summary (its curve, what feeds it, the filters it feeds, whether it goes out and the operators it
     modulates, as a filter's has), its curve's list with the link switch beside it, and for a Custom curve the
-    symmetric one between them (as on the shaper effect's card), the Drive, Output and Mix knobs, centered under them
+    curve's edit button (a pencil) and the symmetric switch between them (as on the shaper effect's card), the Drive,
+    Output and Mix knobs, centered under them
     (what goes straight out is its line to OUT's label),
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
-    edit button (a pencil) opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
+    edit button opens the big curve editor over the routing panel, the shaper's page staying beside it, the button lit
+    while it is open. Underneath
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
-    operators it modulates, as a shaper's has), type buttons across the row under it, each a small picture of its
-    response (named on hover), cutoff, resonance, key tracking, drive and mix (its output level is its line to OUT's
+    operators it modulates, as a shaper's has), the type's list across the row under it (where a shaper's curve's
+    is), its button and each of its entries a small picture of the type's response before its name, the wheel over
+    it stepping along them, cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph after
+    them, the six knobs a little closer together, and a morph's slope's list and notch switch (the notch's icon) side
+    by side where the slope's list is), key tracking, drive and mix (its output level is its line to OUT's
     label), and a live response curve, drawn as its Mix blends what goes in back in (a notch at 50 % dips about 6 dB,
     a low-pass leveling off 6 dB down past its cutoff), whose
     handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it, as the filter effect's and
@@ -1434,7 +1715,7 @@ one may have changed since it last did.
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
   have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
   depths swing, as the polarity in its title's menu does, and no Unipolar switch; a Random card has no Phase knob. A MIDI card has its input's list (CC,
-  Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
+  Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC stepper
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
@@ -1493,7 +1774,8 @@ one may have changed since it last did.
     along them). Under the shape list, as
     wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
     (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
-    anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. A click picks one (a click on the
+    anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot** (a Random card's two, Retrigger and
+    Free, each twice as wide). A click picks one (a click on the
     one lit leaves it), and the wheel over them steps to the next one. Right of those two rows, centered
     on them, are the Rate and Phase knobs (a Random card's Rate alone),
     over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
@@ -1565,6 +1847,20 @@ one may have changed since it last did.
     shows as a steady swell rather than a flicker; its matrix cell has a small bar along its bottom with each
     modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
     modulation's range just above it, clear of its solid fill.
+- **Steppers**: the header's Voices, an operator's Unison and Mult (fixed) and a MIDI source's CC show as steppers
+  rather than knobs: the number in a field, − and + at the field's ends and its steps along the field's foot, a tick
+  each where they fit 2.5 px apart or more (the one set lit), else a track with the value's place marked. Every other
+  stepped value stays a knob. A stepper takes what a knob takes: a drag up and down a step every 10 px (Voices
+  doubling every 40), the wheel a step a notch, a double-click to reset, Ctrl+Click or a double-click on its label to
+  type, a source's handle dropped on it where its value takes modulation, its depth handles under it; − and + step it
+  as a notch of the wheel does, an undo step each, a quick second click stepping again, and an end that is reached
+  faint. They show faint at rest where the number leaves them room, and under the mouse wherever it clears their
+  glyphs, the number then taking a smaller size if it must; a number too long even so (Mult's ×0.001) leaves only the
+  one under the mouse showing, moving off it. The cursor is a hand over − and +, up and down over the number (and
+  while it is dragged), and the arrow elsewhere on it. Its field is under the knob's place, as wide as the widgets
+  beside it leave room for (36 to 56 px, the end of a row half the way to the next knob), and in the header under
+  its label. A modulation's reach shows along its steps in its source's color (the ticks within it taking that color,
+  the one set keeping its own), and a white dot where the newest voice is.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps, a knob then moving a fiftieth as fast; sliders such as the depth bars, the
   Mod wheel and the glow slider then move from where they are, a hundredth as fast; a value moves only once the mouse
   has moved more than 3 px, so a click, or a double-click's jitter, changes nothing), double-click to reset, use the mouse
@@ -1606,6 +1902,14 @@ one may have changed since it last did.
 - **Menus and lists**: every list and menu (the effects', the source types', the waves', a list button's, a Param EQ
   band's shapes, the MODS view's cascading menus) marks the row under the mouse, and the one picked, in the same
   neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
+- **Stepping lists**: a voice filter's and the filter effect's type, a voice shaper's and the shaper effect's curve, the
+  amp's model and cabinet, the reverb's algorithm and an LFO's shape (its icon and name between the arrows) have an arrow at each end of their list's button, in place of the chevron: ‹ steps to
+  the entry before the one shown and › to the one after, in the list's order, round its ends (from the last on to the
+  first), skipping an entry the list can't pick, as fast as they are clicked (a quick second click is a step, not a
+  double-click); each click is an undo step, as a pick from the list is, and closes the
+  list if it is open. The arrow under the mouse lights in the list's color and says what it steps to (Previous type,
+  Next curve, ...). A click on the rest of the button opens the list. An LFO holding the retired Custom shape, which a
+  state can, steps onto the first or last shape offered, its widened card going back to its size as a pick does.
 - **Button rows**: buttons that pick one of a few (Poly | Mono, an operator's waves, a voice filter's and the filter
   effect's types, an LFO's clock modes, the partial counts, Points | Steps, the phaser's and flanger's + | −, the
   chorus's voices) and
@@ -1623,7 +1927,7 @@ one may have changed since it last did.
   under them, so the wheels can still be assigned. Whether it is
   collapsed is kept with the editor, like the modulation panel's, and loading a
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
-  played by the host. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
+  played by the host, rising and fading a moment as the roll's keys do rather than switching. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
   back to center on release, in one edit the host follows. It shows where the bend stands: the param, with what the
   host adds on top (its MIDI pitch bend, and its modulation of the param, the newest note's own while notes play),
   filled in the pitch bend source's color, and its handle drags the pitch bend source onto what it should move. The
@@ -1660,9 +1964,10 @@ one may have changed since it last did.
   dot where the newest voice is; its points and bends edit like the note source's curve, and its reset button
   brings back the straight line. Its right-click menu, and its handle's, make it unipolar or bipolar, as the note
   source's do.
-- **Presets**: presets are `.fmv` files in `Documents\FMVibe\presets` and its subfolders. The first time the
-  library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its factory presets in the
-  `Factory` subfolder. Each name starts with two letters for its category, so the library lists them in groups:
+- **Presets**: the library holds the factory presets, built into the plugin, and the `.fmv` files in
+  `Documents\FMVibe\presets` and its subfolders. The factory presets show under **Factory**, as a subfolder's would;
+  nothing of them is written into the folder, which FMVibe makes only when a file dialog or OPEN FOLDER needs it
+  (empty: it holds the presets saved there). Each factory preset's name starts with two letters for its category, so the library lists them in groups:
   BA bass, DR drum, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too),
   PL pluck and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
   Organ, PL Pluck Delay; PD Crystal Motion, which uses everything at once (all six operators in three layers, two
@@ -1715,27 +2020,40 @@ one may have changed since it last did.
   opening it as it is held); PL Koto Pluck (a fed-back 1:1 pair and a 7:1 snap on one carrier, a 2:3 pair ringing an
   octave up) and PL Razor Pluck (a fed-back pair driven by a 2:1 modulator through a snapping resonant low-pass over
   a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and SQ Mallet Steps (a marimba, a 1:1
-  carrier knocked by a 4:1 modulator, struck every sixteenth by a drawn LFO with its own accent each step while a
-  second steps the pitch through octaves, fifths and sevenths; its Melody macro flattens the tune) and SQ Hammer Gate
+  carrier knocked by a 4:1 modulator, struck in sixteenths by the sequencer while a key is held, through octaves,
+  fifths and sevenths, each note's velocity its accent, louder and harder) and SQ Hammer Gate
   (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
-  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff).
+  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff); and SQ Future Plucks (a
+  carrier knocked by a saw modulator through a low-pass an envelope plucks open, velocity brightening it and two
+  Random sources wandering the indexes, playing the sequencer's Phrygian riff while a key is held, an octave down,
+  humanized and with chords on some steps, through a chain of EQs, a disperser, compression, chorus, echoes and a
+  reverb).
   Then three that play through the Amp: PL Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
   a feedback modulator for the saw's edge and a short bright one for the pick, velocity digging in, through the
   Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
   lead through the Lead amp into an open 2x12, a vibrato that an envelope fades in as a note holds, the mod wheel
   turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
-  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). A folder made
-  before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
-  given, so deleted ones stay gone. It also notes the version of FMVibe that wrote them out: a newer one writes the
-  factory presets still in the `Factory` subfolder again as it has them, so they take its tuning and its routing
-  graphs' layouts (a change saved over one of them is lost then; save it under another name to keep it), and leaves
-  those taken out of it out. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
-  label running over a node it doesn't join. The plugin carries the factory presets built in and writes them out as they are:
-  they hold only the params that differ from Init, so their files are small, and load like any other.
+  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). Then three more that play the
+  sequencer: SQ Acid Rubber (a mono saw knocked by a fed-back 1:1 sine through a driven, resonant 24 dB ladder, a
+  two-bar C minor line in sixteenths while a key is held, two octaves down, its accents as velocities deepening the
+  filter envelope and its slides gliding, the pattern's mod wheel curve opening the filter across the second bar,
+  into grit, a dotted echo and a room); SQ Offbeat Stabs (a fed-back FM keys stab through a plucked low-pass, Dorian
+  seventh chords on the off-beats and a bass on the downbeats, swung, with the host's transport; pattern B a pushed,
+  busier variation; each pattern's bend curve dipping the pitch like tape at its end, through chorus, echoes, a plate
+  and a compressor); and SQ Random Glass (a glassy 7:1 tone with a twelfth above, its sixteen minor-pentatonic steps
+  played in random order, many left to chance, humanized, a Random source stepping the index, into ping-pong echoes
+  and a shimmer). Each release brings
+  them as it tunes them. Being built in, they can't be saved over: Save on a changed one saves it as a new preset, as
+  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: the library leaves that
+  subfolder out (it stays on disk, for the user to keep or delete), and a project that named a preset in it loads the
+  built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  label running over a node it doesn't join. They hold only the params that differ from Init, so they are small, and
+  load like any other preset.
   - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
-    preset in the folder, round from the last to the first. Clicking the name opens the **browser**: the presets
-    at the top of the folder, then each subfolder's under its name, the current one marked; a click loads one
+    preset in the library, round from the last to the first. Clicking the name opens the **browser**: the presets
+    at the top of the folder, then each subfolder that holds presets under its name (the factory presets under
+    Factory's), the current one marked; a click loads one
     and closes the browser (if the patch has changed, it asks first, over the browser, which stays open when the
     load is called off); **OPEN FOLDER** shows the folder in Explorer, and the × or a click around it closes it.
     While it is open, the browser takes the keyboard for its **search**, in its title row: what is typed narrows
@@ -1755,8 +2073,9 @@ one may have changed since it last did.
     preset's name. The file holds the same data as the host's
     saved state, apart from the settings: the tables and samples the patch plays too.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
-    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) from a file that has
-    changed since; otherwise, and always for Init, it is greyed out and does nothing. Save As is greyed out too on
+    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) that has
+    changed since; otherwise, and always for Init, it is greyed out and does nothing. On a factory preset, which is
+    built in, it asks nothing and opens Save As's dialog instead. Save As is greyed out too on
     Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
@@ -1808,9 +2127,12 @@ one may have changed since it last did.
   The editor shows it while it is dragged and keeps it when it is let go, as it does Hue and Lines; a double-click on
   any of the three sliders puts it back to where it starts (Hue to Default). **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
-  one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Handles**, Small (to begin
+  one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Grid**, a slider like it
+  from Off to 100 % (50 % to begin with, and a double-click puts it back), sets how strongly the SEQ view's roll draws
+  its grid lines: Off draws none, 100 % twice as strongly as 50 %. With the mouse resting on any of the four sliders
+  (not while one is dragged), a tooltip under it says what it sets and that a double-click puts it back. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
-  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All five
+  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All six
   are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
@@ -1836,7 +2158,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,292 of FMVibe's 19,683 parameters: the globals, the operators (a Wavetable's Position and a
+Hosts are given 1,329 of FMVibe's 24,996 parameters: the globals, the operators (a Wavetable's Position and a
 Sample's Start among them), the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:

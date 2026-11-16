@@ -2,6 +2,7 @@
 
 #include "layout.h"
 #include "theme.h"
+#include "../unison.h"
 #include "../warp.h"
 
 #include <algorithm>
@@ -203,6 +204,25 @@ void filterIcon(Canvas &c, Rect r, FilterType type, Color color) {
                 break;
             case FilterType::Comb: // evenly spaced teeth
                 y = -0.8f + 1.5f * std::pow(std::abs(std::cos(3.0f * kPi * x)), 6.0f);
+                break;
+            case FilterType::Ladder: // lower before its corner, a tall, sharp peak there, then a steep fall
+                y = x <= 0.5f ? 0.1f + 0.85f * peak(x, 0.5f, 200.0f) : 0.95f - 6.0f * (x - 0.5f);
+                break;
+            case FilterType::Diode: // a broad, rounded hump before a steep fall
+                y = x <= 0.48f ? 0.2f + 0.45f * peak(x, 0.48f, 30.0f) : 0.65f - 4.5f * (x - 0.48f);
+                break;
+            case FilterType::SallenKeyLow:  // flat, then a jagged peak, for its clipper, and down
+            case FilterType::SallenKeyHigh: { // the same the other way round
+                const int at = type == FilterType::SallenKeyLow ? i : 24 - i;
+                y = at < 10 ? 0.3f : at <= 14 ? 0.3f + (at % 2 ? 0.55f : 0.2f) : 0.6f - 3.4f * (at - 14) / 24.0f;
+                break;
+            }
+            case FilterType::Formant: // three humps, falling, at a vowel's formants
+                y = -0.8f + 1.6f * peak(x, 0.25f, 250.0f) + 1.15f * peak(x, 0.5f, 250.0f) +
+                    0.8f * peak(x, 0.74f, 250.0f);
+                break;
+            case FilterType::Morph: // a notch going into a peak, from one response to the next
+                y = 0.25f - 1.1f * peak(x, 0.32f, 160.0f) + 0.65f * peak(x, 0.68f, 160.0f);
                 break;
             case FilterType::Count:
                 break;
@@ -421,6 +441,20 @@ void warpIcon(Canvas &c, Rect r, OpWarp warp, Color color) {
     c.polyline(points.data(), points.size(), color, 1.3f);
 }
 
+void uniCurveIcon(Canvas &c, Point m, UniCurve curve, Color color) {
+    const UnisonSpreadOut at = unisonSpread(5, curve, UniPan::Ramp, 0.0, 3u, 0); // Random's: one such spread
+    for (int k = 0; k < 5; ++k) {
+        const float x = std::round(m.x + static_cast<float>(at.detune[k]) * 6.0f) + 0.5f;
+        c.line({x, m.y - 4.5f}, {x, m.y + 4.5f}, k == 2 && curve != UniCurve::Random ? color : color.alpha(0.8f), 1.3f);
+    }
+}
+
+void uniPanIcon(Canvas &c, Point m, UniPan pan, Color color) {
+    const UnisonSpreadOut at = unisonSpread(5, UniCurve::Linear, pan, 0.0, 5u, 0);
+    for (int k = 0; k < 5; ++k)
+        c.fillCircle({m.x + static_cast<float>(at.pan[k]) * 6.0f, m.y + 5.0f - 2.5f * k}, 1.5f, color);
+}
+
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale) {
     auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
     const float width = scale < 0.9f ? 1.1f : 1.4f;
@@ -613,16 +647,18 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
         }
         break;
     }
-    case FxType::Amp: { // a combo seen from the front: a strip of knobs over a speaker
+    case FxType::Amp: { // a combo seen from the front: its name and knobs along the top, over the grille cloth
         const Rect box{r.x + 0.7f, r.y + 0.7f, r.w - 1.4f, r.h - 1.4f};
         c.strokeRect(box, color, 1.3f, kRadiusMark);
-        const float strip = box.y + 0.3f * box.h;
+        const float strip = box.y + 0.34f * box.h, knobs = (box.y + strip) * 0.5f;
         c.line({box.x, strip}, {box.right(), strip}, color, 1.1f);
-        for (float x : {0.27f, 0.5f, 0.73f})
-            c.fillCircle({box.x + x * box.w, (box.y + strip) * 0.5f}, 0.95f, color);
-        const Point cone{box.center().x, (strip + box.bottom()) * 0.5f};
-        c.strokeCircle(cone, 0.38f * (box.bottom() - strip), color, 1.2f);
-        c.fillCircle(cone, 0.95f, color);
+        c.line({box.x + 0.14f * box.w, knobs}, {box.x + 0.36f * box.w, knobs}, color, 1.4f); // the name
+        for (float x : {0.57f, 0.72f, 0.87f})
+            c.fillCircle({box.x + x * box.w, knobs}, 1.0f, color);
+        for (float t : {0.3f, 0.65f}) { // the cloth
+            const float y = strip + t * (box.bottom() - strip);
+            c.line({box.x + 0.14f * box.w, y}, {box.right() - 0.14f * box.w, y}, color.alpha(0.6f), 1.0f);
+        }
         break;
     }
     case FxType::Utility: { // the stereo field as its display draws it: wide at the top, the bass narrowed to the middle

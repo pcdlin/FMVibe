@@ -222,6 +222,16 @@ inline Color wellColor() {
 inline Color wellHover() {
     return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.11f} : look.track;
 }
+// The displays on the routing inspector's lens (a filter's response, a shaper's curve): the displays' color, unless it
+// is so near the lens's raised face (its channels apart by less than kDisplayClash all told, as Porcelain's are) that
+// they would melt into it, where they take a shade darker in a light theme and lighter in a dark one.
+constexpr float kDisplayClash = 24.0f / 255.0f;
+inline Color inspectorDisplay() {
+    const Color d = look.display, face = look.raised;
+    if (std::abs(d.r - face.r) + std::abs(d.g - face.g) + std::abs(d.b - face.b) >= kDisplayClash)
+        return d;
+    return lightTheme() ? mix(d, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.045f) : mix(d, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.045f);
+}
 // What a meter's or a bar's empty part is filled with: the cards' color, or in a flat theme a shade of whatever it sits
 // on (a tinted card, a display), which keeps that one's tint.
 inline Color meterWell() {

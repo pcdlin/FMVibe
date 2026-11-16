@@ -52,3 +52,7 @@ SQ Hammer Gate
 PL Crunch Rhythm
 LD Overdrive Lead
 BA Driven Bass
+SQ Future Plucks
+SQ Acid Rubber
+SQ Offbeat Stabs
+SQ Random Glass

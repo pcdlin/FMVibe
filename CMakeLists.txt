@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(FMVibe VERSION 0.10 LANGUAGES CXX)
+project(FMVibe VERSION 0.11 LANGUAGES CXX)
 
 # The version hosts are told and the settings dialog shows, for every target (the browser demo's too). Change it
 # in project() above.
@@ -35,6 +35,7 @@ set(FMVIBE_ENGINE_SOURCES
     src/uistrings.cpp
     src/uistrings.h
     src/uistrings.inc
+    src/sequencer.cpp
     src/synth.cpp
     src/synth.h
     src/tables.cpp
@@ -116,6 +117,7 @@ add_library(fmvibe-core STATIC
     src/gui/icons.cpp
     src/gui/icons.h
     src/gui/mods.cpp
+    src/gui/seq.cpp
     src/gui/layout.h
     src/gui/routing.cpp
     src/gui/routing.h

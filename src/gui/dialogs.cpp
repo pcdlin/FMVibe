@@ -43,6 +43,7 @@ std::vector<View::Widget> View::settingsWidgets() const {
     add(Kind::SettingsHue, settingsHue(panel));
     add(Kind::SettingsGlow, settingsGlow(panel));
     add(Kind::SettingsLinks, settingsLinks(panel));
+    add(Kind::SettingsGrid, settingsGrid(panel));
     row = list.size();
     for (int size = 0; size < kModHandleSizeCount; ++size)
         add(Kind::SettingsHandles, settingsHandles(panel, size), -1, size);
@@ -111,13 +112,14 @@ void View::paintSettings(Canvas &c) {
     }
     slider(settingsGlow(panel), Str::SettingsGlow, shownGlow());
     slider(settingsLinks(panel), Str::SettingsLinks, shownLinks());
+    slider(settingsGrid(panel), Str::SettingsGrid, shownGrid());
     const Rect handles = settingsHandles(panel, 0);
     c.text({panel.x + 24.0f, handles.y, 52.0f, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim, Align::Left, true);
-    c.text({panel.x + 24.0f, lookY + 212.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
+    c.text({panel.x + 24.0f, lookY + 244.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, lookY + 238.5f}, {panel.right() - 24.0f, lookY + 238.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, lookY + 246.0f, panel.w - 48.0f, 16.0f};
+    c.line({panel.x + 24.0f, lookY + 270.5f}, {panel.right() - 24.0f, lookY + 270.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())
@@ -151,8 +153,8 @@ void View::runPreset(PresetAction action) {
             controller_.choosePreset(false);
         }
         break;
-    case PresetAction::Save: // over the preset's file; with none to write (the demo), its dialog says so
-        if (!controller_.writesPresetFiles())
+    case PresetAction::Save: // over the preset's file; with none to write (the demo, a factory preset), as Save As
+        if (!controller_.writesPresetFiles() || !controller_.presetWritable())
             controller_.choosePreset(true);
         else if (controller_.overwritePreset())
             flash(trf(Str::MsgPresetSaved, {controller_.presetName()}));
@@ -170,6 +172,8 @@ void View::runPreset(PresetAction action) {
 std::string View::confirmWhat() const {
     if (confirm_ == kConfirmFxClear)
         return tr(Str::ConfirmFxClear);
+    if (confirm_ == kConfirmSeqClear)
+        return tr(Str::ConfirmSeqClear);
     if (confirm_ == kConfirmMidBand)
         return confirmEffects_ == 1 ? std::string(tr(Str::ConfirmMidBandOne))
                                     : trf(Str::ConfirmMidBand, {std::to_string(confirmEffects_)});
@@ -189,6 +193,7 @@ std::string View::confirmWhat() const {
 void View::answerConfirm(int button) {
     const auto action = static_cast<PresetAction>(confirm_);
     const bool clear = confirm_ == kConfirmFxClear;
+    const bool seqClear = confirm_ == kConfirmSeqClear;
     const bool bands = confirm_ == kConfirmMidBand;
     const bool split = confirm_ == kConfirmSplitRemove;
     confirm_ = -1;
@@ -203,6 +208,9 @@ void View::answerConfirm(int button) {
         confirmSplit_ = -1;
     } else if (button == 1 && clear) {
         clearFx();
+    } else if (seqClear) {
+        if (button == 1)
+            clearSeqPattern();
     } else if (button == 1) {
         runPreset(action);
     }
@@ -212,6 +220,13 @@ void View::answerConfirm(int button) {
 bool View::dialogKey(Key key) {
     if (typing_ || !dialogOpen() || (key != Key::Enter && key != Key::Escape))
         return false;
+    if (!settingsOpen_ && confirm_ < 0) { // the panel of algorithms: Escape closes it, Enter goes on to the host
+        if (key != Key::Escape)
+            return false;
+        algorithmMenuOpen_ = false;
+        hover_.reset();
+        return true;
+    }
     if (settingsOpen_) { // nothing in it waits to be confirmed: either key closes it
         settingsOpen_ = false;
         hover_.reset();
@@ -685,10 +700,12 @@ void View::paintConfirm(Canvas &c) {
     paintDialogPanel(c, panel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
     const bool split = confirm_ == kConfirmSplitRemove;
-    const bool clear = confirm_ == kConfirmFxClear || bands || split; // the effects go, which undo brings back
+    const bool seqClear = confirm_ == kConfirmSeqClear;
+    const bool clear = confirm_ == kConfirmFxClear || bands || split || seqClear; // what goes, undo brings back
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
-           overwrite ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()})
-                     : std::string(tr(bands   ? Str::ConfirmMidBandTitle
+           overwrite  ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()})
+           : seqClear ? trf(Str::ConfirmSeqClearTitle, {seqPatternName(seqPattern())})
+                      : std::string(tr(bands   ? Str::ConfirmMidBandTitle
                                       : split ? Str::ConfirmSplitRemoveTitle
                                       : clear ? Str::ConfirmFxClearTitle
                                               : Str::ConfirmTitle)),

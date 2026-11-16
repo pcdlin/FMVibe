@@ -44,12 +44,10 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.handleSize = std::clamp(std::atoi(line.c_str() + 11), 0, kMaxHandleSize);
         else if (line.starts_with("linkIntensity="))
             settings.links = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
+        else if (line.starts_with("gridIntensity="))
+            settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("zoom="))
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
-        else if (line.starts_with("examples="))
-            settings.examples = std::max(std::atoi(line.c_str() + 9), 0);
-        else if (line.starts_with("examplesVersion="))
-            settings.examplesVersion = line.substr(16);
         else if (line.starts_with("tableFolder=")) { // its frame size, its name, then its path, "|" between them
             const std::string rest = line.substr(12);
             const size_t a = rest.find('|'), b = a == std::string::npos ? a : rest.find('|', a + 1);
@@ -98,7 +96,7 @@ void writeUserSettings() {
     if (file.empty())
         return;
     // Another process may have written the file since this one read it: what this one didn't change since keeps
-    // the file's value, and the examples given never count down, or deleted ones would come back.
+    // the file's value.
     UserSettings merged = readFile(file);
     if (userSettings.theme != asRead.theme)
         merged.theme = userSettings.theme;
@@ -110,13 +108,12 @@ void writeUserSettings() {
         merged.handleSize = userSettings.handleSize;
     if (userSettings.links != asRead.links)
         merged.links = userSettings.links;
+    if (userSettings.grid != asRead.grid)
+        merged.grid = userSettings.grid;
     if (userSettings.zoom != asRead.zoom)
         merged.zoom = userSettings.zoom;
     if (!sameFolders(userSettings.tableFolders, asRead.tableFolders))
         merged.tableFolders = userSettings.tableFolders;
-    merged.examples = std::max(merged.examples, userSettings.examples);
-    if (versionBefore(merged.examplesVersion, userSettings.examplesVersion))
-        merged.examplesVersion = userSettings.examplesVersion;
     userSettings = asRead = merged;
 
     std::error_code error;
@@ -124,21 +121,17 @@ void writeUserSettings() {
     error.clear(); // a folder that couldn't be made shows as the write failing
     // Written beside it under this process's own name, then put in its place: another process reading it meanwhile
     // (Bitwig runs instances in several) finds the old file or the new one, never one cut short, which would read
-    // as no examples given and write them again.
+    // as the defaults.
     std::filesystem::path part = file;
     part += L"." + std::to_wstring(GetCurrentProcessId()) + L".part";
     {
         std::ofstream out(part);
         out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
-            << "\nlinkIntensity=" << merged.links << '\n';
+            << "\nlinkIntensity=" << merged.links << "\ngridIntensity=" << merged.grid << '\n';
         if (merged.hue >= 0.0)
             out << "hue=" << merged.hue << '\n';
         if (merged.zoom > 0.0)
             out << "zoom=" << merged.zoom << '\n';
-        if (merged.examples >= 0)
-            out << "examples=" << merged.examples << '\n';
-        if (!merged.examplesVersion.empty())
-            out << "examplesVersion=" << merged.examplesVersion << '\n';
         for (const TableFolder &folder : merged.tableFolders) {
             std::string name = folder.name; // a "|" in the name would end it early
             std::replace(name.begin(), name.end(), '|', '/');
@@ -154,25 +147,6 @@ void writeUserSettings() {
         std::error_code ignored;
         std::filesystem::remove(part, ignored);
     }
-}
-
-bool versionBefore(const std::string &a, const std::string &b) {
-    size_t i = 0, j = 0;
-    while (i < a.size() || j < b.size()) {
-        auto number = [](const std::string &text, size_t &at) {
-            long n = 0;
-            while (at < text.size() && text[at] >= '0' && text[at] <= '9')
-                n = std::min(n * 10 + (text[at++] - '0'), 1000000000L);
-            while (at < text.size() && (text[at] < '0' || text[at] > '9')) // the dot, or whatever else, after it
-                ++at;
-            return n;
-        };
-        const bool aHas = i < a.size(), bHas = j < b.size();
-        const long x = aHas ? number(a, i) : -1, y = bHas ? number(b, j) : -1;
-        if (x != y)
-            return x < y;
-    }
-    return false;
 }
 
 bool replaceFile(const std::wstring &part, const std::wstring &target) {

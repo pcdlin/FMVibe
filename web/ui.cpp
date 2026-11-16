@@ -32,6 +32,7 @@ EM_JS(void, js_param, (int index, double value), { Module.fmvHost.param(index, v
 EM_JS(void, js_all_params, (const double *values, int count),
       { Module.fmvHost.allParams(HEAPF64.slice(values >> 3, (values >> 3) + count)); });
 EM_JS(void, js_note, (int key, int on), { Module.fmvHost.note(key, on != 0); });
+EM_JS(void, js_audition, (int key, int on), { Module.fmvHost.note(key, on != 0, 100, true); });
 EM_JS(void, js_scope, (int op, int cycles), { Module.fmvHost.scope(op, cycles); });
 EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor); });
 EM_JS(void, js_tempo, (double bpm), { Module.fmvHost.tempo(bpm); });
@@ -59,7 +60,7 @@ EM_JS(void, js_choose_file, (int op, int kind), { Module.fmvHost.chooseFile(op, 
 EM_JS(void, js_choose_folder, (), { Module.fmvHost.chooseFolder(); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch whose effects docs/fx-chain.png shows
+constexpr char kFirstPreset[] = "SQ Future Plucks"; // a sequenced patch: a held key plays its riff
 
 std::string setting(const char *key) {
     char buffer[256];
@@ -93,6 +94,8 @@ public:
         hue_ = hue.empty() ? -1.0 : std::min(std::atof(hue.c_str()), 1.0);
         const std::string links = setting("linkIntensity");
         links_ = links.empty() ? 0.75 : std::clamp(std::atof(links.c_str()), 0.0, 1.0);
+        const std::string grid = setting("gridIntensity");
+        grid_ = grid.empty() ? kDefaultGridIntensity : std::clamp(std::atof(grid.c_str()), 0.0, 1.0);
         const std::string tempo = setting("tempo");
         tempo_ = tempo.empty() ? kDefaultTempo : clampTempo(std::atof(tempo.c_str()));
         // The tables and samples the patch plays go over to the audio side, which builds them (the factory tables it
@@ -138,6 +141,7 @@ public:
     UiLayout &layout() override { return layout_; }
     void layoutChanged() override { js_layout_changed(); }
     void playNote(int note, bool on) override { js_note(note, on); }
+    void auditionNote(int note, bool on) override { js_audition(note, on); }
     // The view asks every poll; only a change goes to the worklet.
     void setScope(int op, int cycles) override {
         if (op == scopeOp_ && cycles == scopeCycles_)
@@ -183,6 +187,8 @@ public:
             return false;
         values_ = values;
         replaceLayout(layout);
+        if (layout.savedTempo > 0.0f) // the page plays an example at the tempo it was saved at
+            setTempo(layout.savedTempo);
         js_all_params(values_.data(), kParamCount);
         layoutChanged();
         setPreset(fileOf(index));
@@ -229,6 +235,11 @@ public:
     void setLinkIntensity(double amount) override {
         links_ = std::clamp(amount, 0.0, 1.0);
         js_set_setting("linkIntensity", std::to_string(links_).c_str());
+    }
+    double gridIntensity() const override { return grid_; }
+    void setGridIntensity(double amount) override {
+        grid_ = std::clamp(amount, 0.0, 1.0);
+        js_set_setting("gridIntensity", std::to_string(grid_).c_str());
     }
     // The page stands in for a host's transport: the editor's title bar shows its tempo, which the page hands the
     // synth and keeps in the browser's storage.
@@ -284,6 +295,7 @@ private:
     double hue_ = -1.0; // the theme's own
     int handleSize_ = 0;
     double links_ = 0.75;
+    double grid_ = kDefaultGridIntensity;
     double tempo_ = kDefaultTempo;
     std::unique_ptr<TableLibrary> tables_;
 };
@@ -366,8 +378,9 @@ EMSCRIPTEN_KEEPALIVE void ui_double_click(float x, float y, int shift, int ctrl)
     view->doubleClick({x, y}, mods(shift, ctrl));
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_wheel(float x, float y, float steps, int shift, int ctrl) {
-    view->wheel({x, y}, steps, mods(shift, ctrl));
+// Alt too: over the SEQ view's roll, Alt+wheel zooms its rows.
+EMSCRIPTEN_KEEPALIVE void ui_wheel(float x, float y, float steps, int shift, int ctrl, int alt) {
+    view->wheel({x, y}, steps, {shift != 0, ctrl != 0, alt != 0});
 }
 
 // The wheel turned sideways (a touchpad swiped across): to the right for more than 0.
@@ -446,6 +459,11 @@ EMSCRIPTEN_KEEPALIVE int ui_cursor() {
 
 EMSCRIPTEN_KEEPALIVE void ui_undo() {
     view->undo();
+}
+
+// The SEQ view's keys (see View::seqKey()): a View::Key, by number; whether it took it.
+EMSCRIPTEN_KEEPALIVE int ui_seq_key(int key, int shift) {
+    return view->seqKey(static_cast<View::Key>(key), shift != 0) ? 1 : 0;
 }
 
 EMSCRIPTEN_KEEPALIVE void ui_redo() {

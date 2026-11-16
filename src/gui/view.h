@@ -22,7 +22,7 @@ struct Modifiers {
     bool alt = false;
 };
 
-enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move, Text };
+enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move, Text, Pen }; // Pen: drawing notes in the SEQ view's roll
 
 struct MenuItem {
     int command = 0; // 0 is a separator
@@ -142,12 +142,24 @@ public:
     // Undo and redo the patch's last edits; not while a drag or typing goes on.
     void undo();
     void redo();
+    // The classic algorithms (kAlgorithms in algorithms.h). applyAlgorithm() sets the operators to the one at `index`,
+    // as one undo step: those it uses on and the others off, its routes among them in (a route it has keeps its depth,
+    // a new one starts at kAlgorithmDepth, its feedback at kAlgorithmFeedback) and theirs not in it disconnected with
+    // their modulation, its carriers going out (one going out already, or through a filter or shaper that does, as it
+    // was; a new one at 1 / sqrt(carriers)) and the others not (their sends into a filter or shaper that goes out
+    // disconnected too), and the operators in its places (see algorithmPlaces()), their wires bowing as new ones do.
+    // Filters, shapers, the carriers' sends into them and every operator's own sound stay as they are.
+    // currentAlgorithm() is the one the operators that are on form now (their routes above 0 % or kept at 0 %,
+    // whatever their depths; one going out through a filter or shaper counting as a carrier), -1 for none.
+    static constexpr double kAlgorithmDepth = 0.5, kAlgorithmFeedback = 0.25;
+    void applyAlgorithm(int index);
+    int currentAlgorithm() const;
 
     // Typing a value, after a double-click on the number a knob or slot shows, or into a text field: the preset
     // browser's search while it is open, the MODS view's filter once clicked, and the search atop a MODS row's target
     // menu while it is open. Meanwhile the window should send the keyboard here: typeChar() takes printable ASCII. Up
     // and Down only move through the browser's list and the target menu's matches.
-    enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down };
+    enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste };
     bool typing() const { return typing_.has_value() || fieldTyping().has_value(); }
     void typeChar(char32_t c);
     // Shift with Left, Right, Home and End extends a text field's selection.
@@ -160,13 +172,21 @@ public:
     // Commits the value typed, if it reads as one, or drops it.
     void endTyping(bool commit);
     // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
-    // which cancels it or closes the settings. While one is open the window should send it those keys: true if one
-    // was taken.
-    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0; }
+    // which cancels it or closes the settings; the panel of algorithms takes Escape, which closes it. While one is open
+    // the window should send it those keys: true if one was taken.
+    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0 || algorithmMenuOpen_; }
     bool dialogKey(Key key);
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
     bool setCtrl(bool held);
+    // The SEQ view's keys, while it shows (the window sends them while the mouse is over the editor): Select All picks
+    // every note of the pattern; Left and Right move the notes picked a grid step (a step with the snap off), Up and
+    // Down a row (a degree of the scale while folded), with Shift an octave; Delete removes them. Copy keeps the notes
+    // picked, Cut keeps and removes them, and Paste puts what was kept down at the step under the mouse on the roll
+    // (else where a cut took it from, or after what was copied or pasted last), its pitches as they were. Each edit is
+    // an undo step. Whether it took the key: the arrows, Delete, Copy and Cut only while notes are picked, Paste only
+    // with notes kept, so the host keeps them otherwise.
+    bool seqKey(Key key, bool shift);
 
 private:
     enum class Kind {
@@ -174,6 +194,10 @@ private:
         Choice,       // param, b = the value it selects (segmented buttons)
         Toggle,       // param: flips between 0 and 1
         ViewTab,      // a = RoutingView: picks what the panels under the tabs show
+        AlgorithmButton, // ALGORITHM, at the tabs' row's right, with ROUTING and MATRIX: opens the panel of algorithms
+        AlgorithmMenu, // a = 1 on the open panel of algorithms, 0 around it (a click there closes it)
+        AlgorithmSet, // b = 6, 4, 3 or 2: the panel's switch between the sets, by how many operators they use
+        AlgorithmItem, // a = index in kAlgorithms: a thumbnail of the panel; a click sets the operators to it
         OpTab,        // a = InspectorTab: picks what the lower half of an operator's page shows
         ScopeCycles,  // b = how many cycles the scope shows
 
@@ -189,7 +213,6 @@ private:
         WaveMore,     // a = op: "..." opens the list of the other waves
         WaveMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         WaveMenuItem, // a = op, b = wave: an entry of the list
-        TypeButton,   // a = filter, b = type
         Node,         // a = node (operators, then filters)
         NodeGhost,    // a = node that is off: a dashed button in the graph's top left that switches it on
         NodeDelete,   // a = node: the x in a circle at a node's upper right, while the mouse is over it: switches it off
@@ -270,6 +293,8 @@ private:
         ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list
         ListMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         ListItem,     // param, b = the value it picks: an entry of the list
+        ListStep,     // param = a list's choice (a filter's type, a shaper's curve, an amp's model or cabinet), b = -1
+                      // or 1: an arrow in its button that steps to the entry before or after, round the list's ends
         PeqTypeButton, // param = the band's type, a = effect slot, b = band: the shape on its chip, which opens the
                        // list of band shapes
         PeqTypeMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
@@ -320,6 +345,7 @@ private:
         SettingsGlow,   // the slider for how strongly the graphs' curves glow
         SettingsHue,    // the slider for the theme's main color
         SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn
+        SettingsGrid,   // the slider for how strongly the SEQ view's roll draws its grid
         SettingsClose,
         ModWheel,     // param = mod wheel: drag or scroll
         BendWheel,    // drag; springs back to center on release
@@ -349,6 +375,26 @@ private:
         FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
         FxBoxAdd,     // a = lane (1 the high band, 2 the low band, 3 the middle band), b = item: a container's dashed
                       // card, for the list
+        // The SEQ view (see seq.cpp).
+        SeqTool,      // b = 0 select, 1 draw: what a click on the roll does
+        SeqSnap,      // the snap's button: opens its list
+        SeqSnapMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
+        SeqSnapItem,  // b = the snap it picks (see kSeqSnaps)
+        SeqStretch,   // b = 2 twice as long, -2 half as long: the notes picked, or the whole pattern
+        SeqField,     // b = 0 pitch, 1 velocity, 2 chance, 3 length, 4 offset: a value of the notes picked, dragged
+        SeqFlag,      // b = 0 Slide, 1 Mute: switches it for the notes picked
+        SeqClear,     // removes every note of the pattern, asking first
+        SeqCopy,      // copies the pattern into the next empty one
+        SeqRoot,      // param = Root: dragged up and down, or scrolled, a semitone a step
+        SeqFold,      // shows only the scale's rows, or every row
+        SeqRuler,     // the bars over the roll: drag the loop's ends, or across it for a new loop
+        SeqKeys,      // the piano keys at the roll's left: a click plays the note
+        SeqGrid,      // the roll itself: the notes on it are picked, moved, stretched, drawn and deleted here
+        SeqLane,      // the lane under the roll: drag across the notes to set its value
+        SeqLaneTab,   // b = SeqLane: picks what the lane shows
+        SeqZoom,      // b = 0 zooms out across, 1 in across, 2 out up and down, 3 in up and down
+        SeqScroll,    // the bar under the roll while it is zoomed in across: drag the thumb, or click the track there
+        SeqScrollY,   // the bar at the roll's right, for its rows: drag the thumb, or click the track there
         // A Wavetable or Sample operator's (see tableview.cpp).
         SourceSwitch, // a = op, b = 0 WAVE, 1 TABLE, 2 SAMPLE: a segment of the switch over the waves' row
         TableStep,    // a = op, b = -1 or 1: steps to the table before or after the one played, in its source
@@ -393,6 +439,9 @@ private:
         Rect group{};
         float partLeft = 0.0f, partRight = 0.0f;
         bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
+        // A stepper's field (see isStepper()): drawn in place of its knob, and hit as its rect is. It may reach past the
+        // rect's sides, as far as the widgets beside it leave room.
+        Rect well{};
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -416,6 +465,7 @@ private:
         ShapePoint,
         ShapeCurve,
         ShapeStep, // a step just drawn, following the mouse (drag_.shapeBefore: the shape before it)
+        ShapeBox,  // a box across a shape from drag_.start to drag_.now, picking the points it reaches
         Partials,
         Key,
         ModWheel,
@@ -432,6 +482,7 @@ private:
         Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
         UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
+        Seq,        // the SEQ view's roll, ruler, lane or a value of its field (see seqDrag_)
         SampleHandle,  // a handle on a Sample operator's display, across (with Alt, a loop's onto zero crossings)
         TablePosition, // a Wavetable operator's Position, set where the mouse is on its TABLE tab's display
         TbScrollBar,   // the table browser's list's scrollbar: its thumb, or the track a click jumps along
@@ -451,6 +502,15 @@ private:
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
         std::vector<double> shapeBefore; // drawing a step: the shape's params before it
+        // Points moved together (DragKind::ShapePoint with more than one picked): which, and where each was as they
+        // were grabbed (x, y). Pressed with Ctrl on one picked already, `unpick` lets it go if it is let go unmoved;
+        // pressed without on one of several picked, `narrow` picks it alone then. A box (DragKind::ShapeBox): the
+        // points picked before it, which Ctrl adds it to.
+        std::vector<int> points;
+        std::vector<std::pair<double, double>> origin;
+        bool unpick = false;
+        bool narrow = false;
+        std::vector<int> boxBase;
         // A card or node Ctrl-dragged, which carries a copy (see copyDragged()): every param and the layout before the
         // copy was made, which a drag called off goes back to.
         std::vector<double> copyBefore;
@@ -698,6 +758,9 @@ private:
     bool listItemFits(int param, int item) const;
     // The entry a list shows as picked: its value, or for a slope the one that plays.
     int listShown(int param) const;
+    // Steps a list's choice to the entry before (dir -1) or after (1) the one shown, round its ends (its button's
+    // arrows).
+    void stepList(int param, int dir);
     bool nodeOn(int node) const;
     void switchOnRoute(int from, int to);
     std::vector<int> enabledNodes() const;
@@ -711,6 +774,8 @@ private:
     // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter or shaper whose sound
     // does.
     bool boxGoesOut(int node) const;
+    // Whether an operator's sound gets to the output through a filter or shaper that is on, which it is sent into.
+    bool outThroughBox(int op) const;
     // Effects. The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
     FxType fxSlotType(int slot) const;
@@ -907,11 +972,217 @@ private:
     int routingHoveredNode() const;
     // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
     std::optional<Point> lensLeaderStart() const;
+    // The SEQ view (see seq.cpp): the sequencer's settings on a card in the inspector's place, and the roll of the
+    // pattern picked beside it. A note is a slot of the pattern with a length; the roll picks notes by their slots.
+    struct SeqNote {
+        int slot;
+        double start, length;
+        int pitch;
+        double velocity, chance;
+        bool slide, mute;
+    };
+    bool seqWide() const; // the SEQ view shows, with no shape editor over it
+    int seqPattern() const;
+    std::vector<SeqNote> seqNotes() const; // the pattern's, in slot order
+    int seqSteps() const;                  // how long it is, in steps
+    // The pitches the roll's rows show, bottom first: every one from layout's seqLow up, or only the scale's, as many
+    // as fit.
+    std::vector<int> seqRows() const;
+    float seqStepX(double step) const;
+    double seqStepAt(float x) const;
+    float seqRowY(int pitch) const; // its row's top; below the grid for a pitch not shown
+    int seqPitchAt(float y) const;  // the row's pitch at `y`, the nearest shown
+    float seqRowH() const;
+    double seqSnapped(double step, bool free) const; // onto the snap's grid, unless it is off or `free`
+    Rect seqNoteRect(const SeqNote &note) const;
+    // The note under `p` (its slot), the last drawn first, -1 for none; and whether `p` is at its right end, or its
+    // left one (its start), either of which stretches it.
+    int seqNoteAt(Point p, bool *atEnd = nullptr, bool *atStart = nullptr) const;
+    int seqFreeSlot() const;
+    bool seqSelected(int slot) const;
+    // The notes the field and the tools act on: those picked, still in the pattern.
+    std::vector<int> seqPicked() const;
+    void seqWidgets(std::vector<Widget> &list) const;
+    void seqMenus(std::vector<Widget> &list) const; // the scale's and the snap's lists, over everything
+    // A list of `count` entries under `button`, `width` wide: above it where it would reach past the editor's bottom.
+    Rect seqList(Rect button, int count, float width) const;
+    // The cursor over the roll (a pen while drawing, moving and stretching over a note), none elsewhere.
+    std::optional<CursorKind> seqCursor(const Widget &w) const;
+    bool seqPress(const Widget &w, Point p, Modifiers mods);
+    void seqDrag(Point p);
+    void seqRelease(Point p);
+    bool seqDoubleClick(const Widget &w, Point p, Modifiers mods = {});
+    bool seqWheel(const Widget &w, Point p, float steps, Modifiers mods);
+    // The roll's zoom and scroll, the editor's alone (not saved): across, how many times the whole pattern it is
+    // zoomed in and the step it shows from; up and down, how many times the rows are as high. And what they come to:
+    // the steps it shows, the step it shows from (held to the pattern), every pitch its rows can show (only the
+    // scale's while folded), and the index in them of its lowest row.
+    float seqZoomX_ = 1.0f, seqScrollX_ = 0.0f, seqZoomY_ = 1.0f;
+    Point seqPanStart_; // a pan's start: the step shown from, and the lowest row's index
+    float seqShownSteps() const;
+    float seqScroll() const;
+    std::vector<int> seqPitchList() const;
+    int seqFirstRow() const;
+    void seqShowFromRow(float row); // the rows from that index up, held to the list
+    // The rows moved just as far as shows every note of `slots` (`up`: the highest first, where they don't all fit),
+    // and not at all while they show.
+    void seqReveal(const std::vector<int> &slots, bool up);
+    // Zoomed by `factor` across (the step at `at.x` staying where it is) or up and down (the row at `at.y`).
+    void zoomSeq(bool across, float factor, Point at);
+    // Where a note's dot shows in the lane (at its start, as high as its velocity or chance), and the note whose dot or
+    // stem is under `p` (its slot, the last drawn first), -1 for none.
+    Point seqLaneDot(const SeqNote &note) const;
+    int seqLaneNoteAt(Point p) const; // a picked one first, where notes start together
+    // The notes whose stems stand at `x` in the lane: of those starting together there, only the picked ones while
+    // any of them is.
+    std::vector<SeqNote> seqLaneNotesAt(float x) const;
+    // The lane on a curve (BEND or MOD WHEEL): which, its points as stored, and those written back (the points past
+    // them back to their defaults, so a preset saved sparse leaves them out), in the undo step open.
+    bool seqCurveLane() const;
+    SeqCurve seqLaneCurve() const;
+    std::vector<SeqCurvePoint> seqCurvePoints(SeqCurve curve) const;
+    void setSeqCurve(SeqCurve curve, const std::vector<SeqCurvePoint> &points);
+    // Where a curve's value sits in the lane, up and down (the bend's 0 in the middle, the mod wheel's at the bottom),
+    // and the value at `y`, in the curve's range.
+    float seqCurveY(SeqCurve curve, double v) const;
+    double seqCurveValueAt(SeqCurve curve, float y) const;
+    // A point put where the mouse is: at its step and value, or with `snap` (Ctrl held) on the grid, across on the
+    // snap's lines and up and down on the lane's (quarters of the curve's range), held to the pattern.
+    SeqCurvePoint seqCurvePointFor(SeqCurve curve, Point p, bool snap) const;
+    // Puts it in among the curve's points (after those at its step); its index, -1 where the curve is full.
+    int addSeqCurvePoint(SeqCurve curve, SeqCurvePoint point);
+    // The point of the lane's curve under `p`, and the segment whose middle (its bend handle) is, -1 for none.
+    int seqCurvePointAt(Point p) const;
+    int seqCurveBendAt(Point p) const;
+    Point seqCurveBendPos(const std::vector<SeqCurvePoint> &points, SeqCurve curve, int segment) const;
+    // Painting the curve, from `from` (at `fromValue`) on to `step` (at `v`): a point on every line of the grid
+    // (`unit` steps apart) past `from` up to `step`, the values between in a straight line, in place of the points
+    // there.
+    void paintSeqCurve(double from, double fromValue, double step, double v, double unit);
+    int seqCurveJustAdded_ = -1; // the point the last press put down, which a double-click leaves
+    // The points picked on the lane's curve, as a shape editor's are (see ShapePick): of the pattern and curve shown,
+    // while the curve has as many points as when they were picked; let go at a click anywhere off the lane.
+    struct SeqCurvePick {
+        int pattern = -1;
+        SeqCurve curve = SeqCurve::Bend;
+        int count = 0;
+        std::vector<int> points; // in order
+    };
+    SeqCurvePick seqCurvePick_;
+    std::vector<int> seqCurvePicked() const;
+    void setSeqCurvePick(std::vector<int> points);
+    // The points picked, moved together after the one grabbed (seqDrag_.anchor), now where `to` is.
+    void moveSeqCurvePoints(SeqCurvePoint to);
+    Rect seqScrollTrack() const;
+    Rect seqScrollThumb() const;
+    Rect seqScrollYThumb() const; // the rows' bar's thumb: high up for high rows
+    // The roll fitted to the pattern's notes, after a patch loaded: across the whole pattern, the rows about the notes
+    // (lower, down to the smallest, where they don't fit).
+    void seqFit();
+    uint64_t seqLoadsSeen_ = 0; // the patch loads the roll was fitted to (see Controller::patchLoads())
+    // Notes glowing as the sequencer plays them: a note starts glowing as the playhead (in the telemetry `t`) reaches
+    // its first step, and fades over as long as it lasts at the tempo. Whether any glows, or just stopped, to paint.
+    bool seqTrackGlows(const Telemetry &t);
+    float seqGlow(const SeqNote &note) const; // 0..1
+    std::array<double, kSeqNotes> seqGlowFrom_ = [] {
+        std::array<double, kSeqNotes> a{};
+        a.fill(-1.0);
+        return a;
+    }(); // when each slot's note started glowing, in seconds (see seqNow()), -1 for never
+    std::array<bool, kSeqNotes> seqInFirstStep_{}; // whether the playhead was in each note's first step at the last poll
+    bool seqGlowed_ = false;
+    // The roll's keys lit as the sequencer plays their notes (or one is heard while held): each eases up to lit and
+    // back down a step every poll, rather than switching. Whether any moved, to paint.
+    bool seqFollowKeys(const Telemetry &t);
+    std::array<float, 128> seqKeyLight_{}; // 0..1, each key's light as shown
+    std::array<float, 128> keyLight_{};    // the same for the keyboard strip's keys, by MIDI key
+    // How far a key's light moves each poll, up and down: about 35 ms up and 80 ms down at 60 polls a second.
+    static constexpr float kKeyLightRise = 0.5f, kKeyLightFall = 0.22f;
+    static double seqNow(); // seconds on a steady clock
+    // A note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls it that way, a step of it each
+    // poll: whether it did.
+    bool seqEdgeScroll();
+    float seqEdgeRows_ = 0.0f; // the rows scrolled so far by part, until a whole one
+    void paintSeq(Canvas &c);
+    bool paintSeqWidget(Canvas &c, const Widget &w, bool hovered); // false: not one of the SEQ view's
+    std::string seqTip(const Widget &w) const;                    // empty: none
+    std::string seqFieldText(int field) const;
+    // One undo step each: a note put down (its slot, -1 when the pattern is full), notes removed, the picked notes'
+    // field `field` moved by `steps` of it, Slide or Mute switched, the picked notes (or every one) stretched.
+    int addSeqNote(double start, int pitch, double length);
+    void removeSeqNotes(const std::vector<int> &slots);
+    // No two notes start together on one pitch: the notes that do with one of `kept` (just put down or moved) go, in
+    // the undo step open.
+    void seqDropCovered(const std::vector<int> &kept);
+    bool seqPatternEmpty(int pattern) const; // no notes, and no points on its curves
+    void stepSeqField(int field, double steps);
+    void flipSeqFlag(int flag);
+    void stretchSeq(double factor);
+    void clearSeqPattern();
+    void copySeqPattern();
+    // The notes copied (Ctrl+C, Ctrl+X, the roll's menu), kept by the editor for any pattern: each note's fields, its
+    // start from the first one's; and how far they reach, from that start to the last one's end on the grid.
+    struct SeqClip {
+        std::vector<std::array<double, kSeqNoteParamCount>> notes;
+        double from = 0.0; // where the first one started
+        double span = 0.0;
+    };
+    SeqClip seqClip_;
+    double seqClipNext_ = 0.0; // where a paste goes without the mouse on the roll: after what was copied or pasted last
+    SeqClip seqCopyPicked() const; // the notes picked, as the clipboard keeps them
+    // The notes of `clip` put down from `at` (as one undo step, picked, those past the pattern's end left out); false if
+    // none went in.
+    bool seqPaste(const SeqClip &clip, double at);
+    // The roll's right-click menu (see contextMenu()) and its commands, numbered from kSeqMenuCommands (as many as
+    // kSeqMenuCount); false: not the roll's.
+    static constexpr int kSeqMenuCommands = 50, kSeqMenuCount = 10;
+    bool seqContextMenu(const Widget &w, Point p, std::vector<MenuItem> &items);
+    void seqMenuCommand(int command);
+    double seqMenuAt_ = 0.0; // the step the roll's menu was opened at, where its Paste goes
+    // A drag on the roll, its ruler, its lane or the field: what it moves, and what it started from.
+    struct SeqDrag {
+        enum class Mode { None, Move, Resize, ResizeStart, Box, Paint, Velocity, Lane, LaneGroup, Loop, LoopStart,
+                          LoopEnd, LoopMove, Field, Audition, Scroll, ScrollY, CurvePoint, CurveBend, CurvePaint,
+                          CurveBox, LaneBox };
+        Mode mode = Mode::None;
+        int anchor = -1;                 // the note grabbed (Move, Resize), the field (Field), the key (Audition)
+        double grabStep = 0.0;           // where it was grabbed: in steps,
+        int grabPitch = 0;               // and its row
+        std::vector<SeqNote> origin;     // the notes moved, as they were
+        bool free = false;               // Shift or Alt held: off the snap's grid
+        bool extend = false;             // Velocity: a note put down by a double-click, which across also sets the length
+        bool unpick = false;             // Shift-pressed on a note picked: let go unmoved, it is no longer picked
+        std::vector<int> painted;        // the notes painted so far (Paint)
+        std::vector<int> boxBase;        // the notes picked before the box, which Shift adds to
+        double loopFrom = 0.0;           // Loop: the step it started at; CurvePaint: the step it painted last
+        double startCurve = 0.0;         // CurveBend: the segment's bend as it was grabbed; CurvePaint: the value
+                                         // painted last
+        int sounding = -1;               // the note heard while it is held (see Controller::auditionNote()), -1 for none
+        // The lane's curve: the points picked, moved together (CurvePoint) and where they were as they were grabbed;
+        // a point of several picked, pressed without Ctrl or Shift, picked alone if let go unmoved (`narrow`); and the
+        // points picked before a box (CurveBox), which Ctrl or Shift adds it to.
+        std::vector<int> curvePoints;
+        std::vector<SeqCurvePoint> curveOrigin;
+        bool narrow = false;
+        bool curveUnpick = false; // a point picked, pressed with Ctrl or Shift: let go of if let go unmoved
+        std::vector<int> curveBase;
+    };
+    void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go
+    SeqDrag seqDrag_;
+    // The pattern's loop, in steps, as its params have it (the end, 0 for the pattern's, as the pattern's end), and
+    // what a press on the ruler at `x` drags: an end of it, the whole of it, or a new one across the bars.
+    std::pair<int, int> seqLoop() const;
+    SeqDrag::Mode seqRulerMode(float x) const;
+    std::vector<int> seqSelection_; // the slots picked (of the pattern shown)
+    int seqSelectionPattern_ = 0;   // and which pattern that was: another one's picks are forgotten
+    bool seqSnapMenu_ = false;
 public:
     // The routing graph's glow behind it (see paintRouting()): its shape at this zoom, over the part of the panel it
     // reaches, and its pixels for the strength and accent it was filled with last.
     struct RadarGlow {
         Rect area;
+        Rect panel;   // what it is drawn in, the corners rounded
+        Point center; // where it spreads from
         float scale = 0.0f;
         std::vector<float> distance; // each pixel's from OUT
         std::vector<float> cover;    // how much of it is in the panel, at its rounded corners
@@ -921,8 +1192,13 @@ public:
         Color accent{};
     };
 
+    // The effects graph's backdrop, under its nodes and wires in `area`: the routing graph's glow and orbit rings, spreading
+    // from its OUT at `out`.
+    void paintFxBackdrop(Canvas &c, Rect area, Point out);
+
 private:
     RadarGlow radarGlow_;
+    RadarGlow fxRadarGlow_; // the same behind the effects graph
     std::array<float, kNodes> nodeGlow_{};               // what the routing graph shows of each node's halo, following it
     std::vector<std::pair<int, float>> wireAmounts_;     // and of each wire's amount, by route
     float nodeGlowTarget(int node) const;
@@ -1040,7 +1316,7 @@ private:
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList };
+    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList, Seq };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
@@ -1164,12 +1440,14 @@ private:
     // The changes that put a new point at (x, y) among the others, the later ones moving up a place.
     std::vector<std::pair<int, double>> insertShapePoint(int shape, double x, double y) const;
     // A symmetric shaper's curve (see ClipCurve): only its right half is edited, the left drawn as its mirror. Its
-    // points left of the middle are hidden, and so are the bends that start there; a click on that half counts as one
-    // on its mirror image. Switched on in the editor, the curve gets a point in the middle, which then stays there.
+    // points left of the middle are hidden, and so are the bends that start there; a click on that half does nothing.
+    // Switched on in the editor, the curve gets a point in the middle, which then stays there.
     bool curveSymmetric(int shape) const;
     bool pointShown(int shape, int point) const;
     bool middlePoint(int shape, int point) const;
-    Point unmirrored(int shape, Point p) const;
+    bool inMirroredHalf(int shape, Point p) const;
+    // The big editor's symmetric switch, for a shaper's Custom curve: left of its Points | Steps.
+    Rect shapeSymButton() const;
     void switchSymmetric(int param);
     void switchFixed(int op);
     void flipSwitch(int param); // as a click on its switch flips it
@@ -1179,6 +1457,32 @@ private:
     bool drawsStep(const Widget &w, Modifiers mods) const;
     void removeShapePoint(int shape, int point);
     void resetShape(int shape);
+    // The points picked in a shape editor, which a drag on one of them moves together and Delete removes: picked by a
+    // box dragged across the shape from empty space, Ctrl+click adding a point or taking it away, Ctrl+A picking every
+    // one. Not saved; the editor's alone. A click anywhere else lets them go, and so does any change of how many
+    // points the shape has.
+    struct ShapePick {
+        int shape = -1;
+        int count = 0; // how many points the shape had, which the points picked are of
+        std::vector<int> points; // in order
+    };
+    ShapePick shapePick_;
+    // The points picked of `shape` that it still has and shows (a symmetric curve's mirrored half shows none).
+    std::vector<int> shapePicked(int shape) const;
+    bool shapePointPicked(int shape, int point) const;
+    void setShapePick(int shape, std::vector<int> points);
+    void clearShapePick() { shapePick_ = ShapePick{}; }
+    // Whether `shape` is shown where it can be edited: the big editor, a widened card, a shaper's card or page.
+    bool shapeEditable(int shape) const;
+    // Whether a point stays where it is across: the first, a curve's last, a symmetric curve's middle.
+    bool shapePointPinned(int shape, int point) const;
+    // The points picked, moved together after the one grabbed, now at `x`, `y` (see applyDrag()).
+    void moveShapePoints(int shape, int grabbed, double x, double y);
+    // Removes those of `points` that can go, as many as leave the shape two, as one undo step.
+    void removeShapePoints(int shape, const std::vector<int> &points);
+    // The keys a shape editor takes while it has points picked (Delete removes them) or is under the mouse
+    // (Ctrl+A picks every point); whether it took it.
+    bool shapeKey(Key key);
     // The next grid the shape editor offers along `axis`, `steps` away.
     void stepShapeGrid(int axis, int steps);
     // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
@@ -1235,6 +1539,8 @@ private:
     bool lfoPhaseUsed(int lfo) const;
     // An LFO's clock mode, as its Free, Anchor and One-Shot make it, and setting them for one.
     LfoClock lfoClockOf(int lfo) const;
+    // How many clock modes its card offers: a random one only Retrigger and Free.
+    int lfoClockCount(int lfo) const;
     void setLfoClock(int lfo, LfoClock clock);
     // Whether a widget is one of an LFO's clock modes (a Choice on its Free, a = the LFO, b = the mode).
     static bool isLfoClockChoice(const Widget &w) {
@@ -1264,6 +1570,15 @@ private:
     static bool isRatioDisplay(const Widget &w);
     // An operator's Ratio, whose depth handles drag on its log curve, an octave every 60 px.
     static bool isRatioTarget(int param);
+    // A knob whose value moves only in whole steps (a count, semitones, a note, a note value, a factor), drawn as a
+    // stepper: its number in a field with - and + at its ends and its steps along its foot (see Widget::well).
+    static bool isStepper(const Widget &w);
+    static bool isStepperParam(int param);
+    // The stepper's - (-1) or + (1) under `p`, or 0.
+    static int stepperButton(const Widget &w, Point p);
+    // The value a notch of the wheel takes `param` to, `whole` notches up (down when negative): a step, and for the
+    // voice limit about a fifth more or less.
+    double notchValue(int param, int whole) const;
     // A Wavetable operator's Position, a knob drawn as its TABLE tab's display (see paintTableTab()): dragged up and
     // down, a source dropped anywhere on it, its depth handles centered along its bottom edge.
     static bool isTableDisplay(const Widget &w);
@@ -1461,6 +1776,8 @@ private:
     bool opHeard(int op) const;
     void paintKnob(Canvas &c, const Widget &w);
     void paintRatio(Canvas &c, const Widget &w);
+    void paintStepper(Canvas &c, const Widget &w);
+    Color knobColor(int param) const;
     std::string modRangeText(int source, int slot) const;
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);
     // A route's amount where modulation takes the newest voice right now (0..1), or as set while nothing plays.
@@ -1635,6 +1952,9 @@ private:
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
+    bool algorithmMenuOpen_ = false; // the panel of algorithms, under ALGORITHM
+    int algorithmOps_ = 6;           // the set it shows: the algorithms of this many operators (see kAlgorithmSets)
+    bool algorithmsShown() const;    // ALGORITHM is there: with ROUTING or MATRIX, no editor over the panels
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
@@ -1708,21 +2028,27 @@ private:
     float shownLinks() const {
         return linksDragged_ >= 0.0f ? linksDragged_ : static_cast<float>(controller_.linkIntensity());
     }
+    float gridDragged_ = -1.0f;              // the GRID slider's amount while it is dragged, else -1
+    float shownGrid() const {
+        return gridDragged_ >= 0.0f ? gridDragged_ : static_cast<float>(controller_.gridIntensity());
+    }
     // The amount of the settings slider being dragged (DragKind::Glow): the glow's, or the lines'.
     float hueDragged_ = -1.0f;               // the hue slider's hue while it is dragged, else -1
     // The hue the theme's main color shows now, 0 to 1, or below 0 for the theme's own.
     double shownHue() const { return hueDragged_ >= 0.0f ? hueDragged_ : controller_.accentHue(); }
     double hue_ = -1.0;                      // the hue painted last
     float &sliderDragged() {
-        return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_
-               : drag_.widget.kind == Kind::SettingsHue ? hueDragged_
-                                                        : glowDragged_;
+        return drag_.widget.kind == Kind::SettingsLinks  ? linksDragged_
+               : drag_.widget.kind == Kind::SettingsGrid ? gridDragged_
+               : drag_.widget.kind == Kind::SettingsHue  ? hueDragged_
+                                                         : glowDragged_;
     }
     bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxClear, or -1
     static constexpr int kConfirmFxClear = 4; // asking before every effect goes
     static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
     static constexpr int kConfirmSplitRemove = 6; // asking whether a split's bands' effects stay, as it is removed
+    static constexpr int kConfirmSeqClear = 7;    // asking before every note of the sequencer's pattern goes
     int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
     size_t confirmEffects_ = 0; // how many effects it asks about, counted as it opens
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
