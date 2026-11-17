@@ -26,6 +26,40 @@ set(FMVIBE_ENGINE_SOURCES
     src/envelope.h
     src/fft.h
     src/filter.h
+    src/fx/ampfx.cpp
+    src/fx/ampfx.h
+    src/fx/chorus.cpp
+    src/fx/chorus.h
+    src/fx/common.cpp
+    src/fx/common.h
+    src/fx/compressor.cpp
+    src/fx/compressor.h
+    src/fx/delay.cpp
+    src/fx/delay.h
+    src/fx/disperser.cpp
+    src/fx/disperser.h
+    src/fx/eq.cpp
+    src/fx/eq.h
+    src/fx/filterfx.cpp
+    src/fx/filterfx.h
+    src/fx/flanger.cpp
+    src/fx/flanger.h
+    src/fx/multidyn.cpp
+    src/fx/multidyn.h
+    src/fx/parameq.cpp
+    src/fx/parameq.h
+    src/fx/phaser.cpp
+    src/fx/phaser.h
+    src/fx/reverb.cpp
+    src/fx/reverb.h
+    src/fx/shaper.cpp
+    src/fx/shaper.h
+    src/fx/shifter.cpp
+    src/fx/shifter.h
+    src/fx/utility.cpp
+    src/fx/utility.h
+    src/fx/widener.cpp
+    src/fx/widener.h
     src/noise.h
     src/opdata.cpp
     src/opdata.h
@@ -112,21 +146,45 @@ add_library(fmvibe-core STATIC
     src/gui/controller.cpp
     src/gui/controller.h
     src/gui/dialogs.cpp
-    src/gui/fxgraph.cpp
+    src/gui/filterdisplay.cpp
+    src/gui/filterdisplay.h
     src/gui/fxgraph.h
+    src/gui/fxgraphmodel.cpp
+    src/gui/fxgraphmodel.h
+    src/gui/fxpanel.cpp
+    src/gui/fxpanel.h
     src/gui/icons.cpp
     src/gui/icons.h
-    src/gui/mods.cpp
-    src/gui/seq.cpp
+    src/gui/inspectorpanel.cpp
+    src/gui/inspectorpanel.h
+    src/gui/lists.h
+    src/gui/modulationmodel.cpp
+    src/gui/modulationmodel.h
+    src/gui/modspanel.cpp
+    src/gui/modspanel.h
+    src/gui/panel.h
+    src/gui/seqpanel.cpp
+    src/gui/seqpanel.h
     src/gui/layout.h
-    src/gui/routing.cpp
+    src/gui/opsource.cpp
+    src/gui/patchedits.cpp
+    src/gui/patchedits.h
+    src/gui/presetbrowser.cpp
+    src/gui/presetbrowser.h
     src/gui/routing.h
-    src/gui/shapes.cpp
-    src/gui/tableview.cpp
+    src/gui/routingmodel.cpp
+    src/gui/routingmodel.h
+    src/gui/routingpanel.cpp
+    src/gui/routingpanel.h
+    src/gui/shapeeditor.cpp
+    src/gui/shapeeditor.h
+    src/gui/tablebrowser.cpp
+    src/gui/tablebrowser.h
     src/gui/theme.cpp
     src/gui/theme.h
     src/gui/view.cpp
     src/gui/view.h
+    src/gui/widget.h
     src/remotepages.cpp
     src/remotepages.h
     src/sharedtelemetry.h
@@ -207,6 +265,8 @@ enable_testing()
 # Headless host that loads the built plugin, plays notes and opens the editor.
 add_executable(fmvibe-smoke tests/smoke_host.cpp src/params.cpp src/uistrings.cpp)
 target_link_libraries(fmvibe-smoke PRIVATE clap)
+# The core checks the param ids' layout already (see params.cpp).
+target_compile_definitions(fmvibe-smoke PRIVATE FMVIBE_ID_CHECKS_ELSEWHERE)
 # For the param id helpers in params.h and the wordings in uistrings.h; the test still talks to the plugin only
 # through CLAP.
 target_include_directories(fmvibe-smoke PRIVATE src)

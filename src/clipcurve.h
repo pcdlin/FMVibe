@@ -56,7 +56,7 @@ constexpr double kStackHighPassHz = 20.0;
 // The anti-aliasing averages each stage's curve over the last sample step, which for what the curve leaves straight is
 // the mean of two samples: a top falling away toward the rate's half, which a stack multiplies. Each stage lifts its
 // top back by this much of the step it took, y + e (y - y'): at 96 kHz (where the shaper effect runs them from a
-// 48 kHz host, see Effects::runShaper(), and the voices at their default oversampling) eight stages stay within half
+// 48 kHz host, see fx::Shaper::run(), and the voices at their default oversampling) eight stages stay within half
 // a dB up to 15 kHz, 3 dB down at 20 kHz; one stage within 0.4 dB to 20 kHz.
 constexpr double kStackLift = 0.25;
 // What a stage's high-pass puts out comes this much closer to 0 before the stage drives it: far below hearing, but a

@@ -57,7 +57,7 @@ cmake --build "$dir"
 
 if [ "$tests" = 1 ]; then
     echo "== test"
-    ctest --test-dir "$dir" --output-on-failure
+    ctest --test-dir "$dir" --output-on-failure -j 4
     echo "The editor's snapshots are in $dir/ui-shots."
 fi
 if [ "$shots" = 1 ]; then

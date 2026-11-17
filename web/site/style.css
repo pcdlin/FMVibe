@@ -40,14 +40,24 @@ body {
   touch-action: none;
 }
 
+/* Short, so the editor gets the window's height: the keyboard's hint and the links side by side, wrapping onto two
+   rows only where the page is narrow. main.js's resize() leaves room for it and its margins. */
 footer {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  max-width: 1200px;
-  margin: 10px auto 24px;
+  max-width: 1400px;
+  margin: 8px auto 12px;
   padding: 0 16px;
+}
+
+#info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 32px;
 }
 
 /* Over the editor, dimming it, until the sound is on. */
@@ -99,6 +109,13 @@ footer {
 }
 
 /* The keys that play, laid out as a piano's: the sharps a row up, between the keys they lie between. */
+/* A computer keyboard plays notes; a phone or tablet has none, so there the hint goes. */
+@media (hover: none) and (pointer: coarse) {
+  #hint {
+    display: none;
+  }
+}
+
 .piano {
   display: inline-grid;
   grid-template-columns: repeat(16, 11px);

@@ -289,7 +289,8 @@ public:
     tresult PLUGIN_API canProcessSampleSize(int32 size) override {
         return size == kSample32 ? kResultTrue : kResultFalse;
     }
-    uint32 PLUGIN_API getLatencySamples() override { return 0; }
+    // As setActive() worked it out (see PluginCore::latency()); an edit that moves it asks for a restart.
+    uint32 PLUGIN_API getLatencySamples() override { return static_cast<uint32>(latency()); }
     tresult PLUGIN_API setupProcessing(ProcessSetup &setup) override;
     tresult PLUGIN_API setProcessing(TBool state) override;
     tresult PLUGIN_API process(ProcessData &data) override;

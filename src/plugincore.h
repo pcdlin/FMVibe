@@ -64,7 +64,10 @@ inline constexpr char kPluginDescription[] = "Six-operator FM synthesizer";
 // Milliseconds on the steady clock.
 int64_t steadyMs();
 
-class PluginCore : public gui::Controller {
+// The user's settings file holds the editor's look as the editor sets it.
+static_assert(kMaxHandleSize == gui::EditorSettings::kMaxHandleSize);
+
+class PluginCore : public gui::Controller, public gui::PresetStore {
 public:
     PluginCore();
     ~PluginCore() override;
@@ -84,6 +87,9 @@ public:
         scopeCycles_.store(cycles, std::memory_order_relaxed);
     }
     void setIdleLfosShown(bool shown) override;
+    gui::PresetStore &presetStore() override { return *this; }
+
+    // gui::PresetStore, main thread: the preset library (presets_) and the patch as a file.
     void resetPreset() override;
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
@@ -97,42 +103,40 @@ public:
     std::string presetName() const override;
     bool loadPresetAt(int index) override;
     std::wstring presetFolder() const override;
-    void openPresetFolder() override;
+    void showPresetFile(int index) override { presets_.showFile(index); }
+    std::vector<std::string> presetFolders() const override { return presets_.folders(); }
+    bool makePresetFolder(const std::string &folder) override { return presets_.makeFolder(folder); }
+    bool renamePresetFolder(const std::string &from, const std::string &to) override;
+    bool deletePresetFolder(const std::string &folder) override { return presets_.deleteFolder(folder); }
+    bool savePresetIn(const std::string &folder, const std::string &name, const gui::PresetInfo &info) override;
+    bool presetExists(const std::string &folder, const std::string &name) const override;
+    bool setPresetInfo(int index, const gui::PresetInfo &info) override;
+    bool presetFavorite(int index) const override;
+    void setPresetFavorite(int index, bool on) override;
+    std::vector<int> recentPresets() const override;
+    std::vector<gui::PresetCategory> userCategories() const override;
+    void addUserCategory(const gui::PresetCategory &category) override;
+    void removeUserCategory(const std::string &name) override;
+    std::string presetBrowserPlace() const override;
+    void setPresetBrowserPlace(const std::string &place) override;
+
+    // gui::Controller's settings, main thread.
     int oversampling() const override { return oversampling_.load(); }
     void setOversampling(int factor) override;
     bool mpe() const override { return mpe_.load(); }
     void setMpe(bool on) override;
     int mpeBendRange() const override { return mpeBendRange_.load(); }
     void setMpeBendRange(int semitones) override;
-    std::string theme() const override { return userSettings.theme; }
-    void setTheme(const std::string &name) override {
-        userSettings.theme = name;
-        writeUserSettings();
-    }
-    double accentHue() const override { return userSettings.hue; }
-    void setAccentHue(double hue) override {
-        userSettings.hue = hue < 0.0 ? -1.0 : std::clamp(hue, 0.0, 1.0);
-        writeUserSettings();
-    }
-    double glow() const override { return userSettings.glow; }
-    void setGlow(double amount) override {
-        userSettings.glow = std::clamp(amount, 0.0, 1.0);
-        writeUserSettings();
-    }
-    int handleSize() const override { return userSettings.handleSize; }
-    void setHandleSize(int size) override {
-        userSettings.handleSize = std::clamp(size, 0, kMaxHandleSize);
-        writeUserSettings();
-    }
-    double linkIntensity() const override { return userSettings.links; }
-    void setLinkIntensity(double amount) override {
-        userSettings.links = std::clamp(amount, 0.0, 1.0);
-        writeUserSettings();
-    }
-    double gridIntensity() const override { return userSettings.grid; }
-    void setGridIntensity(double amount) override {
-        userSettings.grid = std::clamp(amount, 0.0, 1.0);
-        writeUserSettings();
+    // The editor's look is the user's settings file's (see usersettings.h).
+    gui::EditorSettings editorSettings() const override {
+        gui::EditorSettings settings;
+        settings.theme = userSettings.theme;
+        settings.accentHue = userSettings.hue;
+        settings.glow = userSettings.glow;
+        settings.handleSize = userSettings.handleSize;
+        settings.linkIntensity = userSettings.links;
+        settings.gridIntensity = userSettings.grid;
+        return settings;
     }
 
     // Every param's value now. Any thread. ParamValues is large (about 150 KB): valuesInto() fills one in place, kept
@@ -144,8 +148,13 @@ public:
     // How many voices may sound at once, from the Voices param.
     int voiceLimit() const;
 
-    // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling.
+    // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling, and takes the
+    // latency the host is told.
     void activate(double sampleRate);
+    // How many samples late the output is, as activate() worked it out: the voices' decimator's delay and the
+    // effects' latest path's (see fxlag.h), rounded. An edit that moves it asks the host for a restart, which takes the
+    // new one. Any thread.
+    int latency() const { return latency_.load(); }
     void deactivate() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
     // Main thread, while not processing (or the audio thread, between blocks).
     void resetVoices() { synth_.reset(); }
@@ -214,6 +223,16 @@ protected:
     }
     void performStepBegin() override;
     void performStepEnd() override;
+    // Each setting written into the file as it is set, as the settings dialog's buttons and sliders set it.
+    void storeEditorSettings(const gui::EditorSettings &settings) override {
+        userSettings.theme = settings.theme;
+        userSettings.hue = settings.accentHue;
+        userSettings.glow = settings.glow;
+        userSettings.handleSize = settings.handleSize;
+        userSettings.links = settings.linkIntensity;
+        userSettings.grid = settings.gridIntensity;
+        writeUserSettings();
+    }
     void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }
     uint64_t dataBlocks() const override { return synth_.registry().blocks(); }
     bool dataIdle() const override { return !inBlock_.load(); }
@@ -234,7 +253,8 @@ protected:
     virtual void hostVoicesChanged() {}
     // The editor would be this big now (in physical pixels): its height follows the modulation panel.
     virtual void hostResizeEditor(uint32_t width, uint32_t height) = 0;
-    // Any thread: a deactivate and activate, for more voices than are allocated or another oversampling factor.
+    // Any thread: a deactivate and activate, for more voices than are allocated, another oversampling factor or
+    // another latency (which the activate tells the host).
     virtual void hostRequestRestart() = 0;
     // Any thread: onMainThread(), soon.
     virtual void hostRequestCallback() = 0;
@@ -255,9 +275,11 @@ private:
     void voiceLimitChanged();
     // A new oversampling factor takes a deactivate/activate, like more voices.
     void restartIfNeeded();
-    // Asks the host for a restart when the voices or the oversampling need one, unless it was asked for this
-    // already. Thread-safe.
+    // Asks the host for a restart when the voices, the oversampling or the latency need one, unless it was asked for
+    // this already. Thread-safe.
     void askRestart();
+    // The latency the params make now, at the rate and oversampling activate() took (see latency()).
+    int latencyNow() const;
     // The editor's height follows the modulation panel; asks the host to resize the window.
     void editorFitChanged();
     // Tells the host of every param that changed since `before`, as edits.
@@ -267,6 +289,9 @@ private:
     void keepEditorLayout(const gui::UiLayout &from);
     // Loads a preset's bytes, which came from `path` (a file, or a factory preset's), as the patch's preset.
     bool loadPresetFrom(const clap_istream_t *stream, const std::wstring &path);
+    // Puts the preset loaded from `path` first among the recent ones, in the user's settings.
+    void rememberRecent(const std::wstring &path);
+    void openPresetFolder(const std::string &folder) override { presets_.openFolder(folder); }
 
     // A key of the editor's virtual keyboard, on its way to the audio thread.
     struct KeyEvent {
@@ -276,10 +301,15 @@ private:
     };
 
     Synth synth_;
-    // Raising the voice limit past the allocated voices, or a new oversampling factor, needs a deactivate/activate:
-    // what the restart was last asked for (the voices times 16, plus the factor), or 0. A host that doesn't restart
-    // is asked again once something else needs one.
+    // Raising the voice limit past the allocated voices, a new oversampling factor or a new latency needs a
+    // deactivate/activate: what the restart was last asked for (the voices times 16 plus the factor, times 4096, plus
+    // the latency), or 0. A host that doesn't restart is asked again once something else needs one.
     std::atomic<int> restartAskedFor_{0};
+    // The latency the host was told at activate() (see latency()), and how late each part of it is at that rate: one
+    // path up and down at 2, 4 and 8 times it, and the voices' decimator. Set on the main thread while inactive.
+    std::atomic<int> latency_{0};
+    std::array<double, FxLag::kKinds> pathDelays_{};
+    double voicesDelay_ = 0.0;
     // Main thread: an undo or redo step being applied, and whether an edit in it marks the project changed.
     bool applyingStep_ = false;
     bool dirtyAfterStep_ = false;

@@ -21,6 +21,7 @@ namespace fmvibe {
 
 namespace gui {
 struct UiLayout;
+struct PresetInfo;
 }
 
 constexpr int kDefaultOversampling = 2;
@@ -60,6 +61,13 @@ bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const g
 bool readParams(const clap_istream_t *stream, ParamValues &values);
 // The editor layout chunk that follows the params. It is optional; whatever is missing keeps its default.
 gui::UiLayout readLayout(const clap_istream_t *stream);
+
+// What a preset file (or a state) says about itself (see gui::PresetInfo), read past its params without taking them:
+// false for a stream that isn't FMVibe's state, is of a newer version or ends among the params.
+bool readPresetInfo(const clap_istream_t *stream, gui::PresetInfo &info);
+// The same from a preset file open for reading, seeking past its params rather than reading them, as the library's
+// scan does for every file in the preset folder.
+bool readPresetInfo(FILE *file, gui::PresetInfo &info);
 
 // The settings chunk, in the host's state only: this instance's settings, which presets leave alone.
 bool writeSettings(const clap_ostream_t *stream, const Settings &settings);

@@ -17,8 +17,13 @@ namespace {
 // The icons' points, which depend on nothing but which icon and where: one cache for every editor, which all paint
 // on the main thread (as `look` in theme.h assumes).
 PointCache icons;
+PointCache curves; // and the graphs' curves (see curveCache())
 
 } // namespace
+
+PointCache &curveCache() {
+    return curves;
+}
 
 // The power symbol: a ring open at the top, with a stroke down into the gap.
 void powerIcon(Canvas &c, Point center, Color color) {

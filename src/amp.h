@@ -2,7 +2,7 @@
 
 // The Amp effect's sound: the models' preamp stages, tone stacks and power amps, the cabinets and mics after them,
 // the oversampling the stages run at, and the responses the editor draws. Independent of the plugin formats, like
-// effects.h, which runs it in an effect slot.
+// effects.h, whose slots run it (see fx/ampfx.h).
 
 #include "oversampler.h"
 #include "params.h"
@@ -14,7 +14,7 @@
 
 namespace fmvibe {
 
-// A biquad's coefficients (y = b0 x + z1, as Effects::Biquad runs them) and its state.
+// A biquad's coefficients (y = b0 x + z1, as fx::Biquad runs them) and its state.
 struct AmpCoefs {
     double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
 };

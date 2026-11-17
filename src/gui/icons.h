@@ -1,8 +1,8 @@
 #pragma once
 
 // The editor's icons: the effects', filter types', band shapes' and LFO modes' little pictures, the switches
-// drawn as icons, and the waves' and LFO shapes' outlines; with PointCache::get, which keeps their points and the
-// graphs' curves, and the keys that tell those apart. Shared by the editor's own files only (see view.cpp), in
+// drawn as icons, and the waves' and LFO shapes' outlines; with PointCache, which keeps their points and the graphs'
+// curves (curveCache()), and the keys that tell those apart. Shared by the editor's own files only (see view.cpp), in
 // namespace detail; icons.cpp draws them.
 
 #include "view.h"
@@ -13,6 +13,25 @@
 #include <vector>
 
 namespace fmvibe::gui {
+
+// Points that depend only on what their key holds (the params a curve is drawn from, where it goes), kept from
+// frame to frame and worked out again only when any of that changes.
+class PointCache {
+public:
+    // The points for `key` (its first value telling the curves apart), from make() unless they are kept already.
+    template <class Make>
+    std::vector<Point> get(const std::vector<double> &key, Make &&make);
+
+private:
+    struct Entry {
+        uint64_t hash = 0;
+        std::vector<double> key;
+        std::vector<Point> points;
+        uint64_t used = 0;
+    };
+    std::vector<Entry> entries_;
+    uint64_t clock_ = 0;
+};
 
 // Keys are compared bit for bit (+0 and -0 apart), so points are only found again for a key that make() would turn
 // into the same points. Past a few dozen curves, the one used least recently makes room for a new one.
@@ -51,6 +70,11 @@ std::vector<Point> PointCache::get(const std::vector<double> &key, Make &&make) 
 
 namespace fmvibe::gui::detail {
 
+// The graphs' curves (the effects' and filters' responses, the envelopes, the drawn shapes), worked out again only
+// when what they are drawn from changes: one cache for every editor, which all paint on the main thread, as the icons'
+// is (see icons.cpp).
+PointCache &curveCache();
+
 // What tells the curves apart in a PointCache key: its first value, then where the curve goes.
 enum class Curve {
     Filter = 1, ParamEq, Sweep, Driven, Drawn, Shaper, LfoEditor, ClipEditor, NoteEditor, NoteExact, Partials, Lfo,
@@ -73,7 +97,7 @@ void editIcon(Canvas &c, Point center, Color color);
 // corners: the full-size editor.
 void collapseIcon(Canvas &c, Point center, Color color);
 void expandIcon(Canvas &c, Point center, Color color);
-// A widened LFO card's tools, by View::ShapeTool: invert, reverse, shift left and right, copy and paste.
+// A widened LFO card's tools, by ShapeEditor::ShapeTool: invert, reverse, shift left and right, copy and paste.
 void shapeToolIcon(Canvas &c, Point center, int tool, Color color);
 // What a click on a shape does: points (a dot on a line), steps (a stair); and snapping to the grid (a grid).
 void pointsIcon(Canvas &c, Point center, Color color);

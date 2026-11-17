@@ -2,7 +2,7 @@
 
 // The routing graph's model: which nodes there are, which param joins two of them or sends one out, and where
 // their wires and arrowheads go. Shared by the editor's own files only (see view.cpp), in namespace detail;
-// routing.cpp holds the View's methods that connect and reroute.
+// RoutingModel (routingmodel.h) connects and reroutes, and the routing panel (routingpanel.h) shows them.
 
 #include "layout.h"
 #include "theme.h"
@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <optional>
 #include <string>
 
 namespace fmvibe::gui::detail {
@@ -154,10 +156,33 @@ inline bool isPowerParam(int param) {
     return false;
 }
 
+// The inspector's lens's leader: from the node it shows (`node`), while the routing graph shows it (`graphShown`) and it
+// is on, level across to the lens; where it starts, that node's left side.
+inline std::optional<Point> lensLeaderStart(const RoutingModel &routing, int node, bool graphShown) {
+    if (!graphShown || !routing.nodeOn(node))
+        return std::nullopt;
+    const Point center = routing.nodeCenter(node);
+    const float extent = (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + kSelectedRing + 2.0f;
+    return Point{center.x - extent, center.y};
+}
+
 inline std::string nodeTitle(int node) {
     return isShaperNode(node)   ? trf(Str::NodeShaper, {std::to_string(shaperOfNode(node) + 1)})
            : isFilterNode(node) ? trf(Str::NodeFilter, {std::to_string(node - kOps + 1)})
                                 : trf(Str::NodeOperator, {kNodeNames[node]});
+}
+
+// A fixed operator's Freq x Mult (as its params hold them): "440 Hz" in the inspector's summary line, `compact`
+// "440Hz" or "5.3kHz" inside its circle in the graph.
+inline std::string fixedHzText(double freq, double mult, bool compact) {
+    const double hz = fixedHz(freq, mult);
+    char text[32];
+    if (hz >= 1000.0) {
+        std::snprintf(text, sizeof(text), compact ? "%.2g" : "%.2f", hz / 1000.0);
+        return std::string(text) + (compact ? "kHz" : " kHz");
+    }
+    std::snprintf(text, sizeof(text), hz >= 100.0 ? "%.0f" : hz >= 10.0 ? "%.1f" : hz >= 0.1 ? "%.2f" : "%.3f", hz);
+    return std::string(text) + (compact ? "Hz" : " Hz");
 }
 
 constexpr float kHintX = kRouting.x + 330.0f; // the routing graph's hint, in its title row

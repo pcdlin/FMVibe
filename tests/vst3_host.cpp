@@ -804,6 +804,10 @@ int main(int argc, char **argv) {
     plugin.component->setActive(false);
     plugin.component->setActive(true);
     plugin.processor->setProcessing(true);
+    // Its latency, the CLAP plugin's: the voices' decimator's at 2x, a couple of samples, with no effect oversampled.
+    const uint32 latency = plugin.processor->getLatencySamples();
+    std::printf("      latency: %u samples\n", static_cast<unsigned>(latency));
+    check(latency >= 1 && latency <= 4, "the latency reported is the voices' decimator's");
 
     // --- State: the same bytes the CLAP plugin saves, through a stream that moves 5 bytes at a time.
     plugin.processor->setProcessing(false);
@@ -902,6 +906,24 @@ int main(int argc, char **argv) {
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);
+
+        // A preset loaded from the editor (the preset bar's next arrow, at (807, 18) in view units): the host reads
+        // the values again (kParamValuesChanged) and the project is marked changed, with no beginEdit, performEdit or
+        // endEdit, which it would record as automation and in its undo.
+        handler.edits.clear();
+        handler.restarts = 0;
+        handler.dirty = false;
+        if (editor) {
+            SendMessageW(editor, WM_PAINT, 0, 0);
+            pumpMessages(100);
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(605, 14));
+            SendMessageW(editor, WM_LBUTTONUP, 0, MAKELPARAM(605, 14));
+            pumpMessages(100);
+        }
+        check(editor && handler.edits.empty() && (handler.restarts & kParamValuesChanged) != 0 && handler.dirty,
+              "a preset loaded in the editor has the host read the values again and marks the project changed, with "
+              "no edits");
+
         const double volumeBefore = plugin.normalized(volume);
         handler.edits.clear();
         if (editor) {

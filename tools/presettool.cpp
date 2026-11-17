@@ -1,13 +1,15 @@
 // fmvibe-presettool: keeps the factory presets' files (presets/Factory/*.fmv) sparse, and their routing graphs clear.
 //
-//   fmvibe-presettool [--arrange] <file.fmv>...
+//   fmvibe-presettool [--arrange] [--author=<name>] [--category=<name>] [--description=<line>] <file.fmv>...
 //
 // Rewrites each preset file holding only the params that differ from their defaults (which is what loading it gives
 // the others) and its editor layout, then its DATA chunk (its own tables and samples) as it was, as the factory presets
 // are stored. A preset edited in the plugin and saved over
 // its file holds every param (about 128 KB); this makes it sparse again before it is committed. With --arrange, it
 // first lays the preset's routing graph out again (see src/gui/arrange.h) where its nodes, wires, lines to OUT or
-// labels run over each other, and says how many such clashes are left. A file it can't read is left as it is.
+// labels run over each other, and says how many such clashes are left. --author, --category and --description set
+// what the preset says about itself (see gui::PresetInfo), each in every file given. A file it can't read is left as
+// it is.
 
 #include "gui/arrange.h"
 #include "gui/controller.h"
@@ -17,6 +19,7 @@
 #include <cstring>
 #include <cwchar>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,7 +40,12 @@ FILE *openFile(const std::filesystem::path &path, const char *mode) {
 
 // Rewrites the preset at `path` sparse, laid out again first with `arrange`; what is said of it, or empty where it
 // can't be read or written.
-std::string normalize(const std::filesystem::path &path, bool arrange) {
+// The info to set: each part only where it was given.
+struct InfoChange {
+    std::optional<std::string> author, category, description;
+};
+
+std::string normalize(const std::filesystem::path &path, bool arrange, const InfoChange &info) {
     FILE *file = openFile(path, "rb");
     if (!file)
         return {};
@@ -65,6 +73,14 @@ std::string normalize(const std::filesystem::path &path, bool arrange) {
         said += before == 0 ? ", clear" : ", " + std::to_string(before) + " clashes laid out, " +
                                               std::to_string(after) + " left";
     }
+    if (info.author)
+        layout.presetInfo.author = *info.author;
+    if (info.category)
+        layout.presetInfo.category = *info.category;
+    if (info.description)
+        layout.presetInfo.description = *info.description;
+    if (info.author || info.category || info.description)
+        said += ", info set";
     std::vector<unsigned char> bytes;
     clap_ostream_t out = memoryOut(bytes);
     if (!writePatch(&out, values, layout, true))
@@ -78,20 +94,34 @@ std::string normalize(const std::filesystem::path &path, bool arrange) {
 }
 
 template <typename Char> int run(int argc, Char **argv) {
-    int first = 1;
     bool arrange = false;
-    if (argc > 1 && std::filesystem::path(argv[1]) == "--arrange") {
-        arrange = true;
-        first = 2;
+    InfoChange info;
+    std::vector<std::filesystem::path> files;
+    for (int i = 1; i < argc; ++i) {
+        const std::filesystem::path arg(argv[i]);
+        const std::u8string u8 = arg.u8string();
+        const std::string text(u8.begin(), u8.end());
+        auto option = [&](const char *name, std::optional<std::string> &to) {
+            const std::string prefix = std::string("--") + name + "=";
+            if (!text.starts_with(prefix))
+                return false;
+            to = text.substr(prefix.size());
+            return true;
+        };
+        if (text == "--arrange")
+            arrange = true;
+        else if (!option("author", info.author) && !option("category", info.category) &&
+                 !option("description", info.description))
+            files.push_back(arg);
     }
-    if (argc <= first) {
-        std::fprintf(stderr, "usage: fmvibe-presettool [--arrange] <file.fmv>...\n");
+    if (files.empty()) {
+        std::fprintf(stderr, "usage: fmvibe-presettool [--arrange] [--author=<name>] [--category=<name>] "
+                             "[--description=<line>] <file.fmv>...\n");
         return 2;
     }
     int failed = 0;
-    for (int i = first; i < argc; ++i) {
-        const std::filesystem::path path(argv[i]);
-        const std::string said = normalize(path, arrange);
+    for (const std::filesystem::path &path : files) {
+        const std::string said = normalize(path, arrange, info);
         std::fprintf(said.empty() ? stderr : stdout, "%s: %s\n", path.filename().string().c_str(),
                      said.empty() ? "can't read or write it" : said.c_str());
         failed += said.empty() ? 1 : 0;

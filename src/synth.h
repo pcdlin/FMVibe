@@ -706,6 +706,7 @@ private:
         int aux = -1; // a macro or the mod wheel, or none
         double curve = 0.0;
         double depth = 0.0; // the slot's depth times its Amount, in the target's units
+        double auxDepth = 1.0;
         bool bipolar = false;
         double shared = 0.0;
     };
@@ -751,6 +752,7 @@ private:
         double curve = 0.0;
         double scale = 1.0;
         int voiceAux = -1;
+        double auxDepth = 1.0; // voiceAux's (see auxScale())
         double range = 0.0;
         double depth = 0.0;
     };

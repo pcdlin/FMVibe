@@ -4,9 +4,29 @@
 #include "analyzer.h"
 #include "clipcurve.h"
 #include "filter.h"
+#include "fxlag.h"
 #include "oversampler.h"
 #include "params.h"
 #include "zerobuffer.h"
+
+// Each effect type a slot runs, in a module of its own (with what the editor draws of it).
+#include "fx/ampfx.h"
+#include "fx/chorus.h"
+#include "fx/common.h"
+#include "fx/compressor.h"
+#include "fx/delay.h"
+#include "fx/disperser.h"
+#include "fx/eq.h"
+#include "fx/filterfx.h"
+#include "fx/flanger.h"
+#include "fx/multidyn.h"
+#include "fx/parameq.h"
+#include "fx/phaser.h"
+#include "fx/reverb.h"
+#include "fx/shaper.h"
+#include "fx/shifter.h"
+#include "fx/utility.h"
+#include "fx/widener.h"
 
 #include <algorithm>
 #include <array>
@@ -17,107 +37,6 @@
 #include <vector>
 
 namespace fmvibe {
-
-// Crossovers of the DJ EQ.
-constexpr double kEqLowHz = 250.0;
-constexpr double kEqHighHz = 2500.0;
-
-// Delay mix: the dry signal stays at full level up to 50 %, the echoes reach full level there.
-inline double delayDryLevel(double mix) {
-    return std::min(1.0, 2.0 * (1.0 - mix));
-}
-inline double delayWetLevel(double mix) {
-    return std::min(1.0, 2.0 * mix);
-}
-
-// Magnitude response of the DJ EQ at `hz`, for band params (-1..1) low, mid and high.
-double eqResponse(double hz, double low, double mid, double high);
-// Magnitude response of one parametric EQ band at `hz`, from its params (frequency and Q normalized, gain in dB).
-double peqResponse(double hz, PeqType type, double freq, double gainDb, double q);
-// The phaser's and flanger's sweeps: the phaser's all-pass corner (Hz) and the flanger's delay
-// (seconds) with their LFO at `lfo` (-1..1), from their params.
-double phaserCorner(double centerNorm, double depth, double lfo);
-double flangerDelay(double delayNorm, double depth, double lfo);
-// How much the phaser's and flanger's feedback (-1..1 as set) sends round, and the gain that keeps
-// their broadband level where it was without feedback.
-double sweepFeedback(double feedback);
-double sweepGain(double feedback);
-// The phaser's and flanger's polarity from their Negative switch: 1, or -1 to turn their wet sound and their
-// feedback over. Their response then is the positive one's with the wet sound's phase turned half a cycle, every
-// notch moved to where a peak was.
-inline double sweepPolarity(double negative) {
-    return negative >= 0.5 ? -1.0 : 1.0;
-}
-// Magnitude responses, for drawing: the phaser with its corner at `cornerHz`, the flanger with its
-// delay at `delaySeconds`, at `polarity` (see sweepPolarity()). At 50 % mix their notches go deepest.
-double phaserResponse(double hz, double cornerHz, int stages, double feedback, double mix, double polarity);
-double flangerResponse(double hz, double delaySeconds, double feedback, double mix, double polarity);
-// The phase disperser's all-pass (b0, b1, b2, a1, a2) at Freq (0..1 on the cutoff curve), Pinch setting its Q
-// from 0.3 to 6, and how long the sound at `hz` comes out after the rest through `stages` of them (seconds).
-std::array<double, 5> disperserCoefs(double freqNorm, double pinch, double sampleRate);
-double disperserDelay(double hz, double freqNorm, double pinch, int stages, double sampleRate);
-// The phaser's and flanger's Mix knobs run to 100 %, which is half wet, where their notches go deepest: past that
-// they would only get shallower again.
-inline double sweepWet(double mix) {
-    return 0.5 * mix;
-}
-// The reverb's decay (seconds to fall 60 dB) and pre-delay (seconds) from their params.
-double reverbDecay(double norm);
-double reverbPreDelay(double norm);
-// How each reverb algorithm sets up the network: its lines' length against the hall's, how much its damping
-// lets through against the knob's, how many all-passes diffuse the input on each side, how loud its early
-// reflections are, how far its lines' lengths waver against the hall's, and whether it feeds its tail back
-// pitch-shifted (a shimmer).
-struct ReverbStyle {
-    double length;
-    double brightness;
-    int diffusers;
-    double early;
-    double wander;
-    bool shimmer;
-};
-ReverbStyle reverbStyle(ReverbType type);
-ReverbType reverbType(double value);
-// The lines' length against the hall's longest, from the Size knob and the algorithm.
-double reverbSpace(double sizeNorm, ReverbType type);
-// A room's early reflections (seconds at full size, after the pre-delay) and their levels.
-inline constexpr double kRoomEchoSeconds[] = {0.0071, 0.0113, 0.0167, 0.0229, 0.0311, 0.0409};
-inline constexpr double kRoomEchoLevels[] = {0.55, 0.45, 0.38, 0.3, 0.24, 0.18};
-// How much faster the tail decays above the damping's corner than the Decay knob says, the same for every line.
-inline constexpr double kReverbHighDecay = 0.2;
-// The lines' longest length at full size (seconds).
-inline constexpr double kReverbLongest = 0.0889;
-
-// The chorus's drifts' paces (Hz), a voice each (see chorusShare()). Below kChorusBassHz (a one-pole's corner), the
-// sound goes past the voices, left as it is: the bass stays steady and in the middle.
-inline constexpr double kChorusDriftHz[kMaxChorusVoices] = {0.23, 0.31, 0.19, 0.37, 0.27, 0.41};
-constexpr double kChorusBassHz = 200.0;
-// The chorus's voices' gains on each side: voice `voice` of `voices` panned at equal power between the sides by Spread
-// (all in the middle at 0, from left to right in order at 1), and each scaled by 1 / sqrt(voices): voices that wait
-// unalike add up about as loud as what went in, however many there are.
-struct ChorusGains {
-    double left, right;
-};
-ChorusGains chorusGains(int voice, int voices, double spread);
-
-// The widener's taps: how long each waits at full size (seconds) and how fast it is swept (Hz).
-// The first and third go to the left side, the others to the right.
-constexpr int kWidenerTaps = 4;
-inline constexpr double kWidenerDelays[kWidenerTaps] = {0.0097, 0.0133, 0.0179, 0.0231};
-inline constexpr double kWidenerRates[kWidenerTaps] = {0.29, 0.37, 0.43, 0.53};
-// Tap `tap`'s delay (seconds) with its sweep at `lfo` (-1..1), from the Size knob (0..1): from a fifth of its
-// length, a tight doubling, to all of it, swept 12 % either way.
-double widenerTap(int tap, double size, double lfo);
-// How much of the sound at `hz` the widener widens, from its High Pass knob (0..1 on the cutoff curve): the
-// response of its high-pass, 12 dB per octave.
-double widenerSpread(double hz, double highPassNorm);
-
-// The utility's gain on each side, from its Gain knob (0..1, see utilityGain()) and its Pan (-1..1): a balance, which
-// turns the side it pans away from down and leaves the other as it is.
-struct UtilityGains {
-    double left, right;
-};
-UtilityGains utilityGains(double gainNorm, double pan);
 
 // The effects on the sum of the voices: kFxSlots slots, each holding a
 // shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
@@ -163,314 +82,48 @@ public:
     float portLevel(int port) const { return port >= 0 && port < kFxPorts ? portLevel_[port] : 0.0f; }
 
 private:
-    static constexpr uint32_t kChunk = 64; // samples per parameter ramp
-    // How often the phaser and flanger work out where their sweep is, in samples, moving in a straight line between:
-    // a sweep (100 Hz at most) bends too little over these few samples to tell, and each step costs a sine, an
-    // exponential and a tangent per side.
-    static constexpr uint32_t kSweepStep = 8;
+    static constexpr uint32_t kChunk = fx::kChunk; // samples per parameter ramp
+    using BiquadCoefs = fx::BiquadCoefs;
+    using EqChannel = fx::EqChannel;
+    using CrossoverCoefs = fx::CrossoverCoefs;
 
-    struct BiquadCoefs {
-        double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
-    };
-
-    struct Biquad { // transposed direct form II
-        double z1 = 0.0, z2 = 0.0;
-
-        double process(double x, const BiquadCoefs &c) {
-            const double y = c.b0 * x + z1;
-            z1 = c.b1 * x - c.a1 * y + z2;
-            z2 = c.b2 * x - c.a2 * y;
-            return y;
-        }
-    };
-
-    struct Shaper {
-        std::array<ClipState, 2> sides{};
-        double drive = 1.0; // gains, ramped
-        double output = 1.0;
-        double mix = 1.0;
-        double between = 1.0; // after each Stack stage but the last
-    };
-    // A shaper's curve as a chunk ran it: what its path (at twice the rate for Stack, see runShaper()) is built from.
-    struct ShaperPath {
-        ClipMode mode = ClipMode::Soft;
-        bool symmetric = false;
-        int stack = 1;
-    };
-
-    struct Delay {
-        std::array<ZeroBuffer, 2> lines;
-        int write = 0;
-        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
-        std::array<double, 2> length{};   // samples, glide toward the set times
-        std::array<double, 2> lowPass{};  // tone filter states
-        std::array<double, 2> highPass{};
-        double feedback = 0.0;
-        double dry = 1.0;
-        double wet = 0.0;
-        double width = 1.0;
-    };
-
-    // Linkwitz-Riley crossovers: the low band gets an allpass so the three bands
-    // sum back to a flat response.
-    struct EqChannel {
-        Biquad lowA, lowB, lowPhase, restA, restB, midA, midB, highA, highB;
-    };
-
-    struct Eq {
-        std::array<EqChannel, 2> channels{};
-        std::array<double, 3> gains{1.0, 1.0, 1.0};
-    };
-
-    struct ParamEq {
-        std::array<std::array<Biquad, 2>, kPeqBands> bands{}; // per band, per channel
-        // How much of each band is heard, gliding to its On switch (see runParamEq()); NaN until the first chunk,
-        // which takes the switch as it is.
-        static constexpr double kUnset = std::numeric_limits<double>::quiet_NaN();
-        std::array<double, kPeqBands> on{kUnset, kUnset, kUnset};
-        double amount = 1.0; // ramping to its Amount (see runParamEq())
-    };
-
-    struct FilterFx {
-        std::array<Filter, 2> channels{};
-        std::array<ZeroBuffer, 2> combs; // comb delay lines, combLength() long
-        double mix = 1.0;
-        // Its settings, and the params (and pitch, while it tracks the key) they were worked out from: NaN until the
-        // first chunk, so worked out again only when one moves (see runFilter()).
-        FilterSettings settings;
-        std::array<double, 10> settingsFor{std::numeric_limits<double>::quiet_NaN()};
-    };
-
-    // The gain reduction (dB, 0 or below) follows the static curve at the attack
-    // or release pace.
-    struct Compressor {
-        double reduction = 0.0;
-        double makeup = 1.0; // gains, ramped
-        double mix = 1.0;
-    };
-
-    // Split like the DJ EQ, at crossovers set per chunk; each band's detector follows its peaks (`peak`, falling back slowly
-    // between them), or its RMS level (`power`, a mean square). Its `envelope` follows that level at the attack pace
-    // while it rises, else at the release pace, and its gain (dB) is dynamicsGain() of the envelope. Following the
-    // level rather than the gain, a note out of silence takes the lift away within a few milliseconds, as the level
-    // climbs tens of dB in its first moments, where a gain following at the attack pace would take tens of
-    // milliseconds to come down from the whole Range. `meter` is the detector level the editor shows, falling slowly,
-    // and `outMeter` that level through the band's gain, held and falling alike: the editor draws what the band does
-    // from one to the other, so as a band goes quiet, the gain lifting what is left, both ends fall together rather
-    // than the held level going in taking the lift of the quiet that follows it.
-    struct MultiDyn {
-        std::array<EqChannel, 2> channels{};
-        std::array<double, kMcBands> peak{}, power{}, envelope{};
-        std::array<double, kMcBands> gain{};
-        std::array<double, kMcBands> meter{}, outMeter{};
-        std::array<double, kMcBands> gains{1.0, 1.0, 1.0}; // band gains after the dynamics, ramped
-        double mix = 1.0;
-        double output = 1.0; // gain after the mix, ramped
-    };
-
-    // A feedback delay network: kReverbLines lines of different lengths, mixed through a Hadamard matrix
-    // (which keeps their energy and spreads each line's evenly over all of them), each with the gain that makes
-    // it fall 60 dB in the decay time and a high shelf that takes it down faster above the damping's corner, by as
-    // much for every line. The lines' lengths waver slowly, each at its own pace, so the tail's resonances
-    // smear rather than ring. Each side of the input goes through the pre-delay and a few all-passes that diffuse
-    // it, then into half the lines; the lines' outputs, signed differently, make the two sides. A shimmer
-    // band-passes each side of its tail, pitch-shifts it and feeds it back into the lines (past the all-passes), so
-    // what goes round climbs (or falls) by the interval each time.
-    static constexpr int kReverbLines = 16;
-    static constexpr int kDiffusers = 6; // per side: a plate runs the input through all of them, the others through four
-    struct Reverb {
-        std::array<ZeroBuffer, kReverbLines> lines; // all as long as the longest, with room for the wavering
-        std::array<std::array<ZeroBuffer, kDiffusers>, 2> diffusers; // per side
-        std::array<ZeroBuffer, 2> preDelay;
-        std::array<ZeroBuffer, 2> shifter; // a shimmer's band-passed tail, per side, its shifters read
-        int lineWrite = 0;
-        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
-        int diffuserWrite = 0;
-        int preWrite = 0;
-        int shiftWrite = 0;
-        // The diffusers the algorithm ran last. Those it left out stood still, holding the sound of then, and are
-        // cleared when one taken up again (see runReverb()), as the shifters are when a shimmer starts again.
-        int diffusersUsed = kDiffusers;
-        std::array<double, kReverbLines> damp{}; // the shelves' low-pass states
-        // The lines' wavering: a sine each, as a turning phasor.
-        std::array<double, kReverbLines> wanderCos{}, wanderSin{};
-        // Shimmer: the shifters' read heads sweep the window (see kShimmerWindow) at a phase both sides share, the
-        // right side's a quarter of a cycle on. What they read was band-passed on its way in: a low-pass, and what
-        // a one-pole lets through below the high-pass corner, taken away.
-        double shimmerPhase = 0.0;
-        std::array<std::array<Biquad, 2>, 2> shimmerLow{}; // two in a row a side
-        std::array<double, 2> shimmerBass{};
-        double size = 1.0;      // the lines' length scale, gliding toward the knob
-        double preLength = 0.0; // samples, gliding
-        double reach = 0.0;     // samples before what goes in has all come out of the pre-delay (see runReverb())
-        double dry = 1.0;       // ramped
-        double wet = 0.0;
-        double width = 1.0;
-        double shimmer = 0.0;   // the gain the shifted tail goes back in at, ramped
-        // Each line's gain and its shelf's (see runReverb()), and the size, share of the tail fed back shifted and
-        // decay they were worked out for: NaN until the first chunk.
-        std::array<double, kReverbLines> gains{}, highs{};
-        std::array<double, 3> gainsFor{std::numeric_limits<double>::quiet_NaN()};
-    };
-
-    // First-order all-passes in a row, per side, their corners swept by the LFO; the right side's
-    // LFO runs a quarter cycle ahead. Those past Stages wait cleared, so more start clean.
-    struct Phaser {
-        std::array<std::array<double, kMaxPhaserStages>, 2> stages{};
-        std::array<double, 2> last{}; // the last stage's output, fed back to the first
-        double phase = 0.0;           // the LFO, in cycles
-        double mix = 0.5;
-        double polarity = 1.0; // sweepPolarity()'s, moved there over 10 ms (kPolaritySeconds)
-        // The all-passes' coefficient per side, worked out every kSweepStep samples and moved along in a straight
-        // line between (see runPhaser()): where it was last worked out, and whether it has been yet.
-        std::array<double, 2> coef{};
-        bool coefKnown = false;
-    };
-
-    struct Flanger {
-        std::array<ZeroBuffer, 2> lines;
-        int write = 0;
-        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
-        std::array<double, 2> last{}; // the delayed sound, fed back
-        double phase = 0.0;
-        double mix = 0.5;
-        double polarity = 1.0; // as the phaser's
-        // The delay per side in samples, worked out every kSweepStep samples like the phaser's coefficient.
-        std::array<double, 2> delay{};
-        bool delayKnown = false;
-    };
-
-    // A delay line a side, holding the sound above its bass, which each voice reads behind at its own swept delay
-    // (between samples on a cubic): the voices' sweeps a share of a cycle apart and their delays' places along them
-    // (both gliding there when Voices changes), their gains on each side ramped (so a voice coming or going fades).
-    struct Chorus {
-        std::array<ZeroBuffer, 2> lines;
-        int write = 0;
-        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
-        std::array<double, 2> bass{}; // the one-pole low-pass a side that takes the bass past the voices
-        double phase = 0.0;           // the first voice's sweep, in cycles
-        double mix = 0.5;
-        std::array<double, kMaxChorusVoices> offsets{};      // each voice's sweep behind the first's, in cycles
-        std::array<double, kMaxChorusVoices> stagger{};      // each voice's chorusStagger(), gliding
-        std::array<double, kMaxChorusVoices> drift{};        // each voice's drift, in cycles
-        std::array<double, kMaxChorusVoices> gainL{}, gainR{}; // ramped
-        // Each voice's delay in samples, worked out every kSweepStep samples like the flanger's.
-        std::array<double, kMaxChorusVoices> delay{};
-        bool delayKnown = false;
-    };
-
-    // Two all-pass chains whose outputs stay 90 degrees apart across the audio band, from kHilbertLowHz up: a signal
-    // and its Hilbert transform. Their coefficients are worked out for the rate (see hilbertCoefs()), with more
-    // sections the higher it is, since the band then spans more octaves; at 44.1 and 48 kHz, four a chain as in Olli
-    // Niemitalo's design.
-    static constexpr int kMaxHilbertSections = 7;
-    struct HilbertCoefs {
-        int sections = 0; // per chain
-        std::array<double, kMaxHilbertSections> a{}; // the chain heard a sample late
-        std::array<double, kMaxHilbertSections> b{};
-    };
-    struct Hilbert {
-        std::array<std::array<double, 4>, kMaxHilbertSections> a{}; // per section: x[n-1], x[n-2], y[n-1], y[n-2]
-        std::array<std::array<double, 4>, kMaxHilbertSections> b{};
-        double delayed = 0.0; // the first chain's output, one sample late
-
-        // The in-phase and quadrature parts of `x`.
-        std::array<double, 2> process(double x, const HilbertCoefs &coefs);
-    };
-    static HilbertCoefs hilbertCoefs(double sampleRate);
-
-    // The phase disperser's all-passes, per side; those past Stages wait cleared, so more start clean.
-    struct Disperser {
-        std::array<std::array<Biquad, kMaxDisperserStages>, 2> stages{};
-        double mix = 1.0;
-    };
-
-    // The sound above the high-pass, mono, in a short line that kWidenerTaps swept taps read.
-    struct Widener {
-        ZeroBuffer line;
-        int write = 0;
-        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
-        Biquad highPass;
-        std::array<double, kWidenerTaps> phases{}; // the taps' sweeps, in cycles
-        double size = 0.5; // gliding toward the knob
-        double width = 1.0; // ramped
-        double mix = 0.5;
-    };
-
-    // The utility: the sides through a high-pass for its Mono Bass, then scaled by Width, and each side's gain (Gain
-    // and the balance), ramped.
-    struct Utility {
-        Biquad highPass;
-        double gainL = 1.0, gainR = 1.0, width = 1.0;
-        double mono = 0.0; // how much of the high-passed sides is heard, 0 (Mono Bass off) .. 1, faded
-        double hz = 0.0;   // the high-pass's corner: Mono Bass's, the last one set while it fades out
-    };
-
-    struct Shifter {
-        std::array<Hilbert, 2> hilbert{};
-        std::array<double, 2> phase{}; // the oscillators, in cycles
-        std::array<double, 2> last{};  // the shifted sound, fed back
-        double mix = 1.0;
-    };
-
-    // One place in the chain. `running` is the type it processes as; when the
-    // slot gets another type, the old one fades out before the new one starts.
-    // The amp: the one running at its setting (model, cabinet, mic, oversampling, ...) and, for 10 ms after the setting
-    // changes, the one it left, fading out as the new one fades in.
-    struct AmpFx {
-        AmpCore now, was;
-        double wasFade = 0.0;           // 1 .. 0
-        double output = 1.0, mix = 1.0; // their gains at the end of the last chunk
-    };
+    // One place in the chain, holding every effect type's state (each a module of src/fx/), so that it takes another
+    // type without allocating. `running` is the type it processes as; when the slot gets another type, the old one
+    // fades out before the new one starts.
     struct Slot {
         FxType running = FxType::None;
         double fade = 0.0; // 0 = off .. 1 = fully in
-        Shaper shaper;
-        Delay delay;
-        Eq eq;
-        ParamEq peq;
-        FilterFx filter;
-        Compressor comp;
-        MultiDyn dyn;
-        Reverb reverb;
-        Phaser phaser;
-        Flanger flanger;
-        Chorus chorus;
-        Shifter shifter;
-        Disperser disperser;
-        Widener widener;
-        Utility utility;
-        std::unique_ptr<AmpFx> amp; // on the heap, from prepare(): two amps' state is large
+        fx::Shaper shaper;
+        fx::Delay delay;
+        fx::Eq eq;
+        fx::ParamEq peq;
+        fx::FilterFx filter;
+        fx::Compressor comp;
+        fx::MultiDyn dyn;
+        fx::Reverb reverb;
+        fx::Phaser phaser;
+        fx::Flanger flanger;
+        fx::Chorus chorus;
+        fx::Shifter shifter;
+        fx::Disperser disperser;
+        fx::Widener widener;
+        fx::Utility utility;
+        std::unique_ptr<fx::AmpFx> amp; // on the heap, from prepare(): two amps' state is large
         // The parametric EQ's, filter's or phase disperser's output, for its analyzer.
         Analyzed analyzed;
-        // The shaper's drawn curve as a table (see runShaper()).
-        ClipTable curve;
-        // The shaper's Stack stages run at twice the rate (see runShaper()): up to it and back down, a side each,
-        // designed in prepare(), and whether the last chunk ran there.
-        std::array<HalfBand, 2> shaperUp, shaperDown;
-        bool shaperDoubled = false;
-        // Whether the last chunk ran the shaper (start() clears it), and its curve then.
-        bool shaperRan = false;
-        ShaperPath shaperLast;
-        // For a moment after its curve goes to Stack or leaves it, the path it left, fading out as the new one fades
-        // in: at the rate it ran at, with its curve and its sides as they were. Only one of the two is ever at twice
-        // the rate, and it runs through shaperUp and shaperDown.
-        ShaperPath shaperWas;
-        std::array<ClipState, 2> shaperWasSides{};
-        double shaperWasFade = 0.0; // 1 .. 0
     };
+
+    // What the effect in `slot` runs with (see fx::Context), and where it puts what the editor's meters show.
+    fx::Context context(int slot, const ParamValues &p, double tempo, double pitch) const {
+        return {p, slot, sampleRate_, rampShortest_, tempo, pitch};
+    }
+    fx::Meters meters(int slot) { return {reduction_[slot], bandLevel_[slot], bandGain_[slot]}; }
 
     // A slot's effect in place on `io`, fading as it is switched; `keep` grows while it rings on.
     void runSlot(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo, double pitch,
                  int64_t &keep);
-
-    // Linkwitz-Riley crossovers at `lowHz` and `highHz` (kept apart and below where the biquads hold up), and three
-    // bands of `x` through them, the low one through an all-pass at the high crossover so the bands sum back flat.
-    struct CrossoverCoefs {
-        BiquadCoefs lp1, hp1, lp2, hp2, ap2;
-    };
-    CrossoverCoefs crossoverCoefs(double lowHz, double highHz) const;
-    static void splitThree(EqChannel &e, double x, const CrossoverCoefs &c, double *bands);
+    // Clears the effect in `slot` as it is about to fade in, and jumps its ramps to the current settings.
+    void start(int slot, const fx::Context &ctx);
 
     // The effects graph, which the effects always run as (a chain is a line of it). The nodes it runs are those OUT
     // hears, through the wires as set or still fading: a slot holding an effect, a split or a sum in use, and one
@@ -478,12 +131,23 @@ private:
     // its level (see mixInputs()), then runs into a buffer of its own, in the order orderGraph() works out once a
     // process(). A wire from a node that hasn't run yet in a chunk, which only a loop makes, reads what it put out the
     // chunk before.
+    // A wire end's pad, its paths up and down (see fxlag.h): as many as it lacks against the latest path into its node,
+    // each a stereo UpDown taken from the pool (see Lags), the 2x ones first: as many as a path can hold, one for each
+    // slot. While the pool hasn't enough (a graph of nearly every slot's effect oversampled), it goes without, out of
+    // step, and takes them as soon as the pool has them again (see mixInputs()).
+    static constexpr int kEndPaths = kFxSlots;
     struct WireEnd {
         int port = -1;      // what it comes from
         double level = 0.0; // its gain at the end of the last chunk; below 0, it takes the next chunk's at once
         double fade = 0.0;  // 0 out .. 1 in, along a raised cosine as heard (see mixInputs())
+        FxLag pad;          // what it is put through to meet the node's other inputs in step
+        int paths = 0;      // how many of the pool's it holds, in `path`
+        std::array<uint8_t, kEndPaths> path{};
+        // Whether it holds every path its pad asks for.
+        bool padded() const { return paths == pad.count(); }
     };
-    // A wire moved crossfades: what it comes from now fades in as what it came from before fades out.
+    // A wire moved crossfades: what it comes from now fades in as what it came from before fades out. A wire whose pad
+    // changes crossfades the same way, from the end with the pad it had to one with the new one.
     struct Wire {
         WireEnd now, was;
     };
@@ -507,8 +171,8 @@ private:
     // use, the output.
     bool nodeWanted(int node, const ParamValues &p) const;
     void orderGraph(const ParamValues &p, bool asSet);
-    // Whether the params orderGraph() reads (every wire's From, the slots' types, the splits' and sums' Used) differ
-    // from the last call's, which it keeps.
+    // Whether the params orderGraph() reads (every wire's From, the slots' types and amps' oversampling, which set how
+    // late each path is, the splits' and sums' Used) differ from the last call's, which it keeps.
     bool graphParamsChanged(const ParamValues &p);
     // Whether a chunk of `n` samples of `io` can go by without running the graph: exact silence going in, nothing
     // ringing, and every effect, wire and split where its params put it, with no fade under way.
@@ -538,41 +202,19 @@ private:
     // A slot the graph no longer runs: it starts again cleared, as one switched on does.
     void idleSlot(int slot);
 
-    void start(int slot, const ParamValues &p, double tempo);
-    double delayTarget(int slot, int side, const ParamValues &p, double tempo) const;
-    void runShaper(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    double runDelay(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
-    void runEq(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    void runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    double runFilter(int slot, float *const *io, uint32_t n, const ParamValues &p, double pitch);
-    // These two return whether a gain is still on its way to where the curve puts it (a release running out).
-    bool runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    bool runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    // These return the loudest sample they put out or took in, so a tail keeps them running.
-    double runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    double runPhaser(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
-    double runFlanger(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
-    double runChorus(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
-    double runShifter(int slot, float *const *io, uint32_t n, const ParamValues &p);
-
     double sampleRate_ = 48000.0;
     uint32_t rampShortest_ = 32; // the fewest samples a gain's or mix's ramp is spread over, at this rate
-    HilbertCoefs hilbert_ = hilbertCoefs(48000.0); // the frequency shifters', for this rate
-    std::array<double, kReverbLines> reverbLengths_{}; // at full size, in samples
-    double reverbMeanLength_ = 0.0; // how long the lines are on average, for their rounds per second (harmonic mean)
-    std::array<std::array<int, kDiffusers>, 2> diffuserLengths_{};
-    std::array<std::array<double, 2>, kReverbLines> wanderTurn_{}; // each line's wavering: cos and sin of its step
+    // What every slot's effect of a type shares at this rate: the frequency shifters' Hilbert pairs, the reverbs'
+    // lines and the DJ EQs' crossovers.
+    fx::HilbertCoefs hilbert_ = fx::hilbertCoefs(48000.0);
+    fx::ReverbTables reverbTables_;
+    CrossoverCoefs eqCrossovers_;
     std::array<Slot, kFxSlots> slots_;
-    BiquadCoefs lowPass1_, highPass1_, lowPass2_, highPass2_, allPass2_;
     int64_t tail_ = 0; // samples left to keep processing after the input went silent
     bool flushing_ = false; // fading every effect out, until all are (see flush())
     std::array<std::array<float, kMcBands>, kFxSlots> reduction_{};
     std::array<std::array<float, kMcBands>, kFxSlots> bandLevel_{}, bandGain_{};
     void feedAnalyzer(int slot, float *const *io, uint32_t n);
-    double runDisperser(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    double runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    void runAmp(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    void runUtility(int slot, float *const *io, uint32_t n, const ParamValues &p);
     bool analyzing_ = false;
     Analyzer analyzer_;
 
@@ -594,7 +236,7 @@ private:
     // or stopping, or the graph cleared. Else ordering it every chunk would only find it as it was.
     bool orderStale_ = true;
     static constexpr int kGraphParams = [] {
-        int count = kFxSlots + kFxSplits + kFxSums; // the types and Used switches
+        int count = 2 * kFxSlots + kFxSplits + kFxSums; // the types, amps' oversampling and Used switches
         for (int node = 0; node < kFxNodes; ++node)
             count += fxInputCount(node);
         return count;
@@ -605,6 +247,36 @@ private:
     std::array<bool, kFxNodes> running_{};   // the nodes the graph runs this process() (see orderGraph())
     std::array<bool, kFxNodes> frozen_{};    // those only a wire fading out reads: their wires stay as they were
     std::array<bool, kFxNodes> ranBefore_{}; // the nodes it ran the process() before
+
+    // Keeping the graph's paths in step (see fxlag.h). An oversampled effect's own dry sound (what it fades from as it
+    // is switched, what it passes while off, an amp's Mix) goes up and down as its wet sound does, so the slot is as
+    // late whatever it does; it crossfades over 5 ms, from the path it had, when its type or oversampling changes.
+    struct SlotDry {
+        std::array<UpDown, 2> now, was;
+        double wasFade = 0.0; // 1 .. 0
+        bool live = false;    // whether the last chunk ran it (else it starts again from silence)
+    };
+    // On the heap, from prepare(): about 600 KB, too much for the stack the tests keep an Effects on.
+    static constexpr int kPoolPaths = 96;
+    static_assert(kPoolPaths <= 256, "a wire end keeps its paths' numbers in bytes");
+    struct Lags {
+        std::array<std::array<UpDown, 2>, FxLag::kKinds> fresh; // a path at each factor, cleared, designed for the rate
+        std::array<std::array<UpDown, 2>, kPoolPaths> pool;     // the wire ends' pads take theirs from here
+        std::array<bool, kPoolPaths> taken{};
+        std::array<SlotDry, kFxSlots> dry;
+    };
+    std::unique_ptr<Lags> lags_;
+    FxPads pads_{}; // each wire's pad as set (see orderGraph())
+    // A wire end set to come from `port` with `pad`, which takes its paths from the pool, and one let go of, which
+    // gives them back.
+    void setEnd(WireEnd &e, int port, double level, double fade, const FxLag &pad);
+    void dropEnd(WireEnd &e);
+    // How many of the pool's paths no wire end holds.
+    int freePaths() const;
+    // What comes out of `from` through `e`'s pad, into `out`.
+    void padEnd(const WireEnd &e, const float *const *from, float (*out)[kChunk], uint32_t n);
+    // The slot's dry sound into `dry`, as late as its effect makes its wet sound (see SlotDry), and whether it ran.
+    void slotDry(int slot, const float *const *io, float (*dry)[kChunk], uint32_t n, const ParamValues &p, bool needed);
 };
 
 } // namespace fmvibe

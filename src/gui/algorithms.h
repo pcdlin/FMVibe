@@ -1,10 +1,10 @@
 #pragma once
 
 // The classic FM algorithms: the 32 layouts of six operators and the 8 of four that FM synths have long been played
-// with, then the 5 shapes three operators can take and the 2 of two, which View::applyAlgorithm() sets the operators'
-// routes to. Each is which operator modulates which, which go out, and where the feedback is: on an operator, or a
-// route back up a stack (six operators' 4, from D into F, and 6, from E into F). The operators stand for the classic
-// charts' 1 to 6 by A to F, A always a carrier.
+// with, then the 5 shapes three operators can take and the 2 of two, which RoutingModel::applyAlgorithm() sets the
+// operators' routes to. Each is which operator modulates which, which go out, and where the feedback is: on an
+// operator, or a route back up a stack (six operators' 4, from D into F, and 6, from E into F). The operators stand for
+// the classic charts' 1 to 6 by A to F, A always a carrier.
 
 #include "../params.h"
 

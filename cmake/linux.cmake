@@ -24,21 +24,45 @@ add_library(fmvibe-core STATIC
     src/gui/controller.cpp
     src/gui/controller.h
     src/gui/dialogs.cpp
-    src/gui/fxgraph.cpp
+    src/gui/filterdisplay.cpp
+    src/gui/filterdisplay.h
     src/gui/fxgraph.h
+    src/gui/fxgraphmodel.cpp
+    src/gui/fxgraphmodel.h
+    src/gui/fxpanel.cpp
+    src/gui/fxpanel.h
     src/gui/icons.cpp
     src/gui/icons.h
-    src/gui/mods.cpp
-    src/gui/seq.cpp
+    src/gui/inspectorpanel.cpp
+    src/gui/inspectorpanel.h
+    src/gui/lists.h
+    src/gui/modulationmodel.cpp
+    src/gui/modulationmodel.h
+    src/gui/modspanel.cpp
+    src/gui/modspanel.h
+    src/gui/panel.h
+    src/gui/seqpanel.cpp
+    src/gui/seqpanel.h
     src/gui/layout.h
-    src/gui/routing.cpp
+    src/gui/opsource.cpp
+    src/gui/patchedits.cpp
+    src/gui/patchedits.h
+    src/gui/presetbrowser.cpp
+    src/gui/presetbrowser.h
     src/gui/routing.h
-    src/gui/shapes.cpp
-    src/gui/tableview.cpp
+    src/gui/routingmodel.cpp
+    src/gui/routingmodel.h
+    src/gui/routingpanel.cpp
+    src/gui/routingpanel.h
+    src/gui/shapeeditor.cpp
+    src/gui/shapeeditor.h
+    src/gui/tablebrowser.cpp
+    src/gui/tablebrowser.h
     src/gui/theme.cpp
     src/gui/theme.h
     src/gui/view.cpp
     src/gui/view.h
+    src/gui/widget.h
     src/remotepages.cpp
     src/remotepages.h
     src/sharedtelemetry.h

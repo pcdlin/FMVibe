@@ -8,6 +8,7 @@
 #include "gui/controller.h"
 #include "gui/view.h"
 #include "params.h"
+#include "state.h"
 #include "synth.h"
 #include "uistrings.h"
 
@@ -60,7 +61,7 @@ EM_JS(void, js_choose_file, (int op, int kind), { Module.fmvHost.chooseFile(op, 
 EM_JS(void, js_choose_folder, (), { Module.fmvHost.chooseFolder(); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "SQ Future Plucks"; // a sequenced patch: a held key plays its riff
+constexpr char kFirstPreset[] = "Future Plucks"; // a sequenced patch: a held key plays its riff
 
 std::string setting(const char *key) {
     char buffer[256];
@@ -75,7 +76,7 @@ bool lessNoCase(const std::string &a, const std::string &b) {
     });
 }
 
-class WebController final : public Controller {
+class WebController final : public Controller, public NoPresetFiles {
 public:
     WebController() {
         const ParamTable &table = paramTable();
@@ -84,18 +85,25 @@ public:
         examples_ = factoryPresets();
         std::sort(examples_.begin(), examples_.end(),
                   [](const FactoryPreset &a, const FactoryPreset &b) { return lessNoCase(a.name, b.name); });
-        for (const FactoryPreset &preset : examples_)
-            library_.push_back({preset.name, "Factory"});
-        theme_ = setting("theme");
+        for (const FactoryPreset &preset : examples_) {
+            PresetEntry entry{preset.name, {}, true, {}};
+            MemoryReader reader{preset.data.data(), preset.data.size()};
+            const clap_istream_t stream = memoryIn(reader);
+            readPresetInfo(&stream, entry.info);
+            library_.push_back(std::move(entry));
+        }
+        settings_.theme = setting("theme");
         const std::string glow = setting("glow");
-        glow_ = glow.empty() ? 0.5 : std::clamp(std::atof(glow.c_str()), 0.0, 1.0);
-        handleSize_ = std::clamp(std::atoi(setting("handleSize").c_str()), 0, 2);
+        settings_.glow = glow.empty() ? EditorSettings::kDefaultGlow : std::clamp(std::atof(glow.c_str()), 0.0, 1.0);
+        settings_.handleSize = std::clamp(std::atoi(setting("handleSize").c_str()), 0, EditorSettings::kMaxHandleSize);
         const std::string hue = setting("hue");
-        hue_ = hue.empty() ? -1.0 : std::min(std::atof(hue.c_str()), 1.0);
+        settings_.accentHue = hue.empty() ? -1.0 : std::min(std::atof(hue.c_str()), 1.0);
         const std::string links = setting("linkIntensity");
-        links_ = links.empty() ? 0.75 : std::clamp(std::atof(links.c_str()), 0.0, 1.0);
+        settings_.linkIntensity =
+            links.empty() ? EditorSettings::kDefaultLinkIntensity : std::clamp(std::atof(links.c_str()), 0.0, 1.0);
         const std::string grid = setting("gridIntensity");
-        grid_ = grid.empty() ? kDefaultGridIntensity : std::clamp(std::atof(grid.c_str()), 0.0, 1.0);
+        settings_.gridIntensity =
+            grid.empty() ? EditorSettings::kDefaultGridIntensity : std::clamp(std::atof(grid.c_str()), 0.0, 1.0);
         const std::string tempo = setting("tempo");
         tempo_ = tempo.empty() ? kDefaultTempo : clampTempo(std::atof(tempo.c_str()));
         // The tables and samples the patch plays go over to the audio side, which builds them (the factory tables it
@@ -150,8 +158,10 @@ public:
         scopeCycles_ = cycles;
         js_scope(op, cycles);
     }
+    PresetStore &presetStore() override { return *this; }
 
-    // Init and loading an example start the undo history over, as in the plugin.
+    // The presets: the built-in examples, from memory (NoPresetFiles has no file to load or save, nor a folder to
+    // show). Init and loading an example start the undo history over, as in the plugin.
     void resetPreset() override {
         const ParamTable &table = paramTable();
         for (int i = 0; i < kParamCount; ++i)
@@ -162,11 +172,18 @@ public:
         setPreset(L"");
         clearHistory();
     }
-    bool loadPreset(const std::wstring &) override { return false; }
-    bool savePreset(const std::wstring &) override { return false; }
     void choosePreset(bool) override { js_toast(tr(Str::DemoNoFiles)); }
-    bool writesPresetFiles() const override { return false; }
-    void rescanPresets() override {}
+    // Every example is built in, as a factory preset: NoPresetFiles' presetWritable() is false.
+    // Favorites and the recent examples, for as long as the page.
+    bool presetFavorite(int index) const override {
+        return std::find(favorites_.begin(), favorites_.end(), index) != favorites_.end();
+    }
+    void setPresetFavorite(int index, bool on) override {
+        favorites_.erase(std::remove(favorites_.begin(), favorites_.end(), index), favorites_.end());
+        if (on)
+            favorites_.push_back(index);
+    }
+    std::vector<int> recentPresets() const override { return recent_; }
     const std::vector<PresetEntry> &presets() const override { return library_; }
     int presetIndex() const override {
         for (size_t i = 0; i < examples_.size(); ++i)
@@ -193,13 +210,16 @@ public:
         layoutChanged();
         setPreset(fileOf(index));
         clearHistory();
+        recent_.erase(std::remove(recent_.begin(), recent_.end(), index), recent_.end());
+        recent_.insert(recent_.begin(), index);
+        if (recent_.size() > 12)
+            recent_.resize(12);
         return true;
     }
     std::wstring presetFolder() const override {
         const std::string name = tr(Str::DemoPresetFolder);
         return std::wstring(name.begin(), name.end()); // the browser shows a folder as far as it is ASCII
     }
-    void openPresetFolder() override { js_toast(tr(Str::DemoNoFiles)); }
 
     int oversampling() const override { return oversampling_; }
     void setOversampling(int factor) override {
@@ -211,36 +231,7 @@ public:
     void setMpe(bool on) override { mpe_ = on; }
     int mpeBendRange() const override { return mpeBendRange_; }
     void setMpeBendRange(int semitones) override { mpeBendRange_ = std::clamp(semitones, 1, 96); }
-    std::string theme() const override { return theme_; }
-    void setTheme(const std::string &name) override {
-        theme_ = name;
-        js_set_setting("theme", name.c_str());
-    }
-    double accentHue() const override { return hue_; }
-    void setAccentHue(double hue) override {
-        hue_ = hue < 0.0 ? -1.0 : std::clamp(hue, 0.0, 1.0);
-        js_set_setting("hue", std::to_string(hue_).c_str());
-    }
-    double glow() const override { return glow_; }
-    void setGlow(double amount) override {
-        glow_ = std::clamp(amount, 0.0, 1.0);
-        js_set_setting("glow", std::to_string(glow_).c_str());
-    }
-    int handleSize() const override { return handleSize_; }
-    void setHandleSize(int size) override {
-        handleSize_ = std::clamp(size, 0, 2);
-        js_set_setting("handleSize", std::to_string(handleSize_).c_str());
-    }
-    double linkIntensity() const override { return links_; }
-    void setLinkIntensity(double amount) override {
-        links_ = std::clamp(amount, 0.0, 1.0);
-        js_set_setting("linkIntensity", std::to_string(links_).c_str());
-    }
-    double gridIntensity() const override { return grid_; }
-    void setGridIntensity(double amount) override {
-        grid_ = std::clamp(amount, 0.0, 1.0);
-        js_set_setting("gridIntensity", std::to_string(grid_).c_str());
-    }
+    EditorSettings editorSettings() const override { return settings_; }
     // The page stands in for a host's transport: the editor's title bar shows its tempo, which the page hands the
     // synth and keeps in the browser's storage.
     bool hasTempo() const override { return true; }
@@ -264,6 +255,22 @@ protected:
         js_param(index, value);
     }
     void performEndEdit(int) override {}
+    // Each setting that changed goes into the browser's storage, a key each.
+    void storeEditorSettings(const EditorSettings &settings) override {
+        if (settings.theme != settings_.theme)
+            js_set_setting("theme", settings.theme.c_str());
+        if (settings.accentHue != settings_.accentHue)
+            js_set_setting("hue", std::to_string(settings.accentHue).c_str());
+        if (settings.glow != settings_.glow)
+            js_set_setting("glow", std::to_string(settings.glow).c_str());
+        if (settings.handleSize != settings_.handleSize)
+            js_set_setting("handleSize", std::to_string(settings.handleSize).c_str());
+        if (settings.linkIntensity != settings_.linkIntensity)
+            js_set_setting("linkIntensity", std::to_string(settings.linkIntensity).c_str());
+        if (settings.gridIntensity != settings_.gridIntensity)
+            js_set_setting("gridIntensity", std::to_string(settings.gridIntensity).c_str());
+        settings_ = settings;
+    }
 
 private:
     // Where an example lives, as far as presetFile() goes: a made-up path in a made-up folder.
@@ -284,18 +291,14 @@ private:
     int scopeCycles_ = 2;
     std::vector<FactoryPreset> examples_;
     std::vector<PresetEntry> library_;
+    std::vector<int> favorites_, recent_;
     Telemetry received_{};
     double stampMs_ = 0.0;
     bool heard_ = false;
     int oversampling_ = kDefaultOversampling;
     bool mpe_ = false;
     int mpeBendRange_ = 48;
-    std::string theme_;
-    double glow_ = 0.5;
-    double hue_ = -1.0; // the theme's own
-    int handleSize_ = 0;
-    double links_ = 0.75;
-    double grid_ = kDefaultGridIntensity;
+    EditorSettings settings_;
     double tempo_ = kDefaultTempo;
     std::unique_ptr<TableLibrary> tables_;
 };
@@ -305,8 +308,8 @@ std::unique_ptr<View> view;
 Resources resources;
 std::vector<MenuItem> menu; // the context menu last asked for
 
-Modifiers mods(int shift, int ctrl) {
-    return {shift != 0, ctrl != 0};
+Modifiers mods(int shift, int ctrl, int alt) {
+    return {shift != 0, ctrl != 0, alt != 0};
 }
 
 } // namespace
@@ -344,16 +347,16 @@ EMSCRIPTEN_KEEPALIVE int ui_ctrl(int held) {
     return view->setCtrl(held != 0) ? 1 : 0;
 }
 
-EMSCRIPTEN_KEEPALIVE int ui_mouse_move(float x, float y, int shift, int ctrl) {
-    return view->mouseMove({x, y}, mods(shift, ctrl)) ? 1 : 0;
+EMSCRIPTEN_KEEPALIVE int ui_mouse_move(float x, float y, int shift, int ctrl, int alt) {
+    return view->mouseMove({x, y}, mods(shift, ctrl, alt)) ? 1 : 0;
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_mouse_down(float x, float y, int shift, int ctrl) {
-    view->mouseDown({x, y}, mods(shift, ctrl));
+EMSCRIPTEN_KEEPALIVE void ui_mouse_down(float x, float y, int shift, int ctrl, int alt) {
+    view->mouseDown({x, y}, mods(shift, ctrl, alt));
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_mouse_up(float x, float y, int shift, int ctrl) {
-    view->mouseUp({x, y}, mods(shift, ctrl));
+EMSCRIPTEN_KEEPALIVE void ui_mouse_up(float x, float y, int shift, int ctrl, int alt) {
+    view->mouseUp({x, y}, mods(shift, ctrl, alt));
 }
 
 // The page lost the mouse mid-drag: the drag ends without dropping anything (as WM_CAPTURECHANGED in the plugin).
@@ -374,8 +377,8 @@ EMSCRIPTEN_KEEPALIVE void ui_mouse_leave() {
     view->mouseLeave();
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_double_click(float x, float y, int shift, int ctrl) {
-    view->doubleClick({x, y}, mods(shift, ctrl));
+EMSCRIPTEN_KEEPALIVE void ui_double_click(float x, float y, int shift, int ctrl, int alt) {
+    view->doubleClick({x, y}, mods(shift, ctrl, alt));
 }
 
 // Alt too: over the SEQ view's roll, Alt+wheel zooms its rows.

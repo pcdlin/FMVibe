@@ -35,6 +35,9 @@ constexpr float kPanelRadius = kRadiusPanel; // the panels' corners
 // graph's OUT is a core at its right end, the orbit rings around it reaching back across the panel.
 constexpr Rect kInspector{24.0f, kPanelsTop + 6.0f, 300.0f, 360.0f};
 constexpr Rect kRouting{kInspector.x + kInspector.w + 8.0f, kPanelsTop, 852.0f, 372.0f};
+// The editor's band the panels' row keeps to, under the header: the routing panel or what takes its place, and the
+// inspector, or the full-size editors over them (see View::poll(), which repaints what moves there).
+constexpr Rect kPanelsBand{0.0f, kHeaderH, View::kWidth, kRouting.y + kRouting.h - kHeaderH};
 constexpr Point kOutCore{kRouting.x + kRouting.w - 70.0f, kRouting.y + 0.5f * kRouting.h};
 constexpr float kOutCoreRadius = 34.0f;
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 56.0f, kRouting.w - 190.0f, kRouting.h - 112.0f}; // node centers
@@ -339,11 +342,12 @@ constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel'
 // classic algorithms (kAlgorithms) under it, right-aligned with the routing panel and over the graph or matrix, the
 // inspector left in view. The panel has a title row with a switch between the sets at its right (6 | 4 | 3 | 2, how
 // many operators they use, "Operators" before it), a thumbnail a cell, kAlgorithmCols to a row, and a foot under a
-// line, which names the thumbnail under the mouse.
+// line, which names the thumbnail under the mouse. Six operators' four rows of them end clear of the ghosts the graph
+// docks at its bottom right (see RoutingPanel::widgets()).
 constexpr Rect kAlgorithmButton{kRouting.x + kRouting.w - 190.0f, kTopRowY + 4.0f, 190.0f, 24.0f}; // "4-OP 8" fits on it
 constexpr int kAlgorithmCols = 8;
 constexpr float kAlgorithmCellW = 72.0f, kAlgorithmCellH = 58.0f, kAlgorithmGap = 6.0f, kAlgorithmPad = 14.0f;
-constexpr float kAlgorithmTitleH = 36.0f, kAlgorithmFootH = 40.0f;
+constexpr float kAlgorithmTitleH = 32.0f, kAlgorithmFootH = 34.0f;
 constexpr float kAlgorithmPanelW = 2.0f * kAlgorithmPad + kAlgorithmCols * kAlgorithmCellW + (kAlgorithmCols - 1) * kAlgorithmGap;
 inline Rect algorithmPanel(int count) {
     const int rows = (count + kAlgorithmCols - 1) / kAlgorithmCols;
@@ -429,9 +433,18 @@ constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 130.0f}, kMods
     kModsScale{736.0f, 100.0f},
     kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f}, kModsAdd{4.0f, 178.0f};
 inline Rect modsCell(Rect row, ModsColumn column) { return {row.x + column.x, row.y, column.w, row.h}; }
-// A text field's x at its right end, which empties it, and where its text goes: after the magnifier, short of the x.
-inline Rect fieldClear(Rect field) { return {field.right() - 22.0f, field.y + 3.0f, 18.0f, 18.0f}; }
+// A depth bar's track (a MODS row's, a pill's list's): in from its ends by its handle's radius, so the handle at
+// either end stays clear of the depth after it.
+inline Rect slotBarTrack(Rect bar) { return {bar.x + 5.0f, bar.y, bar.w - 10.0f, bar.h}; }
+// A text field's x at its right end, centered on its height, which empties it, and where its text goes: after the
+// magnifier, short of the x.
+inline Rect fieldClear(Rect field) {
+    return {field.right() - 22.0f, field.y + (field.h - 18.0f) * 0.5f, 18.0f, 18.0f};
+}
 inline Rect fieldTyped(Rect field) { return {field.x + 26.0f, field.y, field.w - 26.0f - 24.0f, field.h}; }
+// Where a form's field (the Save dialog's, the name form's) shows its text: inside its sides, its whole height, so
+// what hangs below the line (an underscore, a g) isn't clipped away.
+inline Rect formFieldTyped(Rect field) { return {field.x + 10.0f, field.y, field.w - 20.0f, field.h}; }
 // The MODS view's filter, at the right end of the columns' names: a magnifier, or open, a field over the count.
 constexpr float kModsFilterW = 200.0f;
 inline Rect modsFilter(bool open) {
@@ -533,6 +546,9 @@ inline Rect sourcesToggle() {
 // Every card's title row, an effect's, a source's or a split's: its mark (the effect's icon or the source's handle) and
 // its name at the left; at the right the fold button, the power switch (a split has none) and the cross. Its name
 // stops short of the fold button (cardTitleRight()).
+// An effect card's (or a split container's) title: its box, 20 px tall, this far down the card, which centers its
+// capitals on the title row's icon and buttons (cardFold(), cardPower(), cardClose()).
+constexpr float kCardTitleY = 7.5f;
 inline Rect cardClose(Rect card) {
     return {card.right() - 22.0f, card.y + 8.0f, 14.0f, 21.0f};
 }
@@ -699,7 +715,7 @@ constexpr float kSlotNameW = 96.0f;
 // smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation: its bypass
 // dot, the source's name, its aux (a column only while one of the rows has one), its depth bar with its value and its
 // remove.
-// Both come in three sizes, a setting of the user's (Controller::handleSize()), the smallest first; they stay as far
+// Both come in three sizes, a setting of the user's (EditorSettings::handleSize), the smallest first; they stay as far
 // apart at each.
 struct ModHandleSize {
     float dot, dotHover;                 // a depth handle's radius under a knob, and hovered or dragged
@@ -721,11 +737,18 @@ constexpr float kModListTitleH = 24.0f;
 constexpr float kModListRowStep = 24.0f; // a row is 20 px high
 constexpr int kModListRows = 6;          // shown at once; more scroll
 constexpr float kModListBarW = 8.0f;     // the room its scrollbar takes at its right
-constexpr float kModListAuxW = 96.0f;    // the aux column: its chip and a gap
+constexpr float kModListAuxW = 126.0f;   // the aux column: its chip and a gap
 
 // A row's aux chip, after its source's name, its x at its right end.
 inline Rect modListAuxChip(Rect row) {
     return {row.x + 116.0f, row.y + 1.0f, kModListAuxW - 4.0f, row.h - 2.0f};
+}
+// The width of the aux depth on an aux's chip, before its x (in the MODS view and a pill's list alike).
+constexpr float kAuxDepthW = 34.0f;
+// The aux depth's place on a pill's list row's chip, before its x.
+inline Rect modListAuxDepth(Rect row) {
+    const Rect chip = modListAuxChip(row);
+    return {chip.right() - 20.0f - kAuxDepthW, chip.y, kAuxDepthW, chip.h};
 }
 
 // Under a source's display, at the card's foot, the button that shows its modulations in the MODS view.
@@ -983,9 +1006,10 @@ inline Rect fxCard(float position, float span = 1.0f) {
             kFxPanel.bottom() - 20.0f - kFxTop};
 }
 
-// The effect's icon, at the left of its card's title row, folded or not.
+// The effect's icon, at the left of its card's title row, folded or not: centered with the title (kCardTitleY) and the
+// buttons, as a source card's handle is.
 inline Rect fxIconRect(Rect card) {
-    return {card.x + kFxIconX, card.y + 10.0f, kFxIconW, 14.0f};
+    return {card.x + kFxIconX, card.y + 11.0f, kFxIconW, 14.0f};
 }
 
 // Displays sit under a card's buttons, if it has any, and above its knobs: one
@@ -1333,8 +1357,9 @@ inline Rect undoButton(int redo) {
     const Rect init = toolbarButton(0);
     return {init.x - 14.0f - (2 - redo) * 34.0f, init.y, 28.0f, init.h};
 }
-// The preset bar, in the middle of the title bar: back, the preset's name, forward.
-constexpr Rect kPresetName{430.0f, kTitleRowY, 340.0f, kTopRowH};
+// The preset bar, in the middle of the title bar, as tall as the row's buttons: back, the preset's category, name and
+// author on one line, forward.
+constexpr Rect kPresetName{410.0f, kTitleRowY, 380.0f, kTopRowH};
 inline Rect presetStep(int direction) {
     return {direction < 0 ? kPresetName.x - 30.0f : kPresetName.right() + 4.0f, kPresetName.y, 26.0f, kPresetName.h};
 }
@@ -1352,6 +1377,9 @@ constexpr int kBlackAfter[12] = {-1, 0, -1, 1, -1, -1, 3, -1, 4, -1, 5, -1};
 constexpr bool isBlackKey(int key) {
     return kBlackAfter[key % 12] >= 0;
 }
+// How far a key's light moves each poll as it eases up to lit and back down, the keyboard strip's and the SEQ view's
+// roll's: about 35 ms up and 80 ms down at 60 polls a second.
+constexpr float kKeyLightRise = 0.5f, kKeyLightFall = 0.22f;
 
 // Position in the grid: rows are nodes, columns nodes and then the output.
 inline Rect gridCell(int row, int col) {
@@ -1431,26 +1459,31 @@ inline Rect settingsTheme(Rect panel, int i) {
     const float w = (panel.w - 48.0f + 6.0f) / kThemeCount;
     return {panel.x + 24.0f + i * w, panel.y + kSettingsLookY + 30.0f, w - 6.0f, 30.0f};
 }
+// The sliders' and HANDLES' names, before them: wide enough for HANDLES in any of the fonts the editor draws in.
+constexpr float kSettingsLabelW = 64.0f;
+constexpr float kSettingsTrackX = 24.0f + kSettingsLabelW; // from the panel's left
+constexpr float kSettingsTrackW = 276.0f - kSettingsTrackX; // ending where they always have
 // Under the themes, the hue slider's track, with room above and below to grab it: the theme's main color. HUE before
 // it, its hue after.
 inline Rect settingsHue(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 72.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 72.0f, kSettingsTrackW, 26.0f};
 }
 // The glow slider, like it; GLOW before it, its amount after.
 inline Rect settingsGlow(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 104.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 104.0f, kSettingsTrackW, 26.0f};
 }
 // Under it, the LINES slider, like it: how strongly a source's dashed lines are drawn.
 inline Rect settingsLinks(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 136.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 136.0f, kSettingsTrackW, 26.0f};
 }
 // Under it, the GRID slider, like it: how strongly the SEQ view's roll draws its grid.
 inline Rect settingsGrid(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 168.0f, 200.0f, 26.0f};
+    return {panel.x + kSettingsTrackX, panel.y + kSettingsLookY + 168.0f, kSettingsTrackW, 26.0f};
 }
 // Under that, HANDLES and the depth handles' sizes: small, medium and large.
 inline Rect settingsHandles(Rect panel, int size) {
-    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 202.0f, 64.0f, 28.0f};
+    constexpr float kStep = (kSettingsTrackW + 4.0f) / 3.0f;
+    return {panel.x + kSettingsTrackX + size * kStep, panel.y + kSettingsLookY + 202.0f, kStep - 4.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};
@@ -1484,30 +1517,17 @@ inline Rect confirmBandButton(Rect panel, int choice) {
     return {panel.x + 24.0f + (choice == 3 ? w + 8.0f : 0.0f), panel.y + 74.0f, w, 28.0f};
 }
 
-// The preset browser, centered over the editor: a title row, the list, and the folder at the foot.
-constexpr float kBrowserW = 440.0f;
-constexpr float kBrowserRowH = 24.0f;
-inline Rect browserPanel(float viewHeight) {
-    const float h = std::min(560.0f, viewHeight - 120.0f);
-    return {(View::kWidth - kBrowserW) * 0.5f, std::round((viewHeight - h) * 0.5f), kBrowserW, h};
+// On screen, at least in part, for a card `span` places wide, of a row that shows `shown` at a time.
+inline bool onScreen(float place, int shown, float span = 1.0f) {
+    return place > -span && place < static_cast<float>(shown);
 }
-inline Rect browserList(Rect panel) {
-    return {panel.x + 12.0f, panel.y + 58.0f, panel.w - 24.0f, panel.h - 58.0f - 54.0f};
+
+// The top left of a list as wide and high as `menu` that opens at the mouse, moved back inside the editor (as high as
+// `height`) where it would reach past an edge.
+inline Point menuAt(Point mouse, Rect menu, float height) {
+    constexpr float kMargin = 4.0f;
+    return {std::clamp(mouse.x, kMargin, std::max(View::kWidth - kMargin - menu.w, kMargin)),
+            std::clamp(mouse.y, kMargin, std::max(height - kMargin - menu.h, kMargin))};
 }
-inline int browserVisibleRows(Rect panel) {
-    return static_cast<int>(browserList(panel).h / kBrowserRowH);
-}
-inline Rect browserClose(Rect panel) {
-    return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};
-}
-inline Rect browserFolder(Rect panel) {
-    return {panel.right() - 24.0f - 110.0f, panel.bottom() - 40.0f, 110.0f, 26.0f};
-}
-// The search field, in the title row left of the close button, and the x at its right end that empties it.
-inline Rect browserSearch(Rect panel) {
-    return {panel.right() - 46.0f - 180.0f, panel.y + 14.0f, 180.0f, 24.0f};
-}
-inline Rect browserClear(Rect panel) { return fieldClear(browserSearch(panel)); }
-inline Rect browserTyped(Rect panel) { return fieldTyped(browserSearch(panel)); }
 
 } // namespace fmvibe::gui::detail

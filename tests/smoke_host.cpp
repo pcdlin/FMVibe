@@ -26,6 +26,8 @@ namespace {
 int failures = 0;
 int restartRequests = 0;
 int processRequests = 0;
+int valueRescans = 0; // the params extension's rescan with CLAP_PARAM_RESCAN_VALUES
+int dirtyMarks = 0;   // the state extension's mark_dirty
 
 void check(bool ok, const char *what) {
     std::printf("%s  %s\n", ok ? "ok  " : "FAIL", what);
@@ -49,6 +51,23 @@ const clap_host_gui_t kHostGui = {
     [](const clap_host_t *, bool) {},          // closed
 };
 
+const clap_host_params_t kHostParams = {
+    [](const clap_host_t *, clap_param_rescan_flags flags) {
+        if (flags & CLAP_PARAM_RESCAN_VALUES)
+            ++valueRescans;
+    },
+    [](const clap_host_t *, clap_id, clap_param_clear_flags) {}, // clear
+    [](const clap_host_t *) {},                                   // request_flush
+};
+
+const clap_host_state_t kHostState = {
+    [](const clap_host_t *) { ++dirtyMarks; },
+};
+
+// How often an activate told the host its latency changed.
+int latencyChanges = 0;
+const clap_host_latency_t kHostLatency = {[](const clap_host_t *) { ++latencyChanges; }};
+
 const clap_host_t kHost = {
     CLAP_VERSION_INIT,
     nullptr,
@@ -57,6 +76,12 @@ const clap_host_t kHost = {
     "",
     "0",
     [](const clap_host_t *, const char *id) -> const void * {
+        if (std::strcmp(id, CLAP_EXT_PARAMS) == 0)
+            return &kHostParams;
+        if (std::strcmp(id, CLAP_EXT_STATE) == 0)
+            return &kHostState;
+        if (std::strcmp(id, CLAP_EXT_LATENCY) == 0)
+            return &kHostLatency;
         return std::strcmp(id, CLAP_EXT_GUI) == 0 ? &kHostGui : nullptr;
     },
     [](const clap_host_t *) { ++restartRequests; },
@@ -814,6 +839,13 @@ int main(int argc, char **argv) {
         for (float s : signal)
             peak = std::max(peak, std::fabs(s));
         return peak;
+    };
+    // The RMS level: a square's is its peak, also band-limited, where its peaks overshoot.
+    auto rmsOf = [](const std::vector<float> &signal) {
+        double sum = 0.0;
+        for (float s : signal)
+            sum += static_cast<double>(s) * s;
+        return signal.empty() ? NAN : static_cast<float>(std::sqrt(sum / signal.size()));
     };
 
     // A fixed operator plays at its Freq x Mult whatever the note: A at 300 Hz x1 for a C3 and an A4, under a full
@@ -2887,8 +2919,9 @@ int main(int argc, char **argv) {
     // A slot's depth is scaled by its Amount and its aux: a macro turned up, at -100 % on A's output, silences A; at 50 %
     // Amount it takes A down by half. With velocity for its aux, which runs per voice, a note at full velocity is
     // silenced and one at half velocity halved, each in its own voice; with the mod wheel for its aux, the wheel down
-    // leaves A alone. Bypassed, the macro's slot leaves A alone, with an aux running per voice or not, and so does
-    // velocity's, which at -100 % silences A at full velocity until it is bypassed.
+    // leaves A alone. At 70 % aux depth, the wheel down still takes A down by 30 %, and half velocity by 65 %. Bypassed,
+    // the macro's slot leaves A alone, with an aux running per voice or not, and so does velocity's, which at -100 %
+    // silences A at full velocity until it is bypassed.
     {
         setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
                    {slotAmountIndex(kMaxSources, 0), -1.0},
@@ -2907,7 +2940,11 @@ int main(int argc, char **argv) {
         const float halved = peakAt(1.0);
         setParams({{slotScaleIndex(kMaxSources, 0), 1.0}, {slotAuxIndex(kMaxSources, 0), slotAuxValue(kVelocitySource)}});
         const float hard = peakAt(1.0), soft = peakAt(0.5);
+        setParams({{slotAuxDepthIndex(kMaxSources, 0), 0.7}});
+        const float hardShallow = peakAt(1.0), softShallow = peakAt(0.5);
         setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kWheelSource)}});
+        const float wheelDownShallow = peakAt(1.0);
+        setParams({{slotAuxDepthIndex(kMaxSources, 0), 1.0}});
         const float wheelDown = peakAt(1.0);
         setParams({{slotAuxIndex(kMaxSources, 0), 0.0}, {slotBypassIndex(kMaxSources, 0), 1.0}});
         const float macroBypassed = peakAt(1.0);
@@ -2934,6 +2971,11 @@ int main(int argc, char **argv) {
         check(hard < 0.005f && std::abs(soft / unscaled - 0.5f) < 0.03f,
               "an aux that runs per voice scales a macro's slot in each voice");
         check(std::abs(wheelDown - unscaled) < 1e-3f, "an aux at 0 leaves its slot's target alone");
+        std::printf("      aux depth 70 %%: velocity as aux %.3f at full, %.3f at half; mod wheel (down) as aux %.3f\n",
+                    hardShallow, softShallow, wheelDownShallow);
+        check(hardShallow < 0.005f && std::abs(softShallow / unscaled - 0.35f) < 0.03f &&
+                  std::abs(wheelDownShallow / unscaled - 0.7f) < 0.03f,
+              "an aux at 70 % depth takes its slot down by 70 % at most, per voice or not");
         std::printf("      bypassed: macro %.3f, with velocity as aux %.3f; velocity at -100 %% %.3f, bypassed %.3f\n",
                     macroBypassed, macroBypassedPerVoice, velocityMuted, velocityBypassed);
         check(std::abs(macroBypassed - unscaled) < 1e-3f && std::abs(macroBypassedPerVoice - unscaled) < 1e-3f &&
@@ -3260,14 +3302,16 @@ int main(int argc, char **argv) {
     {
         auto type = [](int slot) { return paramIndex(slot, FxParam::Type); };
         auto fx = [](int slot, FxParam field) { return paramIndex(slot, field); };
-        // A hard shaper at full drive, unlinked, turns the sine into a square at its output level.
+        // A hard shaper at full drive, unlinked, turns the sine into a square at its output level: its RMS level, as
+        // its peaks overshoot a little band-limited (the shaper runs at twice the rate, and comes back down through a
+        // low-pass).
         setParams({{type(0), static_cast<double>(FxType::Shaper)},
                    {fx(0, FxParam::ShaperLink), 0.0},
                    {fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
                    {fx(0, FxParam::ShaperDrive), 36.0},
                    {fx(0, FxParam::ShaperOutput), -6.0}});
-        const float clipped = peakOf(play({}));
-        std::printf("      hard shaper at -6 dB output: peak %.3f\n", clipped);
+        const float clipped = rmsOf(play({}));
+        std::printf("      hard shaper at -6 dB output: RMS %.3f\n", clipped);
         check(clipped > 0.45f && clipped < 0.52f, "the hard shaper holds the level at its ceiling");
         bool modesSound = true;
         for (int m = 0; m < static_cast<int>(ClipMode::Count); ++m) {
@@ -3282,11 +3326,11 @@ int main(int argc, char **argv) {
         setParams({{fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
                    {fx(0, FxParam::ShaperOutput), 0.0},
                    {fx(0, FxParam::ShaperLink), 1.0}});
-        const float linkedPeak = peakOf(play({}));
+        const float linkedLevel = rmsOf(play({})); // a square's RMS level, as above
         setParams({{fx(0, FxParam::ShaperLink), 0.0}});
         const double linkedDb = clipOutputDb(0.0, 36.0, true);
-        std::printf("      hard shaper at 36 dB of drive, linked: peak %.4f (%.1f dB)\n", linkedPeak, linkedDb);
-        check(std::abs(linkedPeak - std::pow(10.0, linkedDb / 20.0)) < 0.01 && linkedDb < -8.0 && linkedDb > -10.0,
+        std::printf("      hard shaper at 36 dB of drive, linked: RMS %.4f (%.1f dB)\n", linkedLevel, linkedDb);
+        check(std::abs(linkedLevel - std::pow(10.0, linkedDb / 20.0)) < 0.01 && linkedDb < -8.0 && linkedDb > -10.0,
               "linked, the shaper's output comes down as its drive goes up, keeping the level about even");
         // Symmetric, a Custom curve's upper half is turned over onto its lower one: one whose lower half only reaches
         // -0.3 loses its even harmonics. The formula curves are left alone: Asymmetric keeps its 2nd harmonic.
@@ -4285,6 +4329,40 @@ int main(int argc, char **argv) {
               "loading a state with a voice limit past the allocated voices requests a restart");
         runBlock({&forty.header}); // back to 40 for the rest of the tests
         reactivate();
+
+        // Latency: the voices' decimator's at 2x, a couple of samples, and with a shaper effect (which runs at twice
+        // the rate) in the line about 5 more. A state that moves it, loaded while active, asks for a restart, whose
+        // activate tells the host (its latency extension's changed()) and reports the new one.
+        const auto *latency = static_cast<const clap_plugin_latency_t *>(plugin->get_extension(plugin, CLAP_EXT_LATENCY));
+        MemoryStream kept;
+        const bool keptSaved = state->save(plugin, &kept.out);
+        const auto typesKept = fxTypes;
+        std::vector<std::pair<int, double>> none;
+        for (int slot = 0; slot < kFxSlots; ++slot)
+            none.push_back({paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None)});
+        setParams(none);
+        reactivate();
+        const uint32_t plain = latency ? latency->get(plugin) : 0;
+        setParams({{paramIndex(0, FxParam::Type), static_cast<double>(FxType::Shaper)}});
+        MemoryStream shaped;
+        const bool shapedSaved = state->save(plugin, &shaped.out);
+        setParams(none);
+        reactivate();
+        restartRequests = 0;
+        latencyChanges = 0;
+        const bool shapedLoaded = state->load(plugin, &shaped.in);
+        const int asked = restartRequests;
+        reactivate();
+        const uint32_t withShaper = latency ? latency->get(plugin) : 0;
+        std::printf("      latency: %u samples, with a shaper effect %u; restarts asked for %d, host told %d times\n",
+                    plain, withShaper, asked, latencyChanges);
+        check(latency && keptSaved && shapedSaved && shapedLoaded && plain >= 1 && plain <= 4 &&
+                  withShaper >= plain + 4 && withShaper <= plain + 6 && asked == 1 && latencyChanges == 1,
+              "the latency is the voices' and an oversampled effect's, and a state that moves it restarts the plugin, "
+              "telling the host");
+        state->load(plugin, &kept.in); // as the tests before left it
+        fxTypes = typesKept;
+        reactivate();
     }
 
     // CPU: 16 voices with all six operators routed into one another.
@@ -4392,6 +4470,35 @@ int main(int argc, char **argv) {
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);
+
+        // A preset loaded from the editor (the preset bar's next arrow, at (807, 18) in view units): the host reads
+        // the values again and marks the project changed, hearing no edit of any param, which it would record as
+        // automation and in its undo.
+        MemoryStream beforePreset; // the patch put back after, for the checks that follow
+        state->save(plugin, &beforePreset.out);
+        valueRescans = 0;
+        dirtyMarks = 0;
+        out.paramEventTypes.clear();
+        if (editor) {
+            SendMessageW(editor, WM_PAINT, 0, 0);
+            pumpMessages(100);
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(605, 14));
+            SendMessageW(editor, WM_LBUTTONUP, 0, MAKELPARAM(605, 14));
+            pumpMessages(100);
+        }
+        in.events.clear();
+        params->flush(plugin, &in.list, &out.list);
+        std::printf("      preset load: %d values rescans, %d dirty marks, %zu param events\n", valueRescans, dirtyMarks,
+                    out.paramEventTypes.size());
+        check(editor && valueRescans > 0 && dirtyMarks > 0 && out.paramEventTypes.empty(),
+              "a preset loaded in the editor has the host read the values again and marks the project changed, with "
+              "no param edits");
+        check(state->load(plugin, &beforePreset.in), "the patch before the preset loads back");
+        if (editor) {
+            SendMessageW(editor, WM_PAINT, 0, 0);
+            pumpMessages(100);
+        }
+
         double volumeBefore = 0.0, volumeAfter = 0.0;
         params->get_value(plugin, idOfIndex(volume), &volumeBefore);
         out.paramEventTypes.clear();
@@ -5079,6 +5186,13 @@ int main(int argc, char **argv) {
         // The SEQ view's roll: drawing, at 1/8, on the chance lane, from C2 up, folded to the scale.
         layout.insert(layout.end(), {1.0f, 2.0f, 1.0f, 36.0f, 1.0f});
         layout.push_back(128.5f); // the tempo it was saved at as a preset
+        // The preset's author, category and line, each as long as is saved (three bytes for each character one can
+        // type, for UTF-8): its length, then its bytes, any from a space up.
+        for (const int most : {3 * 32, 3 * 20, 3 * 80}) {
+            layout.push_back(static_cast<float>(most));
+            for (int k = 0; k < most; ++k)
+                layout.push_back(static_cast<float>(32 + (k * 7 + most) % 224));
+        }
         for (int op = 0; op < kOps; ++op) // the wave each operator's source switch goes back to
             layout.push_back(static_cast<float>(op % 4));
 

@@ -237,7 +237,7 @@ inline ArrangeScore arrangeScore(const ArrangeGraph &graph, const UiLayout &layo
             }
         return false;
     };
-    // The loops' labels, beside them on their right where they can (see View::routeLabels()).
+    // The loops' labels, beside them on their right where they can (see RoutingPanel::routeLabels()).
     for (int node : graph.nodes) {
         if (!looped[node])
             continue;

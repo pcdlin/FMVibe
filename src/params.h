@@ -318,8 +318,8 @@ constexpr int kVelocityParamCount = static_cast<int>(VelocityParam::Count);
 enum class BendParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kBendParamCount = static_cast<int>(BendParam::Count);
 // Each slot of every source also has an Aux and an Amount (see slotAuxIndex()): its depth is scaled by Amount (0..1,
-// all of it to begin with) and, while it has an aux, by what that other source puts out now, 0..1, taken as unipolar
-// (see auxValue()). Aux holds the aux's source number + 1 (0 = none): wiring like a target, set in the editor. Stored
+// all of it to begin with) and, while it has an aux, by what that other source puts out now, 0..1, taken as unipolar,
+// as far as its aux depth says (see auxScale() and slotAuxDepthIndex()). Aux holds the aux's source number + 1 (0 = none): wiring like a target, set in the editor. Stored
 // in projects by number: only append.
 enum class SlotAuxParam { Aux, Amount, Count };
 constexpr int kSlotAuxFields = static_cast<int>(SlotAuxParam::Count);
@@ -619,7 +619,7 @@ enum class FxParam {
     FilterMix,
     FilterSlope,
     // Compressor: stereo-linked and peak-sensing, with a soft knee Knee dB wide;
-    // Makeup is gain after it. See compressorCurve().
+    // Gain is the makeup gain after it. See compressorCurve().
     CompThreshold,
     CompRatio,
     CompKnee,
@@ -649,7 +649,7 @@ enum class FxParam {
     DelayLink,
     McOutput, // the three-band compressor's level after the mix
     // Reverb: a feedback delay network. Size scales its delay lines, Decay is the time it
-    // takes to fall 60 dB, Damping darkens the tail, Pre-Delay holds it back from the dry sound.
+    // takes to fall 60 dB, Damping darkens the tail, Pre (the pre-delay) holds it back from the dry sound.
     ReverbSize,
     ReverbDecay,
     ReverbDamping,
@@ -794,7 +794,7 @@ enum class FxParam {
     // shorter or longer) swept by Depth (up to half of it either way) at Rate, the voices' sweeps a share of a cycle
     // apart, so their pitches waver against each other. Spread pans the voices across the sides (0 all in the middle,
     // 1 from one side to the other); Feedback sends what the voices put out on each side back into its line. Mix takes
-    // the dry sound over to the voices alone (see Effects::runChorus()).
+    // the dry sound over to the voices alone (see fx::Chorus::run()).
     ChorusRate,
     ChorusDepth,
     ChorusDelay,
@@ -876,7 +876,7 @@ inline double chorusOffset(int voice, int voices) {
     return static_cast<double>(voice) / voices;
 }
 constexpr int kMaxDisperserStages = 64;
-constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
+constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's Cutoff knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
 constexpr double kMaxUtilityMonoBass = 500.0;  // Hz, the top of the utility's Mono Bass knob
 // The utility's Gain knob (0..1) as a gain: its cube, scaled so the top is kMaxUtilityGainDb, so 0 is silence, the
@@ -977,11 +977,14 @@ constexpr int kStripBypassBase = kSlotAuxBase + kAllSources * kSlots * kSlotAuxF
 // Each slot's curve (-1..1, 0 a straight line), which bends what its source puts out before the depth takes it, as
 // an envelope segment's curve bends the segment (see slotCurveValue()): kSlots a source, for every source in turn.
 constexpr int kSlotCurveBase = kStripBypassBase + (kAllSources - kMaxSources) * kSlots;
+// Each slot's aux depth (0..1, all of it to begin with): how far down its aux can take it (see auxScale()), kSlots a
+// source, for every source in turn. Set in the editor and hidden from hosts, like the curve.
+constexpr int kSlotAuxDepthBase = kSlotCurveBase + kAllSources * kSlots;
 // How each route into an operator acts on it (see RouteMode): a block per node it comes from (the operators, the
 // filters, then the shapers), a field per operator it goes into. An operator's own field, its feedback, is always
 // Phase and hidden.
 constexpr int kRouteSources = kOps + kFilters + kShapers;
-constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
+constexpr int kRouteModeBase = kSlotAuxDepthBase + kAllSources * kSlots;
 // The effects chain's order as a state from before version 9 holds it: the slot at each of its kFxSlots places, in the
 // order they ran (see fxOrder()). Loading one wires them as the effects graph's line (see readParams()); since then the
 // graph's wires alone hold the order, and these do nothing.
@@ -1449,6 +1452,10 @@ constexpr int slotScaleIndex(int source, int slot) {
     return kSlotAuxBase + (source * kSlots + slot) * kSlotAuxFields + static_cast<int>(SlotAuxParam::Amount);
 }
 constexpr int slotCurveIndex(int source, int slot) { return kSlotCurveBase + source * kSlots + slot; }
+constexpr int slotAuxDepthIndex(int source, int slot) { return kSlotAuxDepthBase + source * kSlots + slot; }
+// What a slot's depth is scaled by while its aux puts out `out` (0..1), at aux depth `depth` (0..1): at 1 by all of
+// `out` (silenced at 0), at 0.7 by 30 % at least, at 0 not at all. At 1 it is `out` exactly.
+constexpr double auxScale(double depth, double out) { return 1.0 - depth + depth * out; }
 // How the route from node `from` (an operator, then the filters, then the shapers, as the routing graph numbers them)
 // into operator `to` acts on it.
 constexpr int routeModeIndex(int from, int to) { return kRouteModeBase + from * kOps + to; }
@@ -1535,6 +1542,8 @@ constexpr Section kSections[] = {
     {kStripBypassBase, kAllSources - kMaxSources, kSlots, 9320, 20},
     // A block per source, in source order, as the auxes'.
     {kSlotCurveBase, kAllSources, kSlots, 24000, 20},
+    // A block per source, in source order, as the auxes'.
+    {kSlotAuxDepthBase, kAllSources, kSlots, 49000, 20},
     // A block per node a route comes from, in the routing graph's order: ids that were never used, between the
     // shapers' and the filters'.
     {kRouteModeBase, kRouteSources, kOps, 700, 10},
@@ -1673,49 +1682,9 @@ constexpr int indexOfId(clap_id id) {
     return -1;
 }
 
-// Over the params from `from` to before `to`, which a static_assert takes a part at a time: all at once would take
-// the compiler more steps than it allows an expression.
-constexpr bool idsRoundTrip(int from, int to) {
-    for (const ids::Section &s : ids::kSections)
-        if (s.fields > static_cast<int>(s.stride))
-            return false;
-    for (const ids::SplitSection &s : ids::kSplitSections) {
-        int start = 0;
-        for (const ids::IdRange &r : s.ranges) {
-            if (r.stride == 0)
-                break;
-            if (std::clamp(s.fields - start, 0, r.fields) > static_cast<int>(r.stride))
-                return false;
-            start += std::min(r.fields, s.fields);
-        }
-        if (start < s.fields) // fields past the last range
-            return false;
-    }
-    for (int i = from; i < to && i < kParamCount; ++i)
-        if (indexOfId(idOfIndex(i)) != i)
-            return false;
-    return true;
-}
-// (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount <= 9 * 3000);
-static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
-static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
-static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
-static_assert(idsRoundTrip(4500, 6000), "param id layout overlaps");
-static_assert(idsRoundTrip(6000, 7500), "param id layout overlaps");
-static_assert(idsRoundTrip(7500, 9000), "param id layout overlaps");
-static_assert(idsRoundTrip(9000, 10500), "param id layout overlaps");
-static_assert(idsRoundTrip(10500, 12000), "param id layout overlaps");
-static_assert(idsRoundTrip(12000, 13500), "param id layout overlaps");
-static_assert(idsRoundTrip(13500, 15000), "param id layout overlaps");
-static_assert(idsRoundTrip(15000, 16500), "param id layout overlaps");
-static_assert(idsRoundTrip(16500, 18000), "param id layout overlaps");
-static_assert(idsRoundTrip(18000, 19500), "param id layout overlaps");
-static_assert(idsRoundTrip(19500, 21000), "param id layout overlaps");
-static_assert(idsRoundTrip(21000, 22500), "param id layout overlaps");
-static_assert(idsRoundTrip(22500, 24000), "param id layout overlaps");
-static_assert(idsRoundTrip(24000, 25500), "param id layout overlaps");
-static_assert(idsRoundTrip(25500, 27000), "param id layout overlaps");
+// Whether every param's id leads back to it: checked in params.cpp, once, rather than in every file that includes this
+// one (it takes MSVC seconds).
+
 // The sequencer's ids.
 static_assert(idOfIndex(paramIndex(SeqParam::Enabled)) == 40000 && idOfIndex(paramIndex(SeqParam::Scale)) == 40012 &&
                   idOfIndex(paramIndex(0, SeqPatternParam::Length)) == 40100 &&
@@ -1939,6 +1908,9 @@ static_assert(idOfIndex(slotCurveIndex(0, 0)) == 24000 && idOfIndex(slotCurveInd
                   idOfIndex(slotCurveIndex(kVelocitySource, kSlots - 1)) == 24535 &&
                   idOfIndex(slotCurveIndex(kBendSource, kSlots - 1)) == 24555,
               "slot curve param ids moved");
+static_assert(idOfIndex(slotAuxDepthIndex(0, 0)) == 49000 && idOfIndex(slotAuxDepthIndex(0, kSlots - 1)) == 49015 &&
+                  idOfIndex(slotAuxDepthIndex(kBendSource, kSlots - 1)) == 49555,
+              "slot aux depth param ids moved");
 static_assert(idOfIndex(routeModeIndex(0, 0)) == 700 && idOfIndex(routeModeIndex(1, 0)) == 710 &&
                   idOfIndex(routeModeIndex(kRouteSources - 1, kOps - 1)) == 795,
               "route mode param ids moved");
@@ -2871,7 +2843,7 @@ void runMacroGraph(const MacroGraph &g, const Get &get, MacroKnobs &knobs, const
                 const double out = runsPerVoice(aux) ? voiceAux(aux) : knob(aux);
                 if (out < 0.0)
                     continue;
-                scale *= out;
+                scale *= auxScale(get(slotAuxDepthIndex(link.source, link.slot)), out);
             }
             const bool bipolar = sourceBipolar(get, link.source);
             const double offset = slotCurveValue(knob(link.source) - (bipolar ? 0.5 : 0.0),
@@ -2931,7 +2903,9 @@ void forEachMacroMod(const Get &get, const MacroKnobs &knobs, const Add &add) {
             const int aux = slotAux(get, source, slot);
             if (aux >= 0 && runsPerVoice(aux))
                 continue;
-            const double scale = get(slotScaleIndex(source, slot)) * (aux >= 0 ? knobs[knobOf(aux)] : 1.0);
+            const double scale =
+                get(slotScaleIndex(source, slot)) *
+                (aux >= 0 ? auxScale(get(slotAuxDepthIndex(source, slot)), knobs[knobOf(aux)]) : 1.0);
             add(target,
                 slotCurveValue(knob, get(slotCurveIndex(source, slot)), bipolar) * amount * scale *
                     (paramTable()[target].max - paramTable()[target].min),

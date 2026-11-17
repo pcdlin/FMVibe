@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <iterator>
 #include <string>
+#include <string_view>
 
 namespace fmvibe::gui::detail {
 
@@ -25,6 +26,14 @@ constexpr float kRadiusPanel = 12.0f;  // the panels and the dialogs
 // How a dimmed control, or a switched-off card's or page's contents, is drawn: at this opacity over what is under it,
 // the same wherever something is dimmed.
 constexpr float kDimOpacity = 0.4f;
+// A control that works but does nothing for now (a macro's knob and name, and a source's handle, while it modulates
+// nothing; an LFO's Phase while notes don't start the LFO there) is drawn fainter, but less so: still to be found and
+// read in every theme.
+constexpr float kIdleOpacity = 0.65f;
+constexpr float kIdleHandleOpacity = 0.45f;
+// The note source's and velocity's curves behind their readouts in the keyboard strip, once they modulate something
+// (faint until then, as their handles are): lit, but still under the text drawn over them.
+constexpr float kLiveCurveOpacity = 0.8f;
 
 constexpr float kTextSmall = 9.0f;     // axis ticks, units, readouts on displays, graph nodes' names
 constexpr float kTextLabel = 10.5f;    // knob labels, switches, buttons, hints
@@ -249,6 +258,11 @@ inline Color ringColor(Color source, Color arc) {
         return source;
     return lightTheme() ? mix(source, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.45f) : mix(source, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f);
 }
+// A card's face, as the View's paintCardFace() fills it: the cards' color, in a flat theme tinted with `color` (faintly
+// while off).
+inline Color cardFace(Color color, bool on) {
+    return look.flat ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
+}
 // Whether controls get their 1 px outline: not in a flat theme.
 inline bool outlined() {
     return !look.flat;
@@ -287,11 +301,38 @@ void paintMenuPanel(Canvas &c, Rect r, float radius = kRadiusCard);
 // row's icon alone taking a color.
 void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected);
 
+// A flat theme's add button: a filled pill, round at its ends, tinted with the accent while `lit`.
+void paintPill(Canvas &c, Rect r, bool lit);
+
+// The bar along the foot of an aux's chip (a MODS row's, a pill's list's row's): as far as the aux depth (0..1), in the
+// aux's color.
+void paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth);
+
 // A glow feathering out, as strong as `color`'s alpha where it starts and fading to nothing `spread` further out: round a
 // circle of radius `inner`, round a rounded box, and along a line `width` wide. As the glow setting (`glowing`) is at
 // 75 %; stronger and wider above it, fainter and narrower below, and none when it is off.
 void featherCircle(Canvas &c, Point center, float inner, float spread, Color color);
 void featherRect(Canvas &c, Rect r, float radius, float spread, Color color);
 void featherLine(Canvas &c, const Point *points, size_t count, float width, float spread, Color color);
+
+// What the graphs show of a level that moves with the sound follows it rather than jumping (see theme.cpp).
+float follow(float shown, float target);
+
+// A name in capitals, as card titles and the dashed cards' words are.
+std::string upperCase(std::string text);
+
+// The plus before the name on + EFFECT and + SOURCE (see theme.cpp).
+constexpr float kAddPlusArm = 3.5f;                    // half its width
+constexpr float kAddPlusW = 2.0f * kAddPlusArm + 5.0f; // with the gap before the name
+// How far the name goes up: centering its line, descenders and all, leaves the capitals under the plus's middle.
+constexpr float kAddNameLift = 0.6f;
+
+// + EFFECT and + SOURCE, and a card that adds one (see theme.cpp); the latter gives the ink for what it says under
+// the plus.
+void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool open, bool full);
+Color paintAddCard(Canvas &c, Rect r, Point m, float arm, bool hovered);
+
+// A name down a folded card's strip, `color`, as many characters as fit in `r`.
+void paintDownward(Canvas &c, Rect r, std::string_view name, Color color);
 
 } // namespace fmvibe::gui::detail

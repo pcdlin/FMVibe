@@ -75,13 +75,7 @@ void Controller::refreshData() {
         else if (wave == OpWave::Sample && sample != 0)
             used.push_back(sample);
     }
-    for (const std::vector<UndoStep> *steps : {&undo_, &redo_})
-        for (const UndoStep &step : *steps)
-            for (const UndoStep::Change &change : step.changes)
-                if (isDataKeyParam(change.index)) {
-                    held.push_back(dataKey(change.before));
-                    held.push_back(dataKey(change.after));
-                }
+    history_.heldDataKeys(held);
     data_.keep(used, held, dataBlocks(), dataIdle());
 }
 
@@ -170,11 +164,21 @@ void Controller::pickTable(int op, uint32_t key) {
     setValue(wave, static_cast<double>(OpWave::Wavetable));
 }
 
-std::array<int, kMcBands> Controller::linkedBands(int index) const {
+void UndoHistory::heldDataKeys(std::vector<uint32_t> &held) const {
+    for (const std::vector<UndoStep> *steps : {&undo_, &redo_})
+        for (const UndoStep &step : *steps)
+            for (const UndoStep::Change &change : step.changes)
+                if (isDataKeyParam(change.index)) {
+                    held.push_back(dataKey(change.before));
+                    held.push_back(dataKey(change.after));
+                }
+}
+
+std::array<int, kMcBands> UndoHistory::linkedBands(int index) const {
     std::array<int, kMcBands> fields{index, -1, -1};
     const int slot = fxSlotOf(index);
-    if (slot < 0 || fxType(value(paramIndex(slot, FxParam::Type))) != FxType::MultiDyn ||
-        value(paramIndex(slot, FxParam::MdLink)) < 0.5)
+    if (slot < 0 || fxType(controller_.value(paramIndex(slot, FxParam::Type))) != FxType::MultiDyn ||
+        controller_.value(paramIndex(slot, FxParam::MdLink)) < 0.5)
         return fields;
     const int offset = index - mdAboveIndex(slot, 0); // the bands' fields run Above, Down, Below, Up, Gain
     constexpr int kBandFields = mdAboveIndex(0, 1) - mdAboveIndex(0, 0);
@@ -187,9 +191,9 @@ std::array<int, kMcBands> Controller::linkedBands(int index) const {
     return fields;
 }
 
-int Controller::crossoverPartner(int index) const {
+int UndoHistory::crossoverPartner(int index) const {
     const int split = splitOf(index);
-    if (split < 0 || std::lround(value(paramIndex(split, SplitParam::Bands))) < kFxBands)
+    if (split < 0 || std::lround(controller_.value(paramIndex(split, SplitParam::Bands))) < kFxBands)
         return -1;
     if (index == paramIndex(split, SplitParam::Low))
         return paramIndex(split, SplitParam::High);
@@ -198,16 +202,18 @@ int Controller::crossoverPartner(int index) const {
     return -1;
 }
 
-double Controller::pushedCrossover(int index, double v) const {
+double UndoHistory::pushedCrossover(int index, double v) const {
     const int partner = crossoverPartner(index);
     const double third = std::pow(2.0, 1.0 / 3.0);
     const double hz = cutoffFromNorm(std::clamp(v, 0.0, 1.0));
     if (partner > index) // the low crossover moved: the high one at least a third of an octave above it
-        return std::max(value(partner), std::min(normFromCutoff(std::min(hz * third, kMaxCutoff)), 1.0));
-    return std::min(value(partner), std::max(normFromCutoff(hz / third), 0.0)); // the high one: the low one below
+        return std::max(controller_.value(partner),
+                        std::min(normFromCutoff(std::min(hz * third, kMaxCutoff)), 1.0));
+    // The high one: the low one below.
+    return std::min(controller_.value(partner), std::max(normFromCutoff(hz / third), 0.0));
 }
 
-void Controller::beginEdit(int index) {
+void UndoHistory::beginEdit(int index) {
     const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
     const int partner = applying_ ? -1 : crossoverPartner(index);
     if (!applying_) {
@@ -219,16 +225,16 @@ void Controller::beginEdit(int index) {
     }
     for (int field : fields)
         if (field >= 0)
-            performBeginEdit(field);
+            controller_.performBeginEdit(field);
     if (partner >= 0)
-        performBeginEdit(partner);
+        controller_.performBeginEdit(partner);
 }
 
-void Controller::setValue(int index, double value) {
+void UndoHistory::setValue(int index, double value) {
     if (touchesData(index))
-        beforeSet(index, value);
+        controller_.beforeSet(index, value);
     if (applying_) {
-        performSetValue(index, value);
+        controller_.performSetValue(index, value);
         return;
     }
     // An edit outside a gesture is a step of its own.
@@ -241,30 +247,30 @@ void Controller::setValue(int index, double value) {
         record(partner);
     for (int field : fields)
         if (field >= 0)
-            performSetValue(field, value);
+            controller_.performSetValue(field, value);
     if (partner >= 0)
-        if (const double pushed = pushedCrossover(index, value); pushed != this->value(partner))
-            performSetValue(partner, pushed);
+        if (const double pushed = pushedCrossover(index, value); pushed != controller_.value(partner))
+            controller_.performSetValue(partner, pushed);
     endStep();
 }
 
-void Controller::endEdit(int index) {
+void UndoHistory::endEdit(int index) {
     const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
     const int partner = applying_ ? -1 : crossoverPartner(index);
     for (int field : fields)
         if (field >= 0)
-            performEndEdit(field);
+            controller_.performEndEdit(field);
     if (partner >= 0)
-        performEndEdit(partner);
+        controller_.performEndEdit(partner);
     if (!applying_)
         endStep();
 }
 
-void Controller::beginStep(bool merges) {
+void UndoHistory::beginStep(bool merges) {
     if (applying_ || depth_++ > 0)
         return;
     open_ = UndoStep{};
-    open_.before = layout();
+    open_.before = controller_.layout();
     open_.merges = merges;
     open_.presetBefore = preset_;
     open_.editedBefore = edited_;
@@ -272,19 +278,19 @@ void Controller::beginStep(bool merges) {
     recorded_.assign(kParamCount, false);
 }
 
-void Controller::setPreset(const std::wstring &file, bool edited) {
+void UndoHistory::setPreset(const std::wstring &file, bool edited) {
     preset_ = file;
     edited_ = edited;
     presetSet_ = depth_ > 0;
 }
 
-void Controller::endStep() {
+void UndoHistory::endStep() {
     if (applying_ || depth_ == 0 || --depth_ > 0)
         return;
     UndoStep step = std::move(open_);
     open_ = UndoStep{};
     for (UndoStep::Change &change : step.changes)
-        change.after = value(change.index);
+        change.after = controller_.value(change.index);
     std::erase_if(step.changes, [](const UndoStep::Change &change) { return change.after == change.before; });
     const bool dataStep = std::any_of(step.changes.begin(), step.changes.end(),
                                       [](const UndoStep::Change &change) { return touchesData(change.index); });
@@ -295,8 +301,8 @@ void Controller::endStep() {
             if (on)
                 c.refreshData();
         }
-    } refresh{*this, dataStep};
-    step.after = layout();
+    } refresh{controller_, dataStep};
+    step.after = controller_.layout();
     step.layoutChanged = !samePatchLayout(step.before, step.after);
     if (!step.layoutChanged)
         step.before = step.after = UiLayout{};
@@ -342,76 +348,82 @@ void Controller::endStep() {
         undo_.erase(undo_.begin());
 }
 
-void Controller::record(int index) {
+void UndoHistory::record(int index) {
     // The mod wheel and the pitch bend are played, not part of the patch.
     if (depth_ == 0 || index < 0 || index >= kParamCount || recorded_[index] || isPlayed(index))
         return;
     recorded_[index] = true;
-    open_.changes.push_back({index, value(index), 0.0});
+    open_.changes.push_back({index, controller_.value(index), 0.0});
 }
 
-void Controller::recordAll() {
+void UndoHistory::recordAll() {
     for (int index = 0; index < kParamCount; ++index)
         record(index);
 }
 
-void Controller::undo() {
+void UndoHistory::undo() {
     if (depth_ > 0 || undo_.empty())
         return;
     UndoStep step = std::move(undo_.back());
     undo_.pop_back();
     apply(step, false);
     redo_.push_back(std::move(step));
-    refreshData(); // once the step is in the history again, which then holds what it names
+    controller_.refreshData(); // once the step is in the history again, which then holds what it names
 }
 
-void Controller::redo() {
+void UndoHistory::redo() {
     if (depth_ > 0 || redo_.empty())
         return;
     UndoStep step = std::move(redo_.back());
     redo_.pop_back();
     apply(step, true);
     undo_.push_back(std::move(step));
-    refreshData();
+    controller_.refreshData();
 }
 
 // As one gesture, in the order the step's params were first edited, so an effect's or source's
 // type is set after its fields, as when it was added.
-void Controller::apply(const UndoStep &step, bool forward) {
+void UndoHistory::apply(const UndoStep &step, bool forward) {
     applying_ = true;
-    performStepBegin();
+    controller_.performStepBegin();
     preset_ = forward ? step.presetAfter : step.presetBefore;
     edited_ = forward ? step.editedAfter : step.editedBefore;
     for (const UndoStep::Change &change : step.changes)
-        performBeginEdit(change.index);
+        controller_.performBeginEdit(change.index);
     for (const UndoStep::Change &change : step.changes) {
         if (touchesData(change.index))
-            beforeSet(change.index, forward ? change.after : change.before);
-        performSetValue(change.index, forward ? change.after : change.before);
+            controller_.beforeSet(change.index, forward ? change.after : change.before);
+        controller_.performSetValue(change.index, forward ? change.after : change.before);
     }
     for (auto it = step.changes.rbegin(); it != step.changes.rend(); ++it)
-        performEndEdit(it->index);
+        controller_.performEndEdit(it->index);
     if (step.layoutChanged) {
-        restorePatchLayout(layout(), forward ? step.after : step.before);
-        layoutChanged();
+        restorePatchLayout(controller_.layout(), forward ? step.after : step.before);
+        controller_.layoutChanged();
     }
-    performStepEnd();
+    controller_.performStepEnd();
     applying_ = false;
 }
 
-void Controller::clearHistory() {
+void UndoHistory::clear() {
     ++patchLoads_;
     undo_.clear();
     redo_.clear();
-    refreshData();
+    controller_.refreshData();
     if (depth_ > 0) { // a gesture still open starts over from here
         open_.changes.clear();
-        open_.before = layout();
+        open_.before = controller_.layout();
         open_.presetBefore = preset_;
         open_.editedBefore = edited_;
         presetSet_ = false;
         recorded_.assign(kParamCount, false);
     }
+}
+
+// A Controller that keeps no presets: one store, without files, does for all of them.
+PresetStore &Controller::presetStore() {
+    static NoPresetFiles none;
+    return none;
 }
 
 } // namespace fmvibe::gui

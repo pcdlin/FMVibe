@@ -36,17 +36,26 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/gui/canvas_web.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/controller.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/dialogs.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/fxgraph.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/filterdisplay.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/fxgraphmodel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/fxpanel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/icons.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/mods.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/seq.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/routing.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/shapes.cpp
-    ${PROJECT_SOURCE_DIR}/src/gui/tableview.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/inspectorpanel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/modulationmodel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/modspanel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/opsource.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/patchedits.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/presetbrowser.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/seqpanel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/routingmodel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/routingpanel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/shapeeditor.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/tablebrowser.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/theme.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/view.cpp
 )
 fmvibe_web_options(fmvibe-ui)
+target_compile_definitions(fmvibe-ui PRIVATE FMVIBE_ID_CHECKS_ELSEWHERE) # fmvibe-dsp checks the param ids' layout
 target_link_options(fmvibe-ui PRIVATE
     -sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=createFMVibeUI -sENVIRONMENT=web
     -sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPF64,UTF8ToString

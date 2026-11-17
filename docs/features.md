@@ -307,7 +307,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   value. One source can so open a cutoff in a straight line and swell an operator's level slowly at once.
   Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
   **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
-  fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
+  fade an LFO's vibrato in, or velocity open an envelope's sweep wider. The aux's **depth** (0–100 %, all of it to
+  begin with) says how far down the aux can take the modulation: at 100 % an aux at 0 silences it, at 70 % it keeps
+  30 % of its depth (an aux at half keeps 65 %), and at 0 % the aux does nothing. Taking the aux away puts its depth
+  back to 100 %; another aux in its place keeps it. Set either in the MODS view (see the
   editor); the aux also by dropping a source's handle on the modulation's depth handle, or on its aux cell in the MODS view. An aux that runs per voice
   (an LFO, an envelope, the note source, velocity, the pitch bend) scales it in each voice by its own output there, as
   of the last 32-sample block (or this one, for a source that comes before it, and velocity and the pitch bend, known
@@ -449,7 +452,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     (an effect removed, a split taken out with its join) keeps playing what goes into it until the wires out of it
     have faded, so the sound moves to its new path without a click or a gap; one coming into it starts from what goes
     into it, as the wires into what follows fade in. A split's slope changed crossfades from its filters at the old
-    slope to fresh ones at the new over 5 ms. Only what the output hears runs: an effect no wire takes on to the
+    slope to fresh ones at the new over 5 ms. **Latency**: the shaper and filter effects run at twice the host rate
+    and the amp at its oversampling, up and back down through half-band filters, which comes out a few samples late
+    (about 5 at 48 kHz for twice the rate) and later still toward the top. Where paths meet (a join, a node more than
+    one wire goes into, the output), each path is put through the same filters up and down as many more times as it
+    lacks against the latest one, so they meet in step at every frequency: a split's bands sum back flat whatever runs
+    on them, and a path beside one of these effects doesn't comb with it. Such an effect is as late switched off as on
+    (what it passes then, and what it fades from, goes up and down too), so switching it moves nothing; a new effect,
+    another oversampling or a wire moved that changes how late a path is crossfades that path over 5 ms. The output is
+    then as late as its latest path, which, with the voices' decimator's couple of samples, is the latency the plugin
+    reports to the host; a change that moves it asks the host to restart the plugin, which takes up the new one (see
+    Restarting, under CLAP and VST3). Only what the output hears runs: an effect no wire takes on to the
     output costs nothing, and starts again cleared once one does. A patch starts with no effects, its input straight
     out, and one saved while the effects ran as a chain loads that chain as the line.
   - **Shaper**: picked from a list: Hard (a flat ceiling), Soft (tanh), Asymmetric (the lower half clips twice as
@@ -474,7 +487,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     further than its upper half (to −1.25 and 0.83), which adds even harmonics and an offset that grows as it is
     driven harder. It runs as a gain stage of a pedal does, a high-pass at 20 Hz before the drive like the capacitor
     between two stages, and nothing rounding its top off: each stage lifts back what its anti-aliasing's average takes
-    off the top, and the shaper effect runs the stages at twice the host rate (the voices' run at their
+    off the top, and the shaper effect runs at twice the host rate (the voices' run at their
     oversampling), so stacked eight high at 0 dB, quiet sines to 15 kHz come out within half a dB of their level. The
     DC blocker follows. Its **Stack** knob (1–8, 1 to begin with), after Drive, where it shows only for the Stack curve, runs
     that many stages in a row, each driven by Drive and brought back down after it by as much as Link would (whether
@@ -485,8 +498,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     as a note ends rings on a moment past it as a low thump (stacked eight high at full drive, about half a second
     above −60 dB) before it stops (what a high-pass puts out is taken 10⁻⁹ toward 0 before it is driven, so nothing
     far below hearing is brought up for ever). The display draws the stages' curves one after another, with the
-    gain between them, without their filters. The curves are anti-aliased (first-order antiderivative), each Stack stage too, so
-    high drive stays clean without oversampling, though folding at the highest drives gets duller for it.
+    gain between them, without their filters. The curves are anti-aliased (first-order antiderivative), each Stack stage too, and
+    the shaper effect runs every curve at twice the host rate, so high drive stays clean and a quiet sound's top comes
+    through (a 15 kHz sine within about a dB of a 1 kHz one, where the anti-aliasing's average at the host rate took
+    5 dB off it), though folding at the highest drives gets duller for it. Band-limited so, a hard curve's peaks
+    overshoot its ceiling a little, as the voices' shapers' do.
   - **Amp**: a guitar amp, then a speaker cabinet heard through a mic. **Model** picks the amp: its preamp stages
     (each a coupling high-pass, a gain, a curve with a bias whose lower side is softer, which adds even harmonics, and
     a low-pass), its tone stack and its power amp. **Clean** (one gentle stage, lots of headroom), **Blues** (two
@@ -506,7 +522,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     20 ms. Each model is trimmed so that at its middle knobs a sine at −12 dBFS comes out as loud as it went in (with
     the cabinet), and as Gain rises the level grows less and less, the stages clipping. The stages run at 1, 2, 4
     (to begin with) or 8 times the host rate, picked in the card's right-click menu (**Oversampling**), and come back
-    down through the same half-band filters as the voices, with no latency: at 4x, Heavy at full Gain and Volume on a
+    down through the same half-band filters as the voices, a few samples late (see Latency, under the effects): at 4x,
+    Heavy at full Gain and Volume on a
     C7 keeps what isn't a harmonic of the note about 42 dB down (20 dB at 1x, 63 dB at 8x). **Stereo** (off to begin
     with) runs an amp for each side; off, one amp runs on their sum, at half the cost, and puts it out on both.
     The **cabinet** (on to begin with) comes after it, at the host rate: **1x12 Open**, **2x12 Open**, **4x12 Closed**
@@ -526,8 +543,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     tempo for each (up to 4 s); Feedback (up to 95 %); Tone, a low-pass below the middle (20 kHz down to 200 Hz)
     and a high-pass above it (20 Hz up to 4 kHz), applied to every repeat; Width, from the echoes' full stereo
     down to mono; Ping-Pong, which starts the echoes on the left and bounces them across, each after its side's
-    time; and Mix, where the dry signal stays at full level up to 50 % and the echoes reach full level there. Time
-    changes glide like tape rather than click. The plugin keeps processing until the echoes have died away.
+    time; and Mix, where the dry signal stays at full level up to 50 % and the echoes reach full level there. On the
+    card the time knobs read Time L and Time R, synced Rate L and Rate R, and linked (the left one setting both
+    sides) Time or Rate alone, their values showing under the mouse as other knobs' do. Time
+    changes glide like tape rather than click, read between samples on a cubic as they do, and the times land on whole
+    samples, so the repeats lose nothing of their top to the reads (only Tone darkens them). The plugin keeps
+    processing until the echoes have died away.
   - **DJ EQ**: a three-band isolator with Linkwitz-Riley crossovers (24 dB/octave) at 250 Hz and 2.5 kHz. Each
     band goes from kill to +6 dB, and with all three at 0 dB it is flat.
   - **Param EQ**: three bands, each with Frequency (20 Hz–20 kHz), Gain (±18 dB) and Q (0.3–10), a shape:
@@ -535,7 +556,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     gain does nothing there) or Notch (taking its frequency away, Q setting how narrowly; the gain does nothing
     there either), and an **On** switch. All three start on, flat (at 250 Hz, 1 kHz and 4 kHz). A band switched off leaves the sound
     alone, fading out and back in over 5 ms. **Amount** (100 % to begin with) mixes what the bands put out with
-    what goes in, as a Mix knob does: at 0 % the EQ leaves the sound alone.
+    what goes in, as a Mix knob does: at 0 % the EQ leaves the sound alone. The bands sound as their display draws
+    them in the top octaves too, within about a dB up to 15 kHz: their poles and zeros go where the analog band's are
+    (the high cut's zeros matching its level at 0 Hz, its corner and the half rate instead), where the usual bilinear
+    design squeezed a bell or shelf up there narrower and lower than drawn.
   - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
     and HP, formant, morph; a list across its card under its title, as the shaper's curves are, with the list of
     slopes under the response, a morph's with its notch switch (the notch's icon) beside it, and a formant's Vowel or a morph's Morph
@@ -543,9 +567,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
-    the last one left it. Like the Param EQ, its display shows what it puts out behind its response.
+    the last one left it. Like the Param EQ, its display shows what it puts out behind its response. It runs at
+    twice the host rate, as the voice filters run oversampled, so the analog types' saturation and Drive alias far
+    less and Drive keeps the top.
   - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB), Ratio (1:1–20:1), a soft Knee
-    (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Makeup (0–24 dB) and Mix for parallel compression.
+    (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Gain (makeup gain, 0–24 dB) and Mix for parallel compression.
   - **3-Band Dynamics**: upward and downward compression in three bands, which Linkwitz-Riley crossovers (Low X,
     High X) split the mix into; at 0 % mix the bands just sum back up, so nothing combs. Each band is pulled down above its **Above** threshold (−80–0 dB, as Below) by its **Down** ratio, as a compressor does, and
     lifted below its **Below** threshold by its **Up** ratio: the gap under the threshold shrinks by the ratio, so
@@ -584,8 +610,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Reverb**: a feedback delay network of sixteen lines (29 to 89 ms at full size, spread evenly on a log
     scale), mixed through a Hadamard matrix, which spreads each line's sound evenly over all of them every time
     round, so the echoes thicken fast. Each line's length wavers slowly (a fraction of a millisecond, each at its
-    own pace between 0.3 and 1 Hz), so the tail's resonances smear instead of ringing on as a metallic tone.
-    Each side of the input goes through the pre-delay and its own all-passes, then into half the lines, and the
+    own pace between 0.3 and 1 Hz), so the tail's resonances smear instead of ringing on as a metallic tone; each
+    line is read between samples through a first-order all-pass, which passes every frequency at its level, so the
+    tail's top lasts as long as Damping says (undamped, the octave around 8 kHz falls 60 dB in nearly the decay time
+    the octave around 1 kHz does). The pre-delay lands on whole samples. Each side of the input goes through the pre-delay and its own all-passes, then into half the lines, and the
     two sides of the output take the lines with signs that don't match, so the tail comes out wide even from a
     mono sound. Four algorithms: **Hall** (that network, four all-passes a side); **Room** (lines under half as
     long, a darker tail and tighter wavering, with six distinct early reflections that spread with the size);
@@ -604,7 +632,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     note. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
     Decay (0.2–20 s to fall 60 dB), Damp (Damping in the host; the corner, from 20 kHz down to 1 kHz, above which the tail falls five
-    times as fast, by as much in every line), Pre-Delay (off to 250 ms), Width and Mix (like the delay's: the dry
+    times as fast, by as much in every line), Pre (the pre-delay, off to 250 ms), Width and Mix (like the delay's: the dry
     sound stays at full level up to 50 %). The plugin keeps processing until the tail has died away, the
     pre-delay's wait included.
   - **Phaser**: 2–12 first-order all-passes (Stages) whose corner an LFO (Rate, 0–20 Hz; at 0 the sweep stands
@@ -616,7 +644,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     the wet sound is added to the dry one or taken from it: negative turns the wet sound over, and the feedback
     with it, so every notch moves to where a peak was (between the positive ones) and Feedback keeps its sense
     either way. Switched, it fades over 10 ms rather than clicking.
-  - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth, with Feedback of either sign (a
+  - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth (from 1 − 0.95 Depth times it to
+    1 + 0.95 Depth times it, evenly in octaves, so the notches move as evenly in pitch both ways; its line is read
+    between samples on a cubic, so what goes round keeps its top), with Feedback of either sign (a
     negative one gives the hollower sound) and Mix, which runs to 100 %, half wet, like the phaser's (and starts
     there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
     display, but on to begin with: the right side a quarter cycle ahead. So does its polarity: negative puts a notch
@@ -642,7 +672,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound.
-  - **Widener** (a dimension expander): the sound above **High Pass** (20 Hz–2 kHz, 150 Hz to begin with, 12 dB
+  - **Widener** (a dimension expander): the sound above **Cutoff** (a high-pass, 20 Hz–2 kHz, 150 Hz to begin with, 12 dB
     per octave), summed to mono, goes through four short delays, each swept slowly by an LFO of its own
     (0.29–0.53 Hz, 12 % of its delay either way). **Size** sets how long they are: 2–5 ms at 0, a tight doubling,
     up to 10–23 ms, a wide chorus. At full **Width** what the left taps have and the right ones lack is added as
@@ -655,7 +685,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     whole travel; Spread takes the right side the other
     way, Feedback sends the shifted sound round again for spiraling sweeps, and Mix. A pair of all-pass chains makes
     the 90-degree copy it needs, which keeps the mirror image (as far below the old frequency as the shift moves it
-    above) 45 dB down or more from 50 Hz up; its chains are worked out for the sample rate, longer at higher ones,
+    above) 65 dB down or more from 50 Hz up; its chains are worked out for the sample rate, longer at higher ones,
     so it holds at 96 and 192 kHz too.
   - **Utility**: the level and the stereo image, in the order the sound goes through them. **Mono Bass** high-passes
     the sides (left minus right) at 12 dB an octave, so the sound below it comes out in the middle: Off at the
@@ -784,8 +814,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
-  default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, no latency. This keeps
-  bright FM, strong feedback and filter drive from aliasing. The effects run at the host rate. Levels, sends and
+  default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, about 2 samples late at
+  2x (the plugin reports it to the host, see Latency). This keeps bright FM, strong feedback and filter drive from
+  aliasing. The effects run at the host rate, but for the shaper and filter effects (twice it) and the amp (its
+  oversampling). Levels, sends and
   routing amounts ramp sample by sample, and the ramps don't depend on how the host splits the block.
 
 An operator or filter that is switched off is silent and costs no CPU. It is left out of the routing graph and
@@ -1051,7 +1083,7 @@ one may have changed since it last did.
     operators sits on the top one (D, C or B). Each is a
     thumbnail drawn the way the graph runs, modulators on the left, carriers in a column and their lines into OUT on
     the right, each operator in its color and its feedback a small loop on its top (or, for six operators' 4 and 6,
-    a dashed curve back up the stack). The panel's foot names the one under the mouse (its number, how many carriers
+    a dashed curve back up the stack), its number at its top right. The panel's foot names the one under the mouse (its number, how many carriers
     it has and where its feedback is). The algorithm the operators form now is lit, and its number shows on the
     button (with "4-OP", "3-OP" or "2-OP" before it for fewer operators); the panel opens on its set. A click on a thumbnail sets the
     operators to it, as one undo step, and closes the panel; Escape or a click around it closes it too. Picking one:
@@ -1348,6 +1380,10 @@ one may have changed since it last did.
     in the order their cards show, then the macros, the note source, the mod wheel, velocity and the pitch bend), the
     first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
+    A row names an effect's param by the effect after FX, not by its slot's number as hosts do ("FX Chorus Rate" for
+    "FX 7 Chorus Rate"), numbered along the line only where it holds more than one effect of that type ("FX Chorus 2
+    Rate"), so a shaper or filter effect stands apart from a voice's ("FX Shaper 1 Drive", "Shaper 1 Drive"); so do
+    undo's tooltips and the editor's messages.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
     shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
     count (how many are bypassed, at 0 % and empty with it, as much of that as fits), then the **filter**'s
@@ -1389,8 +1425,10 @@ one may have changed since it last did.
       straight and in the source's color once it is bent; dragged up or down it bends (100 px from straight to
       either end), and a double-click straightens it. Its tooltip gives its value;
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
-    - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
-      either opens the menu of sources, None first, the row's own source faint;
+    - the **aux**: a chip in its color with its name, its depth and an × that takes it away, or a dashed **+ Aux**; a
+      click on the name or + Aux opens the menu of sources, None first, the row's own source faint. The depth, a
+      number before the ×, drags up and down (100 % in 100 px, finer with Shift); a double-click puts it back to
+      100 %, and Ctrl+Click types one. A bar along the chip's foot, in the aux's color, fills as far as the depth;
     - the × that removes the modulation. Removing a modulation, here or anywhere else, removes whatever modulates
       its depth with it, in the same undo step.
 
@@ -1443,7 +1481,7 @@ one may have changed since it last did.
     another Curve source (faint until a shape is copied; for now Curve sources' shapes only). Under them, **Points | Steps** picks what a
     click on the shape does, in the card and in every big editor below, which has them too (left of its GRID, or in
     a shaper effect's narrower editor in its title row, left of the reset button): with Points, as below; with
-    Steps, a click draws a step, as Shift+click does with Points, and Shift+click works with points. **Snap** snaps
+    Steps, a click draws a step, as Alt+click does with Points, and Alt+click works with points. **Snap** snaps
     points and steps to the grid without Ctrl, which then lets them go (a shaper's curve drawn right in its card or on
     its page, which show no grid, snaps with Ctrl only). Both belong to the editor, like the grid, and go for every
     shape and curve. How to edit a shape, as they have it, shows in each editor's title row (a shaper effect's under
@@ -1454,8 +1492,8 @@ one may have changed since it last did.
     the shape goes on from. Double-click empty space to add a point and a point to delete it (or right-click it).
     **Picking several points**, in every shape editor (a Curve source's, in its widened card and full size; a shaper
     effect's and a voice shaper's drawn curve, on the card or page and in the big editor; the note source's and
-    velocity's curves): a drag from empty space draws a box that picks the points it reaches (with Steps, Shift+drag,
-    since a plain click draws a step there), and with Ctrl adds them to those picked already; Ctrl+click on a point
+    velocity's curves): a drag from empty space draws a box that picks the points it reaches (with Steps, Alt+drag,
+    since a plain click draws a step there), and with Shift adds them to those picked already; Shift+click on a point
     picks it along with the others, or lets it go if it was picked. A click on a point not picked picks it alone, and
     on one of several picked, let go without moving, picks it alone too. Picked points are filled and ringed. Dragging
     any of them moves them all as far as it moves, in one undo step, keeping their spacing: across, as far as the
@@ -1465,12 +1503,12 @@ one may have changed since it last did.
     card's), and Delete removes those picked, all but the first, a curve's ends, a symmetric curve's middle and as many
     as keep two points, as one undo step. A click anywhere off the shape, any change of how many points it has, and
     the shape tools and reset let the points go. What is picked isn't saved.
-    Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
+    Alt+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
     height to the grid too). The points between those lines go; a step beside another starts where that one ends,
     at the same place, so the shape jumps straight up or down there, and a step in the first column takes the
     first point. Held, the step follows the mouse: up and down to another height, and across to another column,
-    the one it left going back to how it was, until the button is let go (one undo step). Shift+click a step
+    the one it left going back to how it was, until the button is let go (one undo step). Alt+click a step
     again to redraw it at another height. An LFO's shape and a shaper's curve
     hold 64 points, so every column can hold a step even on the finest grid, 32 across; the note source's curve
     and velocity's hold 16. The small dots halfway along each segment bend it (a jump has none): drag them up or down,
@@ -1649,10 +1687,12 @@ one may have changed since it last did.
     envelope).
 
     The **table browser** takes the routing panel's place beside the inspector, opened by a table's or a sample's
-    picker (a second click closes it, as does **Done**). At its left the sources: **Factory** (FMVibe's
+    picker (a second click closes it, as does **Done**, another view, another node shown, or the operator switched to
+    another source). At its left the sources: **Factory** (FMVibe's
     tables), **In this patch** (the tables and samples the patch holds), then the folders added, each with how many
     files it lists (greyed out, and saying so in its tooltip, while it can't be found), and **+ Add folder…**, which
-    asks for a folder and names it after it. A folder's right-click menu renames it, sets the frame size for its files
+    asks for a folder and names it after it. A folder's right-click menu renames it (its name typed in its row, all of it selected: Enter or a click
+    elsewhere keeps it, Escape leaves it as it was), sets the frame size for its files
     that don't name one (Auto, 256, 512, 1024 or 2048), scans it again, shows it in Explorer or removes it. Folders are
     kept in the settings file, every FMVibe editor sharing them, and scanned in the background (a list of what was
     found kept in `tables-cache.bin` beside it, so they show at once the next time; a file is read again only once it
@@ -1795,8 +1835,8 @@ one may have changed since it last did.
     ring or bar marks that end (in every theme; the Ratio readout's track has its arrow instead). The dots stay
     inside their knob's column, label or cell at each handle size; past
     what fits, the rest go into a "+n" pill. Drag that dot to set the depth; double-click it
-    to remove the modulation, or right-click it for a menu that types its depth, bypasses it, removes its aux (when
-    it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
+    to remove the modulation, or right-click it for a menu that types its depth, bypasses it, types its aux depth and removes its aux
+    (when it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,
     and while its source's handle is on screen, a dashed line runs from the handle to the dot, as when the handle
     is hovered; with an aux, a dotted line runs from the aux's handle too. A source can modulate another source's depth too (drop its handle on
@@ -1810,7 +1850,8 @@ one may have changed since it last did.
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
     it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
     a row each: its bypass dot, the source's name, its aux (while one of the rows has one, the list is wider by a
-    column for them: a chip in the aux's color with its name and an × that takes it away), its depth bar and its
+    column for them: a chip in the aux's color with its name, its depth, as in the MODS view, and an × that takes it
+    away), its depth bar and its
     remove (right-clicking a row gives the depth handle's menu; hovering a row draws its range
     wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
     "…"). It shows six rows at most; past that, it is 8 px wider for a scrollbar at its right, and the rows scroll by
@@ -1822,7 +1863,9 @@ one may have changed since it last did.
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.
   - **Aux**: a source's handle dropped on another source's depth handle, on a MODS row's aux cell, or on a row of a pill's list (while it
     is dragged, the depth handles and rows are ringed faintly, the one under it brightly) makes the dropped source
-    that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color. A
+    that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color, as much of
+    it as the aux's depth, clockwise from the top, and the rest of it faint. Alt-dragging the depth handle up or down sets the aux depth
+    (100 % in 100 px, finer with Shift), and its menu's Edit aux depth types one. A
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
     which an aux lets it go at most.
   - **Bypass**: the dot at the start of a modulation's row in the MODS view or a pill's list switches that
@@ -1943,8 +1986,8 @@ one may have changed since it last did.
   knob takes modulation like any other knob (a source's handle dropped on it, its depth handles under it), but not
   its own macro's handle nor one that would loop, which says why as it is let go of; its dot then shows where the
   newest voice's modulation takes it, or with no note playing where the other macros and the mod wheel take it. Until a
-  macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint,
-  and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the wheels' and
+  macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint
+  (less so than a switched-off control, so they can still be found and read in every theme), and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the wheels' and
   velocity's). The right-click menu of its knob,
   handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
   macro's arc starts from the knob's middle, where it moves nothing, and a double-click on its
@@ -1952,13 +1995,15 @@ one may have changed since it last did.
 - **Note** (in the keyboard strip, right of the macros): the note source's handle, level with the macros', to drag
   onto a target like a macro's (and like a macro's, faint until it modulates something), and beside it the note
   the newest voice plays, as the source follows it, its name under it: the note's name, and
-  the cents it is off while bent or gliding (a dash while nothing plays), over a faint picture of its curve. A
+  the cents it is off while bent or gliding (a dash while nothing plays), over a picture of its curve, faint like
+  the handle until the source modulates something and lit once it does. A
   click on it opens the curve's editor (see the shape editor). Its right-click menu, and its handle's, make it
   unipolar or bipolar (± in the display's corner while it is bipolar).
 - **Velocity** (in the keyboard strip, at the right end, after the note source): the velocity source's handle, to
   drag onto a target like the note source's (faint until it modulates something), and beside it the velocity the
-  newest voice came with, 0 to 127 as MIDI counts it (a dash while nothing plays), over a faint picture of its
-  curve with a mark where that velocity falls on it, its name under it. A click on it opens the curve's editor (a
+  newest voice came with, 0 to 127 as MIDI counts it (a dash while nothing plays), over a picture of its curve
+  with a mark where that velocity falls on it (faint like the handle until velocity modulates something, lit once
+  it does), its name under it. A click on it opens the curve's editor (a
   second click closes it): velocity across, marked at 32, 64 and 96, and what the source puts out up, from nothing
   at the bottom to all of it at the top, with the straight line it starts as dashed behind and, while notes play, a
   dot where the newest voice is; its points and bends edit like the note source's curve, and its reset button
@@ -1966,116 +2011,183 @@ one may have changed since it last did.
   source's do.
 - **Presets**: the library holds the factory presets, built into the plugin, and the `.fmv` files in
   `Documents\FMVibe\presets` and its subfolders. The factory presets show under **Factory**, as a subfolder's would;
-  nothing of them is written into the folder, which FMVibe makes only when a file dialog or OPEN FOLDER needs it
-  (empty: it holds the presets saved there). Each factory preset's name starts with two letters for its category, so the library lists them in groups:
-  BA bass, DR drum, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too),
-  PL pluck and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
-  Organ, PL Pluck Delay; PD Crystal Motion, which uses everything at once (all six operators in three layers, two
-  filters, four LFOs and a mod envelope, and six effects); BA Reese Bass, a heavy drum and bass reese (two stacks
-  of detuned saws through a driven low-pass, a clean sub, clipping and three-band compression); BA Wobble Bass (an
-  eighth-note LFO throwing open a resonant filter and the FM together); PD Shimmer Pad (unison layers through two
-  filters, three LFOs and the shimmer reverb); SQ Trance Gate (supersaws chopped in sixteenths by a square LFO, a
-  filter sweep over two bars); LD FM Brass (two stacks that blat in, an envelope on the FM,
-  vibrato); FX Industrial Hit (a body dropping two octaves, band-passed noise, metallic partials and a sine-fold
-  shaper); LD Folded Lead (a mono lead whose modulator goes through a sine-fold shaper on its way to the carrier,
-  driven harder as each note starts); BA Fuzz Bass (an FM pair through an asymmetric shaper into a plucked
-  low-pass, the shaper also growling back onto the modulator, over a clean sub); PL Comb String (a noise burst
-  ringing a comb tuned to the note, on through a 6 dB low-pass; the mod wheel damps it); PL Chip Pluck (alternating,
+  nothing of them is written into the folder, which FMVibe makes only when a file dialog needs it
+  (empty: it holds the presets saved there). Each factory preset is in one or two categories (see Preset info, below):
+  Bass, Drum, FX, Keys (bells and organs too), Lead (brass too), Pad (moving textures too), Pluck and Seq
+  (rhythmic, gated). Up to 0.11 each name began with its category's two letters ("LD Screamer"); a project saved then
+  still names the preset that way, and it loads the preset as it is named now. They are Electric Piano, FM Bass, Glass Bell, Warm Pad, Drawbar
+  Organ, Pluck Delay; Crystal Motion, which uses everything at once (all six operators in three layers, two
+  filters, four LFOs and a mod envelope, and six effects); Reese Bass, a heavy drum and bass reese (two stacks
+  of detuned saws through a driven low-pass, a clean sub, clipping and three-band compression); Wobble Bass (an
+  eighth-note LFO throwing open a resonant filter and the FM together); Shimmer Pad (unison layers through two
+  filters, three LFOs and the shimmer reverb); Trance Gate (supersaws chopped in sixteenths by a square LFO, a
+  filter sweep over two bars); FM Brass (two stacks that blat in, an envelope on the FM,
+  vibrato); Industrial Hit (a body dropping two octaves, band-passed noise, metallic partials and a sine-fold
+  shaper); Folded Lead (a mono lead whose modulator goes through a sine-fold shaper on its way to the carrier,
+  driven harder as each note starts); Fuzz Bass (an FM pair through an asymmetric shaper into a plucked
+  low-pass, the shaper also growling back onto the modulator, over a clean sub); Comb String (a noise burst
+  ringing a comb tuned to the note, on through a 6 dB low-pass; the mod wheel damps it); Chip Pluck (alternating,
   half and abs sines like the classic FM chips, the note source easing the FM off up the keyboard, a hard clipper
-  going out beside it, and a Bite macro on FM Amount); SQ Step Filter (an organ wave and a pulse through a resonant
+  going out beside it, and a Bite macro on FM Amount, playing a video-game arpeggio, mostly in eighths, while a key is
+  held, bouncing through C minor's chord and then A-flat major's, its accents as velocities louder and brighter); Step Filter (an organ wave and a pulse through a resonant
   18 dB low-pass that a drawn LFO shape opens on every eighth note, each its own height, into a cubic shaper; its
-  Cutoff and Accent macros, the latter deepening the pattern); SQ Glass Steps (a custom wave from 64 partials, the
-  Fibonacci ones, through a notch that jumps at random every sixteenth note); LD Vowel Lead (a vowel wave with a
+  Cutoff and Accent macros, the latter deepening the pattern); Glass Steps (a custom wave from 64 partials, the
+  Fibonacci ones, playing a sparse, leaping Lydian arpeggio while a key is held, two degrees lower in its second
+  bar, its accents louder, through a notch that jumps at random every sixteenth note); Vowel Lead (a vowel wave with a
   held bite and breath noise modulating it through a band-pass, gliding into every note, a bipolar envelope scooping
-  into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); FX Laser Zap (a
+  into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); Laser Zap (a
   one-shot LFO throwing the pitch down four octaves in a quarter second, a phase disperser and a staircase-curve
-  shaper crushing it; its Speed and Grit macros); FX Noise Riser (wide noise through a high-pass and a climbing
-  sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster); KY Temple Gong
+  shaper crushing it; its Speed and Grit macros); Noise Riser (wide noise through a high-pass and a climbing
+  sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster); Temple Gong
   (three pairs at inharmonic ratios, one of them modulated by a fixed 137 Hz operator, so each key grinds
-  differently, the modulators dying before their carriers and velocity driving every index); LD Feedback Lead (a
+  differently, the modulators dying before their carriers and velocity driving every index); Feedback Lead (a
   mono lead whose oscillator is a self-modulating operator, the mod wheel opening its feedback and index from flute
   to buzzing reed, a mod envelope's bite on each note and a vibrato that a second envelope, as its aux, fades in);
-  PD Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
-  never line up, and an Index macro deepening them all); BA Neon Pluck (a mono saw plucked by FM through a
+  Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
+  never line up, and an Index macro deepening them all); Neon Pluck (a mono saw plucked by FM through a
   resonant low-pass over a sine sub, a two-bar LFO turning its FM and grit, its effects as a graph: a split at
   180 Hz whose high band is widened and echoed while the low band stays tight, then a 3-band dynamics set as OTT;
   its Timbre, Filter, Grit and Space macros). Then two more for each category, one in the style of 1980s FM synths
-  (sine operators only, indexes falling fast and scaled by velocity) and one modern and heavy: BA Eighties Slap (a
-  1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and BA Grind Bass (a fed-back pair
+  (sine operators only, indexes falling fast and scaled by velocity) and one modern and heavy: Eighties Slap (a
+  1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and Grind Bass (a fed-back pair
   growled by a sub-octave linear FM through an asymmetric shaper and a driven low-pass, over a clean sub, its effects
   as a graph that keeps the lows below 140 Hz tight while the highs are clipped and widened; its Growl, Drive and
-  Width macros); DR Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note) and DR
-  Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
-  noise click; its Pitch, Distortion, Length and Click macros); FX Jet Takeoff (a modulator at full feedback, driven
+  Width macros); Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note, in mono, so
+  each hit cuts off the one before, playing a tribal 12/8 groove in eighth triplets while a key is held, an octave
+  down: a low call on C minor pentatonic toms answered higher, with a roll down at its end, looped every 24 steps so
+  it keeps to two 4/4 bars, its ghost hits softer than its accents) and Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
+  noise click; its Pitch, Distortion, Length and Click macros); Jet Takeoff (a modulator at full feedback, driven
   by an inharmonic one, roaring through its carrier, noise made by FM alone, a slow pitch envelope lifting it two
-  octaves under a flanger) and FX Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
-  onto the note under band-passed noise falling with it); KY Funk Clav (a 1:1 pair with feedback for the nasal buzz
-  beside a 2:5 pair for the pluck) and KY Driven Tines (an FM tine piano through an asymmetric shaper, a cabinet's
-  band and a stereo phaser, velocity driving the amp too); LD Classic Synlead (a fed-back 1:1 pair's saw beside a
-  2:1 pair's square, detuned, with a bite on each note and a delayed vibrato the mod wheel deepens) and LD Screamer (a
+  octaves under a flanger) and Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
+  onto the note under band-passed noise falling with it); Funk Clav (a 1:1 pair with feedback for the nasal buzz
+  beside a 2:5 pair for the pluck) and Driven Tines (an FM tine piano through an asymmetric shaper, a cabinet's
+  band and a stereo phaser, velocity driving the amp too); Classic Synlead (a fed-back 1:1 pair's saw beside a
+  2:1 pair's square, detuned, with a bite on each note and a delayed vibrato the mod wheel deepens) and Screamer (a
   square swept by a 2:1 modulator and unison saws, sine-folded and torn through a driven low-pass, the mod wheel
-  screaming the fold and feedback up); PD Vintage Strings (three fed-back pairs bowing in behind their carriers, an
-  octave on top, a slow drift on the indexes, chorused into a hall) and PD Distorted Swell (wide unison saws growled
+  screaming the fold and feedback up); Vintage Strings (three fed-back pairs bowing in behind their carriers, an
+  octave on top, a slow drift on the indexes, chorused into a hall) and Distorted Swell (wide unison saws growled
   by a sub-octave modulator through a driven low-pass into a sine-fold shaper, a slow LFO and a long envelope
-  opening it as it is held); PL Koto Pluck (a fed-back 1:1 pair and a 7:1 snap on one carrier, a 2:3 pair ringing an
-  octave up) and PL Razor Pluck (a fed-back pair driven by a 2:1 modulator through a snapping resonant low-pass over
-  a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and SQ Mallet Steps (a marimba, a 1:1
+  opening it as it is held); Koto Pluck (a fed-back 1:1 pair and a 7:1 snap on one carrier, a 2:3 pair ringing an
+  octave up) and Razor Pluck (a fed-back pair driven by a 2:1 modulator through a snapping resonant low-pass over
+  a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and Mallet Steps (a marimba, a 1:1
   carrier knocked by a 4:1 modulator, struck in sixteenths by the sequencer while a key is held, through octaves,
-  fifths and sevenths, each note's velocity its accent, louder and harder) and SQ Hammer Gate
-  (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
-  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff); and SQ Future Plucks (a
+  fifths and sevenths, each note's velocity its accent, louder and harder) and Hammer Gate
+  (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper, in
+  mono, playing a two-bar Phrygian riff while a key is held, two octaves down, its rests chopping it and octave
+  jumps in it, its accents as velocities brightening it and an envelope snapping the cutoff open on each
+  note; its Cutoff, Drive and Snap macros); and Future Plucks (a
   carrier knocked by a saw modulator through a low-pass an envelope plucks open, velocity brightening it and two
   Random sources wandering the indexes, playing the sequencer's Phrygian riff while a key is held, an octave down,
   humanized and with chords on some steps, through a chain of EQs, a disperser, compression, chorus, echoes and a
   reverb).
-  Then three that play through the Amp: PL Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
+  Then three that play through the Amp: Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
   a feedback modulator for the saw's edge and a short bright one for the pick, velocity digging in, through the
-  Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
+  Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); Overdrive Lead (a mono, gliding
   lead through the Lead amp into an open 2x12, a vibrato that an envelope fades in as a note holds, the mod wheel
-  turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
+  turning up the amp's Gain, then ping-pong echoes and a plate); and Driven Bass (a round FM bass with a sub an
   octave down, through the Bass amp's grit into a 4x10, its lows staying clean). Then three more that play the
-  sequencer: SQ Acid Rubber (a mono saw knocked by a fed-back 1:1 sine through a driven, resonant 24 dB ladder, a
+  sequencer: Acid Rubber (a mono saw knocked by a fed-back 1:1 sine through a driven, resonant 24 dB ladder, a
   two-bar C minor line in sixteenths while a key is held, two octaves down, its accents as velocities deepening the
   filter envelope and its slides gliding, the pattern's mod wheel curve opening the filter across the second bar,
-  into grit, a dotted echo and a room); SQ Offbeat Stabs (a fed-back FM keys stab through a plucked low-pass, Dorian
+  into grit, a dotted echo and a room); Offbeat Stabs (a fed-back FM keys stab through a plucked low-pass, Dorian
   seventh chords on the off-beats and a bass on the downbeats, swung, with the host's transport; pattern B a pushed,
   busier variation; each pattern's bend curve dipping the pitch like tape at its end, through chorus, echoes, a plate
-  and a compressor); and SQ Random Glass (a glassy 7:1 tone with a twelfth above, its sixteen minor-pentatonic steps
+  and a compressor); and Random Glass (a glassy 7:1 tone with a twelfth above, its sixteen minor-pentatonic steps
   played in random order, many left to chance, humanized, a Random source stepping the index, into ping-pong echoes
   and a shimmer). Each release brings
   them as it tunes them. Being built in, they can't be saved over: Save on a changed one saves it as a new preset, as
-  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: the library leaves that
-  subfolder out (it stays on disk, for the user to keep or delete), and a project that named a preset in it loads the
-  built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  Save As does. Versions before 0.12 wrote them out into the folder's `Factory` subfolder: the library leaves the
+  files there named as a factory preset out (they stay on disk, for the user to keep or delete), and the subfolder
+  too unless the user saved presets of their own into it, which it lists there; a project that named a factory preset
+  in it loads the built-in one of that name. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
   label running over a node it doesn't join. They hold only the params that differ from Init, so they are small, and
   load like any other preset.
+  - **Preset info**: a preset says who made it (**Author**), what kind of sound it is (**Category**) and what it
+    does, in a **Description** of one line (up to 80 characters). They are saved with the patch, in its layout chunk,
+    so a preset file carries them and so does the host's project; a preset saved before them has none, and still
+    loads. The categories are Bass, Drum, FX, Keys, Lead, Pad, Pluck and Seq, each in a color of its own, and any the
+    user adds (**+ New** in the Save dialog): a name of 6 characters at most (a built-in one's picking that one) and
+    one of five colors,
+    kept in the user's settings, so every FMVibe offers them. A preset stores its category by name, so one made on
+    another computer with a category this one doesn't know still shows it, in grey. The factory presets are FMVibe's,
+    each in one category, with a line about it.
   - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as
-    a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
-    preset in the library, round from the last to the first. Clicking the name opens the **browser**: the presets
-    at the top of the folder, then each subfolder that holds presets under its name (the factory presets under
-    Factory's), the current one marked; a click loads one
-    and closes the browser (if the patch has changed, it asks first, over the browser, which stays open when the
-    load is called off); **OPEN FOLDER** shows the folder in Explorer, and the × or a click around it closes it.
-    While it is open, the browser takes the keyboard for its **search**, in its title row: what is typed narrows
-    the list to the presets whose subfolder and name hold every word of it, whatever the case, and the count
-    beside the title says how many match. The first one found is picked (outlined); Up and Down pick another
-    from the list (from the preset loaded, before anything is picked), and Enter loads the one picked. Escape, or
-    the × in the search, empties it; Escape with nothing typed closes the browser. The search starts empty each
-    time the browser opens. It edits like a text field: Left and Right move the caret, Home and End jump to the
-    ends, and with Shift they select; a click puts the caret there, a drag or a Shift+click selects, a
-    double-click picks a word, and Ctrl+A selects it all. Typing replaces the selection, Backspace and Delete
-    take it out, and Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (line breaks pasted as spaces, up to 40
-    characters in all). A search longer than the field scrolls to keep the caret in sight. A value typed into a
-    knob copies and pastes too, while all of it is selected.
-  - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
-    **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which always
-    starts in the preset folder, wherever the host's last file dialog was left; Save As suggests the current
-    preset's name. The file holds the same data as the host's
-    saved state, apart from the settings: the tables and samples the patch plays too.
+    a new instance does), on one line as tall as the title bar's buttons: its category at the left (a dot in its color, then its name), its name in
+    the middle (with a dot while the patch has changed since) and "by" its author at the right, before the (i); a name
+    too long for the middle moves left, and the author is cut short for it (a preset with neither, and Init, shows its
+    name alone).
+    Resting the mouse on it shows **Browse Presets** (the description is on the info card). Its arrows step to the previous or next preset in the
+    library (the factory presets, then the preset folder's, folder by folder), round from the last to the first.
+    The **(i)** at its right (not on Init) opens the preset's **info card** under it: its pill, name, author, folder (or
+    Factory) and the tempo it was saved at, its description, a star making it a favorite, **Show in Browser** and
+    **Edit Info…** (**Add Info…** while it has none), which opens the Save dialog's info form. A factory preset's card
+    says it is read-only and offers **Save Copy…** instead, the Save dialog. Escape, or a click around it, closes it.
+  - Clicking the name opens the **browser**, a popup under the preset bar: a search row, then a sidebar beside the
+    list, then a strip with the preset picked. It opens
+    where it was left, on the sidebar's entry picked last (kept in the user's settings; **Factory** to begin with, and
+    when the folder picked has gone), the folder tree opened down to it, with the preset loaded picked; **Show in
+    Browser** opens it on the preset's folder.
+    - The **sidebar**: **All**, **Favorites** and **Recent** (the presets loaded last, the last first), then
+      **FOLDERS**, a tree of **Factory** and **User** (the preset folder) with every subfolder at any depth, each
+      opened and closed by its chevron and with how many presets it holds, and its **+**, which makes a new folder in
+      the folder shown; a folder's right-click menu (none on Factory) has the Save dialog's tree's items (see Save As
+      below), its New Folder showing the folder it makes one in; then **CATEGORIES**, each with how many of the presets listed are in it (of All, Favorites,
+      Recent or the folder picked above, and what the search finds, whatever the categories filter by; the user's own
+      after a line, then
+      **None**), a click filtering the list by it or taking the filter off (several at once list the presets in any
+      of them) and **Clear** taking them all off (a new category is made in the Save dialog). One of the user's own shows an **×** in
+      its count's place under the mouse, which removes it from the list after asking (how many presets are in it):
+      the presets keep it, nothing written to their files, and it lists among the categories presets have that the
+      list doesn't know, in grey, until it is added again. The sidebar scrolls under the wheel, by its scrollbar at its right edge (the thumb dragged, or the track clicked to
+      jump there) and dragged with the middle button.
+    - The **list** shows the folder's presets, and with **Subfolders** on (the switch in the search row, on to begin
+      with, greyed out for All, Favorites, Recent and Factory) its subfolders' too, each then with its folder's name before it; the folder's path over it leads back up,
+      a click on a part showing that folder, and the category filters show beside it as chips, a click taking one off.
+      Each row has the name, its description in faint text in the room the name leaves, the category's
+      pill (right-aligned in a column as wide as the widest listed), a star (a favorite, or not) and the author; the preset loaded has a
+      dot. A click (or a tap) on a preset loads it at once, the browser staying open for the next; a double-click (or
+      Enter, for the preset Up, Down or the search picked) loads it and closes the browser. Loading asks first while the
+      patch has changed (over the browser, which stays open when the load is called off).
+    - The **strip** shows the preset picked: its pill, name, author and folder over its description, then a button
+      that shows its file in Explorer, picked (greyed out while nothing is picked, and for a factory preset, which has
+      none), and **Close**, which closes the browser as a click around it does. A preset's info
+      is edited from the info card, for the preset loaded.
+    - Favorites and the recent presets are kept in the user's settings.
+    - A click in its **search**, in its first row, gives it the keyboard, and a click anywhere else takes it away (while
+      it hasn't the keyboard, Enter still loads the preset picked and Escape closes the browser): what is typed narrows the
+      list (of what the sidebar shows) to the presets whose name, folder, author, category and description hold every
+      word of it, whatever the case, and the count at its right end says how many it lists of all of them. The first
+      one found is picked; Up and Down pick another from the list (from the preset loaded, before anything is picked),
+      and Enter loads the one picked. Escape, or the × in the search, empties it; Escape with nothing typed closes the
+      browser, as a click around it or on the preset bar does. The search starts empty each time the browser opens.
+      It edits like a text field: Left and Right move the caret, Home and End jump to the ends, and with Shift they
+      select; a click puts the caret there, a drag or a Shift+click selects, a double-click picks a word, and Ctrl+A
+      selects it all. Typing replaces the selection, Backspace and Delete take it out, and Ctrl+C, Ctrl+X and Ctrl+V
+      copy, cut and paste (line breaks pasted as spaces, up to 40 characters in all). A search longer than the field
+      scrolls to keep the caret in sight. A value typed into a knob copies and pastes too, while all of it is
+      selected. The Save dialog's fields edit the same way.
+  - **Save As** (a disk with a plus) opens the **Save dialog**, dropping from the preset bar as the info card does: **Name** (the preset's, all selected, to type over),
+    **Author** (the preset's, a factory preset's copy's FMVibe, empty for one without), **Category** (a chip
+    for each, **None**, and **+ New**, which opens the New Category form), **Description** (with how many of its 80
+    characters are used) and **Folder**, a tree of the preset folder's subfolders with Factory locked, the preset's own
+    folder picked to begin with and **New Folder** making one in the folder picked; a folder's right-click menu offers
+    **New Folder** (one in it) and **Open in Explorer**, and on a subfolder **Rename…** (a form holding its name; a
+    name another folder there has is refused, and the presets in it, the favorites and recent presets among them, go
+    with it) and **Delete…** (asking first, with how many presets go with it, then moving it to the Recycle Bin). A name the folder already has says
+    so, and the button reads **Replace**. Enter or **Save** saves it there, with its info, and it is the patch's preset
+    then; Escape, Cancel or the × close it. **Save to File…** saves it anywhere through the standard file dialog
+    instead. Editing a preset's info (Edit Info… on the info card) opens the same dialog without the name and folder to change: Save
+    writes the author, category and description into the preset's file and leaves its sound alone (and the patch, if
+    it is that preset, keeps its changes; only its info is the file's). In the browser demo, which has no files, Save As says so.
+  - **Init** sets every param and the routing layout back to their defaults (the zoom stays), the preset's info
+    too. **Load**, and Save to File in the Save dialog, read and write a `.fmv` file through the standard file dialog,
+    which always starts in the preset folder, wherever the host's last file dialog was left; Save to File suggests the
+    current preset's name. The file holds the same data as the host's saved state, apart from the settings: the
+    tables and samples the patch plays too.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
-    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) that has
+    tells in a message only if it couldn't (the Save dialog and Edit Info likewise). It is on only for a preset loaded (or saved) that has
     changed since; otherwise, and always for Init, it is greyed out and does nothing. On a factory preset, which is
-    built in, it asks nothing and opens Save As's dialog instead. Save As is greyed out too on
+    built in, it asks nothing and opens the Save dialog instead. Save As is greyed out too on
     Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
@@ -2158,7 +2270,12 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,329 of FMVibe's 24,996 parameters: the globals, the operators (a Wavetable's Position and a
+Both report their **latency** (CLAP's latency extension, VST3's `getLatencySamples()`): the voices' decimator's delay
+at the oversampling (about 2 samples at 2x, none at 1x) and the effects' latest path's (see Latency, under the effects),
+rounded to whole samples, as the plugin was last activated. An edit or a state that moves it asks the host for a
+restart, whose activate reports the new one (a CLAP host is told through its latency extension's `changed()`).
+
+Hosts are given 1,329 of FMVibe's 25,444 parameters: the globals, the operators (a Wavetable's Position and a
 Sample's Start among them), the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
@@ -2181,7 +2298,8 @@ What the VST3 plugin does its own way:
   finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as
   Pressure. A note-on's tuning (in cents) tunes the note from its start.
 - **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...).
-- **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), or changing the
-  oversampling, asks the host to deactivate and reactivate the plugin (through a latency change, which has hosts do that).
+- **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), changing the
+  oversampling or a change to the effects that moves the latency asks the host to deactivate and reactivate the plugin
+  (through a latency change, which has hosts do that).
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.

@@ -130,10 +130,12 @@ private:
     static const clap_plugin_state_t kState;
     static const clap_plugin_remote_controls_t kRemoteControls;
     static const clap_plugin_voice_info_t kVoiceInfo;
+    static const clap_plugin_latency_t kLatency;
     static const clap_plugin_gui_t kGui;
 
     clap_plugin_t plugin_;
     const clap_host_t *host_;
+    const clap_host_latency_t *hostLatency_ = nullptr;
     const clap_host_params_t *hostParams_ = nullptr;
     const clap_host_state_t *hostState_ = nullptr;
     const clap_host_voice_info_t *hostVoiceInfo_ = nullptr;
@@ -170,7 +172,12 @@ Plugin::Plugin(const clap_host_t *host) : host_(host) {
             delete &self(p);
         },
         [](const clap_plugin_t *p, double sampleRate, uint32_t, uint32_t) {
-            self(p).activate(sampleRate);
+            Plugin &plugin = self(p);
+            const int before = plugin.latency();
+            plugin.activate(sampleRate);
+            // The latency may only change here: the host reads it again once told.
+            if (plugin.hostLatency_ && plugin.latency() != before)
+                plugin.hostLatency_->changed(plugin.host_);
             return true;
         },
         [](const clap_plugin_t *p) { self(p).deactivate(); },
@@ -188,6 +195,9 @@ bool Plugin::init() {
     hostState_ = static_cast<const clap_host_state_t *>(host_->get_extension(host_, CLAP_EXT_STATE));
     hostVoiceInfo_ = static_cast<const clap_host_voice_info_t *>(host_->get_extension(host_, CLAP_EXT_VOICE_INFO));
     hostGui_ = static_cast<const clap_host_gui_t *>(host_->get_extension(host_, CLAP_EXT_GUI));
+    hostLatency_ = static_cast<const clap_host_latency_t *>(host_->get_extension(host_, CLAP_EXT_LATENCY));
+    if (hostLatency_ && !hostLatency_->changed)
+        hostLatency_ = nullptr;
     hostTempo_ = static_cast<const HostTempo *>(host_->get_extension(host_, kExtHostTempo));
     if (hostTempo_ && (!hostTempo_->get || !hostTempo_->set))
         hostTempo_ = nullptr;
@@ -212,6 +222,8 @@ const void *Plugin::extension(const char *id) {
         return &kRemoteControls;
     if (std::strcmp(id, CLAP_EXT_VOICE_INFO) == 0)
         return &kVoiceInfo;
+    if (std::strcmp(id, CLAP_EXT_LATENCY) == 0)
+        return &kLatency;
     if (std::strcmp(id, CLAP_EXT_GUI) == 0)
         return &kGui;
     return nullptr;
@@ -549,6 +561,12 @@ const clap_plugin_voice_info_t Plugin::kVoiceInfo = {
         info->flags = CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES;
         return true;
     },
+};
+
+// How late the output is (see PluginCore::latency()): it changes only in activate, which the plugin asks the host for
+// when an edit moves it.
+const clap_plugin_latency_t Plugin::kLatency = {
+    [](const clap_plugin_t *p) { return static_cast<uint32_t>(self(p).latency()); },
 };
 
 // Embedded Win32 editor only; no floating windows.

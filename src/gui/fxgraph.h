@@ -1,6 +1,6 @@
 #pragma once
 
-// The effects graph's look, shared by the editor's own files only (see fxgraph.cpp), in namespace detail.
+// The effects graph's look, shared by the editor's own files only (see fxpanel.cpp), in namespace detail.
 
 #include "theme.h"
 

@@ -13,6 +13,55 @@
 
 namespace fmvibe {
 
+// Whether every param's id leads back to it. A target that builds this file beside one that checks it already (the
+// smoke test beside the core, the browser demo's editor beside its audio) sets FMVIBE_ID_CHECKS_ELSEWHERE: MSVC takes
+// seconds over it.
+#ifndef FMVIBE_ID_CHECKS_ELSEWHERE
+// Over the params from `from` to before `to`, which a static_assert takes a part at a time: all at once would take
+// the compiler more steps than it allows an expression.
+constexpr bool idsRoundTrip(int from, int to) {
+    for (const ids::Section &s : ids::kSections)
+        if (s.fields > static_cast<int>(s.stride))
+            return false;
+    for (const ids::SplitSection &s : ids::kSplitSections) {
+        int start = 0;
+        for (const ids::IdRange &r : s.ranges) {
+            if (r.stride == 0)
+                break;
+            if (std::clamp(s.fields - start, 0, r.fields) > static_cast<int>(r.stride))
+                return false;
+            start += std::min(r.fields, s.fields);
+        }
+        if (start < s.fields) // fields past the last range
+            return false;
+    }
+    for (int i = from; i < to && i < kParamCount; ++i)
+        if (indexOfId(idOfIndex(i)) != i)
+            return false;
+    return true;
+}
+// (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
+static_assert(kParamCount <= 9 * 3000);
+static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
+static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
+static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
+static_assert(idsRoundTrip(4500, 6000), "param id layout overlaps");
+static_assert(idsRoundTrip(6000, 7500), "param id layout overlaps");
+static_assert(idsRoundTrip(7500, 9000), "param id layout overlaps");
+static_assert(idsRoundTrip(9000, 10500), "param id layout overlaps");
+static_assert(idsRoundTrip(10500, 12000), "param id layout overlaps");
+static_assert(idsRoundTrip(12000, 13500), "param id layout overlaps");
+static_assert(idsRoundTrip(13500, 15000), "param id layout overlaps");
+static_assert(idsRoundTrip(15000, 16500), "param id layout overlaps");
+static_assert(idsRoundTrip(16500, 18000), "param id layout overlaps");
+static_assert(idsRoundTrip(18000, 19500), "param id layout overlaps");
+static_assert(idsRoundTrip(19500, 21000), "param id layout overlaps");
+static_assert(idsRoundTrip(21000, 22500), "param id layout overlaps");
+static_assert(idsRoundTrip(22500, 24000), "param id layout overlaps");
+static_assert(idsRoundTrip(24000, 25500), "param id layout overlaps");
+static_assert(idsRoundTrip(25500, 27000), "param id layout overlaps");
+#endif
+
 namespace {
 
 constexpr Str kLfoShapeNames[] = {Str::LfoSine,   Str::LfoTriangle, Str::LfoSaw,
@@ -632,7 +681,7 @@ void buildTable(ParamTable &t) {
         add(paramIndex(BendParam::Bipolar), bend + " " + tr(Str::ParamBipolar), bend, ParamKind::Toggle, 0.0, 1.0, 1.0);
     }
 
-    // Every slot of every source has an aux, an Amount and a curve, and those of the sources under the keyboard their bypass.
+    // Every slot of every source has an aux, an Amount, a curve and an aux depth, and those of the sources under the keyboard their bypass.
     for (int source = 0; source < kAllSources; ++source) {
         const std::string name = isBend(source)       ? tr(Str::ParamBendSource)
                                  : isVelocity(source) ? tr(Str::ParamVelocitySource)
@@ -652,6 +701,8 @@ void buildTable(ParamTable &t) {
                 0.0, 1.0, 1.0);
             add(slotCurveIndex(source, slot), name + " " + trf(Str::ParamSlotCurve, {n}), module,
                 ParamKind::BipolarPercent, -1.0, 1.0, 0.0); // a straight line
+            add(slotAuxDepthIndex(source, slot), name + " " + trf(Str::ParamAuxDepth, {n}), module, ParamKind::Percent,
+                0.0, 1.0, 1.0); // the aux scaling it all the way
             if (isStripSource(source)) // the places' bypasses come with their other fields
                 add(slotBypassIndex(source, slot), name + " " + trf(Str::ParamBypass, {n}), module,
                     ParamKind::SlotBypass, 0.0, 1.0, 0.0);
@@ -1250,13 +1301,13 @@ const HostList &hostList() {
     static const std::unique_ptr<const HostList> list = [] {
         auto l = std::make_unique<HostList>();
         const ParamTable &table = paramTable();
-        // Every source's slots: what each modulates, its aux, curve and bypass are set in the editor; its depth and
+        // Every source's slots: what each modulates, its aux, curve, aux depth and bypass are set in the editor; its depth and
         // Amount hosts may automate (see hostParamCount()).
         std::vector<bool> wiring(kParamCount, false), kept(kParamCount, false);
         for (int source = 0; source < kAllSources; ++source)
             for (int s = 0; s < kSlots; ++s) {
                 for (int i : {slotTargetIndex(source, s), slotAuxIndex(source, s), slotCurveIndex(source, s),
-                              slotBypassIndex(source, s)})
+                              slotAuxDepthIndex(source, s), slotBypassIndex(source, s)})
                     wiring[i] = true;
                 kept[slotAmountIndex(source, s)] = kept[slotScaleIndex(source, s)] = true;
             }

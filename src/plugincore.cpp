@@ -1,6 +1,8 @@
 #include "plugincore.h"
 
 #include "factory.h"
+#include "fxlag.h"
+#include "oversampler.h"
 #include "params.h"
 #include "uistrings.h"
 
@@ -108,6 +110,8 @@ void PluginCore::performSetValue(int index, double value) {
     if (index == paramIndex(GlobalParam::Voices)) {
         voiceLimitChanged();
         hostVoicesChanged();
+    } else if (fxLagParam(index)) { // an effect or wire that makes the output later or sooner
+        askRestart();
     }
 }
 
@@ -115,7 +119,17 @@ void PluginCore::performSetValue(int index, double value) {
 void PluginCore::activate(double sampleRate) {
     sampleRate_ = sampleRate;
     synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
+    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+        pathDelays_[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
+    voicesDelay_ = decimatorDelay(sampleRate, synth_.oversampling());
+    latency_.store(latencyNow());
     restartAskedFor_.store(0);
+}
+
+// The voices' decimator, then the effects' latest path (see fxlag.h), at the rate and oversampling activate() took.
+int PluginCore::latencyNow() const {
+    const FxLag lag = fxOutputLag([this](int i) { return values_[i].load(std::memory_order_relaxed); });
+    return static_cast<int>(std::lround(voicesDelay_ + fxLagSamples(lag, pathDelays_)));
 }
 
 int PluginCore::voiceLimit() const {
@@ -144,11 +158,12 @@ void PluginCore::performStepEnd() {
 // Thread-safe: each format's hostRequestRestart() may be called from any thread.
 void PluginCore::askRestart() {
     const int capacity = synth_.capacity(), voices = voiceLimit(), factor = oversampling_.load();
-    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling())) {
+    const int latency = capacity > 0 ? latencyNow() : 0;
+    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling() && latency == latency_.load())) {
         restartAskedFor_.store(0); // so the same need, should it come back, asks again
         return;
     }
-    const int need = std::max(voices, capacity) * 16 + factor;
+    const int need = (std::max(voices, capacity) * 16 + factor) * 4096 + std::clamp(latency, 0, 4095);
     if (restartAskedFor_.exchange(need) != need)
         hostRequestRestart();
 }
@@ -437,8 +452,10 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(loaded[i]);
     valuesChanged();
-    // Hosts re-read the values only when asked; the remote pages follow in sectionsChanged().
-    hostValuesChanged();
+    // Hosts re-read the values only when asked (a preset's load asks in notifyParams()); the remote pages follow in
+    // sectionsChanged().
+    if (settings)
+        hostValuesChanged();
     // The state's voice limit: more voices than are allocated take a restart (a lower limit the audio thread takes
     // at its next block), and hosts read the voice info again.
     voiceLimitChanged();
@@ -487,21 +504,42 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     return true;
 }
 
-// Main thread. Every param may have changed at once: tell the host about each one that did, since `before`. All
-// of them, three events each, would be more than some hosts take in one go.
+// Main thread. Every param may have changed at once (a preset, Init, a preview put back): the host reads every value
+// again (CLAP's values rescan, VST3's kParamValuesChanged) rather than hearing an edit of each, so it records none of
+// them as automation or in its undo, and the project is marked changed. Values the host sends for the params that
+// changed, for a moment after, are older ones still on their way and aren't taken (see setHostValue()).
 void PluginCore::notifyParams(const ParamValues &before) {
-    for (int i = 0; i < kParamCount; ++i) {
-        const double value = values_[i].load();
-        if (value == before[i] || !hostListed(i))
-            continue;
-        hostBeginEdit(i);
-        hostEdit(i, value);
-        hostEndEdit(i);
-    }
+    const int64_t now = steadyMs();
+    for (int i = 0; i < kParamCount; ++i)
+        if (values_[i].load() != before[i])
+            told(i, now);
+    hostValuesChanged();
     sectionsChanged();
     voiceLimitChanged();
     hostVoicesChanged();
     hostMarkDirty();
+}
+
+// The files in it are elsewhere now: the preset the patch is, and the favorite and recent presets, follow them.
+bool PluginCore::renamePresetFolder(const std::string &from, const std::string &to) {
+    const std::wstring a = PresetLibrary::subfolderPath(from), b = PresetLibrary::subfolderPath(to);
+    if (!presets_.renameFolder(from, to))
+        return false;
+    const std::wstring prefix = a + L"\\";
+    const std::wstring &file = presetFile();
+    if (file.size() > prefix.size() && _wcsnicmp(file.c_str(), prefix.c_str(), prefix.size()) == 0)
+        setPreset(b + file.substr(a.size()), patchEdited());
+    const std::string from8 = utf8(std::filesystem::path(a)) + "\\", to8 = utf8(std::filesystem::path(b)) + "\\";
+    bool moved = false;
+    for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent})
+        for (std::string &kept : *list)
+            if (kept.size() > from8.size() && _strnicmp(kept.c_str(), from8.c_str(), from8.size()) == 0) {
+                kept = to8 + kept.substr(from8.size());
+                moved = true;
+            }
+    if (moved)
+        writeUserSettings();
+    return true;
 }
 
 void PluginCore::keepEditorLayout(const gui::UiLayout &from) {
@@ -557,6 +595,7 @@ bool PluginCore::loadPresetFrom(const clap_istream_t *stream, const std::wstring
         layoutChanged();
         setPreset(path);
         clearHistory();
+        rememberRecent(path);
     }
     return loaded;
 }
@@ -572,6 +611,8 @@ bool PluginCore::savePreset(const std::wstring &path) {
     if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
         return false;
     // The tempo it plays at goes with it: the editor's where the host lets it set one, else the host's last block's.
+    // The patch keeps it only once the file is written.
+    const float tempoBefore = layout_.savedTempo;
     const double bpm = hasTempo() ? tempo() : playedTempo_.load(std::memory_order_relaxed);
     if (bpm > 0.0)
         layout_.savedTempo = static_cast<float>(gui::clampTempo(bpm));
@@ -581,10 +622,15 @@ bool PluginCore::savePreset(const std::wstring &path) {
     if (!saved || !closed) {
         std::error_code ignored;
         fs::remove(part, ignored);
+        layout_.savedTempo = tempoBefore;
         return false;
     }
-    if (!replaceFile(part.wstring(), target.wstring()))
+    if (!replaceFile(part.wstring(), target.wstring())) {
+        std::error_code ignored;
+        fs::remove(part, ignored);
+        layout_.savedTempo = tempoBefore;
         return false;
+    }
     setPreset(path);
     rescanPresets(); // so the library lists it
     return true;
@@ -616,8 +662,149 @@ bool PluginCore::loadPresetAt(int index) {
     return index >= 0 && index < static_cast<int>(presets_.files().size()) && loadPreset(presets_.files()[index]);
 }
 
-void PluginCore::openPresetFolder() {
-    presets_.openFolder();
+bool PluginCore::savePresetIn(const std::string &folder, const std::string &name, const gui::PresetInfo &info) {
+    const std::wstring path = PresetLibrary::presetFile(folder, name);
+    if (path.empty())
+        return false;
+    std::error_code ignored;
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ignored);
+    const gui::PresetInfo before = layout_.presetInfo;
+    layout_.presetInfo = info;
+    if (savePreset(path)) {
+        layoutChanged();
+        return true;
+    }
+    layout_.presetInfo = before;
+    return false;
+}
+
+bool PluginCore::presetExists(const std::string &folder, const std::string &name) const {
+    const std::wstring path = PresetLibrary::presetFile(folder, name);
+    std::error_code ignored;
+    return !path.empty() && std::filesystem::exists(path, ignored);
+}
+
+// The file read whole (its params, its layout and the tables and samples it holds), its info replaced, and written back
+// as a preset saved is: beside it first, then in its place, so a write that fails leaves it as it was.
+bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
+    namespace fs = std::filesystem;
+    if (index < 0 || index >= static_cast<int>(presets_.files().size()) || presets_.entries()[index].factory)
+        return false;
+    const std::wstring path = presets_.files()[index];
+    const auto values = std::make_unique<ParamValues>();
+    gui::UiLayout layout;
+    std::vector<std::shared_ptr<OpData>> held;
+    {
+        FILE *file = nullptr;
+        if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
+            return false;
+        const clap_istream_t stream = fileIn(file);
+        const bool read = readParams(&stream, *values);
+        if (read) {
+            layout = readLayout(&stream);
+            readDataChunk(&stream, held); // its own tables and samples, as stored, which go back with it
+        }
+        std::fclose(file);
+        if (!read)
+            return false;
+    }
+    layout.presetInfo = info;
+    const fs::path part(path + L".part");
+    FILE *file = nullptr;
+    if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
+        return false;
+    const clap_ostream_t stream = fileOut(file);
+    std::vector<const OpData *> data;
+    for (const std::shared_ptr<OpData> &entry : held)
+        data.push_back(entry.get());
+    const bool written = writePatch(&stream, *values, layout) && (data.empty() || writeDataChunk(&stream, data));
+    const bool closed = std::fclose(file) == 0;
+    if (!written || !closed) {
+        std::error_code ignored;
+        fs::remove(part, ignored);
+        return false;
+    }
+    if (!replaceFile(part.wstring(), path))
+        return false;
+    if (presets_.indexOf(presetFile()) == index) { // the patch is that preset: its info is the file's now
+        layout_.presetInfo = info;
+        layoutChanged();
+    }
+    rescanPresets();
+    return true;
+}
+
+bool PluginCore::presetFavorite(int index) const {
+    if (index < 0 || index >= static_cast<int>(presets_.files().size()))
+        return false;
+    const std::string file = utf8(std::filesystem::path(presets_.files()[index]));
+    return std::find(userSettings.favorites.begin(), userSettings.favorites.end(), file) != userSettings.favorites.end();
+}
+
+void PluginCore::setPresetFavorite(int index, bool on) {
+    if (index < 0 || index >= static_cast<int>(presets_.files().size()) || presetFavorite(index) == on)
+        return;
+    const std::string file = utf8(std::filesystem::path(presets_.files()[index]));
+    auto &favorites = userSettings.favorites;
+    if (on)
+        favorites.push_back(file);
+    else
+        favorites.erase(std::remove(favorites.begin(), favorites.end(), file), favorites.end());
+    writeUserSettings();
+}
+
+std::vector<int> PluginCore::recentPresets() const {
+    std::vector<int> recent;
+    for (const std::string &file : userSettings.recent) {
+        const int index = presets_.indexOf(widePath(file));
+        if (index >= 0 && std::find(recent.begin(), recent.end(), index) == recent.end())
+            recent.push_back(index);
+    }
+    return recent;
+}
+
+// A preset loaded goes first among the recent ones.
+void PluginCore::rememberRecent(const std::wstring &path) {
+    const std::string file = utf8(std::filesystem::path(path));
+    if (file.empty())
+        return;
+    auto &recent = userSettings.recent;
+    recent.erase(std::remove(recent.begin(), recent.end(), file), recent.end());
+    recent.insert(recent.begin(), file);
+    if (recent.size() > kMaxRecentPresets)
+        recent.resize(kMaxRecentPresets);
+    writeUserSettings();
+}
+
+std::vector<gui::PresetCategory> PluginCore::userCategories() const {
+    std::vector<gui::PresetCategory> categories;
+    for (const auto &[name, color] : userSettings.categories)
+        categories.push_back({name, color});
+    return categories;
+}
+
+void PluginCore::addUserCategory(const gui::PresetCategory &category) {
+    for (const auto &[name, color] : userSettings.categories)
+        if (name == category.name)
+            return;
+    userSettings.categories.push_back({category.name, category.color});
+    writeUserSettings();
+}
+
+void PluginCore::removeUserCategory(const std::string &name) {
+    if (std::erase_if(userSettings.categories, [&](const auto &category) { return category.first == name; }) > 0)
+        writeUserSettings();
+}
+
+std::string PluginCore::presetBrowserPlace() const {
+    return userSettings.browserPlace;
+}
+
+void PluginCore::setPresetBrowserPlace(const std::string &place) {
+    if (userSettings.browserPlace == place)
+        return;
+    userSettings.browserPlace = place;
+    writeUserSettings();
 }
 
 } // namespace fmvibe

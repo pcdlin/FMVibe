@@ -1141,9 +1141,10 @@ std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::ws
 void Editor::browsePreset(bool save) {
     const ModalGuard guard(alive_); // the dialogs below run modal loops
     // Both start in the preset folder (the scan makes it if need be); saving suggests the preset's name.
-    controller_.rescanPresets();
-    const std::wstring folder = controller_.presetFolder();
-    const std::wstring name = save && controller_.presetIndex() >= 0 ? widen(controller_.presetName()) : std::wstring();
+    PresetStore &store = controller_.presetStore();
+    store.rescanPresets();
+    const std::wstring folder = store.presetFolder();
+    const std::wstring name = save && store.presetIndex() >= 0 ? widen(store.presetName()) : std::wstring();
     const std::wstring title = widen(tr(save ? Str::DialogSavePreset : Str::DialogLoadPreset));
     const std::wstring presets = widen(tr(Str::DialogPresetFiles)), all = widen(tr(Str::DialogAllFiles));
     std::optional<std::wstring> picked =
@@ -1173,9 +1174,9 @@ void Editor::browsePreset(bool save) {
     if (picked->empty())
         return;
     if (save) {
-        if (!controller_.savePreset(*picked))
+        if (!store.savePreset(*picked))
             MessageBoxW(hwnd_, widen(tr(Str::DialogWriteFailed)).c_str(), L"FMVibe", MB_ICONWARNING);
-    } else if (!controller_.loadPreset(*picked)) {
+    } else if (!store.loadPreset(*picked)) {
         MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
     }
     if (guard.alive())

@@ -10,7 +10,7 @@ namespace fmvibe {
 // The coefficients of a half-band's first-order allpasses, `count` of them, for a transition band `transition` wide
 // as a fraction of the rate (the elliptic design, after Laurent de Soras' HIIR), from the smallest up: they alternate
 // between the two chains. The same pair of chains, run on every other sample, keeps two signals 90 degrees apart
-// from `transition` of the rate up to as far short of half of it (see Effects::Hilbert).
+// from `transition` of the rate up to as far short of half of it (see fx::Hilbert).
 inline void halfBandCoefs(int count, double transition, double *coefs) {
     // Elliptic modulus and nome of the transition band.
     double k = std::tan((1.0 - 2.0 * transition) * std::numbers::pi / 4.0);
@@ -45,8 +45,8 @@ inline void halfBandCoefs(int count, double transition, double *coefs) {
 // Half-band low-pass that halves the sample rate: two parallel chains of
 // first-order allpasses (polyphase IIR, after Laurent de Soras' HIIR). The
 // coefficients come from the elliptic design for a given number of allpasses
-// and transition band. Nearly linear phase in the audible band, and no latency
-// to report.
+// and transition band. Nearly linear phase in the audible band, a few samples
+// late (see decimatorDelay() and upDownDelay()).
 class HalfBand {
 public:
     static constexpr int kMaxCoefs = 12;
@@ -196,5 +196,81 @@ private:
     int stages_ = 0;
     std::array<HalfBand, 3> stage_{};
 };
+
+// One channel up to `factor` times the host rate and straight back down, with nothing between: exactly as late, at
+// every frequency, as a path through a stage oversampled that far (the shaper effect's, the filter effect's, an
+// amp's), which is what a path beside one is put through so the two stay in step (see Effects::orderGraph()). A factor
+// of 1 passes what goes in as it is.
+class UpDown {
+public:
+    void prepare(double hostRate, int factor) {
+        factor_ = factor >= 8 ? 8 : factor >= 4 ? 4 : factor >= 2 ? 2 : 1;
+        up_.prepare(hostRate, factor_);
+        down_.prepare(hostRate, factor_);
+    }
+    void reset() {
+        up_.reset();
+        down_.reset();
+    }
+    int factor() const { return factor_; }
+
+    // In place, `frames` <= Upsampler::kMaxSamples / 8.
+    void run(float *x, int frames) {
+        if (factor_ == 1)
+            return;
+        double buf[Upsampler::kMaxSamples];
+        up_.process(x, buf, frames);
+        std::fill_n(x, frames, 0.0f);
+        down_.process(buf, x, frames);
+    }
+
+private:
+    Upsampler up_;
+    Decimator down_;
+    int factor_ = 1;
+};
+
+// How late, in host samples, low frequencies come out of the voices' decimator from `factor` times the rate, and out of
+// an UpDown at `factor`: the centroid of their impulse responses, their group delay at 0 Hz.
+inline double decimatorDelay(double hostRate, int factor) {
+    if (factor < 2)
+        return 0.0;
+    Decimator down;
+    down.prepare(hostRate, factor);
+    constexpr int kFrames = 32, kRounds = 32;
+    double moment = 0.0, sum = 0.0;
+    for (int round = 0; round < kRounds; ++round) {
+        double in[kFrames * Decimator::kMaxFactor]{};
+        if (round == 0)
+            in[0] = 1.0;
+        float out[kFrames]{};
+        down.process(in, out, kFrames);
+        for (int i = 0; i < kFrames; ++i) {
+            moment += static_cast<double>(round * kFrames + i) * out[i];
+            sum += out[i];
+        }
+    }
+    return sum != 0.0 ? moment / sum : 0.0;
+}
+
+inline double upDownDelay(double hostRate, int factor) {
+    if (factor < 2)
+        return 0.0;
+    UpDown path;
+    path.prepare(hostRate, factor);
+    constexpr int kFrames = 32, kRounds = 32;
+    double moment = 0.0, sum = 0.0;
+    for (int round = 0; round < kRounds; ++round) {
+        float x[kFrames]{};
+        if (round == 0)
+            x[0] = 1.0f;
+        path.run(x, kFrames);
+        for (int i = 0; i < kFrames; ++i) {
+            moment += static_cast<double>(round * kFrames + i) * x[i];
+            sum += x[i];
+        }
+    }
+    return sum != 0.0 ? moment / sum : 0.0;
+}
 
 } // namespace fmvibe

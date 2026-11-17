@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <cstring>
 #include <vector>
 
@@ -22,6 +23,12 @@ constexpr uint32_t kLayoutMagic = 0x5459414C;   // "LAYT"
 constexpr uint32_t kSettingsMagic = 0x47544553; // "SETG"
 constexpr uint32_t kPresetMagic = 0x54535250;   // "PRST"
 constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
+// Bytes of a preset's info that are saved: what can be typed, three times over for UTF-8 from a file.
+constexpr size_t kMaxInfoAuthor = 3 * gui::kMaxPresetAuthor;
+// A category's stays as it was saved since the info came in (20 characters), longer than a new one can be typed now
+// (gui::kMaxPresetCategory), so presets and projects with a longer one keep it whole.
+constexpr size_t kMaxInfoCategory = 3 * 20;
+constexpr size_t kMaxInfoDescription = 3 * gui::kMaxPresetDescription;
 // The most of a layout chunk the loader reads, any more is skipped: plenty of room past the most this version
 // writes (see layoutFields()), which is its fixed fields, every route kept (a node's output and its route into
 // each node, at most), every macro's name at full length, every route's wire bent and every empty modulation.
@@ -29,7 +36,7 @@ constexpr uint32_t kMaxLayoutFloats = 4096;
 constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
                   kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 +
-                  1 + 1 + kFxSplits + 1 + kOps <=
+                  2 + kFxSplits + 1 + 5 + 1 + 3 + kMaxInfoAuthor + kMaxInfoCategory + kMaxInfoDescription + kOps <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a
@@ -184,10 +191,13 @@ struct LayoutWriter {
         for (int index : indices)
             out.push_back(static_cast<float>(idOfIndex(index)));
     }
-    // Text, as its length (up to `most` bytes) and then its bytes.
+    // Text, as its length (up to `most` bytes, cut between whole UTF-8 characters) and then its bytes.
     void text(const std::string &text, size_t most) {
-        out.push_back(static_cast<float>(std::min<size_t>(text.size(), most)));
-        for (size_t i = 0; i < text.size() && i < most; ++i)
+        size_t length = std::min(text.size(), most);
+        while (length > 0 && length < text.size() && (static_cast<unsigned char>(text[length]) & 0xC0) == 0x80)
+            --length;
+        out.push_back(static_cast<float>(length));
+        for (size_t i = 0; i < length; ++i)
             out.push_back(static_cast<float>(static_cast<unsigned char>(text[i])));
     }
     // Values by param, as their count and then each param's id and its value.
@@ -337,6 +347,10 @@ void layoutFields(Io &io, Layout &ui) {
     // The tempo the patch was saved as a preset at: 0 for none, or a tempo the editor offers.
     io.number(ui.savedTempo, 0.0f, static_cast<float>(gui::kMaxTempo), AsIs{},
               [](float bpm) { return bpm == 0.0f || bpm >= static_cast<float>(gui::kMinTempo); });
+    // What the preset says about itself: its author, its category and its line, each as its length and its bytes.
+    io.text(ui.presetInfo.author, kMaxInfoAuthor);
+    io.text(ui.presetInfo.category, kMaxInfoCategory);
+    io.text(ui.presetInfo.description, kMaxInfoDescription);
     // The wave each operator's source switch goes back to (any but the data waves, which come after Vowel).
     io.numbers(ui.plainWave, 0.0f, static_cast<float>(OpWave::Vowel), rounded<int>);
 }
@@ -650,6 +664,69 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         for (int position = 0; position < kFxSlots; ++position)
             loaded[fxPositionIndex(position)] = table[fxPositionIndex(position)].def;
     }
+    return true;
+}
+
+namespace {
+
+// The bytes of a patch's params, from its header: none for a stream that isn't FMVibe's state or that readParams()
+// refuses for its version.
+std::optional<uint64_t> paramBytes(const clap_istream_t *stream) {
+    uint32_t header[3];
+    if (!readAll(stream, header, sizeof(header)) || header[0] != kStateMagic || header[1] < 1 ||
+        header[1] > kStateVersion)
+        return std::nullopt;
+    return static_cast<uint64_t>(header[2]) * (sizeof(uint32_t) + sizeof(double));
+}
+
+int64_t fileTell(FILE *file) {
+#ifdef _WIN32
+    return _ftelli64(file);
+#else
+    return ftello(file);
+#endif
+}
+
+bool fileSeek(FILE *file, int64_t offset, int origin) {
+#ifdef _WIN32
+    return _fseeki64(file, offset, origin) == 0;
+#else
+    return fseeko(file, static_cast<off_t>(offset), origin) == 0;
+#endif
+}
+
+} // namespace
+
+bool readPresetInfo(FILE *file, gui::PresetInfo &info) {
+    const clap_istream_t stream = fileIn(file);
+    const std::optional<uint64_t> skip = paramBytes(&stream);
+    if (!skip)
+        return false;
+    // The params, sought past rather than read: a preset the plugin saves holds every one, some 300 KB, where its
+    // layout is a few. One that ends among them is refused, as the stream's reading refuses it.
+    const int64_t at = fileTell(file);
+    if (at < 0 || !fileSeek(file, 0, SEEK_END))
+        return false;
+    const int64_t size = fileTell(file);
+    if (size < at || static_cast<uint64_t>(size - at) < *skip || !fileSeek(file, at + static_cast<int64_t>(*skip), SEEK_SET))
+        return false;
+    info = readLayout(&stream).presetInfo;
+    return true;
+}
+
+bool readPresetInfo(const clap_istream_t *stream, gui::PresetInfo &info) {
+    const std::optional<uint64_t> skip = paramBytes(stream);
+    if (!skip)
+        return false;
+    // The params, passed over: only the layout after them holds the info.
+    unsigned char skipped[4096];
+    for (uint64_t left = *skip; left > 0;) {
+        const size_t n = static_cast<size_t>(std::min<uint64_t>(left, sizeof(skipped)));
+        if (!readAll(stream, skipped, n))
+            return false;
+        left -= n;
+    }
+    info = readLayout(stream).presetInfo;
     return true;
 }
 

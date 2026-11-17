@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <iterator>
+#include <string_view>
 
 namespace fmvibe::gui::detail {
 
@@ -206,6 +208,19 @@ void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected) {
         c.fillRect(r, hovered ? kTrack : kTrack.alpha(0.5f), kRadiusControl);
 }
 
+void paintPill(Canvas &c, Rect r, bool lit) {
+    c.fillRect(r, lit ? kAccent.alpha(0.24f) : kTrack, std::min(kRadiusPanel, r.h * 0.5f));
+}
+
+// Along the chip's foot, inside its rounded ends: a faint track, filled in the aux's color as far as the aux depth.
+void paintAuxDepthBar(Canvas &c, Rect chip, int aux, double depth) {
+    const float inset = chip.h * 0.5f;
+    const Rect track{chip.x + inset, chip.bottom() - 3.0f, chip.w - 2.0f * inset, 2.0f};
+    c.fillRect(track, kSourceColors[aux].alpha(0.25f), kRadiusMark);
+    c.fillRect({track.x, track.y, track.w * static_cast<float>(std::clamp(depth, 0.0, 1.0)), track.h},
+               kSourceColors[aux], kRadiusMark);
+}
+
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width) {
     if (glowing > 0.0f) {
         const float strength = 2.0f * glowing, radius = 0.5f + glowing;
@@ -217,6 +232,90 @@ void plotLine(Canvas &c, const Point *points, size_t count, Color color, float w
         return;
     }
     c.polyline(points, count, color, width);
+}
+
+// What the graphs show of a level that moves with the sound (the glows behind OUT and around the nodes, the effects
+// graph's nodes and wires, the routing graph's wires swelling with their modulation) follows it rather than jumping
+// from one snapshot to the next: rising to it with a time constant of 70 ms and falling back with one of 100 ms, at
+// the sixty polls a second the editor makes.
+float follow(float shown, float target) {
+    constexpr float kPollSeconds = 1.0f / 60.0f, kAttackSeconds = 0.07f, kReleaseSeconds = 0.1f;
+    static const float attack = 1.0f - std::exp(-kPollSeconds / kAttackSeconds);
+    static const float release = 1.0f - std::exp(-kPollSeconds / kReleaseSeconds);
+    shown += (target - shown) * (target > shown ? attack : release);
+    return std::abs(target - shown) < 1e-3f ? target : shown;
+}
+
+// A name in capitals, as card titles and the dashed cards' words are.
+std::string upperCase(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
+    return text;
+}
+
+// --- The plus before the name on + EFFECT and + SOURCE.
+
+// The plus, its left end at `left`.
+static void paintAddPlus(Canvas &c, Point left, Color color) {
+    const Point m{left.x + kAddPlusArm, left.y};
+    c.line({m.x - kAddPlusArm, m.y}, {m.x + kAddPlusArm, m.y}, color, 1.5f);
+    c.line({m.x, m.y - kAddPlusArm}, {m.x, m.y + kAddPlusArm}, color, 1.5f);
+}
+
+// + EFFECT and + SOURCE: a plus and the name, then a chevron for the list it opens. Neutral at rest, in the theme's
+// accent under the mouse and while its list is open; dimmed while every place is taken (`full`). In a theme with pill
+// buttons, a filled pill without an outline, its plus and name in full text at rest and its chevron dim.
+void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool open, bool full) {
+    const bool lit = (hovered || open) && !full;
+    const bool pill = look.flat;
+    const Color ink = full ? kFaint : (lit || pill ? kText : kDim);
+    if (pill) {
+        paintPill(c, r, lit);
+    } else {
+        c.fillRect(r, lit ? kAccent.alpha(0.18f) : kRaised, kRadiusControl);
+        c.strokeRect(r, lit ? kAccent.alpha(0.9f) : kBorder, 1.0f, kRadiusControl);
+    }
+    paintAddPlus(c, {r.x + 10.0f, r.center().y}, ink);
+    c.text({r.x + 10.0f + kAddPlusW, r.y - kAddNameLift, r.w - 30.0f - kAddPlusW, r.h}, name, kTextLabel, ink,
+           Align::Left, true);
+    const Point m{r.right() - 13.0f, r.center().y};
+    const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
+    c.polyline(chevron, 3, pill && !lit && !full ? kDim : ink, 1.5f);
+}
+
+// A card that adds one, its plus `arm` long each way about `m`: dashed and faint at rest, lit in the accent under the
+// mouse; or in a flat theme filled faintly without an outline (a tint of the accent under the mouse), its plus on a
+// disc as + SOURCE's pill is filled. Gives the ink for what it says under the plus.
+Color paintAddCard(Canvas &c, Rect r, Point m, float arm, bool hovered) {
+    if (look.flat) {
+        c.fillRect(r, hovered ? kAccent.alpha(0.1f) : kTrack.alpha(0.3f), kRadiusCard);
+        c.fillCircle(m, arm + 7.0f, hovered ? kAccent.alpha(0.3f) : kTrack);
+        arm *= 0.6f;
+    } else {
+        if (hovered)
+            c.fillRect(r, kAccent.alpha(0.07f), kRadiusCard);
+        c.strokeRect(r, hovered ? kAccent.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
+    }
+    const Color ink = hovered ? kText : look.flat ? kDim : kFaint.alpha(0.8f);
+    c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
+    c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+    return ink;
+}
+
+// A name down a folded card's strip, a character a line, a number after a space on one line of its own.
+void paintDownward(Canvas &c, Rect r, std::string_view name, Color color) {
+    size_t number = name.size();
+    while (number > 0 && std::isdigit(static_cast<unsigned char>(name[number - 1])))
+        --number;
+    if (number == 0 || name[number - 1] != ' ')
+        number = name.size(); // no number after a space: every character down
+    size_t line = 0;
+    for (size_t i = 0; i < name.size() && (line + 1) * 13.0f <= r.h; ++i, ++line) {
+        const size_t length = i == number ? name.size() - i : 1;
+        if (name[i] != ' ')
+            c.text({r.x, r.y + line * 13.0f, r.w, 13.0f}, std::string(name.substr(i, length)), kTextLabel, color,
+                   Align::Center, true);
+        i += length - 1;
+    }
 }
 
 } // namespace fmvibe::gui::detail

@@ -40,7 +40,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 ## Testing
 
-`ctest` runs four programs:
+`ctest` runs four programs, four at a time (the test presets' and `build.sh`'s jobs):
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
@@ -168,10 +168,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     overlapping notes and skips detached ones unless Always is on (checked by tracking the pitch);
   - a lower voice limit applies immediately, while a higher one requests a restart (again once lowered and raised
     before the host restarts) and is reported through voice-info after reactivation, and a state with a higher one,
-    loaded while active, requests one too.
+    loaded while active, requests one too;
+  - the latency extension reporting the voices' decimator's couple of samples, and about 5 more with a shaper effect
+    in the line, a state that moves it, loaded while active, asking for a restart, and the reactivation telling the
+    host's latency extension.
 
-  It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
-  the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
+  It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
+  events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
+  messages. It checks that the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken; that on the SEQ tab a wheel message with Ctrl in its keys zooms
   the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
   sounding processing sleeps, but not while the
@@ -221,7 +225,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     energy off the fundamental growing with Gain (Heavy's more than Clean's), Heavy's aliasing at full Gain and
     Volume on a C7 falling as the oversampling rises (35 dB down at 4x) and the cost of each, Treble and Bass tilting
     the tone their ways, the cabinet taking the top away and the mic at the cone's edge darker than at its center,
-    one amp on both sides' sum in mono and one a side in stereo, Mix at 0 leaving the sound alone, the Fuzz putting out
+    one amp on both sides' sum in mono and one a side in stereo, Mix at 0 leaving the sound alone (but as late as its oversampling), the Fuzz putting out
     no DC, the mic a metre back hearing the room's last reflection, and the model, cabinet, mic, cabinet switch and
     oversampling changed under a note crossfading rather than clicking;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
@@ -249,7 +253,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     440 Hz and 5 kHz about as loud as it went in, with 2, 3, 4 and 6; and its Feedback full up either way staying
     steady as Voices drops from 6 to 2 under a loud sine, then dying away;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
-    undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
+    undamped tail falling 60 dB around 1 kHz in its decay time (and around 8 kHz in nearly as long, its lines' reads
+    between samples taking nothing from its top), and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
     going into a delay and a reverb leaving them sane, ringing out and playing on; a delay switched off and on again playing back nothing it
     held, its lines part written or written all round, and its times then turned to their longest and shortest (as a
@@ -273,23 +278,33 @@ the plain CMake commands and installing into a host are in the [README](README.m
     stacked eight high ending with its voice;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
-  - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
-    curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
+  - a quiet, slow sine through a drawn shaper curve coming out as drawn (a few samples late, for the shaper's twice
+    the rate), without spikes where it crosses the curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
     silence, and an input that isn't a number reading inside its table;
   - the filter effect switched to another type or slope and back (every newer type among them, and the analog
     types, which share their stages, from one another and from a morph), and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
-  - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
+  - a frequency shifter's mirror image 60 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
     192 kHz;
+  - the effects keeping the top where their knobs don't take it: a quiet 15 kHz sine through a soft shaper and a
+    driven high-pass filter effect within 1.5 dB of a 1 kHz one, the parametric EQ's bands up high (a bell, a dip, a
+    high shelf, a low cut and a high cut) sounding within 1.25 dB of their drawn curves from 3 to 15 kHz, and a
+    delay's sixth echo of a 10 kHz burst, at a time between two samples, within 0.5 dB of Feedback's fifth power
+    under its first;
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
     retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
     an LFO with the retired Custom shape did, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
-  - each factory preset's file being sparse, as the preset tool writes it;
+  - each factory preset's file being sparse, as the preset tool writes it, and each saying it is FMVibe's, in a
+    built-in category, with a line of 80 characters at most; and a name from up to 0.11 ("LD Screamer") naming the
+    preset as it is named now;
+  - a preset's author, category and description reading back as written (UTF-8 too, from a sparse patch and a full
+    one, and as the library's scan reads them past the params), as none from a layout before them, and nothing from a
+    stream that isn't a state;
   - the tempo a preset was saved at reading back as written, and as none below 20 BPM or from a layout before it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
@@ -383,6 +398,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
     before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
     bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot;
+  - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
+    and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
+    one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
+    (a pad of nine paths), each flat within 0.05 dB from 20 Hz to
+    18 kHz (the paths meeting in step) and as late as fxlag.h works out, and nothing oversampled on time;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -578,7 +598,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     plain click, and Snap snapping a shaper effect's curve point in its editor;
   - points picked in a shape editor: in a Curve source's full-size editor a box from empty space picking the points
     it reaches (drawn filled, read off the rendered pixels), one of them dragged moving them all as far, one undo
-    step, stopping as a whole at a neighbor not picked and at the top, Ctrl+click adding a point and taking one away,
+    step, stopping as a whole at a neighbor not picked and at the top, Shift+click adding a point and taking one away,
     a click on one of several picked picking it alone, Ctrl+A and Delete removing all but the two kept, undoably, and a
     click on empty space letting them go; on a symmetric voice shaper's page the middle point picked with another
     staying in the middle; with the Curve card still widened beside the SEQ view, Ctrl+A over the roll picking its
@@ -675,8 +695,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     macro takes it (read off the rendered pixels), and the target menu's Macros listing the knobs by their names, the
     one that would loop and the row's own refused;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
-    and velocity's handles, displays and curve editors, velocity's handle faint until it modulates something (read
-    off the rendered pixels), the mod wheel's
+    and velocity's handles, displays and curve editors, the note source's and velocity's handles and the curves on
+    their displays faint until they modulate something (read off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
     takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
@@ -692,14 +712,29 @@ the plain CMake commands and installing into a host are in the [README](README.m
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
-  - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
-    loads); Save greyed out (read off the rendered pixels) and doing nothing while the preset is unchanged, asking
-    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), on a changed factory
-    preset opening Save As's dialog without asking, and
-    doing nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which loading a preset closes; its search narrowing the list as words are
-    typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
-    its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
-    double-click for a word), cutting and pasting;
+  - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file loads);
+    its category's dot at its left, its name in the middle and its author at its right (read off the rendered pixels),
+    and its tooltip; its info card's star making the preset a favorite, Edit Info, Show in Browser, Escape
+    and a click around it closing it, and a factory preset's offering Save Copy; the browser opening on Factory, then where it was left, Show in Browser on the preset's
+    folder, listing its subfolders' presets unless Subfolders is off, a click loading a preset and leaving it open, a
+    double-click loading one and closing it, and Close closing it; its sidebar's All, Favorites and Recent, its tree's folders opening and closing and its categories
+    filtering (two at once, Clear taking them off); the folder's path leading back up and the file's button
+    showing the preset's file (none for a factory preset); its search finding presets by
+    name, category, author and description; its + by FOLDERS making a folder and the Save dialog's + New a category;
+    the x on one of the user's categories removing it after asking, its presets keeping it, listed in grey;
+    Edit Info writing a preset's author and line into its file; a Save dialog's folder's right-click menu opening it in
+    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); underscores typed into the Save dialog's name showing (read off
+    the rendered pixels); a text field given UTF-8 (a preset's author from its file) cut, stepped through, erased and
+    placed by the mouse between whole characters; Save As saving the patch as a new preset in its preset's
+    folder with its info, as the patch's preset; and every part (the bar, the info cards, the browser with its tooltips,
+    filtered, the New Folder and New Category forms, the Save dialog and Edit Info) rendered in every theme
+    (`fmvibe-uishot <dir> 1 --library` replays these alone); Save greyed out (read off the rendered pixels) and doing
+    nothing while the preset is unchanged, asking before it overwrites the preset's file (Cancel keeping it, a failed
+    write leaving the patch changed), on a changed factory preset opening Save As's dialog without asking, and doing
+    nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which
+    loading a preset closes; its search, taking the keyboard once clicked and letting it go at a click elsewhere, narrowing the list as words are typed, Enter loading the preset found, Up and
+    Down picking one, Escape and the search's × emptying it, and its editing: selecting with Shift and the arrows, Home
+    and End, the mouse (a drag, a Shift+click, a double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too (the wheel stepping through the counts), the ones a lower count hides kept as they were, the
     edit button (a pencil) by the keyboard switch opening the partial editor and closing it, as another node's tab
     in the inspector does (read off the rendered pixels), and the full-size shape editor hiding the inspector;
@@ -721,14 +756,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     preset browser's list and the effects graph, and nothing over a dialog; the wheel turned sideways scrolling the
     row, the source cards and the graph; one finger turning a knob it lands on (on a card in the row too, a double
     tap setting it back), tapping an effect's icon, and elsewhere panning the row, the source cards and the
-    browser's list (loading nothing it went down on, a tap then loading one);
+    browser's list (picking nothing it went down on, a tap then picking one);
   - Ctrl-dragging an effect card along the row, an effect's node and a split's (its join and its band's effect along)
     in the graph and a source card, each leaving a copy where it lands with the original's settings, one undo step;
     a plain drag moving instead, and a Ctrl-drag called off leaving nothing, not even an undo step;
   - Enter and Escape on the bin's dialog, the settings and the preset arrows' and the browser's "load anyway?"
     (over the browser, its search letting the keyboard go): Escape cancelling or closing, Enter going ahead;
-  - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
-    button held: over a knob without turning it, stopping at the row's end and following back from there at once,
+  - dragging the effects, the source cards, the MODS view's rows and the preset browser's list and sidebar with
+    the middle button held: over a knob without turning it, stopping at the row's end and following back from there at once,
     and doing nothing while the left button drags a knob;
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
@@ -753,9 +788,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels);
   - every factory preset's routing graph rendered (in Spectrum, into `presets/`), none with a node on or near
     another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
-    other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
+    other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone;
+    `--seq` renders the SEQ view of each one that plays the sequencer, its roll fitted to its notes as a preset
+    load fits it);
   - every algorithm (`src/gui/algorithms.h`: six operators' 32, four's 8, three's 5 and two's 2, set by
-    `View::applyAlgorithm()`) on a new patch: laid out with
+    `RoutingModel::applyAlgorithm()`) on a new patch: laid out with
     no clash as arrange.h counts them, found again as the one the operators form, and taken back, params and
     layout, by one undo; and onto a patch of its own, a route it has kept at its depth, the others disconnected with
     their mode and modulation (undone back), a carrier going out through a filter left so and counted as one, the
@@ -826,7 +863,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     loading the next file in its folder, the search taking the keyboard only once clicked (ringed, read off the
     rendered pixels) and letting it go at Enter, at Escape (which first empties it) and at a click elsewhere, a key
     typed then going nowhere, and finding a table in every source with Down and Enter, a folder gone shown so and its
-    menu setting the frame size for its files, and + Add folder... opening the folder dialog; and over a folder of
+    menu setting the frame size for its files, its Rename... typing its name in its row (Enter or a click elsewhere
+    keeping it, Escape leaving it), and + Add folder... opening the folder dialog; and over a folder of
     2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
     and jumping to a click on its track;
   - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
@@ -858,12 +896,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
     (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
-    allocated asking the host for a restart;
+    allocated asking the host for a restart, and the latency the CLAP plugin reports (the voices' decimator's);
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
     host read the values again, a foreign blob refused, and a state with a table of its own playing it and
     getState() giving it back as setState() took it;
-  - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, the Volume knob dragged
+  - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, a preset loaded by the
+    preset bar's arrow with no edits (kParamValuesChanged and the project marked changed instead), the Volume knob dragged
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
     the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
     opening again after.
@@ -938,7 +977,9 @@ The factory presets are preset files, `presets/Factory/<name>.fmv`, which the bu
 the browser demo alike, again whenever one changes. Neither writes them out: the preset library lists them from
 memory under Factory, beside the preset folder's files (`PresetLibrary::rescan()`), and a factory preset's "file" is
 `factory:` and its name (`PresetLibrary::kFactoryPrefix`), which the host's state names as it would a file. So a
-name, once released, is stored in projects: none is renamed or taken out. `presets/factory.txt` names them in the
+name, once released, is stored in projects: none is renamed or taken out. The one exception: up to 0.11 each name
+began with its category's two letters ("LD Screamer"), and since then the names go without them; such a name, from
+a project or the old `Factory` subfolder, finds the preset as it is named now (`factoryPresetNamed()`). `presets/factory.txt` names them in the
 order they came; a new one goes at the end. The build fails on a file the list doesn't name, or a name without its
 file.
 
@@ -947,7 +988,10 @@ others), then the editor layout, a kilobyte or so where a preset the plugin save
 To add or change one:
 
 1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
-2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`. With `--arrange` first
+2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`. A factory preset says
+   it is FMVibe's, in a built-in category, with a line about it (the quality test checks): set them with
+   `--author=FMVibe --category=<Bass, Drum, FX, Keys, Lead, Pad, Pluck or Seq> --description=<one line, at most 80
+   characters>` before the file. With `--arrange` first
    (`fmvibe-presettool --arrange <file>...`), it also lays the routing graph out again where its nodes, wires, lines to
    OUT or labels run over each other (`arrangeRouting()` in `src/gui/arrange.h`: each node moved to the place on a
    grid and each wire given the bow that lowers a cost most, from where they are and from columns by their distance to
@@ -956,9 +1000,10 @@ To add or change one:
 4. Build and run `ctest`.
 
 A factory preset changed here reaches users with the next release. Being built in, it can't be saved over: Save
-on one opens Save As (`Controller::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
-preset folder's `Factory` subfolder: the scan leaves that subfolder out, and `PresetLibrary::resolve()` takes a file
-there named as a factory preset for the built-in one, so a project naming it loads the built-in one.
+on one opens Save As (`PresetStore::presetWritable()`). Versions up to 0.11 wrote the factory presets out into the
+preset folder's `Factory` subfolder: the scan leaves the files there named as a factory preset out (and the subfolder,
+unless it holds presets of the user's own, which it lists), and `PresetLibrary::resolve()` takes a file there named as
+a factory preset for the built-in one, so a project naming it loads the built-in one.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
@@ -1021,8 +1066,8 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
-LD Screamer's routing view over `docs/editor.png`, PD Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
-BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and SQ Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
+Screamer's routing view over `docs/editor.png`, Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
+Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
 Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
 branch: it builds and runs `fmvibe-uishot` and copies its renders over the three, leaving the version, the other tests
@@ -1070,7 +1115,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks, and the DATA chunk of the patch's tables and samples; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, the table browser's folders) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories and where the preset browser opens, the table browser's folders) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
@@ -1086,31 +1131,47 @@ breakpoints in `src/` then hit.
 | `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
-| `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
+| `src/effects.h`, `src/effects.cpp` | The effects on the voices' sum: `Effects`, its slots (each holding every effect type's state, so it switches type without allocating, and running its type through a static dispatch in `runSlot()`) and the effects graph that runs them (wires, splits, sums, the paths kept in step) |
+| `src/fx/` | Each effect type a slot runs, in a module of its own (`shaper`, `delay`, `eq`, `parameq`, `filterfx`, `compressor`, `multidyn`, `reverb`, `phaser`, `flanger`, `chorus`, `shifter`, `disperser`, `widener`, `utility`, `ampfx`): its state, its `prepare()`, `start()` and `run()`, and the responses the editor draws of it; `common.h` what they share (the `fx::Context` a slot hands its effect, the `fx::Meters` it writes, biquads and crossovers, ramps, delay line reads) |
+| `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws (`src/fx/ampfx.h` runs it in a slot) |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/fxlag.h` | How late each path through the effects graph is from the effects that run oversampled, the pads that keep paths meeting in step, and the output's latency |
 | `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
 | `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
-| `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
+| `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, reading the patch through the models below, and handing its panels (`src/gui/panel.h`) what is theirs. Window-free, so it also renders offscreen |
+| `src/gui/widget.h` | What the editor is made of for input, shared by the `View` and its panels: the `Widget` and its kinds, the mouse's modifiers and cursors, the keys, a context menu's entries and the text fields |
+| `src/gui/panel.h` | The editor's areas as classes of their own: the `Panel` interface each implements (its widgets and popups, painting, cursor, polls, mouse, wheel, keys, text fields, pans, context menu, a source's handle dropped on it and the questions it asks), the `PanelHost` through which it reaches what the `View` keeps for every area, the drag going on as a panel is handed it (`DragState`), what a panel keeps for a paint or hit test (`ScopeCache`), and how a row of cards scrolls under a drag held at its edge (`edgePull()`) |
+| `src/gui/patchedits.h`, `src/gui/patchedits.cpp` | What the editor's models of the patch stand on: the params read and edited through the `Controller` as the editor edits them, the layout saved with them, and the messages an edit refused leaves. Window-free and without a `View`, so a tool can edit a patch through them |
+| `src/gui/modulationmodel.h`, `src/gui/modulationmodel.cpp` | `ModulationModel`: the sources in their places, their slots' targets, depths, auxes, bypass and polarity, what a source may modulate, the MODS view's empty modulations; assigning, moving, retargeting and removing modulations, adding and removing sources |
+| `src/gui/routingmodel.h`, `src/gui/routingmodel.cpp` | `RoutingModel`: the routing graph's nodes on and where they sit, its routes and outputs (shown, kept at 0 %, how far their wires bow), connecting, rerouting and disconnecting them, and setting the classic algorithms |
+| `src/gui/fxgraphmodel.h`, `src/gui/fxgraphmodel.cpp` | `FxGraphModel`: the effects' line of effects, splits and joins, read from the wires and written back to them; filling, adding, copying and removing effects, and adding, splitting in three and removing splits |
 | `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
-| `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
-| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
-| `src/gui/shapes.cpp` | Editing drawn shapes: Curve sources' shapes, shaper curves and the note source's curve |
-| `src/gui/tableview.cpp` | The Wavetable and Sample operators' part of the editor: the source switch, the pickers, the TABLE and SAMPLE tabs, and the table browser |
-| `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
-| `src/gui/seq.cpp` | The SEQ view: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
-| `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
+| `src/gui/routing.h` | The routing graph's geometry: which param joins two nodes, wires and arrowheads, their bows and grips, a node's edge, and where the inspector's lens's leader starts |
+| `src/gui/routingpanel.h`, `src/gui/routingpanel.cpp` | The routing panel, `RoutingPanel`: the routing graph and the matrix, with ALGORITHM and its panel of algorithms: the graph's nodes, wires and labels (clear of each other), its glow (the effects graph's backdrop too), halos and grid's points for Ctrl+drag, the drags that move nodes and routes and bend wires, a label's list of modes and the routing's context menus |
+| `src/gui/inspectorpanel.h`, `src/gui/inspectorpanel.cpp` | The inspector, `InspectorPanel`: the lens over the routing panel's left end and the page of the node it shows (an operator's waves and their list, its tabs, unison copies, scope and INPUTS rows, a filter's response and handle, a shaper's curve), its title and nodes' tabs; what covers it, and a node's tab or name clicked showing that node |
+| `src/gui/opsource.cpp` | The inspector's part for a Wavetable or Sample operator: the source switch on its title row, the table's and sample's pickers, the TABLE tab (its frames, Position's control, with its warp) and the SAMPLE tab (its waveform, handles, ROOT, LOOP, MODE and reverse switch), and a file dropped on that display |
+| `src/gui/filterdisplay.h`, `src/gui/filterdisplay.cpp` | A filter's display, shared by the inspector's filter page and the filter effect's card: its response with its modulation's reach, the spectrum behind it and its handle |
+| `src/gui/lists.h` | The lists the editor's list buttons open: which params open one, their entries' values and names, and which have arrows that step along them |
+| `src/gui/fxpanel.h`, `src/gui/fxpanel.cpp` | The FX view, `FxPanel`: the effects' line of effects, splits and joins as it shows it: its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector, their cards' and nodes' moves (and Ctrl-drag copies), glides and scrolling; a split's controls, which both show; the list of effects, the bin and its questions. What an effect's card holds below its title row is still the `View`'s |
+| `src/gui/fxgraph.h` | The effects graph's look (its bands' colors and the splits'), shared by the editor's files |
+| `src/gui/shapeeditor.h`, `src/gui/shapeeditor.cpp` | The drawn shapes' editors, `ShapeEditor`: Curve sources' shapes, shaper curves and the note source's and velocity's curves, edited in place (a widened source card, an effect's card, a voice shaper's page) or in the full-size editor over the panels' row, and a Custom wave's partial editor; which are open, the points picked, Points \| Steps and Snap, the grid, symmetric curves, and the shared painters of a shaper's curve and a widened card's shape |
+| `src/gui/modspanel.h`, `src/gui/modspanel.cpp` | The MODS view, `ModsPanel`: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
+| `src/gui/seqpanel.h`, `src/gui/seqpanel.cpp` | The SEQ view, `SeqPanel`: the sequencer's settings card, and the piano roll with its tools, ruler, keys and lane |
+| `src/gui/tablebrowser.h`, `src/gui/tablebrowser.cpp` | The table browser, `TableBrowser`, over the routing panel: its sources (Factory, the patch's own, the library's folders and their menu), its list with its search and scrollbar, and its preview; and the tables' and samples' glyphs and a table's frames as a stack, which the inspector's TABLE tab and source page share |
+| `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset bar's actions (Init, Load, Save, Save As, the arrows), and the text fields' editing |
+| `src/gui/presetbrowser.h`, `src/gui/presetbrowser.cpp` | The presets panel, `PresetBrowser`: the preset bar's info and its card, the preset browser (its sidebar, list and search) and the Save dialog with its New Category, New Folder and Rename forms |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
-| `src/gui/controller.h` | What the editor needs from the plugin (values, edits, telemetry, layout) |
-| `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
+| `src/gui/controller.h` | What the editor needs from the plugin: the `Controller` (values, edits, telemetry, layout, settings), the `PresetStore` it reaches the preset library through (`NoPresetFiles` for a host without files), the user's `EditorSettings` and the `UndoHistory` each `Controller` keeps |
+| `src/gui/controller.cpp` | The undo history, which each `Controller` keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
-| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, and lays their routing graphs out (`--arrange`) |
+| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, lays their routing graphs out (`--arrange`) and sets their info (`--author`, `--category`, `--description`) |
 | `src/gui/arrange.h` | Laying a routing graph out: its clashes (nodes, wires, lines to OUT, loops and labels over each other) and a search for a layout without them |
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
@@ -1177,12 +1238,12 @@ itself.
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel,
   velocity and the pitch bend; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
-  sources' number likewise); the effects graph's splits 34000 + 20·split, the wires into its
+  sources' number likewise), and every slot's aux depth 49000 + 20·source (likewise); the effects graph's splits 34000 + 20·split, the wires into its
   slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
   output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
   (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
   nodes are numbered the slots, the splits, the output, then the sums. The editor wires a line (see
-  `src/gui/fxgraph.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
+  `src/gui/fxgraphmodel.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
   number, whose first two inputs take the high band and the low band. The effects always run as the graph: a chain
   is a line of it (the output's first wire comes from the input to begin with), and the FX view's row and graph are
   two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
@@ -1197,7 +1258,9 @@ itself.
   (`FactoryTable`), sample loop (`SampleLoop`) and sample mode (`SampleMode`) and the sequencer's play
   mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
-  the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
+  the stored lists' members with static_asserts, so a change that renumbers them doesn't compile (and
+  `src/params.cpp` checks that every param's id leads back to it: a check that costs MSVC seconds goes in a `.cpp`,
+  run once, rather than in a header every file pays it in); a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
   three-band compressor (`FxType::MultiComp`) is no longer offered, and `readParams()` loads a slot holding one in a
   state from before version 6 as a three-band dynamics set from its fields, moving the modulation aimed at them
@@ -1216,7 +1279,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,329 of the 24,996 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,329 of the 25,444 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, a Sample operator's
   root, loop, mode and reverse, the chain's retired order, the feedback's route modes and the retired fields), the operators'
@@ -1235,11 +1298,12 @@ itself.
   own switch says.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events (in
   VST3, `beginEdit()` / `performEdit()` / `endEdit()` on the main thread). Hosts
-  record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
-  each param whose value changed. The queue they wait in keeps room for the end of each gesture begun, so a host is
+  record automation and undo from these, and mark the project as changed. Loading a preset and Init send none: the host is asked to read every value again (CLAP's values rescan,
+  VST3's kParamValuesChanged) and told the project changed, so it records none of it as automation or in its undo.
+  The queue they wait in keeps room for the end of each gesture begun, so a host is
   never left inside one (a gesture whose begin didn't fit goes without its end); edits that don't fit have the host
   read every value again instead (one values rescan, from the main-thread callback). For half a second after the plugin
-  tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
+  tells the host a param's value (or a preset load changes it), it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
 - The state version rises at most once between two tagged releases. A change that needs older states loaded
@@ -1279,7 +1343,10 @@ itself.
   the graph, the band each split shows and which splits' containers are folded, the SEQ view's roll (whether it
   draws, its snap, its lane, its lowest row and whether it is folded to the scale), the tempo the patch was last
   saved as a preset at (0 for none), which a host that lets the editor set the tempo (`Controller::hasTempo()`)
-  takes up as the preset loads, and the wave each operator's source switch goes back to (`UiLayout::plainWave`).
+  takes up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
+  name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
+  the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips, and the wave each operator's
+  source switch goes back to (`UiLayout::plainWave`).
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Last, in both, comes the DATA chunk
@@ -1316,7 +1383,10 @@ itself.
   allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then
   deactivates and reactivates the plugin (a host that doesn't is asked again once more voices or another
-  oversampling factor need one). What VST3 only allows on the main thread, and the audio thread may ask for,
+  oversampling factor need one). So does an edit or a state that moves the latency (`PluginCore::latency()`: the
+  voices' decimator's delay and the effects' latest path's, see `src/fxlag.h`), which the plugin reports to hosts as
+  of its last activate (CLAP's latency extension, telling the host's `changed()` from activate, and VST3's
+  `getLatencySamples()`). What VST3 only allows on the main thread, and the audio thread may ask for,
   goes through a message-only window there. Each voice takes about
   66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 105 KB, so 512 voices reserve about 54 MB. Voices isn't automatable for the same reason. The comb lines,
