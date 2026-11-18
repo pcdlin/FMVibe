@@ -2161,7 +2161,10 @@ one may have changed since it last did.
       patch has changed (over the browser, which stays open when the load is called off).
     - The **strip** shows the preset picked: its pill, name, author and folder over its description, then a button
       that shows its file in Explorer, picked (greyed out while nothing is picked, and for a factory preset, which has
-      none), and **Close**, which closes the browser as a click around it does. A preset's info
+      none), and **Close**, which closes the browser as a click around it does. While the sidebar shows **User** or a
+      folder in it, **Save Here…** sits beside Close: it opens the Save dialog (see Save As below) with that folder
+      picked, its row scrolled into sight, and is greyed out when Save As is. Factory, All, Favorites and Recent, which
+      nothing can be saved in, don't show it, nor does the browser demo, which has no files. A preset's info
       is edited from the info card, for the preset loaded.
     - Favorites and the recent presets are kept in the user's settings.
     - A click in its **search**, in its first row, gives it the keyboard, and a click anywhere else takes it away (while

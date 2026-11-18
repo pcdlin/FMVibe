@@ -910,6 +910,7 @@ STR(PresetsNoneHere, "No presets")
 STR(PresetsNoMatchShort, "No matches.")
 STR(PresetsNoDescription, "No description")
 STR(PresetsClose, "Close") // the browser's button that closes it
+STR(PresetsSaveHere, "Save Here…") // the browser's button that saves the patch in the folder shown
 STR(PresetsEditInfo, "Edit Info…")
 STR(PresetsAddInfo, "Add Info…")
 STR(PresetsSaveCopy, "Save Copy…")
@@ -922,6 +923,7 @@ STR(TipFavorite, "Add to Favorites")
 STR(TipUnfavorite, "Remove from Favorites")
 STR(TipShowFile, "Show in Explorer")
 STR(TipShowFileFactory, "Factory preset")
+STR(TipSaveHere, "Save the current preset in {1}") // the folder the browser shows
 STR(TipNewFolder, "New folder")
 STR(TipSubfolders, "List presets in all subfolders")
 STR(TipRemoveCategory, "Remove category")

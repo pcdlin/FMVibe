@@ -727,7 +727,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); underscores typed into the Save dialog's name showing (read off
     the rendered pixels); a text field given UTF-8 (a preset's author from its file) cut, stepped through, erased and
     placed by the mouse between whole characters; Save As saving the patch as a new preset in its preset's
-    folder with its info, as the patch's preset; and every part (the bar, the info cards, the browser with its tooltips,
+    folder with its info, as the patch's preset; the browser's Save Here beside Close, only on a folder of the user's and
+    greyed out as Save As is (read off the rendered pixels), saving in that folder through the Save dialog, its row
+    scrolled into sight; and every part (the bar, the info cards, the browser with its tooltips,
     filtered, the New Folder and New Category forms, the Save dialog and Edit Info) rendered in every theme
     (`fmvibe-uishot <dir> 1 --library` replays these alone); Save greyed out (read off the rendered pixels) and doing
     nothing while the preset is unchanged, asking before it overwrites the preset's file (Cancel keeping it, a failed

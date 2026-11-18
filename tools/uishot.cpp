@@ -10856,6 +10856,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     auto treeRow = [&](int row) { return Point{300.0f, 215.0f + row * 26.0f + 13.0f}; };
     auto listRow = [&](int row) { return Point{620.0f, 132.0f + row * 28.0f + 13.0f}; };
     const Point load{948.0f, bottom - 62.0f + 31.0f}, showFile{876.0f, bottom - 62.0f + 31.0f},
+        saveHere{849.0f, bottom - 62.0f + 31.0f}, showFileInFolder{777.0f, bottom - 62.0f + 31.0f}, // Save Here beside Close
         subfolders{932.0f, 68.0f};
     const bool shot = renderer.save(view, dir / "23e-browser.png");
     const bool onFolder = listed({"Hook Lead", "Opener"}) && view.browserPicked() == opener;
@@ -10897,6 +10898,49 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
                   fresh.browserPlace.empty() && nothingLoaded,
               "the browser opens where it was left, kept in the user's settings, and on Factory to begin with, its Close "
               "closing it");
+    }
+    {
+        // Save Here, beside Close: none on Factory or All, where nothing can be saved; greyed out on an unchanged Init,
+        // as Save As is; and on a folder of the user's opening the Save dialog on it, its row scrolled into sight among
+        // more folders than the dialog's tree shows at once.
+        FakeController saving;
+        saving.library = {{"Grain", "", false, {}}, {"Bell", "", true, {}}};
+        for (char c = '0'; c <= '9'; ++c)
+            saving.folders.push_back(std::string("F") + c);
+        View savingView(saving);
+        auto faceAt = [&] { // the button's left end, clear of its label
+            savingView.mouseMove(away, {});
+            renderer.save(savingView, dir / "23e-browser-save-here.png");
+            return renderer.pixel({saveHere.x - 42.0f, saveHere.y});
+        };
+        click(savingView, detail::kPresetName.center());
+        const uint32_t onFactory = faceAt();
+        click(savingView, saveHere);
+        const bool factoryNone = savingView.browserShown() && !savingView.saveShown();
+        click(savingView, {300.0f, 115.0f}); // All
+        const uint32_t onAll = faceAt();
+        click(savingView, saveHere);
+        const bool allNone = savingView.browserShown() && !savingView.saveShown();
+        click(savingView, treeRow(1)); // User, which opens it in the tree
+        click(savingView, treeRow(11)); // F9
+        const uint32_t greyed = faceAt();
+        click(savingView, saveHere);
+        const bool greyedNone = savingView.browserShown() && !savingView.saveShown();
+        saving.loadPresetAt(0);
+        const uint32_t lit = faceAt();
+        click(savingView, saveHere);
+        const bool opened = savingView.saveShown() && !savingView.browserShown();
+        // The tree's last row, at the bottom of its box: F9's, scrolled up to it.
+        const std::vector<MenuItem> lastRow =
+            savingView.contextMenu({800.0f, detail::kTitleBarH + 6.0f + 88.0f + 188.0f - 15.0f});
+        savingView.menuCommand(lastRow.size() > 1 ? lastRow[1].command : 0);
+        const bool inSight = saving.openedFolder == "F9";
+        type(savingView, "Sketch");
+        savingView.typeKey(View::Key::Enter);
+        check(onFactory == onAll && greyed != onFactory && lit != greyed && lit != onFactory && factoryNone && allNone &&
+                  greyedNone && opened && inSight && saving.savedIn == "F9" && !savingView.saveShown(),
+              "the browser's Save Here shows only on a folder of the user's, greyed out as Save As is, and saves the patch "
+              "in that folder through the Save dialog, its row in sight (read off the rendered pixels)");
     }
 
     // The sidebar: All, Favorites and Recent, the tree's folders opening and closing, and the categories filtering
@@ -10956,7 +11000,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     const bool up = view.browserListed().size() == 11;
     click(view, treeRow(4)); // Live Set
     click(view, listRow(0));
-    click(view, showFile);
+    click(view, showFileInFolder);
     const bool shownFile = model.shownFile == index("Intro Swell");
     click(view, treeRow(0)); // Factory
     click(view, listRow(0));

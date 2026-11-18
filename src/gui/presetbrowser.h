@@ -118,6 +118,10 @@ private:
     // Opens the browser on the preset loaded, in its folder; or on `preset`.
     void openBrowser(int preset = -1);
     void rememberBrowserPlace(); // the sidebar's entry picked, kept in the user's settings for the next browser
+    // Save Here: offered while the browser shows a folder presets can be saved in, and on as Save As is.
+    bool saveHereShown() const;
+    bool saveHereOn() const;
+    void openSaveIn(const std::string &folder); // the Save dialog, that folder picked and its row in sight
     Rect browserListArea() const;
     int browserVisible() const;
     std::vector<TreeRow> browserTree() const;

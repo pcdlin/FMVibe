@@ -58,8 +58,12 @@ Rect closeButton(Rect p) {
     const Rect s = stripOf(p);
     return {s.right() - 14.0f - 86.0f, s.y + 17.0f, 86.0f, 28.0f};
 }
-Rect showFileButton(Rect p) {
+Rect saveHereButton(Rect p) {
     const Rect r = closeButton(p);
+    return {r.x - 8.0f - 96.0f, r.y, 96.0f, 28.0f};
+}
+Rect showFileButton(Rect p, bool saveHere) { // before Save Here while that shows
+    const Rect r = saveHere ? saveHereButton(p) : closeButton(p);
     return {r.x - 8.0f - 32.0f, r.y, 32.0f, 28.0f};
 }
 // A row's star, before the author's column at its right.
@@ -785,8 +789,10 @@ std::vector<Widget> PresetBrowser::browserWidgets() const {
     }
     // Always there, greyed out while nothing is picked (and the file's, for a factory preset, which has none).
     add(Kind::BrowserClose, closeButton(panel));
+    if (saveHereShown())
+        add(Kind::BrowserSaveHere, saveHereButton(panel));
     if (presetStore().writesPresetFiles())
-        add(Kind::BrowserShowFile, showFileButton(panel));
+        add(Kind::BrowserShowFile, showFileButton(panel, saveHereShown()));
     return list;
 }
 
@@ -1131,7 +1137,7 @@ void PresetBrowser::paintBrowser(Canvas &c) {
     if (browserPick_ >= 0 && browserPick_ < static_cast<int>(presets.size())) {
         const PresetEntry &e = presets[browserPick_];
         const float right =
-            (presetStore().writesPresetFiles() ? showFileButton(panel).x : closeButton(panel).x) - 14.0f;
+            (presetStore().writesPresetFiles() ? showFileButton(panel, saveHereShown()).x : closeButton(panel).x) - 14.0f;
         float sx = strip.x + 16.0f;
         const float pill = paintCategoryPill(c, {sx, strip.y + 13.0f}, 16.0f, e.info.category, kTextSmall);
         if (pill > 0.0f)
@@ -1155,7 +1161,7 @@ void PresetBrowser::paintBrowser(Canvas &c) {
     }
     for (const Widget &w : browserWidgets())
         if (w.kind == Kind::SearchClear || w.kind == Kind::BrowserSubfolders || w.kind == Kind::BrowserClose ||
-            w.kind == Kind::BrowserShowFile)
+            w.kind == Kind::BrowserShowFile || w.kind == Kind::BrowserSaveHere)
             host_.paintWidget(c, w);
 }
 
@@ -1260,6 +1266,29 @@ void PresetBrowser::openSave(int index) {
     infoCardOpen_ = false;
     nameMenu_ = 0;
     host_.resetHover();
+}
+
+// The folders the user's presets are files in: not Factory's, nor All, Favorites and Recent, which aren't places.
+bool PresetBrowser::saveHereShown() const {
+    return browserScope_ == BrowserScope::Folder && presetStore().writesPresetFiles();
+}
+
+bool PresetBrowser::saveHereOn() const { // as Save As, greyed out on Init until the patch changes
+    return controller().presetHasFile() || controller().patchEdited();
+}
+
+void PresetBrowser::openSaveIn(const std::string &folder) {
+    openSave();
+    const std::vector<std::string> folders = saveFolders();
+    const auto at = std::find(folders.begin(), folders.end(), folder);
+    if (at == folders.end()) // gone since the browser opened
+        return;
+    saveFolder_ = folder;
+    // Scrolled just far enough to show its row, which comes after Factory's.
+    const float box = saveLayout().folders.h;
+    const float rowEnd = 8.0f + static_cast<float>(at - folders.begin() + 2) * kFolderRowH;
+    const float content = static_cast<float>(folders.size() + 1) * kFolderRowH + 8.0f;
+    saveFolderScroll_ = std::clamp(rowEnd - box, 0.0f, std::max(content - box, 0.0f));
 }
 
 std::vector<Widget> PresetBrowser::saveWidgets() const {
@@ -1641,6 +1670,12 @@ bool PresetBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.text(w.rect, tr(Str::PresetsClose), kTextBody, ink, Align::Center);
         return true;
     }
+    case Kind::BrowserSaveHere: {
+        const bool on = saveHereOn();
+        const Color ink = buttonFace(c, w.rect, true, hovered && on, on);
+        c.text(w.rect, tr(Str::PresetsSaveHere), kTextBody, ink, Align::Center, on);
+        return true;
+    }
     case Kind::BrowserShowFile: {
         const bool on = picked && !presets[browserPick_].factory;
         const Color ink = buttonFace(c, w.rect, false, hovered && on, on);
@@ -1898,6 +1933,10 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
         if (picked && !presets[browserPick_].factory)
             presetStore().showPresetFile(browserPick_);
         return true;
+    case Kind::BrowserSaveHere:
+        if (saveHereOn())
+            openSaveIn(browserFolder_);
+        return true;
     case Kind::SaveBackdrop:
         return true; // a stray click around it keeps what is typed
     case Kind::SaveCategory: {
@@ -2024,6 +2063,9 @@ std::string PresetBrowser::tooltip(const Widget &w) const {
         return tr(browserPick_ >= 0 && browserPick_ < static_cast<int>(presets.size()) && presets[browserPick_].factory
                       ? Str::TipShowFileFactory
                       : Str::TipShowFile);
+    case Kind::BrowserSaveHere:
+        return saveHereOn() ? trf(Str::TipSaveHere, {folderName(browserFolder_, tr(Str::PresetsUser))})
+                            : std::string(tr(Str::TipSaveUnchanged));
     case Kind::BrowserNew:
         return tr(Str::TipNewFolder);
     case Kind::BrowserSubfolders:
