@@ -285,6 +285,15 @@ double shaperCurveValue(const Get &get, ClipMode mode, int curveBase, bool symme
     return symmetric && x < 0.0 ? -plain(-x) : plain(x);
 }
 
+// How loud what goes into a shaper is, for the dot the editor shows on its curve: the peak of either side, before its
+// drive, falling kShaperLevelFallDb a second, slowly enough that a low note's level holds still between its peaks.
+// Below kShaperLevelFloor no dot shows.
+constexpr double kShaperLevelFallDb = 30.0;
+constexpr float kShaperLevelFloor = 1e-3f;
+inline double shaperLevelFall(double seconds) {
+    return std::pow(10.0, -kShaperLevelFallDb * seconds / 20.0);
+}
+
 // How long a drawn curve takes to glide to new points. Swapped in at once, a point dragged would step what comes out
 // every block, which is heard as crackle: most of all the middle point, which sets the level of all that is quiet.
 constexpr double kClipGlideSeconds = 0.02;

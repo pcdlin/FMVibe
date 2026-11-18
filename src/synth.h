@@ -119,9 +119,12 @@ struct Telemetry {
     std::array<float, kMaxSources> envPos{};
     std::array<std::array<float, kMcBands>, kFxSlots> fxReduction{}; // compressor gain reduction, dB
     // Three-band dynamics' bands: their detectors' levels (1 is full scale) and their gains (dB), see
-    // Effects::bandLevel().
+    // Effects::bandLevel(); a shaper effect's band 0 level, how loud what goes into it is.
     std::array<std::array<float, kMcBands>, kFxSlots> fxBandLevel{};
     std::array<std::array<float, kMcBands>, kFxSlots> fxBandGain{};
+    // How loud what goes into each voice shaper is in the newest voice (see kShaperLevelFallDb); 0 while the synth
+    // doesn't analyze (see Synth::setAnalyzing()).
+    std::array<float, kShapers> shaperLevels{};
     // Parametric EQs', filters' and phase dispersers' output, see Effects::spectrum().
     std::array<Spectrum, kFxSlots> fxSpectrum{};
     std::array<Spectrum, kFilters> filterSpectrum{}; // each voice filter's output, all voices together
@@ -438,6 +441,7 @@ private:
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]
         std::array<double, kShapers> shaperOut{};               // latest mono shaper output (what operators hear)
         std::array<std::array<double, 2>, kShapers> shaperLast{}; // latest shaper output per channel (what shapers hear)
+        std::array<double, kShapers> shaperLevel{}; // how loud what goes in is, while analyzing (see Telemetry::shaperLevels)
         // Whether a filter's or shaper's state above may hold anything since it last ran: one that stops is cleared
         // once, as it stops, rather than every block it stays off (a Filter and a ClipState are large, see
         // renderBlock()).

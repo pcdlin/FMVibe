@@ -34,6 +34,12 @@ std::string noteName(int note) {
     return std::string(kNoteNames[note % 12]) + std::to_string(note / 12 - 1);
 }
 
+// The dot on a shaper's curve, as the sources' displays draw theirs.
+void paintLevelDot(Canvas &c, Point dot, Color color) {
+    c.fillCircle(dot, 7.0f, color.alpha(0.25f));
+    c.fillCircle(dot, 3.5f, kText);
+}
+
 } // namespace
 
 ShapeEditor::ShapeEditor(PanelHost &host)
@@ -170,6 +176,16 @@ bool ShapeEditor::shapeSteps(int) const {
 // its page snaps with Ctrl alone.
 bool ShapeEditor::shapeSnaps(int shape, bool ctrl) const {
     return ctrl != ((shape == shapeEditing() || shape == wideLfo()) && controller().layout().shapeSnap);
+}
+
+float shaperLevelNow(const Telemetry &t, int unit) {
+    const float level = unit < kFxSlots ? t.fxBandLevel[unit][0] : t.shaperLevels[unit - kFxSlots];
+    return level * static_cast<float>(shaperLevelFall(t.age));
+}
+
+bool shaperDotMoved(const Telemetry &now, const Telemetry &was, int unit) {
+    const float to = shaperLevelNow(now, unit), from = shaperLevelNow(was, unit);
+    return (to > kShaperLevelFloor || from > kShaperLevelFloor) && std::abs(to - from) > 0.01f * std::max(to, from);
 }
 
 int shapeBase(int shape) {
@@ -858,6 +874,11 @@ void ShapeEditor::paintClipCurveEditor(Canvas &c, int shape) {
         c.fillRect({r.x, r.y, r.w * 0.5f, r.h}, kDisplayColor.alpha(0.35f));
     plotLine(c, points.data(), points.size(), fx, 2.0f);
     paintMirroredPoints(c, shape, 4.0f);
+    // This plot leaves the drive out, so the dot stands where the drive takes what goes in along it.
+    if (const float level = shaperLevelNow(host_.telemetry(), unit); level > kShaperLevelFloor) {
+        const double in = std::min(level * std::pow(10.0, host_.liveValue(shaperParams(unit).drive) / 20.0), 1.0);
+        paintLevelDot(c, shapeAt(0.5 + 0.5 * in, shaperCurveValue(get, ClipMode::Custom, base, symmetric, in)), fx);
+    }
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = focused(DragKind::ShapePoint);
@@ -1132,7 +1153,8 @@ void ShapeEditor::paintShapeGridControls(Canvas &c) {
 }
 
 // Transfer curve: input level across, output up, with the drive, output and mix applied (the Stack curve as many
-// times in a row as it is stacked, each driven and brought back down between, without its filters).
+// times in a row as it is stacked, each driven and brought back down between, without its filters). A dot stands on
+// it at how loud what goes in is, as high as that comes out; past the plot's end, at its end.
 void ShapeEditor::paintShaperCurve(Canvas &c, Rect r, int unit) {
     const Color fx = clipColor(unit);
     const ShaperParams clip = shaperParams(unit);
@@ -1168,6 +1190,7 @@ void ShapeEditor::paintShaperCurve(Canvas &c, Rect r, int unit) {
             y = clipShape(mode, y * between * drive);
         return y;
     };
+    auto transfer = [&](double x) { return x + (shape(x * drive) * output - x) * mix; };
     std::vector<double> key = curveKey(Curve::Shaper, inner);
     key.insert(key.end(), {static_cast<double>(mode), symmetric ? 1.0 : 0.0, drive, output, mix,
                            static_cast<double>(stack)});
@@ -1177,11 +1200,15 @@ void ShapeEditor::paintShaperCurve(Canvas &c, Rect r, int unit) {
         std::vector<Point> points;
         for (int i = 0; i <= 240; ++i) {
             const double x = kRange * (2.0 * i / 240.0 - 1.0);
-            points.push_back(at(x, x + (shape(x * drive) * output - x) * mix));
+            points.push_back(at(x, transfer(x)));
         }
         return points;
     });
     plotLine(c, points.data(), points.size(), fx, 2.0f);
+    if (const float level = shaperLevelNow(host_.telemetry(), unit); level > kShaperLevelFloor) {
+        const double x = std::min<double>(level, kRange);
+        paintLevelDot(c, at(x, transfer(x)), fx);
+    }
 }
 
 // A symmetric curve's points, mirrored onto its left half as faint rings: they move with the ones they mirror.
@@ -1241,6 +1268,12 @@ void ShapeEditor::paintClipCurveCard(Canvas &c, Rect r, int unit) {
     c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f));
     plotLine(c, points.data(), points.size(), fx, 2.0f);
     paintMirroredPoints(c, shape, 3.0f);
+    // On the faint line, which is what the shaper makes of what goes in.
+    if (const float level = shaperLevelNow(host_.telemetry(), unit); level > kShaperLevelFloor) {
+        const double in = std::min(static_cast<double>(level), 1.0);
+        const double out = in + (curve(in * drive) * output - in) * mix;
+        paintLevelDot(c, shapeAt(shape, 0.5 + 0.5 * in, std::clamp(out, -1.1, 1.1)), fx);
+    }
 
     // The point under the mouse, in numbers (input to output), in the top left corner, which a curve
     // leaves empty.

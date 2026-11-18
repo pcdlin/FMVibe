@@ -5353,6 +5353,133 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     }
 }
 
+// The dot on a shaper's curve: across at how loud what goes in is, up at what the curve makes of that. Each shaper here
+// is a hard curve at unity, which puts out what goes in up to its ceiling at full scale.
+void testShaperLevelDot(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    setChain(model, {0});
+    auto plain = [&](int unit) {
+        const ShaperParams p = shaperParams(unit);
+        model.set(p.mode, static_cast<double>(ClipMode::Hard));
+        model.set(p.link, 0.0);
+        model.set(p.drive, 0.0);
+        model.set(p.output, 0.0);
+        model.set(p.mix, 1.0);
+    };
+    plain(0);
+    View view(model);
+    view.poll();
+    click(view, kFxTab);
+    view.mouseMove({600.0f, 900.0f}, {});
+    view.poll();
+    // Where a level lands in a display, as paintShaperCurve() draws it.
+    auto spot = [](Rect display, double x, double y) {
+        const Rect inner = display.inset(8.0f);
+        return Point{inner.center().x + static_cast<float>(x / 1.3) * inner.w * 0.5f,
+                     inner.center().y - static_cast<float>(y / 1.3) * inner.h * 0.5f};
+    };
+    auto repainted = [&](Rect r) {
+        return std::any_of(view.changedAreas().begin(), view.changedAreas().end(), [&](Rect a) {
+            return a.x == r.x && a.y == r.y && a.w == r.w && a.h == r.h;
+        });
+    };
+    // A repaint of what the last poll found changed, over the last frame, against a whole paint of the same moment.
+    auto asWhole = [&](const char *name) {
+        for (const Rect &area : view.changedAreas())
+            renderer.repaint(view, area);
+        const std::vector<uint32_t> part = renderer.image();
+        return renderer.save(view, dir / name) && part == renderer.image();
+    };
+
+    const Rect display = detail::fxDisplayIn(detail::fxCard(0.0f, detail::fxSpan(FxType::Shaper)), FxType::Shaper);
+    const Point half = spot(display, 0.5, 0.5);
+    const bool bareShot = renderer.save(view, dir / "99m-shaper-dot-none.png");
+    const uint32_t bare = renderer.pixel(half);
+    model.live.fxBandLevel[0][0] = 0.5f;
+    const bool moved = view.poll() && repainted(detail::kPanelsBand) && asWhole("99m1-shaper-dot.png");
+    const uint32_t ink = renderer.pixel(half);
+    check(bareShot && moved && ink != bare,
+          "a dot stands on a shaper effect's curve at the level going in, repainting the panels' row as a whole paint would");
+
+    model.live.fxBandLevel[0][0] = 1.25f;
+    view.poll();
+    renderer.save(view, dir / "99m2-shaper-dot-ceiling.png");
+    const bool ceiling = renderer.pixel(spot(display, 1.25, 1.0)) == ink && renderer.pixel(half) == bare;
+    model.live.fxBandLevel[0][0] = 4.0f;
+    view.poll();
+    renderer.save(view, dir / "99m3-shaper-dot-end.png");
+    check(ceiling && renderer.pixel(spot(display, 1.3, 1.0)) == ink,
+          "past full scale the dot stays on the curve's ceiling, and past the display at the curve's end");
+
+    model.live.fxBandLevel[0][0] = 0.5f;
+    model.live.age = 0.2f; // 6 dB fallen since the snapshot
+    view.poll();
+    renderer.save(view, dir / "99m4-shaper-dot-falling.png");
+    const bool falling = renderer.pixel(spot(display, 0.2506, 0.2506)) == ink && renderer.pixel(half) == bare;
+    model.live.age = 2.0f; // 60 dB: under the floor
+    const bool went = view.poll();
+    renderer.save(view, dir / "99m5-shaper-dot-gone.png");
+    check(falling && went && renderer.pixel(spot(display, 0.2506, 0.2506)) != ink && !view.poll(),
+          "the dot falls with the snapshot's age once the audio stops, and goes");
+    model.live.age = 0.0f;
+    model.live.fxBandLevel[0][0] = 0.0f;
+    view.poll();
+
+    // Away from the FX view, the card's dot moving repaints nothing.
+    model.ui.view = RoutingView::Matrix;
+    view.poll();
+    model.live.fxBandLevel[0][0] = 0.5f;
+    check(!view.poll(), "a shaper effect's dot repaints nothing while the FX view doesn't show");
+    model.live.fxBandLevel[0][0] = 0.0f;
+    view.poll();
+
+    // A voice shaper's page: the inspector alone.
+    click(view, nodeTab(kOps + kFilters));
+    plain(kFxSlots);
+    view.mouseMove({600.0f, 900.0f}, {});
+    view.poll();
+    const Point page = spot(detail::kShaperDisplay, 0.5, 0.5);
+    renderer.save(view, dir / "99m6-shaper-dot-page-none.png");
+    const uint32_t pageBare = renderer.pixel(page);
+    model.live.shaperLevels[0] = 0.5f;
+    const bool pageMoved = view.poll() && repainted(detail::kInspector) && asWhole("99m7-shaper-dot-page.png");
+    check(pageMoved && renderer.pixel(page) == ink && pageBare != ink,
+          "a dot stands on a voice shaper's curve on its page, repainting the inspector as a whole paint would");
+
+    // A drawn curve's card, and its full-size editor: the dot's ink where none was, at a level clear of the curve's
+    // points, which are drawn over it.
+    auto inkIn = [&](Rect r) {
+        int found = 0;
+        for (float y = r.y; y < r.bottom(); y += 1.0f)
+            for (float x = r.x; x < r.right(); x += 1.0f)
+                found += renderer.pixel({x, y}) == ink ? 1 : 0;
+        return found;
+    };
+    model.live.shaperLevels[0] = 0.0f;
+    model.set(shaperParams(kFxSlots).mode, static_cast<double>(ClipMode::Custom));
+    view.poll();
+    renderer.save(view, dir / "99m8-shaper-dot-drawn-none.png");
+    const int drawnBare = inkIn(detail::kShaperDisplay);
+    model.live.shaperLevels[0] = 0.3f;
+    const bool drawnMoved = view.poll() && repainted(detail::kInspector);
+    renderer.save(view, dir / "99m9-shaper-dot-drawn.png");
+    const bool drawn = drawnMoved && drawnBare == 0 && inkIn(detail::kShaperDisplay) > 0;
+    model.live.shaperLevels[0] = 0.0f;
+    view.poll();
+    click(view, rectCenter(detail::kShaperEditButton));
+    view.mouseMove({600.0f, 900.0f}, {});
+    view.poll();
+    renderer.save(view, dir / "99m10-shaper-dot-editor-none.png");
+    const Rect plot{340.0f, 180.0f, 820.0f, 300.0f}; // the full-size editor's plot, right of the inspector
+    const int editorBare = inkIn(plot);
+    model.live.shaperLevels[0] = 0.3f;
+    const bool editorMoved = view.poll() && repainted(detail::kPanelsBand);
+    renderer.save(view, dir / "99m11-shaper-dot-editor.png");
+    check(drawn && editorMoved && editorBare == 0 && inkIn(plot) > 0,
+          "a drawn curve shows the dot on its card and in its full-size editor");
+}
+
 // While only what keeps to its place moves, the editor repaints that place alone: the output meter and scope (the
 // header), and the keys (the keyboard's panel); what a voice's sources move repaints the whole. Painted over the
 // frame before, the part comes out as a whole paint of the same moment does, pixel for pixel.
@@ -13527,6 +13654,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFxGraph(dir, renderer);
     testFxListAfterUndo(dir, renderer);
     testInvalidText(dir, renderer);
+    testShaperLevelDot(dir, renderer);
     testPartialRepaint(dir, renderer);
     testFxGraphScroll(dir, renderer);
     testFxGraphRoom(dir, renderer);

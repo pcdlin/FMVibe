@@ -65,6 +65,7 @@ public:
     // A three-band dynamics' band `band` in `slot`: its detector's level (1 is full scale), the most of the latest
     // block, falling about 26 dB a second, and the gain (dB, below 0 pulling down, above lifting) between that level and
     // the same through the band's dynamics, held and falling alike: the gain it applies, while the level holds still.
+    // A shaper's band 0 is how loud what goes into it is (see kShaperLevelFallDb), for the dot on its curve.
     float bandLevel(int slot, int band) const { return bandLevel_[slot][band]; }
     float bandGain(int slot, int band) const { return bandGain_[slot][band]; }
     // The parametric EQs measure their output only while the editor can show it.
@@ -179,6 +180,8 @@ private:
     bool idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const;
     // The phasers' and flangers' sweeps going round through such a chunk, so a synced one keeps time with the host.
     void idleSweeps(uint32_t n, const ParamValues &p, double tempo);
+    // The shapers' levels falling through such a chunk, as they would running on its silence.
+    void idleShapers(uint32_t n);
     // While the editor is open, the analyzers taking in such a chunk's silence, as running the effects would give
     // them, so their spectra fall away as they would.
     void idleAnalyzers(uint32_t n);

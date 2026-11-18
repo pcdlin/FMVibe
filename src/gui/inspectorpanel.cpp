@@ -1100,6 +1100,9 @@ void InspectorPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     };
     if (t.age < 1.5f && std::any_of(t.filterSpectrum.begin(), t.filterSpectrum.end(), showing))
         repaint.push_back(kInspector);
+    if (const int node = controller().layout().selectedNode;
+        isShaperNode(node) && shaperDotMoved(t, was, kFxSlots + shaperOfNode(node)))
+        repaint.push_back(kInspector);
 }
 
 // --- Input.

@@ -35,6 +35,7 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kFxSlots * kMcBands> fxReduction{};
     std::array<std::atomic<float>, kFxSlots * kMcBands> fxBandLevel{};
     std::array<std::atomic<float>, kFxSlots * kMcBands> fxBandGain{};
+    std::array<std::atomic<float>, kShapers> shaperLevels{};
     std::array<std::atomic<float>, kFxSlots * kSpectrumBands> fxSpectrum{};
     std::array<std::atomic<float>, kFilters * kSpectrumBands> filterSpectrum{};
     std::array<std::atomic<float>, kFxSlots> fxPhases{};
@@ -89,6 +90,8 @@ struct SharedTelemetry {
             fxBandLevel[i].store(t.fxBandLevel[i / kMcBands][i % kMcBands], std::memory_order_relaxed);
             fxBandGain[i].store(t.fxBandGain[i / kMcBands][i % kMcBands], std::memory_order_relaxed);
         }
+        for (int i = 0; i < kShapers; ++i)
+            shaperLevels[i].store(t.shaperLevels[i], std::memory_order_relaxed);
         for (int i = 0; i < kFxSlots * kSpectrumBands; ++i)
             fxSpectrum[i].store(t.fxSpectrum[i / kSpectrumBands][i % kSpectrumBands], std::memory_order_relaxed);
         for (int i = 0; i < kFilters * kSpectrumBands; ++i)
@@ -152,6 +155,8 @@ struct SharedTelemetry {
             t.fxBandLevel[i / kMcBands][i % kMcBands] = fxBandLevel[i].load(std::memory_order_relaxed);
             t.fxBandGain[i / kMcBands][i % kMcBands] = fxBandGain[i].load(std::memory_order_relaxed);
         }
+        for (int i = 0; i < kShapers; ++i)
+            t.shaperLevels[i] = shaperLevels[i].load(std::memory_order_relaxed);
         for (int i = 0; i < kFxSlots * kSpectrumBands; ++i)
             t.fxSpectrum[i / kSpectrumBands][i % kSpectrumBands] = fxSpectrum[i].load(std::memory_order_relaxed);
         for (int i = 0; i < kFilters * kSpectrumBands; ++i)

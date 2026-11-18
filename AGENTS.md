@@ -271,6 +271,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again
     once the reverb has rung out bringing back nothing of the tail before;
   - a shaper effect switched off, its drawn curve changed and on again playing the new curve from its start;
+  - how loud what goes into a shaper is, for the dot on its curve: a shaper effect's reading a sine's peak whatever its
+    drive, falling 30 dB through a second of silence and nothing once switched off, and a voice shaper's following its
+    send in the newest voice, nothing while nothing analyzes, switched off or once the voice has ended;
   - the Stack curve: a stack of three playing about as three linked shapers of one stage in a row (far nearer
     them than one stage), one stage passing a quiet sine at its level and saturating a loud tone unevenly, a stack of
     eight passing quiet sines from 1 to 15 kHz within a dB (no low-pass, the top lifted back), a stack of
@@ -560,6 +563,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor, whose pencil sits beside the curve's list (on the
     shaper effect's card too), lit while it is open (read off the rendered pixels);
+  - the dot on a shaper's curve, on a shaper effect's card and a voice shaper's page: where the telemetry's level puts
+    it along the curve, held at the curve's end past the display's and on its ceiling past full scale, falling with the
+    snapshot's age and gone below -60 dB (read off the rendered pixels), its moving repainting the panels' row or the
+    inspector as a whole paint would, on a drawn curve's card and in its full-size editor too;
   - a shaper's Stack curve, between Fold and Custom in its list, on its page and on the shaper effect's card,
     showing its Stack knob after Drive, turned in whole stages, undoably, and the wheel over the list's button
     stepping along the list's order;

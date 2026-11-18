@@ -89,6 +89,7 @@ void Effects::start(int slot, const fx::Context &ctx) {
     switch (s.running) {
     case FxType::Shaper:
         s.shaper.start(ctx);
+        bandLevel_[slot] = {}; // what another effect left there isn't its level
         break;
     case FxType::Delay:
         s.delay.start(ctx);
@@ -174,6 +175,7 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
         // the effects' work (a host that keeps processing a quiet instance, as VST3 hosts do, pays nothing for them).
         if (idleChunk(io, n, p)) {
             idleSweeps(n, p, tempo);
+            idleShapers(n);
             idleAnalyzers(n);
             measurePorts(n, true);
             continue;
@@ -293,6 +295,15 @@ void Effects::idleSweeps(uint32_t n, const ParamValues &p, double tempo) {
     }
 }
 
+void Effects::idleShapers(uint32_t n) {
+    const float fall = static_cast<float>(shaperLevelFall(n / sampleRate_));
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int slot = graphOrder_[i];
+        if (slot < kFxSlots && slots_[slot].fade > 0.0 && slots_[slot].running == FxType::Shaper)
+            bandLevel_[slot][0] *= fall;
+    }
+}
+
 void Effects::idleAnalyzers(uint32_t n) {
     if (!analyzing_)
         return;
@@ -337,7 +348,7 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
     // Each type's run, by the type it processes as: a static dispatch, every type's state held in the slot.
     switch (fx.running) {
     case FxType::Shaper:
-        fx.shaper.run(ctx, io, n);
+        fx.shaper.run(ctx, io, n, meters(slot));
         break;
     case FxType::Delay:
         // While anything goes in or comes out, another echo may follow.

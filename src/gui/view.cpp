@@ -1092,6 +1092,16 @@ bool View::poll() {
                         0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
                     std::abs(t.fxBandGain[slot][band] - telemetry_.fxBandGain[slot][band]) > 0.05f)
                     in(panels);
+    // The dot on a shaper's curve follows what goes in, and falls away once the audio stops: on a shaper effect's card
+    // in the FX view, and in the full-size editor showing a shaper's curve (on a voice shaper's page, the inspector
+    // says so of itself).
+    if (controller_.layout().view == RoutingView::Fx)
+        for (int slot : fxChain())
+            if (fx_.slotType(slot) == FxType::Shaper && shaperDotMoved(t, telemetry_, slot))
+                in(panels);
+    if (const int shape = shapeEditing();
+        shape >= kMaxSources && shape < kNoteCurve && shaperDotMoved(t, telemetry_, shape - kMaxSources))
+        in(panels);
     // The routing graph's glow follows the output's level (see follow()), behind the routing graph and the effects
     // graph alike.
     if (routingPanel_.followOutput(t) && (routingPanel_.graphShown() || (fxWide() && fxGraph())))
