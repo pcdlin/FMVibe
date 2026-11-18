@@ -221,7 +221,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   shapers fades away, so such a loop can't ring on. What a shaper hears from a filter or a shaper is held within
   +18 dB, so a loop that lifts itself past unity (a resonant filter, or shapers feeding back, with a shaper's Mix
   below 100 %) grows loud but never without end. It runs only while something goes in and its output goes
-  somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does).
+  somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does). The dot on its
+  page's curve shows the level going into it as the shaper effect's does, in the newest voice.
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw or square; 0.02–100 Hz,
   and at the Rate knob's bottom 0 Hz, where an LFO stands still at its Phase), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
   operator's envelope has them), Curve sources (LFOs of a drawn shape), and two that follow what a note or the
@@ -463,7 +464,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     as a note ends rings on a moment past it as a low thump (stacked eight high at full drive, about half a second
     above −60 dB) before it stops (what a high-pass puts out is taken 10⁻⁹ toward 0 before it is driven, so nothing
     far below hearing is brought up for ever). The display draws the stages' curves one after another, with the
-    gain between them, without their filters. The curves are anti-aliased (first-order antiderivative), each Stack stage too, and
+    gain between them, without their filters. While sound goes through, a **dot** stands on the curve: across at how
+    loud what goes in is (the peak of either side, falling 30 dB a second), up at what the curve makes of that, so it
+    climbs the curve as the sound gets louder and shows how far into the curve it reaches. Louder than the display
+    reaches, it stays at the curve's end; below −60 dB it goes. A drawn curve's card has it on the faint line, which
+    has the drive, Output and Mix in it, and the full-size editor, whose curve leaves them out, where the drive takes
+    what goes in along the curve. The curves are anti-aliased (first-order antiderivative), each Stack stage too, and
     the shaper effect runs every curve at twice the host rate, so high drive stays clean and a quiet sound's top comes
     through (a 15 kHz sine within about a dB of a 1 kHz one, where the anti-aliasing's average at the host rate took
     5 dB off it), though folding at the highest drives gets duller for it. Band-limited so, a hard curve's peaks

@@ -42,6 +42,10 @@ inline int curveOf(int source) { return isVelocity(source) ? kVelocityCurve : kN
 inline int sourceOfCurve(int shape) { return isVelocityCurve(shape) ? kVelocitySource : kNoteSource; }
 inline int shaperCurve(int shaper) { return kMaxSources + kFxSlots + shaper; }
 int shapeBase(int shape);
+// How loud what goes into shaper `unit` is as of now, the snapshot `t` fallen by its age: where the dot on its curve
+// stands. And whether that dot has moved between two snapshots, or come or gone.
+float shaperLevelNow(const Telemetry &t, int unit);
+bool shaperDotMoved(const Telemetry &now, const Telemetry &was, int unit);
 // How many points it can have, and how many params it takes from shapeBase() on.
 inline int shapeMaxPoints(int shape) { return isStripCurve(shape) ? kMaxNotePoints : kMaxShapePoints; }
 inline int shapeParamCount(int shape) { return isStripCurve(shape) ? kNoteCurveParamCount : kShapeParamCount; }

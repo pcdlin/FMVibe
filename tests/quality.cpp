@@ -1401,6 +1401,76 @@ void effectsChainChecks() {
               "the effects graph tells how loud each of its ports is while the editor analyzes, falling away after");
     }
     {
+        // How loud what goes into a shaper effect is, for the dot on its curve: a sine at half scale reads half scale
+        // whatever the drive, a second of silence takes it kShaperLevelFallDb down (the effects resting for most of
+        // it), and switched off it reads nothing.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[shaperParams(0).drive] = 24.0;
+        chain(p, {0});
+        std::vector<float> left(4800), right(4800);
+        auto sine = [&] {
+            for (int i = 0; i < 4800; ++i)
+                left[i] = right[i] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+            fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        };
+        sine();
+        const float level = fx.bandLevel(0, 0);
+        for (int k = 0; k < 10; ++k) {
+            std::fill(left.begin(), left.end(), 0.0f);
+            std::fill(right.begin(), right.end(), 0.0f);
+            fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        }
+        const double fallDb = 20.0 * std::log10(level / std::max(fx.bandLevel(0, 0), 1e-9f));
+        sine();
+        p[paramIndex(0, FxParam::Enabled)] = 0.0;
+        sine();
+        sine();
+        const float off = fx.bandLevel(0, 0);
+        std::printf("      a shaper effect's level: %.3f, %.1f dB down after a second of silence, switched off %.3f\n",
+                    level, fallDb, off);
+        check(std::abs(level - 0.5f) < 0.01f && std::abs(fallDb - kShaperLevelFallDb) < 1.5 && off == 0.0f,
+              "a shaper effect tells how loud what goes into it is, falling away through silence");
+    }
+    {
+        // And into a voice's shaper, in the newest voice: twice the send reads twice the level. Nothing is measured
+        // while nothing analyzes, for a shaper switched off, or once the voice has ended.
+        auto levelOf = [](double send, bool analyzing, bool enabled) {
+            Engine e(2);
+            e.synth().setAnalyzing(analyzing);
+            e.p[paramIndex(0, ShaperParam::Enabled)] = enabled ? 1.0 : 0.0;
+            e.p[paramIndex(0, ShaperParam::Out)] = 1.0;
+            e.p[shaperSendIndex(0, 0)] = send;
+            e.noteOn(69);
+            e.render(4800);
+            Telemetry t;
+            e.synth().telemetry(t);
+            return t.shaperLevels[0];
+        };
+        const float half = levelOf(0.5, true, true), quarter = levelOf(0.25, true, true);
+        const float unanalyzed = levelOf(0.5, false, true), off = levelOf(0.5, true, false);
+        Engine e(2);
+        e.synth().setAnalyzing(true);
+        e.p[paramIndex(0, ShaperParam::Enabled)] = 1.0;
+        e.p[paramIndex(0, ShaperParam::Out)] = 1.0;
+        e.p[shaperSendIndex(0, 0)] = 0.5;
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.05);
+        e.noteOn(69);
+        e.render(4800);
+        e.noteOff(69);
+        e.render(static_cast<size_t>(kSampleRate));
+        Telemetry ended;
+        e.synth().telemetry(ended);
+        std::printf("      a voice shaper's level: %.3f at a send of 50 %%, %.3f at 25 %%; not analyzing %.3f, off %.3f, "
+                    "ended %.3f\n",
+                    half, quarter, unanalyzed, off, ended.shaperLevels[0]);
+        check(half > 0.05f && std::abs(half / quarter - 2.0f) < 0.05f && unanalyzed == 0.0f && off == 0.0f &&
+                  e.synth().activeVoiceCount() == 0 && ended.shaperLevels[0] == 0.0f,
+              "a voice's shaper tells how loud what goes into it is while the editor analyzes");
+    }
+    {
         // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
         // at unity gain: each sample comes out as the curve has it, through the DC blocker every drawn curve has, a few
         // samples late (the shaper runs at twice the rate, through half-band filters up and down, which a 50 Hz sine

@@ -1514,6 +1514,9 @@ void Synth::telemetry(Telemetry &out) const {
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
     }
+    if (analyzing_)
+        for (int sh = 0; sh < kShapers; ++sh)
+            out.shaperLevels[sh] = static_cast<float>(newest->shaperLevel[sh]);
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);
     out.bend = static_cast<float>(2.0 * newest->auxOut[kBendSource] - 1.0); // the newest voice's (see renderBlock())
@@ -2738,6 +2741,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     Levels &level = v.levels;
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
+    std::array<double, kShapers> shaperPeak{}; // what goes into each shaper, while analyzing
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
@@ -2922,6 +2926,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 for (int from = 0; from < kShapers; ++from)
                     for (int c = 0; c < 2; ++c)
                         toShaper[sh][c] += v.shaperLast[from][c] * level.shaperShaper[from][sh];
+            if (analyzing_)
+                shaperPeak[sh] = std::max({shaperPeak[sh], std::abs(toShaper[sh][0]), std::abs(toShaper[sh][channels - 1])});
             std::array<double, 2> y{};
             for (int c = 0; c < channels; ++c) // as the shaper effect runs (see fx::Shaper::run())
                 y[c] = v.shapers[sh][c].run(curve[sh], toShaper[sh][c], level.shaperDrive[sh], level.shaperOutput[sh],
@@ -2973,6 +2979,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (opOn[i] && !noise[i])
             for (int k = 0; k < copies[i]; ++k)
                 v.ops[i].incNow[k] = copy[i]->inc[k];
+    if (starting)
+        v.shaperLevel = {};
+    if (analyzing_) {
+        const double fall = shaperLevelFall(hostFrames / sampleRate_);
+        for (int sh = 0; sh < kShapers; ++sh)
+            v.shaperLevel[sh] = std::max(shaperPeak[sh], v.shaperLevel[sh] * fall);
+    }
     bool filtersHeard = false; // whether a filter heard has put out anything within a comb line
     for (int f = 0; f < kFilters; ++f)
         if (filterOn[f]) {

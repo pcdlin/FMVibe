@@ -42,7 +42,12 @@ void Shaper::start(const Context &ctx) {
 // 15 kHz at 48 kHz for a quiet sound the curve leaves alone, and a stack's further, stage by stage (see kStackLift);
 // at twice it, about a dB. Going to Stack or leaving it under sound, the path it leaves runs on for kShaperPathFade on
 // the same samples, fading out as the new one fades in.
-void Shaper::run(const Context &ctx, float *const *io, uint32_t n) {
+void Shaper::run(const Context &ctx, float *const *io, uint32_t n, Meters meters) {
+    float peak = 0.0f;
+    for (int ch = 0; ch < 2; ++ch)
+        for (uint32_t s = 0; s < n; ++s)
+            peak = std::max(peak, std::abs(io[ch][s]));
+    meters.bandLevel[0] = std::max(peak, static_cast<float>(meters.bandLevel[0] * shaperLevelFall(n / ctx.sampleRate)));
     const ParamValues &p = ctx.p;
     auto get = [&p](int index) { return p[index]; };
     const ShaperParams fields = shaperParams(ctx.slot);

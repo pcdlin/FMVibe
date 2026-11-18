@@ -38,7 +38,8 @@ struct Shaper {
     void prepare(double sampleRate);
     // Clears it as it is about to fade in, and jumps its ramps to the current settings.
     void start(const Context &ctx);
-    void run(const Context &ctx, float *const *io, uint32_t n);
+    // Band 0 of the meters' levels is how loud what goes in is (see kShaperLevelFallDb).
+    void run(const Context &ctx, float *const *io, uint32_t n, Meters meters);
 };
 
 } // namespace fmvibe::fx
