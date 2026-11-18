@@ -2131,7 +2131,9 @@ one may have changed since it last did.
   and aren't undo steps.
   **Theme**: Spectrum (deep indigo, the default), Porcelain (Spectrum in light: white panels lifted off a cool gray
   by soft shadows, their cards with a slight one too), Midnight or Light (crisp: white cards and knob caps on a cool
-  gray, with deep colors), each button shown in its own colors. The browser demo's page around the editor is in
+  gray, with deep colors), Carbon (neutral black, outlined, one signal orange), Linen (warm paper and ink, flat, with
+  earthy colors) or Tide (flat on a deep sea green, mint and soft pastels), each button shown in its own colors.
+  Linen and Tide draw in the flat look below, as Spectrum and Porcelain do. The browser demo's page around the editor is in
   Spectrum's colors. Spectrum and Porcelain share a flat look: each
   effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the

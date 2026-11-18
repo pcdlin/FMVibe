@@ -13664,6 +13664,17 @@ int main(int argc, char **argv) {
             if (loadFactoryPreset(preset, values, layout) && values[paramIndex(SeqParam::Enabled)] >= 0.5)
                 renderExample(dir, renderer, preset.name, "seq-" + preset.name, SIZE_MAX, "Spectrum", false, true);
         }
+    } else if (argc > 3 && std::strcmp(argv[3], "--themes") == 0) { // the draft themes over a few presets
+        Renderer renderer(scale);
+        for (const char *theme : {"Carbon", "Linen", "Tide"}) {
+            std::string t = theme;
+            std::transform(t.begin(), t.end(), t.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            renderExample(dir, renderer, "Screamer", "theme-" + t + "-screamer", SIZE_MAX, theme, true);
+            renderExample(dir, renderer, "Neon Pluck", "theme-" + t + "-neon", SIZE_MAX, theme);
+            renderExample(dir, renderer, "Future Plucks", "theme-" + t + "-future", SIZE_MAX, theme, false, true);
+            renderExample(dir, renderer, "Crystal Motion", "theme-" + t + "-crystal", SIZE_MAX, theme);
+        }
+        renderPresetThemes(dir, renderer);
     } else if (argc > 3 && std::strcmp(argv[3], "--library") == 0) { // only the preset library's
         Renderer renderer(scale);
         testPresetLibrary(dir, renderer);

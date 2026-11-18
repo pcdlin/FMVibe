@@ -545,6 +545,9 @@ STR(ThemeMidnight, "Midnight")
 STR(ThemeLight, "Light")
 STR(ThemeSpectrum, "Spectrum")
 STR(ThemePorcelain, "Porcelain")
+STR(ThemeCarbon, "Carbon")
+STR(ThemeLinen, "Linen")
+STR(ThemeTide, "Tide")
 
 // --- The editor: headings, tabs and labels
 
