@@ -102,8 +102,12 @@ private:
     void pick(const Row &row);         // loads it into the operator
     float end() const;                 // how many rows the list scrolls past at most
     Rect thumb() const;                // the list's scrollbar's thumb, at least 24 px tall however long the list
-    // The data a row holds (read from its file for a library's, kept for a while): null where it can't be read.
+    // The data a row holds (read from its file for a library's, kept for a while): null where it can't be read, and for
+    // a file slow to read until the mouse has rested on it.
     std::shared_ptr<const OpData> data(const Row &row) const;
+    // What a library's row is kept by: its folder, the frame size it is cut at and its file; "" for one that has gone.
+    std::string previewId(const Row &row) const;
+    bool slowToRead(const Row &row) const;
     // The keys the search doesn't take itself: Enter loads the row picked and lets the keyboard go, Escape empties it
     // and then lets it go, Up and Down pick a row.
     void searchKey(Key key);
@@ -128,8 +132,12 @@ private:
     int menuSource_ = -1; // the library's source whose menu is open
     float scrollFrom_ = 0.0f; // where the list was as its scrollbar's thumb was grabbed
     bool scrolling_ = false;
-    // The data it read from the library's files: the last few, by source and path.
+    // The data it read from the library's files for its previews while it is open: the last few, the newest first (a
+    // sample's peaks alone, as they are all a preview draws).
     mutable std::vector<std::pair<std::string, std::shared_ptr<const OpData>>> read_;
+    // The file slow to read that the preview waits to read, and how many polls it has waited.
+    mutable std::string resting_;
+    mutable int restPolls_ = 0;
     ScopeCache<RowList> rows_;
 };
 

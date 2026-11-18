@@ -198,6 +198,7 @@ public:
     TableLibrary *tableLibrary(DataKind kind) override;
     void chooseTableFolder(DataKind kind) override;
     void tableFoldersChanged(DataKind kind) override;
+    void refreshTableFolders(DataKind kind) override;
     void showTableFolder(DataKind kind, int source) override;
 
     // The editor window, while the host shows it. Main thread.
@@ -374,6 +375,8 @@ private:
     std::atomic<bool> dataAsked_{false};
     // The wavetable library the table browser lists, made when first asked for.
     std::unique_ptr<TableLibrary> library_, sampleLibrary_;
+    // The folders each library last agreed on with the settings file, which tell what it changed itself since.
+    std::vector<TableFolder> tableFoldersSeen_, sampleFoldersSeen_;
 };
 
 } // namespace fmvibe

@@ -98,6 +98,9 @@ enum class DataKind : uint32_t { Table = 1, Sample = 2 };
 constexpr int64_t kMaxSampleLength = int64_t{1} << 22;
 constexpr size_t kMaxDataEntryBytes = size_t{16} << 20;
 constexpr size_t kMaxDataChunkBytes = size_t{64} << 20;
+// The most a DATA chunk read back takes: past what an import is let bring in, as what a patch already holds can be shared
+// out among its operators, each naming a table and a sample of its own. Whatever is saved loads again.
+constexpr size_t kMaxDataReadBytes = 2 * kOps * (kMaxDataEntryBytes + 4096);
 
 // What a table or sample holds, as the patch stores it (see state.h), and the form it is played from.
 struct OpData {

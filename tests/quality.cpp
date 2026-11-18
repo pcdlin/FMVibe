@@ -3743,6 +3743,29 @@ void sampleChecks(const int (&factors)[4]) {
     check(sustain >= 10 && sustain < 30 && gateLoop < 0,
           "Sustain leaves its loop once let go of and plays to its end, where Gate loops on through its release");
 
+    // A note let go of at the moment it starts, before its first block: a One-Shot sample plays all the same, as it does
+    // for a note of any length, and a Gate one has nothing to play.
+    {
+        auto heard = [](SampleMode mode) {
+            DataEngine d(2);
+            std::vector<float> pcm(24000);
+            for (size_t i = 0; i < pcm.size(); ++i)
+                pcm[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * 440.0 * i / 48000.0));
+            d.sample(sampleData(kUserDataBase + 25, pcm, 48000, 69.0f));
+            d.e.p[paramIndex(0, OpParam::SampleMode)] = static_cast<double>(mode);
+            d.e.noteOn(69);
+            d.e.noteOff(69);
+            double sum = 0.0;
+            const std::vector<float> out = d.e.render(9600);
+            for (const float x : out)
+                sum += static_cast<double>(x) * x;
+            return std::sqrt(sum / static_cast<double>(out.size()));
+        };
+        const double shot = heard(SampleMode::OneShot), gated = heard(SampleMode::Gate);
+        std::printf("      a note let go of before its first block: One-Shot %.4f, Gate %.4f\n", shot, gated);
+        check(shot > 0.3 && gated < 0.01, "a One-Shot sample plays a note let go of before its first block");
+    }
+
     // Reverse: a sample silent for its first half and a sine for its second plays the sine first, then silence, and
     // a One-Shot one still ends its voice at its end (its start, as recorded).
     {
@@ -4326,6 +4349,124 @@ void readerChecks() {
         check(f.sample && f.rate == 32000 && std::abs(f.root - 64.5f) < 1e-3 && f.loopStart == 1000 && f.loopEnd == 9000,
               "a sample's rate, root and loop come from its file");
     }
+    // A .vitaltable's numbers past what its curves can take, or that aren't numbers, read no further than its frames.
+    {
+        auto warped = [](const char *power) {
+            const std::string json = std::string("{\"version\":\"1.0.7\",\"groups\":[{\"components\":["
+                                                 "{\"type\":\"Line Source\",\"keyframes\":[{\"position\":0,\"line\":{"
+                                                 "\"points\":[0.0,0.0,1.0,1.0],\"powers\":[0.0,0.0]}}]},"
+                                                 "{\"type\":\"Wave Warp\",\"keyframes\":[{\"position\":0,\"horizontal_power\":") +
+                                     power + "}]}]}]}";
+            return readTableFile(reinterpret_cast<const uint8_t *>(json.data()), json.size(), "x.vitaltable", ReadAs::Table);
+        };
+        const TableFile huge = warped("1000.0"), past = warped("-1e308"), nan = warped("nan"), infinite = warped("1e999");
+        bool finite = huge.error == ReadError::None && past.error == ReadError::None;
+        for (const TableFile *f : {&huge, &past})
+            for (const float x : f->data)
+                finite = finite && std::isfinite(x);
+        check(finite && nan.error == ReadError::Broken && infinite.error == ReadError::Broken,
+              "a .vitaltable's warp of any size renders finite frames, and a number JSON can't hold is refused");
+    }
+    // A float WAV's sample past what a float holds counts as nothing, leaving the others as they were.
+    {
+        std::vector<double> pcm(8192);
+        for (size_t i = 0; i < pcm.size(); ++i)
+            pcm[i] = i == 100 ? 1e300 : std::sin(static_cast<double>(i) * 0.05);
+        std::vector<uint8_t> file = textBytes("RIFF");
+        auto append = [&file](const std::vector<uint8_t> &bytes) { file.insert(file.end(), bytes.begin(), bytes.end()); };
+        append(words({static_cast<uint32_t>(36 + pcm.size() * 8)}));
+        append(textBytes("WAVEfmt "));
+        append(words({16, 3u | 1u << 16, 44100, 44100 * 8, 8u | 64u << 16}));
+        append(textBytes("data"));
+        append(words({static_cast<uint32_t>(pcm.size() * 8)}));
+        const auto *audio = reinterpret_cast<const uint8_t *>(pcm.data());
+        file.insert(file.end(), audio, audio + pcm.size() * 8);
+        const TableFile f = read(file, ReadAs::Sample);
+        double peak = 0.0;
+        bool finite = f.error == ReadError::None && f.data.size() == pcm.size();
+        for (const float x : f.data) {
+            finite = finite && std::isfinite(x);
+            peak = std::max(peak, static_cast<double>(std::abs(x)));
+        }
+        check(finite && peak > 0.99 && f.data[100] == 0.0f, "a float WAV's sample past a float's range doesn't reach the voices");
+    }
+    // Frames of a length that isn't a power of two keep their harmonics, and a whole table of them reads in good time.
+    {
+        for (const int size : {1000, 2047}) {
+            const std::string chunk = "<!>" + std::to_string(size) + " 1";
+            const TableFile f = read(wavBytes(testFrames(3, size), 1, 32, true, 44100, {{"clm ", textBytes(chunk)}}));
+            bool same = f.error == ReadError::None && f.frames == 3;
+            for (int frame = 0; same && frame < 3; ++frame)
+                for (int i = 0; i < 2048; i += 7) {
+                    const double want = std::sin(2.0 * std::numbers::pi * (frame + 1) * i / 2048.0);
+                    same = same && std::abs(f.data[static_cast<size_t>(frame) * 2048 + i] - want) < 2e-3;
+                }
+            check(same, ("frames of " + std::to_string(size) + " samples are brought to 2048, their harmonics as they were").c_str());
+        }
+        const std::vector<uint8_t> whole = wavBytes(testFrames(FrameTable::kMaxFrames, 2047), 1, 32, true, 44100,
+                                                    {{"clm ", textBytes("<!>2047 1")}});
+        const auto start = std::chrono::steady_clock::now();
+        const TableFile f = read(whole);
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        std::printf("      512 frames of 2047 samples read in %.2f s\n", seconds);
+        check(f.frames == FrameTable::kMaxFrames && seconds < 5.0, "a table of frames of an odd length reads in good time");
+    }
+    // A 32-bit stereo FLAC's side channel, which takes 33 bits, and the length STREAMINFO gives.
+    {
+        std::vector<uint8_t> file = textBytes("fLaC");
+        int have = 0;
+        uint32_t acc = 0;
+        auto put = [&](uint64_t value, int bits) {
+            for (int i = bits - 1; i >= 0; --i) {
+                acc = (acc << 1) | static_cast<uint32_t>((value >> i) & 1u);
+                if (++have == 8) {
+                    file.push_back(static_cast<uint8_t>(acc));
+                    acc = 0;
+                    have = 0;
+                }
+            }
+        };
+        put(0x80000022u, 32); // the last metadata block, 34 bytes: STREAMINFO
+        put(4096, 16);
+        put(4096, 16);
+        put(0, 48);
+        put(44100, 20);
+        put(1, 3);  // two channels
+        put(31, 5); // 32 bits
+        put(4, 36); // four samples
+        put(0, 64);
+        put(0, 64); // MD5
+        put(0x3FFE, 14);
+        put(0, 2);
+        put(6, 4);  // block size: 8 bits after the header
+        put(0, 4);  // rate from STREAMINFO
+        put(8, 4);  // left, then side
+        put(7, 3);  // 32 bits
+        put(0, 1);
+        put(0, 8);  // frame number
+        put(3, 8);  // four samples
+        put(0, 8);  // CRC-8 (not checked)
+        const int64_t left = 0x60000000, right = -0x50000000;
+        put(0, 1);
+        put(1, 6); // verbatim
+        put(0, 1);
+        for (int i = 0; i < 4; ++i)
+            put(static_cast<uint64_t>(left) & 0xFFFFFFFFu, 32);
+        put(0, 1);
+        put(1, 6);
+        put(0, 1);
+        for (int i = 0; i < 4; ++i)
+            put(static_cast<uint64_t>(left - right) & 0x1FFFFFFFFull, 33);
+        while (have != 0)
+            put(0, 1);
+        put(0, 16); // CRC-16
+        std::vector<float> mono;
+        uint32_t rate = 0;
+        int bits = 0;
+        const bool decoded = decodeFlac(file.data(), file.size(), mono, rate, bits);
+        check(decoded && mono.size() == 4 && bits == 32 && std::abs(mono[0] - 0.125f) < 1e-6f,
+              "a 32-bit stereo FLAC's 33-bit side channel decodes whole");
+    }
 }
 
 // A stream that moves at most five bytes a call, as a host's may.
@@ -4435,6 +4576,39 @@ void dataStateChecks() {
         readLayout(&back.in);
         std::vector<std::shared_ptr<OpData>> got;
         check(readDataChunk(&back.in, got) && got.size() == 3, "a preset file carries its tables and samples");
+    }
+    // As much as a patch can hold, past what one import is let bring in: all of it comes back.
+    {
+        std::vector<std::shared_ptr<OpData>> large;
+        std::vector<const OpData *> list;
+        for (uint32_t k = 0; k < static_cast<uint32_t>(kOps); ++k) {
+            auto d = std::make_shared<OpData>();
+            d->kind = DataKind::Sample;
+            d->key = kUserDataBase + k;
+            d->rate = 48000;
+            d->frames = static_cast<int>(kMaxSampleLength);
+            d->pcm.assign(static_cast<size_t>(kMaxSampleLength), 0.25f);
+            list.push_back(d.get());
+            large.push_back(std::move(d));
+        }
+        std::vector<unsigned char> chunk;
+        const clap_ostream_t to = memoryOut(chunk);
+        const bool wrote = writeDataChunk(&to, list);
+        struct Whole {
+            const std::vector<unsigned char> &bytes;
+            size_t at = 0;
+        } whole{chunk};
+        const clap_istream_t from{&whole, [](const clap_istream_t *s, void *buffer, uint64_t size) -> int64_t {
+                                      auto &w = *static_cast<Whole *>(s->ctx);
+                                      const size_t n = std::min(static_cast<size_t>(size), w.bytes.size() - w.at);
+                                      std::memcpy(buffer, w.bytes.data() + w.at, n);
+                                      w.at += n;
+                                      return static_cast<int64_t>(n);
+                                  }};
+        std::vector<std::shared_ptr<OpData>> back;
+        readDataChunk(&from, back);
+        std::printf("      %.0f MB written, %zu of %zu entries read back\n", chunk.size() / 1048576.0, back.size(), list.size());
+        check(wrote && back.size() == list.size(), "whatever a patch saves of its samples loads again, past 64 MB too");
     }
 }
 
@@ -4546,6 +4720,48 @@ void libraryChecks() {
             samples = samples && e.info.sample;
         check(s.entries.size() == 4 && samples && entryOf(s, "saw.wav") && !entryOf(s, "square.wt"),
               "a library of samples lists WAV and FLAC files as samples, and leaves a wavetable's own formats out");
+    }
+    // Two instances sharing the settings file: each brings in only what it changed itself.
+    {
+        const TableFolder x{"X", "C:/x", 0}, y{"Y", "C:/y", 0};
+        auto paths = [](const std::vector<TableFolder> &list) {
+            std::string out;
+            for (const TableFolder &f : list)
+                out += f.name + std::to_string(f.frameSize) + " ";
+            return out;
+        };
+        check(paths(mergedFolders({x}, {}, {y})) == "X0 Y0 ", "a folder added here joins one another instance added");
+        check(paths(mergedFolders({x, y}, {x, y}, {y})) == "Y0 ", "a folder taken out here goes");
+        check(paths(mergedFolders({}, {x}, {x})).empty(), "a folder another instance took out stays out");
+        check(paths(mergedFolders({{"Theirs", "C:/x", 512}}, {x}, {x})) == "Theirs512 ",
+              "a folder another instance renamed keeps its name");
+        check(paths(mergedFolders({x}, {x}, {{"Mine", "C:/x", 1024}})) == "Mine1024 ", "a folder renamed here takes its name");
+        TableLibrary library;
+        library.setFolders({{"Synth", utf8(folder), 0}});
+        library.finish();
+        const size_t found = library.sources()[0].entries.size();
+        library.syncFolders({{"Renamed", utf8(folder), 0}, {"Gone", utf8(root / "nowhere"), 0}});
+        library.finish();
+        const bool kept = library.sources().size() == 2 && library.sources()[0].folder.name == "Renamed" &&
+                          library.sources()[0].entries.size() == found && library.sources()[1].missing;
+        library.syncFolders({});
+        library.finish();
+        check(kept && library.sources().empty(), "a library takes up the folders another instance left in the settings file");
+    }
+    // Names a path can't be made of, or that UTF-8 can't say, are left out rather than ending the host.
+    {
+        const fs::path odd = root / "Odd";
+        put(odd / "good.wav", wavBytes(testFrames(2, 2048), 1, 16, false, 44100, clm));
+#ifdef _WIN32
+        put(odd / fs::path(std::wstring(L"bad") + static_cast<wchar_t>(0xD800) + L".wav"),
+            wavBytes(testFrames(2, 2048), 1, 16, false, 44100, clm));
+#endif
+        TableLibrary library;
+        library.setFolders({{"Odd", utf8(odd), 0}, {"Not text", "C:/\xFF\xFE", 0}});
+        library.finish();
+        check(library.sources()[0].entries.size() == 1 && library.sources()[0].entries[0].path == "good.wav" &&
+                  library.sources()[1].missing,
+              "a scan leaves out a file name UTF-8 can't say, and a folder's path that isn't text shows missing");
     }
     // A folder that has gone, and nothing scanned outside the sources.
     {

@@ -18,25 +18,13 @@ public:
     size_t bytePos() const { return (bit_ + 7) / 8; }
     void alignByte() { bit_ = (bit_ + 7) & ~size_t{7}; }
     void seekByte(size_t at) { bit_ = at * 8; }
-    uint32_t read(int n) { // up to 32 bits, most significant first
-        uint64_t v = 0;
-        for (int i = 0; i < n; ++i) {
-            if (bit_ >= size_ * 8) {
-                ok_ = false;
-                return 0;
-            }
-            v = (v << 1) | ((data_[bit_ >> 3] >> (7 - (bit_ & 7))) & 1u);
-            ++bit_;
-        }
-        return static_cast<uint32_t>(v);
-    }
-    int32_t readSigned(int n) {
+    uint32_t read(int n) { return static_cast<uint32_t>(readLong(n)); } // up to 32 bits, most significant first
+    // Up to 33 bits, as the side channel of a 32-bit stream has.
+    int64_t readSigned(int n) {
         if (n == 0)
             return 0;
-        const uint32_t v = read(n);
-        if (n >= 32)
-            return static_cast<int32_t>(v);
-        return (v & (1u << (n - 1))) ? static_cast<int32_t>(v) - static_cast<int32_t>(1u << n) : static_cast<int32_t>(v);
+        const auto v = static_cast<int64_t>(readLong(n));
+        return (v & (int64_t{1} << (n - 1))) ? v - (int64_t{1} << n) : v;
     }
     uint32_t unary() { // zeros until a one
         uint32_t count = 0;
@@ -59,6 +47,19 @@ public:
     }
 
 private:
+    uint64_t readLong(int n) {
+        uint64_t v = 0;
+        for (int i = 0; i < n; ++i) {
+            if (bit_ >= size_ * 8) {
+                ok_ = false;
+                return 0;
+            }
+            v = (v << 1) | ((data_[bit_ >> 3] >> (7 - (bit_ & 7))) & 1u);
+            ++bit_;
+        }
+        return v;
+    }
+
     const uint8_t *data_;
     size_t size_;
     size_t bit_ = 0;
@@ -137,12 +138,12 @@ bool subframe(Bits &b, int blockSize, int bps, int64_t *out) {
         const int precision = static_cast<int>(b.read(4)) + 1;
         if (precision == 16)
             return false;
-        const int shift = b.readSigned(5);
+        const auto shift = static_cast<int>(b.readSigned(5));
         if (shift < 0)
             return false;
         int32_t coefs[32];
         for (int i = 0; i < order; ++i)
-            coefs[i] = b.readSigned(precision);
+            coefs[i] = static_cast<int32_t>(b.readSigned(precision));
         if (!residual(b, blockSize, order, out))
             return false;
         for (int i = order; i < blockSize; ++i) {
@@ -188,7 +189,8 @@ bool decodeFlac(const uint8_t *bytes, size_t size, std::vector<float> &mono, uin
             rate = b.read(20);
             channels = static_cast<int>(b.read(3)) + 1;
             streamBits = static_cast<int>(b.read(5)) + 1;
-            total = (uint64_t{b.read(4)} << 32) | b.read(32);
+            const uint64_t high = b.read(4); // read first: the operands of | come in no set order
+            total = (high << 32) | b.read(32);
         }
         at += length;
     }

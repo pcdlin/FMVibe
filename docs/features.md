@@ -1711,13 +1711,14 @@ one may have changed since it last did.
     bold), its name, its frames (or a sample's length) and its
     format, with a ? after a guessed frame size; one that can't be read greyed out, its tooltip saying why (an
     encrypted format, or a preset with its table inside, says to export the table from its synth as a WAV). A click on a row plays it at once,
-    an undo step each, and the computer keyboard (or the host's) then plays it: the browser takes no keys until its
+    an undo step each (a file in a table's folder that only reads as a sample making its operator a Sample operator),
+    and the computer keyboard (or the host's) then plays it: the browser takes no keys until its
     search is clicked. Clicked, the search has the keyboard and finds tables in every source, each source's under its
     name; Up and Down pick a row there and Enter plays it. Enter, a click anywhere else, or Escape (which first empties
     it) lets the keyboard go. The list scrolls by the wheel, or by its scrollbar, whose thumb (24 px at least, however
     many files) drags it and whose track a click jumps along. At the right a preview of the row under the mouse (else
     the one picked, else what the operator plays): a table's stack, its first frame bold as if it played, or a sample's waveform, with its path, format,
-    frame size and frames. **Import file…** opens the file dialog, as a sample's import button does. A file picked
+    frame size and frames (a long file, or a Vital table, once the mouse has rested on its row). **Import file…** opens the file dialog, as a sample's import button does. A file picked
     from a folder, or imported, is copied into the patch, so a project plays without it.
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end

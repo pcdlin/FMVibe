@@ -72,8 +72,19 @@ TableLibrary *PluginCore::tableLibrary(DataKind kind) {
             folder.empty() ? std::string() : folder + (samples ? "/samples-cache.bin" : "/tables-cache.bin"), samples);
         readUserSettings();
         library->setFolders(samples ? userSettings.sampleFolders : userSettings.tableFolders);
+        (samples ? sampleFoldersSeen_ : tableFoldersSeen_) = library->folders();
     }
     return library.get();
+}
+
+void PluginCore::refreshTableFolders(DataKind kind) {
+    const bool samples = kind == DataKind::Sample;
+    TableLibrary *const library = (samples ? sampleLibrary_ : library_).get();
+    if (!library)
+        return;
+    readUserSettings();
+    library->syncFolders(samples ? userSettings.sampleFolders : userSettings.tableFolders);
+    (samples ? sampleFoldersSeen_ : tableFoldersSeen_) = library->folders();
 }
 
 void PluginCore::chooseTableFolder(DataKind kind) {
@@ -86,8 +97,13 @@ void PluginCore::tableFoldersChanged(DataKind kind) {
     const TableLibrary *const library = (samples ? sampleLibrary_ : library_).get();
     if (!library)
         return;
+    // Only what changed here goes into the file, which another instance may have added folders to meanwhile.
     readUserSettings();
-    (samples ? userSettings.sampleFolders : userSettings.tableFolders) = library->folders();
+    std::vector<TableFolder> &saved = samples ? userSettings.sampleFolders : userSettings.tableFolders;
+    std::vector<TableFolder> &seen = samples ? sampleFoldersSeen_ : tableFoldersSeen_;
+    const std::vector<TableFolder> now = library->folders();
+    saved = mergedFolders(saved, seen, now);
+    seen = now;
     writeUserSettings();
 }
 

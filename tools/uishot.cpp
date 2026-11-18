@@ -10490,6 +10490,94 @@ void testTableFrameSize(const std::filesystem::path &dir, Renderer &renderer) {
           "a file dropped on the TABLE tab's display is imported as a table, asking for its frame size");
 }
 
+// What the table browser previews, and how it lets go of what it isn't showing.
+void testTablePreviews(const std::filesystem::path &dir, Renderer &renderer) {
+    std::printf("the table browser's previews:\n");
+    FakeController model;
+    View view(model);
+    model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Source;
+    const int wave = paramIndex(0, OpParam::Wave), sample = paramIndex(0, OpParam::Sample);
+    model.set(wave, static_cast<double>(OpWave::Wavetable));
+    // Tables whose every frame starts at exactly 0 and is exactly 0 on average, alike but for their harmonics.
+    auto odd = [](int harmonic) {
+        std::vector<float> frames(4 * 2048, 0.0f);
+        for (int f = 0; f < 4; ++f)
+            for (int i = 1; i < 1024; ++i) {
+                const auto x = static_cast<float>(std::sin(2.0 * std::numbers::pi * harmonic * i / 2048.0));
+                frames[f * 2048 + i] = x;
+                frames[f * 2048 + 2048 - i] = -x;
+            }
+        return writeTableWav(frames.data(), 4, 2048);
+    };
+    model.tableLibrary(DataKind::Table)
+        ->addFiles("Mixed", {{"a.wav", odd(1)},
+                             {"b.wav", odd(3)},
+                             {"long.wav", plainWav(300001)},
+                             {"plain.wav", plainWav(44101)},
+                             {"size.wav", plainWav(8192)}});
+    click(view, detail::kTablePicker.center());
+    click(view, detail::tbSourceRow(2).center());
+    view.poll();
+    auto shown = [&](float row, const char *name) {
+        view.mouseMove(detail::tbListRow(row).center(), {});
+        renderer.save(view, dir / name);
+        std::vector<uint32_t> pixels;
+        const Rect r = detail::kTbPreviewView;
+        for (float y = r.y + 6.0f; y < r.bottom() - 6.0f; y += 3.0f)
+            for (float x = r.x + 6.0f; x < r.right() - 6.0f; x += 3.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    check(shown(0.0f, "wt-26-preview-a.png") != shown(1.0f, "wt-26-preview-b.png"),
+          "two tables alike at their first and middle samples each preview their own frames (read off the rendered pixels)");
+    // A long file waits for the mouse to rest on its row, then shows.
+    const std::vector<uint32_t> waiting = shown(2.0f, "wt-27-preview-waits.png");
+    const std::vector<uint32_t> stillWaiting = shown(2.0f, "wt-27-preview-waits.png");
+    for (int k = 0; k < 12; ++k)
+        view.poll();
+    const std::vector<uint32_t> rested = shown(2.0f, "wt-27-preview-rested.png");
+    check(waiting == stillWaiting && rested != waiting,
+          "a long file's preview waits for the mouse to rest on its row (read off the rendered pixels)");
+    // A file that only reads as a sample loads as one from a table's list, and the browser, its operator now a Sample
+    // operator's, shuts.
+    const int dialogs = model.fileDialogs;
+    auto browserShut = [&] {
+        click(view, detail::kTbImport.center());
+        return model.fileDialogs == dialogs;
+    };
+    click(view, detail::tbListRow(3.0f).center());
+    const bool loaded = opWave(model.value(wave)) == OpWave::Sample && dataKey(model.value(sample)) >= kUserDataBase;
+    view.poll();
+    const bool shutByImport = browserShut();
+    view.undo();
+    view.poll();
+    check(loaded && shutByImport && opWave(model.value(wave)) == OpWave::Wavetable,
+          "a file listed as a sample in a table's folder loads as a sample, one undo step");
+    // Switched to another source and back, it stays shut.
+    click(view, detail::kTablePicker.center());
+    click(view, detail::opSourceButton(0).center());
+    view.poll();
+    click(view, detail::opSourceButton(1).center());
+    view.poll();
+    check(browserShut(), "the table browser, shut by switching the operator's source, stays shut as it switches back");
+    // Cut at another frame size, a file previews as it is cut now.
+    click(view, detail::kTablePicker.center());
+    click(view, detail::tbSourceRow(2).center());
+    view.poll();
+    const std::vector<uint32_t> at2048 = shown(4.0f, "wt-28-preview-2048.png");
+    int command = -1;
+    for (const MenuItem &item : view.contextMenu(detail::tbSourceRow(2).center()))
+        if (item.label.find("256") != std::string::npos)
+            command = item.command;
+    if (command >= 0)
+        view.menuCommand(command);
+    view.poll();
+    check(command >= 0 && shown(4.0f, "wt-28-preview-256.png") != at2048,
+          "a folder's frame size changed shows in its files' previews (read off the rendered pixels)");
+    click(view, detail::kTbDone.center());
+}
+
 // The browser a sample's picker opens: its own folders, no factory wavetables, and of the patch's data its samples.
 void testSampleBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     std::printf("the sample browser:\n");
@@ -14160,6 +14248,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testTableBrowserScroll(dir, renderer);
     testTableBrowserScan(dir, renderer);
     testTableFrameSize(dir, renderer);
+    testTablePreviews(dir, renderer);
     testSampleBrowser(dir, renderer);
     testSamples(dir, renderer);
 }

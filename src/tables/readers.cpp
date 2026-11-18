@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <numbers>
 
@@ -184,6 +185,7 @@ WavInfo parseWav(const ReadAt &read, uint64_t size) {
 }
 
 std::vector<float> wavSamples(const uint8_t *bytes, const WavInfo &w) {
+    constexpr double kMostFloat = std::numeric_limits<float>::max();
     const int64_t length = w.length();
     const int width = w.bits / 8;
     std::vector<float> out(static_cast<size_t>(length));
@@ -213,9 +215,11 @@ std::vector<float> wavSamples(const uint8_t *bytes, const WavInfo &w) {
             } else {
                 x = static_cast<int32_t>(le32(p)) / 2147483648.0;
             }
-            sum += std::isfinite(x) ? x : 0.0;
+            // What a float can't hold, as what isn't a number, counts as nothing: past its range it would come out infinite
+            // and turn into NaN as the sample is normalized.
+            sum += std::abs(x) <= kMostFloat ? x : 0.0;
         }
-        out[i] = static_cast<float>(sum);
+        out[i] = static_cast<float>(std::clamp(sum, -kMostFloat, kMostFloat));
     }
     return out;
 }
@@ -262,19 +266,51 @@ WtHeader wtHeader(const uint8_t *head, uint64_t fileSize) {
     return h;
 }
 
-// A cycle's harmonics 1..top as harmonicsOf() gives them, for any length: by the FFT for a power of two, else straight.
-std::vector<std::complex<double>> anyHarmonics(const float *x, int n, int top) {
-    if ((n & (n - 1)) == 0)
-        return harmonicsOf(x, static_cast<size_t>(n), top);
-    std::vector<std::complex<double>> out(static_cast<size_t>(top) + 1);
-    for (int k = 1; k <= top; ++k) {
-        std::complex<double> sum = 0.0;
-        for (int i = 0; i < n; ++i)
-            sum += static_cast<double>(x[i]) * std::polar(1.0, -2.0 * std::numbers::pi * k * i / n);
-        out[k] = sum * (2.0 / n);
+// A cycle's harmonics 1..top as harmonicsOf() gives them, for cycles of any one length: by the FFT for a power of two,
+// else through a longer FFT (Bluestein's chirp transform), which what it needs of the length is worked out once for.
+class CycleHarmonics {
+public:
+    explicit CycleHarmonics(int n) : n_(n) {
+        if ((n & (n - 1)) == 0)
+            return;
+        size_ = 1;
+        while (size_ < 2 * static_cast<size_t>(n) - 1)
+            size_ <<= 1;
+        chirp_.resize(static_cast<size_t>(n));
+        filter_.resize(size_);
+        for (int j = 0; j < n; ++j) {
+            // Its square kept within a turn, so the angle loses nothing to the square's size.
+            const int64_t turn = int64_t{j} * j % (int64_t{2} * n);
+            chirp_[j] = std::polar(1.0, std::numbers::pi * static_cast<double>(turn) / n);
+            filter_[j] = chirp_[j];
+            if (j > 0)
+                filter_[size_ - j] = chirp_[j];
+        }
+        fft(filter_, false);
     }
-    return out;
-}
+
+    std::vector<std::complex<double>> operator()(const float *x, int top) const {
+        if (chirp_.empty())
+            return harmonicsOf(x, static_cast<size_t>(n_), top);
+        std::vector<std::complex<double>> line(size_);
+        for (int i = 0; i < n_; ++i)
+            line[i] = static_cast<double>(x[i]) * std::conj(chirp_[i]);
+        fft(line, false);
+        for (size_t k = 0; k < size_; ++k)
+            line[k] *= filter_[k];
+        fft(line, true);
+        std::vector<std::complex<double>> out(static_cast<size_t>(top) + 1);
+        const double scale = 2.0 / (static_cast<double>(n_) * static_cast<double>(size_));
+        for (int k = 1; k <= top && k < n_; ++k)
+            out[k] = line[k] * std::conj(chirp_[k]) * scale;
+        return out;
+    }
+
+private:
+    int n_;
+    size_t size_ = 0;
+    std::vector<std::complex<double>> chirp_, filter_;
+};
 
 TableFile asSample(std::vector<float> samples, uint32_t rate, bool sixteen, const std::string &format) {
     TableFile out;
@@ -323,6 +359,7 @@ std::vector<float> normalizeFrames(const float *samples, int count, int size, in
     std::vector<float> out(static_cast<size_t>(frames) * kSize, 0.0f);
     if (frames <= 0 || size <= 0)
         return frames = 0, std::vector<float>{};
+    const CycleHarmonics harmonics(size);
     for (int f = 0; f < frames; ++f) {
         // Past kMaxFrames, frames are picked evenly from first to last.
         const int from = frames == count ? f : static_cast<int>(std::lround(static_cast<double>(f) * (count - 1) / (frames - 1)));
@@ -337,7 +374,7 @@ std::vector<float> normalizeFrames(const float *samples, int count, int size, in
                 to[i] = static_cast<float>(x[i] - dc);
         } else { // through its spectrum, its DC left out: past 1024 harmonics (from 4096), the rest dropped
             const int top = std::min(size / 2 - 1 + (size % 2), kSize / 2 - 1);
-            cycleOf(anyHarmonics(x, size, std::max(top, 1)), std::max(top, 1), kSize, to);
+            cycleOf(harmonics(x, std::max(top, 1)), std::max(top, 1), kSize, to);
         }
     }
     float peak = 0.0f;

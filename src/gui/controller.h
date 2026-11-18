@@ -627,6 +627,8 @@ public:
     virtual void chooseTableFolder(DataKind) {}
     // That library's folders changed (added, renamed, removed, their frame size): the settings file keeps them.
     virtual void tableFoldersChanged(DataKind) {}
+    // That library takes up what another instance changed of its folders, as the table browser opens.
+    virtual void refreshTableFolders(DataKind) {}
     // Shows one of that library's folders in the system's file browser.
     virtual void showTableFolder(DataKind, int) {}
 

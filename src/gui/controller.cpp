@@ -85,6 +85,8 @@ std::string Controller::importOperatorData(int op, DataKind kind, const std::vec
         return {};
     TableFile file = readTableFile(bytes.data(), bytes.size(), name,
                                    kind == DataKind::Table ? ReadAs::Table : ReadAs::Sample, frameSize);
+    if (file.error == ReadError::NotTable) // nothing cuts it into frames: a sample, as the table browser lists it
+        file = readTableFile(bytes.data(), bytes.size(), name, ReadAs::Sample);
     if (file.error != ReadError::None)
         return trf(Str::MsgImportFailed, {name, tr(readErrorText(file.error))});
     auto data = std::make_shared<OpData>();

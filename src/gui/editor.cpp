@@ -11,6 +11,7 @@
 #include <commdlg.h>
 #include <ole2.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <shobjidl.h>
 
 #include <algorithm>
@@ -189,9 +190,18 @@ std::vector<uint8_t> readFile(const std::wstring &path) {
     return bytes;
 }
 
+// A path's text in UTF-8, whatever it holds: half a surrogate pair, which the file system allows and std::filesystem's own
+// conversion throws on, comes out as a replacement character.
+std::string utf8Text(const std::wstring &text) {
+    const int length = static_cast<int>(text.size());
+    std::string out(static_cast<size_t>(WideCharToMultiByte(CP_UTF8, 0, text.data(), length, nullptr, 0, nullptr, nullptr)),
+                    '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), length, out.data(), static_cast<int>(out.size()), nullptr, nullptr);
+    return out;
+}
+
 std::string fileNameOf(const std::wstring &path) {
-    const std::u8string name = std::filesystem::path(path).filename().u8string();
-    return std::string(reinterpret_cast<const char *>(name.data()), name.size());
+    return utf8Text(std::filesystem::path(path).filename().native());
 }
 
 // What the import dialog offers: a file of these, not a folder, is taken when dropped.
@@ -1136,6 +1146,37 @@ std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::ws
     return path;
 }
 
+// Where the shell's dialog can't run: the older dialog for a file to open, its filter's pairs NUL-separated, and the older
+// one for a folder. The path picked, empty if the user cancels.
+std::wstring olderFileDialog(HWND owner, const std::wstring &filter, const std::wstring &folder,
+                             const std::wstring &title) {
+    wchar_t path[MAX_PATH] = L"";
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = owner;
+    dialog.lpstrFilter = filter.c_str();
+    dialog.lpstrFile = path;
+    dialog.nMaxFile = MAX_PATH;
+    dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
+    dialog.lpstrTitle = title.c_str();
+    dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_FILEMUSTEXIST;
+    return GetOpenFileNameW(&dialog) ? std::wstring(path) : std::wstring();
+}
+
+std::wstring olderFolderDialog(HWND owner, const std::wstring &title) {
+    BROWSEINFOW info{};
+    info.hwndOwner = owner;
+    info.lpszTitle = title.c_str();
+    info.ulFlags = BIF_RETURNONLYFSDIRS;
+    const PIDLIST_ABSOLUTE list = SHBrowseForFolderW(&info);
+    if (!list)
+        return {};
+    wchar_t path[MAX_PATH] = L"";
+    const bool found = SHGetPathFromIDListW(list, path);
+    CoTaskMemFree(list);
+    return found ? std::wstring(path) : std::wstring();
+}
+
 } // namespace
 
 void Editor::browsePreset(bool save) {
@@ -1197,8 +1238,12 @@ void Editor::browseOperatorFile(int op, DataKind kind) {
     const ModalGuard guard(alive_);
     const std::wstring title = widen(tr(kind == DataKind::Table ? Str::DialogImportTable : Str::DialogImportSample));
     const std::wstring types = widen(tr(Str::DialogTableFiles)), all = widen(tr(Str::DialogAllFiles));
-    std::optional<std::wstring> picked = shellFileDialog(
-        hwnd_, false, lastImportFolder_, L"", title, {{{types, L"*.wav;*.flac;*.wt;*.vitaltable"}, {all, L"*.*"}}, L""});
+    const std::wstring patterns = L"*.wav;*.flac;*.wt;*.vitaltable";
+    std::optional<std::wstring> picked =
+        shellFileDialog(hwnd_, false, lastImportFolder_, L"", title, {{{types, patterns}, {all, L"*.*"}}, L""});
+    if (guard.alive() && !picked)
+        picked = olderFileDialog(hwnd_, types + L'\0' + patterns + L'\0' + all + L'\0' + L"*.*" + L'\0', lastImportFolder_,
+                                 title);
     if (!guard.alive() || !picked || picked->empty())
         return;
     lastImportFolder_ = std::filesystem::path(*picked).parent_path().wstring();
@@ -1213,12 +1258,13 @@ void Editor::browseOperatorFile(int op, DataKind kind) {
 void Editor::browseTableFolder(DataKind kind) {
     const ModalGuard guard(alive_);
     TableLibrary *library = controller_.tableLibrary(kind);
-    std::optional<std::wstring> picked =
-        shellFileDialog(hwnd_, false, L"", L"", widen(tr(Str::DialogAddFolder)), {}, true);
+    const std::wstring title = widen(tr(Str::DialogAddFolder));
+    std::optional<std::wstring> picked = shellFileDialog(hwnd_, false, L"", L"", title, {}, true);
+    if (guard.alive() && !picked)
+        picked = olderFolderDialog(hwnd_, title);
     if (!guard.alive() || !picked || picked->empty() || !library)
         return;
-    const std::u8string path = std::filesystem::path(*picked).u8string();
-    const int source = library->addFolder(std::string(reinterpret_cast<const char *>(path.data()), path.size()));
+    const int source = library->addFolder(utf8Text(*picked));
     controller_.tableFoldersChanged(kind);
     view_.showTableSource(source);
     invalidate();

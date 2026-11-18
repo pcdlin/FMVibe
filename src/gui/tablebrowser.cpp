@@ -39,6 +39,12 @@ constexpr int kTbFrameSizes[] = {0, 256, 512, 1024, 2048};
 // The longest name a folder takes.
 constexpr size_t kMaxFolderName = 64;
 
+// A file this long, or a Vital table (rendered as it is read), is previewed once the mouse has rested on its row for about
+// 150 ms, so moving down a list doesn't read every file passed; and what the previews keep in all.
+constexpr int64_t kSlowPreviewSamples = int64_t{1} << 18;
+constexpr int kPreviewRestPolls = 10;
+constexpr size_t kMaxPreviewBytes = size_t{64} << 20;
+
 } // namespace
 
 // --- The drawings the inspector shares.
@@ -104,8 +110,7 @@ void paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float pos
     const float scale = amp / tablePeak(table);
     // A frame read through coefs: the frames behind plainly, the one played as the operator's warp reads it.
     auto frameAt = [&](double f, float t, Color ink, float thickness, const WarpCoefs &coefs) {
-        // By the table's key and frames (a file previewed, under the key 0, apart from Basic Shapes by its frames'
-        // count).
+        // By the table's key (a file previewed has the one its content hashes to) and frames.
         const std::vector<double> key = {static_cast<double>(Curve::TableFrame), static_cast<double>(table.key),
                                          static_cast<double>(frames), static_cast<double>(table.pcm[0]),
                                          static_cast<double>(table.pcm[table.pcm.size() / 2]), f, r.x, r.y, r.w, r.h,
@@ -190,6 +195,7 @@ void TableBrowser::open(int op, DataKind kind) {
     host_.clearField(Field::Tables);
     // The source the operator's data came from, else Factory for a table and the patch for a sample.
     source_ = kind == DataKind::Table ? -2 : -1;
+    controller().refreshTableFolders(kind); // what another instance added or took out meanwhile
     const double playing = value(paramIndex(op, kind == DataKind::Table ? OpParam::Table : OpParam::Sample));
     if (const OpData *d = controller().opData(dataKey(playing)); d) {
         if (d->key >= kUserDataBase)
@@ -210,6 +216,8 @@ void TableBrowser::close() {
     endRename(true);
     op_ = -1;
     searching_ = false;
+    read_.clear();
+    resting_.clear();
     host_.resetHover();
 }
 
@@ -227,11 +235,21 @@ void TableBrowser::forgetScoped() {
 }
 
 bool TableBrowser::step() {
-    TableLibrary *lib = op_ >= 0 ? library() : nullptr;
-    if (!lib || !lib->poll())
+    if (op_ < 0)
         return false;
-    pick_ = -1; // a scan done may have changed the list under it
-    return true;
+    // Its operator switched to another source, by the switch, an undo or a host: it shuts, and stays shut.
+    if (opWave(value(paramIndex(op_, OpParam::Wave))) != (kind_ == DataKind::Table ? OpWave::Wavetable : OpWave::Sample)) {
+        close();
+        return true;
+    }
+    bool changed = false;
+    if (!resting_.empty() && restPolls_ < kPreviewRestPolls)
+        changed = ++restPolls_ == kPreviewRestPolls; // painted again, the preview reads its file
+    if (TableLibrary *lib = library(); lib && lib->poll()) {
+        pick_ = -1; // a scan done may have changed the list under it
+        changed = true;
+    }
+    return changed;
 }
 
 TableBrowser::RowList TableBrowser::rows() const {
@@ -319,22 +337,49 @@ float TableBrowser::end() const {
     return std::max(static_cast<float>(rows()->size()) - kTbList.h / kTbRowH, 0.0f);
 }
 
+std::string TableBrowser::previewId(const Row &row) const {
+    const TableLibrary *const lib = library();
+    if (!lib || row.source < 0 || row.source >= static_cast<int>(lib->sources().size()))
+        return {};
+    const TableFolder &folder = lib->sources()[row.source].folder;
+    return (folder.path.empty() ? folder.name : folder.path) + "|" + std::to_string(folder.frameSize) + "|" + row.path;
+}
+
+bool TableBrowser::slowToRead(const Row &row) const {
+    const std::vector<LibraryEntry> &entries = library()->sources()[row.source].entries;
+    if (row.entry < 0 || row.entry >= static_cast<int>(entries.size()))
+        return false;
+    const TableInfo &info = entries[row.entry].info;
+    const int64_t samples = info.sample ? int64_t{info.frames} : int64_t{info.frames} * info.frameSize;
+    return info.format == "vital" || samples >= kSlowPreviewSamples;
+}
+
 std::shared_ptr<const OpData> TableBrowser::data(const Row &row) const {
     if (row.header)
         return nullptr;
     if (row.source < 0)
         return controller().data().get(row.key);
-    const std::string id = std::to_string(row.source) + "|" + row.path;
+    const std::string id = previewId(row);
     for (const auto &[have, d] : read_)
         if (have == id)
             return d;
+    if (id.empty() || row.error != ReadError::None)
+        return nullptr;
+    if (slowToRead(row) && (resting_ != id || restPolls_ < kPreviewRestPolls)) {
+        if (resting_ != id) {
+            resting_ = id;
+            restPolls_ = 0;
+        }
+        return nullptr;
+    }
+    resting_.clear();
     TableLibrary *lib = library();
     std::vector<uint8_t> bytes;
-    if (!lib || row.error != ReadError::None || !lib->readEntry(row.source, row.entry, bytes))
+    if (!lib->readEntry(row.source, row.entry, bytes))
         return nullptr;
     const LibrarySource &s = lib->sources()[row.source];
-    const TableFile file = readTableFile(bytes.data(), bytes.size(), s.entries[row.entry].path,
-                                         row.sample ? ReadAs::Sample : ReadAs::Table, s.folder.frameSize);
+    TableFile file = readTableFile(bytes.data(), bytes.size(), s.entries[row.entry].path,
+                                   row.sample ? ReadAs::Sample : ReadAs::Table, s.folder.frameSize);
     std::shared_ptr<OpData> made;
     if (file.error == ReadError::None) {
         made = std::make_shared<OpData>();
@@ -343,13 +388,21 @@ std::shared_ptr<const OpData> TableBrowser::data(const Row &row) const {
         made->format = file.format;
         made->frames = file.frames;
         made->rate = file.rate;
-        made->pcm = file.data;
-        if (file.sample)
+        made->pcm = std::move(file.data);
+        made->key = contentKey(*made); // what its curves are cached by, apart from every other file's
+        if (file.sample) { // a preview draws its peaks, and a long sample's audio is no small thing to keep
             buildPeaks(*made);
+            std::vector<float>().swap(made->pcm);
+        }
     }
     read_.insert(read_.begin(), {id, made});
-    if (read_.size() > 48)
+    size_t kept = 0;
+    for (const auto &[have, d] : read_)
+        kept += d ? d->bytes() : 0;
+    while (read_.size() > 48 || (read_.size() > 1 && kept > kMaxPreviewBytes)) {
+        kept -= read_.back().second ? read_.back().second->bytes() : 0;
         read_.pop_back();
+    }
     return made;
 }
 
@@ -605,9 +658,9 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         std::shared_ptr<const OpData> d;
         if (row.source < 0)
             d = controller().data().get(row.key);
-        else
-            for (const auto &[id, read] : read_)
-                if (id == std::to_string(row.source) + "|" + row.path)
+        else if (const std::string id = previewId(row); !id.empty())
+            for (const auto &[have, read] : read_)
+                if (have == id)
                     d = read;
         if (d && d->kind == DataKind::Table && d->frames > 0) {
             const float height = thumbnail.h * 0.4f / tablePeak(*d);
@@ -940,8 +993,10 @@ bool TableBrowser::menuCommand(int command) {
     }
     if (command >= kTbFrameSizeCommand && command < kTbFrameSizeCommand + static_cast<int>(std::size(kTbFrameSizes)))
         lib->setFrameSize(source, kTbFrameSizes[command - kTbFrameSizeCommand]);
-    else if (command == kTbRescanCommand)
+    else if (command == kTbRescanCommand) {
+        read_.clear(); // its files may have changed
         lib->rescan(source);
+    }
     else if (command == kTbShowCommand)
         controller().showTableFolder(kind_, source);
     else if (command == kTbRemoveCommand) {

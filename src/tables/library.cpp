@@ -15,11 +15,58 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// Whether text is UTF-8 a path can be made of, and a path has a name UTF-8 can say: on Windows, converting either that
+// isn't throws, on a thread with nothing to catch it (a settings file edited by hand; a file name with half a surrogate
+// pair, which the file system allows).
+bool validUtf8(const std::string &text) {
+    for (size_t i = 0; i < text.size();) {
+        const auto lead = static_cast<unsigned char>(text[i]);
+        const int more = lead < 0x80                   ? 0
+                         : lead >= 0xC2 && lead < 0xE0 ? 1
+                         : lead >= 0xE0 && lead < 0xF0 ? 2
+                         : lead >= 0xF0 && lead < 0xF5 ? 3
+                                                       : -1;
+        if (more < 0 || i + more >= text.size())
+            return false;
+        uint32_t code = more == 0 ? lead : lead & (0x3Fu >> more);
+        for (int k = 1; k <= more; ++k) {
+            const auto next = static_cast<unsigned char>(text[i + k]);
+            if ((next & 0xC0) != 0x80)
+                return false;
+            code = code << 6 | (next & 0x3Fu);
+        }
+        static constexpr uint32_t kLeast[] = {0, 0x80, 0x800, 0x10000};
+        if (code < kLeast[more] || code > 0x10FFFF || (code >= 0xD800 && code < 0xE000))
+            return false;
+        i += static_cast<size_t>(more) + 1;
+    }
+    return true;
+}
+
+bool hasUtf8Name(const fs::path &path) {
+#ifdef _WIN32
+    const std::wstring &name = path.native();
+    for (size_t i = 0; i < name.size(); ++i) {
+        const wchar_t c = name[i];
+        if (c >= 0xDC00 && c < 0xE000)
+            return false;
+        if (c >= 0xD800 && c < 0xDC00 && (++i == name.size() || name[i] < 0xDC00 || name[i] >= 0xE000))
+            return false;
+    }
+#else
+    (void)path;
+#endif
+    return true;
+}
+
+// No path for text that can't name one, and "" for a path UTF-8 can't say.
 fs::path pathOf(const std::string &utf8) {
-    return fs::path(std::u8string(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
+    return validUtf8(utf8) ? fs::path(std::u8string(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size())) : fs::path();
 }
 
 std::string utf8Of(const fs::path &path) {
+    if (!hasUtf8Name(path))
+        return {};
     const std::u8string s = path.generic_u8string();
     return std::string(reinterpret_cast<const char *>(s.data()), s.size());
 }
@@ -116,6 +163,32 @@ constexpr uint32_t kCacheVersion = 2; // 2: Vital's tables read in full, which v
 
 } // namespace
 
+std::vector<TableFolder> mergedFolders(const std::vector<TableFolder> &saved, const std::vector<TableFolder> &before,
+                                       const std::vector<TableFolder> &now) {
+    auto find = [](const std::vector<TableFolder> &list, const TableFolder &folder) {
+        return std::find_if(list.begin(), list.end(), [&folder](const TableFolder &other) {
+            return sameFolder(pathOf(folder.path), pathOf(other.path));
+        });
+    };
+    std::vector<TableFolder> merged;
+    for (const TableFolder &folder : saved) // but for those this library took out since
+        if (find(before, folder) == before.end() || find(now, folder) != now.end())
+            merged.push_back(folder);
+    for (const TableFolder &folder : now) {
+        const auto was = find(before, folder);
+        if (was != before.end() && was->name == folder.name && was->frameSize == folder.frameSize)
+            continue; // not changed here: as the file has it, if another instance changed it or took it out
+        const auto at = std::find_if(merged.begin(), merged.end(), [&folder](const TableFolder &other) {
+            return sameFolder(pathOf(folder.path), pathOf(other.path));
+        });
+        if (at == merged.end())
+            merged.push_back(folder);
+        else
+            *at = folder;
+    }
+    return merged;
+}
+
 TableLibrary::TableLibrary(std::string cache, bool samples) : cachePath_(std::move(cache)), samples_(samples) {
 #ifndef __EMSCRIPTEN__
     worker_ = std::thread([this] { work(); });
@@ -150,6 +223,32 @@ void TableLibrary::setFolders(const std::vector<TableFolder> &folders) {
     for (LibrarySource &s : kept) {
         sources_.push_back(std::move(s));
         jobOf_.push_back(0);
+    }
+}
+
+void TableLibrary::syncFolders(const std::vector<TableFolder> &folders) {
+    auto listed = [&folders](const TableFolder &folder) {
+        return std::find_if(folders.begin(), folders.end(), [&folder](const TableFolder &other) {
+            return sameFolder(pathOf(folder.path), pathOf(other.path));
+        });
+    };
+    for (int s = static_cast<int>(sources_.size()) - 1; s >= 0; --s)
+        if (sources_[s].held.empty() && listed(sources_[s].folder) == folders.end())
+            removeFolder(s);
+    for (const TableFolder &folder : folders) {
+        const auto have = std::find_if(sources_.begin(), sources_.end(), [&folder](const LibrarySource &s) {
+            return s.held.empty() && sameFolder(pathOf(folder.path), pathOf(s.folder.path));
+        });
+        if (have == sources_.end()) {
+            LibrarySource s;
+            s.folder = folder;
+            sources_.push_back(std::move(s));
+            jobOf_.push_back(0);
+            start(static_cast<int>(sources_.size()) - 1);
+            continue;
+        }
+        have->folder.name = folder.name;
+        setFrameSize(static_cast<int>(have - sources_.begin()), folder.frameSize);
     }
 }
 
@@ -396,8 +495,8 @@ void TableLibrary::scan(const Job &job) {
         if (calledOff())
             return;
         std::error_code e;
-        if (!it->is_regular_file(e) || !listedFile(it->path(), samples_))
-            continue;
+        if (!it->is_regular_file(e) || !hasUtf8Name(it->path()) || !listedFile(it->path(), samples_))
+            continue; // a name UTF-8 can't say can't be kept in a patch's origin or the cache either
         if (found.size() == static_cast<size_t>(kMaxFiles)) {
             done.cut = true;
             break;

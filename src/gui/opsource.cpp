@@ -476,6 +476,7 @@ void InspectorPanel::switchSource(int op, int source) {
     const OpWave now = opWave(value(wave));
     if (sourceOfWave(now) == source)
         return;
+    tables_.close(); // the browser picks for the source it was opened on
     const UndoScope step(controller());
     UiLayout &layout = controller().layout();
     if (!isDataWave(now) && layout.plainWave[op] != static_cast<int>(now)) {

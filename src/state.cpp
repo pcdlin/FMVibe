@@ -869,8 +869,7 @@ bool readDataChunk(const clap_istream_t *stream, std::vector<std::shared_ptr<OpD
     size_t total = 0;
     for (uint32_t n = 0; n < count; ++n) {
         uint32_t size = 0;
-        if (!readAll(stream, &size, sizeof(size)) || size > kMaxDataEntryBytes + 4096 ||
-            total + size > kMaxDataChunkBytes + 65536)
+        if (!readAll(stream, &size, sizeof(size)) || size > kMaxDataEntryBytes + 4096 || total + size > kMaxDataReadBytes)
             break;
         total += size;
         std::vector<unsigned char> entry(size);

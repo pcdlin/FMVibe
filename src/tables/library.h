@@ -32,6 +32,11 @@ struct TableFolder {
     int frameSize = 0; // for its files that no chunk gives one: 0 Auto, else 256, 512, 1024 or 2048
 };
 
+// What the settings file holds once a library's changes are in it: `saved`, as the file has it now (another instance may
+// have changed it since), with what the library made of `before` to get to `now`, and nothing else.
+std::vector<TableFolder> mergedFolders(const std::vector<TableFolder> &saved, const std::vector<TableFolder> &before,
+                                       const std::vector<TableFolder> &now);
+
 // A file a source lists.
 struct LibraryEntry {
     std::string path;  // its file's name in its source
@@ -63,6 +68,9 @@ public:
 
     // Main thread. The folders as the settings file has them, scanned anew.
     void setFolders(const std::vector<TableFolder> &folders);
+    // The folders as another instance may have left them: those gone taken out, those new added and scanned, the rest
+    // kept with what they have found.
+    void syncFolders(const std::vector<TableFolder> &folders);
     std::vector<TableFolder> folders() const;
     // Adds a folder as a source and scans it: the index of its source. A folder that is a source already is that
     // source; one inside another source, or holding one, is a source of its own.

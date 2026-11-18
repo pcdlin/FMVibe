@@ -338,7 +338,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and last frames bit for bit; an operator whose table isn't registered yet staying silent and asking for it, then
     playing it; data let go of while a voice plays it freed only once the audio thread has rendered past it;
   - Sample operators: one three octaves above its root 60 dB clean of aliasing at 2x (no worse oversampled further);
-    a forward and a ping-pong loop off whole cycles, and a loop an LFO moves, not clicking; a One-Shot sample, and a
+    a forward and a ping-pong loop off whole cycles, and a loop an LFO moves, not clicking; a One-Shot sample playing a
+    note let go of before its first block; a One-Shot sample, and a
     Gate one with no loop, ending its voice at its end with the key down, Sustain leaving its loop once let go and
     playing to its end, where Gate loops on; a sample silent then a sine playing the sine first once reversed, and a
     reversed One-Shot one still ending its voice; Linear FM through zero staying finite and within the sample; and where
@@ -351,11 +352,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     sizes, FLAC, `.wt` (full, quarter and float, and a sample), `.vitaltable` keyframes filled in between, its lines (from before 0.7.7 and after), audio files and modifiers rendered, and a Vital
     preset refused saying its table is inside, a 4096-point frame brought to 2048 with its harmonics, files cut short
     or lying about their sizes read no further than they go, a broken RIFF refused, frames losing their DC under one
-    gain, and a sample's rate, root and loop from its file;
+    gain, a sample's rate, root and loop from its file, a `.vitaltable`'s warp of any size rendering finite frames and a
+    number JSON can't hold refused, a float WAV's sample past a float's range left out, frames of 1000 and 2047 samples
+    keeping their harmonics (512 of them read in good time) and a 32-bit stereo FLAC's 33-bit side channel;
   - the DATA chunk: tables and samples coming back as saved, keys and samples alike, through a 5-byte stream (a table
     two operators share stored once), a state cut short inside it keeping its params and the entries that came
-    whole, an older build reading up to the preset chunk as before, and a preset file carrying them;
-  - the table library: the tables directly in a folder listed with their frames and formats (its subfolders' left
+    whole, an older build reading up to the preset chunk as before, a preset file carrying them, and six samples of
+    the longest coming back whole, past the 64 MB an import is held to;
+  - the table library: two instances' changes to the folders merging in the settings file, and a library taking up
+    what another left there; a file name UTF-8 can't say left out of a scan and a folder's path that isn't text showing
+    missing; the tables directly in a folder listed with their frames and formats (its subfolders' left
     out, guessed frame sizes marked), how far a scan got, its frame size used for files without one, a folder scanned
     again keeping its list until it is done, the same folder again being its source and one inside or around it a source of
     its own, a second scan reading only what changed, a folder gone showing missing, scans running while the list is read
@@ -872,7 +878,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     keeping it, Escape leaving it), and + Add folder... opening the folder dialog; and over a folder of
     2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
     and jumping to a click on its track; a folder being scanned showing a bar under Scanning..., as far along as the scan
-    is (read off the rendered pixels), and a real scan coming in through the editor's polls alone;
+    is (read off the rendered pixels), and a real scan coming in through the editor's polls alone; two tables alike at
+    their first and middle samples each previewing their own frames, a long file's preview waiting for the mouse to
+    rest on its row and a folder's frame size changed showing in its previews (read off the rendered pixels), a file
+    listed as a sample in a table's folder loading as a sample, and the browser, shut by switching its operator's
+    source, staying shut as it switches back;
   - a file that doesn't say how long its frames are, imported or dropped on the TABLE tab's display (lit while held
     there), asking for its frame size: a size cutting it so, Enter taking Auto and Escape leaving the operator as it was,
     one undo step; a wavetable that says, or a file taken as a sample, going straight in;

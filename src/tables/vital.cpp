@@ -162,7 +162,7 @@ private:
         char *stop = nullptr;
         const std::string number(at_, static_cast<size_t>(std::min<ptrdiff_t>(end_ - at_, 64)));
         out.number = std::strtod(number.c_str(), &stop);
-        if (stop == number.c_str())
+        if (stop == number.c_str() || !std::isfinite(out.number)) // JSON has no NaN or infinity
             return false;
         out.kind = Json::Number;
         at_ += stop - number.c_str();
@@ -274,9 +274,13 @@ struct Component {
     std::vector<float> audio; // an audio file source's
 };
 
-// A curve from 0 to 1, straight at power 0, bending one way or the other as the power does.
+// A curve from 0 to 1, straight at power 0, bending one way or the other as the power does: held to what an exponential
+// can reach, as a file may name any number.
 double powerScale(double x, double power) {
-    return std::abs(power) < 0.01 ? x : (std::exp(power * x) - 1.0) / (std::exp(power) - 1.0);
+    if (std::abs(power) < 0.01)
+        return x;
+    const double bend = std::clamp(power, -700.0, 700.0);
+    return (std::exp(bend * x) - 1.0) / (std::exp(bend) - 1.0);
 }
 
 double signedPowerScale(double x, double power) {
@@ -450,7 +454,7 @@ void renderFile(const Component &c, const Span &span, float *frame) {
     if (audio.empty())
         return;
     auto read = [&audio](double at) { // along four points' curve
-        const double place = std::clamp(at, 0.0, static_cast<double>(audio.size() - 1));
+        const double place = std::isfinite(at) ? std::clamp(at, 0.0, static_cast<double>(audio.size() - 1)) : 0.0;
         const auto i = static_cast<int64_t>(place);
         const auto last = static_cast<int64_t>(audio.size()) - 1;
         const double t = place - static_cast<double>(i);
@@ -480,7 +484,8 @@ void renderFile(const Component &c, const Span &span, float *frame) {
             frameOf(blendSpectra(harmonicsOf(frame, kSize, kTop), harmonicsOf(next.data(), kSize, kTop), part), frame);
         }
     } else { // the window from where it is, faded at its start into the window after it, so it loops
-        const auto offset = static_cast<int64_t>(start / step + 0.5 * window + 0.5 * kSize) % kSize;
+        const double along = start / step + 0.5 * window + 0.5 * kSize;
+        const auto offset = std::isfinite(along) ? static_cast<int64_t>(std::fmod(along, kSize)) : int64_t{0};
         for (int i = 0; i < kSize; ++i)
             frame[(offset + i) % kSize] = read(start + i * step);
         const int fades = static_cast<int>(std::clamp(span.at("window_fade", 1.0), 0.0, 1.0) * kSize);
@@ -604,7 +609,7 @@ void renderWarp(const Component &c, const Span &span, float *frame) {
     for (int i = 0; i < kSize; ++i) {
         double x = static_cast<double>(i) / (kSize - 1);
         x = acrossOneWay ? powerScale(x, across) : 0.5 * signedPowerScale(2.0 * x - 1.0, across) + 0.5;
-        const double place = std::clamp(x, 0.0, 1.0) * (kSize - 1);
+        const double place = (std::isfinite(x) ? std::clamp(x, 0.0, 1.0) : 0.0) * (kSize - 1);
         const int at = std::min(static_cast<int>(place), kSize - 2);
         const double v = std::clamp(wave[at] + (wave[at + 1] - wave[at]) * (place - at), -1.0, 1.0);
         frame[i] = static_cast<float>(upDownOneWay ? 2.0 * powerScale(0.5 * v + 0.5, upDown) - 1.0
@@ -706,6 +711,10 @@ ReadError readVitalTable(const uint8_t *bytes, size_t size, std::vector<float> &
                 out[i] += frame[i] / static_cast<float>(table.groups.size());
         }
     }
+    // Whatever a file's numbers made of a modifier, what plays is a number.
+    for (float &x : frames)
+        if (!std::isfinite(x))
+            x = 0.0f;
     return ReadError::None;
 }
 

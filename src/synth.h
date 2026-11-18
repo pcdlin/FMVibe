@@ -529,6 +529,8 @@ private:
     bool voiceHas(const NoteRef &note) const;
     void moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide);
     void releaseVoice(Voice &v);
+    // A note let go of before its first block, in that block: its operators release, but for its One-Shot samples.
+    void releaseUnstarted(Voice &v, const double *p);
     // A voice whose key is let go: the pedal holds it, or it releases.
     void letGo(Voice &v);
     // Whether a sustain pedal holding `v`'s note is down (see setPedal()).

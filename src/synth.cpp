@@ -590,11 +590,21 @@ void Synth::startFromChannel(Voice &v) const {
 
 void Synth::releaseVoice(Voice &v) {
     v.released = true;
-    for (int i = 0; i < kOps; ++i)
-        if (!v.plays[i].oneShot) // a One-Shot sample plays on to its end, and its envelope stops there
-            v.ops[i].env.release();
+    // A One-Shot sample plays on to its end, and its envelope stops there. A note let go of before its first block isn't
+    // known to be one yet: that block lets its operators go (see releaseUnstarted()).
+    if (!v.fresh)
+        for (int i = 0; i < kOps; ++i)
+            if (!v.plays[i].oneShot)
+                v.ops[i].env.release();
     for (Envelope &env : v.modEnvs)
         env.release();
+}
+
+void Synth::releaseUnstarted(Voice &v, const double *p) {
+    for (int i = 0; i < kOps; ++i)
+        if (!opSampleData_[i] || opWave(p[paramIndex(i, OpParam::Wave)]) != OpWave::Sample ||
+            sampleMode(p[paramIndex(i, OpParam::SampleMode)]) != SampleMode::OneShot)
+            v.ops[i].env.release();
 }
 
 Synth::Voice *Synth::newestVoice() {
@@ -2319,6 +2329,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     if (v.fresh) {
         v.fresh = false;
         v.keepLfos = false;
+        if (v.released)
+            releaseUnstarted(v, p);
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
