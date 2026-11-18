@@ -417,8 +417,6 @@ void TableBrowser::paintBack(Canvas &c) {
     }
     c.line({kTbSources.right() + 6.0f, kTbTop}, {kTbSources.right() + 6.0f, kTbBottom}, kBorder, 1.0f);
     c.line({kTbList.right() + 6.0f, kTbTop}, {kTbList.right() + 6.0f, kTbBottom}, kBorder, 1.0f);
-    c.text({kTableBrowser.x, kTbBottom + 4.0f, kTableBrowser.w, 18.0f}, tr(Str::TablesFooter), kTextLabel, kFaint,
-           Align::Left);
     // A list with nothing in it says so; a folder being scanned, how far the scan is, along a bar under the words.
     const RowList held = rows();
     const std::vector<Row> &all = *held;

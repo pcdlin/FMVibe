@@ -4153,7 +4153,7 @@ void readerChecks() {
             a[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * i / 2048));
             b[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * 2 * i / 2048));
         }
-        const std::string json = "{\"author\":\"\",\"groups\":[{\"components\":[{\"type\":\"Wave Source\",\"keyframes\":["
+        const std::string json = "{\"author\":\"\",\"groups\":[{\"components\":[{\"type\":\"Wave Source\",\"interpolation\":0,\"keyframes\":["
                                  "{\"position\":0,\"wave_data\":\"" + base64(a) + "\"},{\"position\":4,\"wave_data\":\"" +
                                  base64(b) + "\"}]}]}],\"name\":\"two\",\"version\":\"1.0\"}";
         const TableFile f = readTableFile(reinterpret_cast<const uint8_t *>(json.data()), json.size(), "two.vitaltable",
@@ -4176,6 +4176,66 @@ void readerChecks() {
                                               "x.vital", ReadAs::Table);
         check(f.error == ReadError::None && between && vital.error == ReadError::PresetOnly,
               "a .vitaltable's keyframes are read and filled in between; a Vital preset says its table is inside it");
+    }
+    // .vitaltable: what Vital's own tables are made of.
+    {
+        auto vital = [](const std::string &json) {
+            return readTableFile(reinterpret_cast<const uint8_t *>(json.data()), json.size(), "x.vitaltable", ReadAs::Table);
+        };
+        auto second = [](const TableFile &f, int frame, int harmonic) {
+            const std::vector<std::complex<double>> h = harmonicsOf(&f.data[static_cast<size_t>(frame) * 2048], 2048, harmonic);
+            return std::abs(h[harmonic]) / std::max(std::abs(h[1]), 1e-9);
+        };
+        // A line from before 0.7.7, its type a number and its points between -1 and 1: a pulse, up, then down.
+        const TableFile pulse = vital("{\"groups\":[{\"components\":[{\"type\":1,\"num_points\":4,\"keyframes\":["
+                                      "{\"position\":0,\"num_points\":4,\"points\":[0.0,1.0,0.0,-1.0,0.5,-1.0,0.5,1.0],"
+                                      "\"powers\":[0.0,0.0,0.0,0.0]},"
+                                      "{\"position\":256,\"num_points\":4,\"points\":[0.0,1.0,0.0,-1.0,0.25,-1.0,0.25,1.0],"
+                                      "\"powers\":[0.0,0.0,0.0,0.0]}]}]}]}");
+        const bool halves = pulse.error == ReadError::None && pulse.frames == 257 && pulse.data[500] > 0.6f && pulse.data[1500] < -0.6f; // one gain for all its frames, the narrowest peaking at 1
+        const float *const narrow = pulse.frames == 257 ? &pulse.data[256 * 2048] : pulse.data.data();
+        const bool narrower = narrow[300] > 0.5f && narrow[1000] < -0.2f;
+        // A later line, by its name and its line object: from the top (0) down to the bottom (1), a falling saw; its
+        // points bent by their power.
+        const std::string later = "{\"version\":\"1.0.0\",\"groups\":[{\"components\":[{\"type\":\"Line Source\",\"keyframes\":["
+                                  "{\"position\":0,\"line\":{\"num_points\":2,\"points\":[0.0,0.0,1.0,1.0],\"powers\":[POWER,0.0]}}]}]}]}";
+        auto withPower = [&later](const char *power) {
+            std::string json = later;
+            return json.replace(json.find("POWER"), 5, power);
+        };
+        const TableFile saw = vital(withPower("0.0")), bent = vital(withPower("6.0"));
+        const bool falling = saw.error == ReadError::None && saw.frames == 1 && saw.data[100] > 0.8f && saw.data[1950] < -0.8f &&
+                             std::abs(saw.data[1024]) < 0.02f && bent.error == ReadError::None && bent.data[1024] > saw.data[1024] + 0.1f;
+        // A filter after a line, by its number: only the harmonics under its cutoff of 2^1 left of a saw.
+        const TableFile filtered = vital("{\"version\":\"1.0.0\",\"groups\":[{\"components\":["
+                                         "{\"type\":\"Line Source\",\"keyframes\":[{\"position\":0,\"line\":{\"num_points\":2,"
+                                         "\"points\":[0.0,0.0,1.0,1.0],\"powers\":[0.0,0.0]}}]},"
+                                         "{\"type\":5,\"style\":0,\"normalize\":true,\"keyframes\":[{\"position\":0,\"cutoff\":1.0,\"shape\":0.0}]}]}]}");
+        const bool lowered = filtered.error == ReadError::None && second(saw, 0, 5) > 0.15 && second(filtered, 0, 5) < 0.001;
+        // A fold of a sine by a boost of 3, by its number after 0.3.3's: its third harmonic alone.
+        std::vector<float> sine(2048);
+        for (int i = 0; i < 2048; ++i)
+            sine[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * i / 2048));
+        const TableFile folded = vital("{\"groups\":[{\"components\":[{\"type\":0,\"interpolation\":0,\"keyframes\":["
+                                       "{\"position\":0,\"wave_data\":\"" + base64(sine) + "\"}]},"
+                                       "{\"type\":7,\"keyframes\":[{\"position\":0,\"fold_boost\":3.0}]}]}]}");
+        const bool fold = folded.error == ReadError::None && second(folded, 0, 3) > 100.0;
+        // An audio file of 16-bit samples: two cycles of different lengths' worth, each frame one window of it, whole.
+        std::vector<float> packed(2048); // two 16-bit samples to a float, as base64() takes floats
+        for (int i = 0; i < 2048; ++i) {
+            const auto a = static_cast<int16_t>(20000.0 * std::sin(2.0 * std::numbers::pi * (2 * i) / 2048));
+            const auto b = static_cast<int16_t>(20000.0 * std::sin(2.0 * std::numbers::pi * (2 * i + 1) / 2048));
+            const int16_t pair[2] = {a, b};
+            std::memcpy(&packed[i], pair, 4);
+        }
+        const TableFile file = vital("{\"version\":\"1.0.0\",\"groups\":[{\"components\":[{\"type\":\"Audio File Source\","
+                                     "\"window_size\":2048.0,\"fade_style\":1,\"normalize_mult\":false,\"audio_file\":\"" +
+                                     base64(packed) + "\",\"keyframes\":[{\"position\":0,\"start_position\":0.0,\"window_fade\":1.0}]}]}]}");
+        const bool audio = file.error == ReadError::None && file.frames == 1 && second(file, 0, 2) < 0.01 && std::abs(file.data[512] - 1.0f) < 0.02f;
+        std::printf("      Vital: a pulse %d narrowing %d, a line %d bent %d, a filter %d, a fold %d, an audio file %d\n", halves, narrower,
+                    falling, falling, lowered, fold, audio);
+        check(halves && narrower && falling && lowered && fold && audio,
+              "a .vitaltable's lines (either format), audio files and modifiers render, its types named or numbered");
     }
     // A frame size of 4096 brought to 2048, its harmonics up to 1024 as they were.
     {

@@ -194,6 +194,7 @@ add_library(fmvibe-core STATIC
     src/tables/library.cpp
     src/tables/library.h
     src/tables/readers.cpp
+    src/tables/vital.cpp
     src/tables/readers.h
 )
 target_include_directories(fmvibe-core PUBLIC src)

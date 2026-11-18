@@ -9795,7 +9795,7 @@ std::vector<uint8_t> sampleWav() {
 
 // Where a Sample operator's waveform goes in its display (as opsource.cpp has it).
 Rect sampleArea() {
-    const Rect d = detail::kOpDisplay;
+    const Rect d = detail::kSampleDisplay;
     return {d.x + 8.0f, d.y + 22.0f, d.w - 16.0f, d.h - 30.0f};
 }
 
@@ -9814,7 +9814,7 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     check(detail::kOpSourceRow.y == detail::kFixedSwitch.y &&
               detail::kOpSourceRow.right() + 4.0f <= detail::kPartialEditButton.x &&
               detail::kOpSourceRow.bottom() <= detail::kInspectorPage.y &&
-              detail::opKnobCenter(0).y == lens.y + 102.0f && detail::kOpTabsY == lens.y + 150.0f &&
+              detail::opKnobCenter(0).y == lens.y + 107.0f && detail::kOpTabsY == lens.y + 150.0f &&
               detail::kOpDisplay.y == lens.y + 172.0f && detail::kOpControlsY == lens.y + 315.0f &&
               detail::kOpControlsY + 0.5f * detail::kOpKnobD + 18.0f <= lens.bottom() - 10.0f &&
               detail::kOpWellTall.bottom() <= lens.bottom() &&
@@ -9871,7 +9871,7 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     {
         const int ratio = paramIndex(0, OpParam::Ratio), pitch = paramIndex(0, OpParam::Transpose);
         const double was = model.value(ratio);
-        const Point knobAt = detail::opWideKnobCenter(0, detail::kOpTableKnobY);
+        const Point knobAt = detail::opWideKnobCenter(0, detail::kOpDataKnobY);
         drag(view, knobAt, {knobAt.x, knobAt.y - 30.0f});
         const bool turned = model.value(pitch) != 0.0 && model.value(ratio) == was;
         view.undo();
@@ -10499,19 +10499,29 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     check(renderer.pixel(at) != without, "the newest voice's playhead shows in the sample");
     // Phase is dimmed and takes no drag: Start takes its place.
     const int phase = paramIndex(1, OpParam::Phase);
-    const Point phaseAt = detail::opWideKnobCenter(2, detail::kOpKnobY);
+    const Point phaseAt = detail::opWideKnobCenter(2, detail::kOpDataKnobY);
     drag(view, phaseAt, {phaseAt.x, phaseAt.y - 40.0f});
     check(model.value(phase) == 0.0, "a sample's Phase is dimmed and doesn't turn");
-    // A sample has no Ratio: its picker runs along the block, its Pitch knob where the readout was.
+    // A sample has no Ratio, its Pitch knob where the readout was, and its picker is the SAMPLE tab's, at its top: on
+    // another tab its import button isn't there.
     {
         const int ratio = paramIndex(1, OpParam::Ratio), pitch = paramIndex(1, OpParam::Transpose);
         const double was = model.value(ratio);
-        const Point knobAt = detail::opWideKnobCenter(0, detail::kOpKnobY);
+        const Point knobAt = detail::opWideKnobCenter(0, detail::kOpDataKnobY);
         drag(view, knobAt, {knobAt.x, knobAt.y - 30.0f});
         const bool turned = model.value(pitch) != 0.0 && model.value(ratio) == was;
         view.undo();
-        check(turned && detail::kSamplePicker.x == detail::kRatioBox.x,
-              "a Sample operator has no Ratio readout, its picker along the block and its Pitch knob taking the room");
+        model.ui.opTab = InspectorTab::Envelope;
+        view.poll();
+        const int dialogs = model.fileDialogs;
+        click(view, detail::kSampleImport.center());
+        const bool onlyOnTab = model.fileDialogs == dialogs;
+        model.ui.opTab = InspectorTab::Source;
+        view.poll();
+        check(turned && onlyOnTab && detail::kSamplePicker.y >= detail::kOpDisplay.y &&
+                  detail::kSamplePicker.bottom() <= detail::kSampleDisplay.y,
+              "a Sample operator has no Ratio readout, its Pitch knob taking the room, and its picker is at the top of "
+              "the SAMPLE tab and on no other");
     }
 
     // A file dragged in from outside the editor (the system's file browser, a host's) lands on the SAMPLE tab's display,
@@ -10519,7 +10529,7 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     // display), not over the knobs nor on a plain wave's page. Dropped there, it is imported into the operator, one undo
     // step; dropped on a knob, it is refused.
     {
-        const Point onDisplay = detail::kOpDisplay.center(), onKnob = detail::opWideKnobCenter(0, detail::kOpKnobY);
+        const Point onDisplay = detail::kOpDisplay.center(), onKnob = detail::opWideKnobCenter(0, detail::kOpDataKnobY);
         const Point ring{detail::kOpDisplay.x - 3.0f, detail::kOpDisplay.center().y};
         model.live.voices = 0;
         view.poll();

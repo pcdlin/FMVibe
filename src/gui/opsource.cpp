@@ -1,6 +1,6 @@
 // A Wavetable or Sample operator's part of the inspector (InspectorPanel, see inspectorpanel.h): the source switch on
-// its page's title row, a sample's picker in its waves' place, its TABLE tab (the table's picker over its frames,
-// Position's control, with its warp) and its SAMPLE tab (its waveform with Start's and the loop's handles, the ROOT readout, LOOP, MODE and the
+// its page's title row, its TABLE tab (the table's picker over its frames, Position's control, with its warp) and its
+// SAMPLE tab (the sample's picker over its waveform with Start's and the loop's handles, the ROOT readout, LOOP, MODE and the
 // reverse switch), and a file dragged in from outside dropped on that display. The table browser the pickers open is
 // TableBrowser's (see tablebrowser.h).
 
@@ -81,7 +81,7 @@ std::string InspectorPanel::dataName(int op) const {
 int InspectorPanel::fileDropOp(Point p) const {
     const int op = controller().layout().selectedNode;
     if (covered() || shapes_.partialEditing() >= 0 || op < 0 || op >= kOps || !isSampleOp(op) ||
-        opTabShown(op) != InspectorTab::Source || !kOpDisplay.contains(p))
+        opTabShown(op) != InspectorTab::Source || !kSampleDisplay.contains(p))
         return -1;
     return op;
 }
@@ -104,10 +104,6 @@ void InspectorPanel::sourceWidgets(std::vector<Widget> &list, int op, InspectorT
         add(Kind::SourceSwitch, opSourceButton(s), -1, op, s);
     mergeButtons(list, switches);
     const bool table = isTableOp(op), sample = isSampleOp(op);
-    if (sample) {
-        add(Kind::SamplePicker, kSamplePicker, paramIndex(op, OpParam::Sample), op);
-        add(Kind::DataImport, kSampleImport, -1, op, static_cast<int>(DataKind::Sample));
-    }
     if (tab != InspectorTab::Source)
         return;
     if (table) {
@@ -128,13 +124,15 @@ void InspectorPanel::sourceWidgets(std::vector<Widget> &list, int op, InspectorT
     }
     if (!sample)
         return;
+    add(Kind::SamplePicker, kSamplePicker, paramIndex(op, OpParam::Sample), op);
+    add(Kind::DataImport, kSampleImport, -1, op, static_cast<int>(DataKind::Sample));
     const uint32_t key = dataKey(value(paramIndex(op, OpParam::Sample)));
     const OpData *d = key ? controller().opData(key) : nullptr;
     if (!d || d->kind != DataKind::Sample) {
-        add(Kind::DataImport, kOpDisplay.inset(10.0f), -1, op, static_cast<int>(DataKind::Sample));
+        add(Kind::DataImport, kSampleDisplay.inset(8.0f), -1, op, static_cast<int>(DataKind::Sample));
     } else {
         // The loop's brackets over its upper part, Start's tab along its foot, and the fade's ramp at the loop's end.
-        const Rect area = sampleArea(kOpDisplay);
+        const Rect area = sampleArea(kSampleDisplay);
         auto x = [&](OpParam p) {
             return area.x + static_cast<float>(std::clamp(value(paramIndex(op, p)), 0.0, 1.0)) * area.w;
         };
@@ -152,7 +150,7 @@ void InspectorPanel::sourceWidgets(std::vector<Widget> &list, int op, InspectorT
         }
         add(Kind::SampleHandle, {x(OpParam::SampleStart) - 6.0f, area.bottom() - 14.0f, 12.0f, 16.0f},
             paramIndex(op, OpParam::SampleStart), op, 0);
-        add(Kind::SampleRoot, sampleRootBox(kOpDisplay), paramIndex(op, OpParam::SampleRoot), op);
+        add(Kind::SampleRoot, sampleRootBox(kSampleDisplay), paramIndex(op, OpParam::SampleRoot), op);
     }
     const size_t loops = list.size();
     for (int m = 0; m < 3; ++m)
@@ -224,7 +222,7 @@ bool InspectorPanel::paintSourceWidget(Canvas &c, const Widget &w, bool hovered)
             c.strokeRect(w.rect, kFaint, 1.0f, kRadiusCard);
         return true;
     case Kind::SampleHandle: {
-        const Rect area = sampleArea(kOpDisplay);
+        const Rect area = sampleArea(kSampleDisplay);
         const float x = w.rect.center().x;
         const bool hot = hovered || active;
         const bool loop = sampleLoop(value(paramIndex(w.a, OpParam::LoopMode))) != SampleLoop::Off;
@@ -362,7 +360,6 @@ void InspectorPanel::paintSampleTab(Canvas &c, Rect r, int op) {
         const float px = area.x + t.opSamplePos[op] * area.w;
         c.line({px, area.y - 2.0f}, {px, area.bottom() + 2.0f}, kText, 1.5f);
     }
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 80.0f, 14.0f}, d->name, kTextSmall, kDim, Align::Left);
     // The loop's and the mode's names, under their buttons.
     c.text({sampleLoopButton(0, kOpControlsY).x, kOpControlsY + 11.0f, 3.0f * kSampleChoiceW, 12.0f},
            tr(Str::LabelLoop), kTextSmall, kFaint, Align::Center, true);
@@ -544,7 +541,7 @@ bool InspectorPanel::sourcePress(const Widget &w, Point p, Modifiers mods) {
 // end its ramp starts, over half the loop; with Alt, a loop's point onto the nearest zero crossing going up.
 void InspectorPanel::sampleDrag(const DragState &d) {
     const Widget &w = drag_.widget;
-    const Rect area = sampleArea(kOpDisplay);
+    const Rect area = sampleArea(kSampleDisplay);
     double v = std::clamp((d.now.x - area.x) / area.w, 0.0f, 1.0f);
     if (drag_.fine)
         v = std::clamp(drag_.startValue + (d.now.x - d.start.x) / area.w * 0.1, 0.0, 1.0);

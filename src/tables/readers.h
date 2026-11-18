@@ -24,7 +24,7 @@ enum class ReadError {
     Unsupported,   // a sample format FMVibe doesn't read
     Encrypted,     // Native Instruments' and Arturia's own formats
     PresetOnly,    // a preset, whose table lives inside it (Serum's .fxp and .SerumPreset, Vital's .vital)
-    LineSource,    // a Vital table drawn with lines, which FMVibe can't read yet
+    LineSource,    // no longer given: kept for its number, which the library's cache stores
     Empty,         // no audio in it
     TooLong,       // a sample past kMaxSampleLength
     NotTable,      // asked for a table, and none of its chunks or lengths gives a frame size
@@ -80,6 +80,11 @@ int guessFrameSize(int64_t length, int folder);
 // FrameTable::kMaxFrames thinned evenly; frames of `size` (128 to 4096) brought to FrameTable::kFrameSize through their
 // spectrum. Reads `count` frames from `samples`.
 std::vector<float> normalizeFrames(const float *samples, int count, int size, int &frames);
+
+// A Vital .vitaltable (see vital.cpp), its keyframes rendered: `count` frames of FrameTable::kFrameSize samples each.
+ReadError readVitalTable(const uint8_t *bytes, size_t size, std::vector<float> &frames, int &count);
+// How many frames readVitalTable() would make of it, without rendering them.
+ReadError probeVitalTable(const uint8_t *bytes, size_t size, int &count);
 
 // Decodes a FLAC stream: its samples, mono (channels summed), and its rate and bits; false if it isn't one or is broken.
 bool decodeFlac(const uint8_t *bytes, size_t size, std::vector<float> &mono, uint32_t &rate, int &bits);

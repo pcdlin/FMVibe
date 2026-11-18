@@ -348,7 +348,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the operators' new fields at their ids (op A's Position 137, op F's Sample Mode 396, 38000 on free for them);
   - the file readers: WAVs at 16, 24 and 32 bits and float with Serum's `clm` (its frame size read, 2048 guessed
     without one, the folder's taken), stereo summed, past 512 frames thinned, `uhWT`, `srge`, cue and `smpl` frame
-    sizes, FLAC, `.wt` (full, quarter and float, and a sample), `.vitaltable` keyframes filled in between and a Vital
+    sizes, FLAC, `.wt` (full, quarter and float, and a sample), `.vitaltable` keyframes filled in between, its lines (from before 0.7.7 and after), audio files and modifiers rendered, and a Vital
     preset refused saying its table is inside, a 4096-point frame brought to 2048 with its harmonics, files cut short
     or lying about their sizes read no further than they go, a broken RIFF refused, frames losing their DC under one
     gain, and a sample's rate, root and loop from its file;
@@ -871,8 +871,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
     and jumping to a click on its track; a folder being scanned showing a bar under Scanning..., as far along as the scan
     is (read off the rendered pixels), and a real scan coming in through the editor's polls alone;
-  - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
-    does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
+  - a Sample operator: its picker and import button at the top of the SAMPLE tab and on no other; SAMPLE with none
+    showing the dashed card, which opens the file dialog, as the import button does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
     loop's end dragged, each an undo step, a double-click putting one back; LOOP and
     MODE picking, their icons named in tooltips, and the reverse switch between them turning the waveform round (read
     off the rendered pixels), undoably; the newest voice's playhead (read off the rendered pixels); Phase dimmed, not turning; and a file
@@ -1129,7 +1129,7 @@ breakpoints in `src/` then hit.
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
 | `src/opdata.h`, `src/opdata.cpp` | What a Wavetable or Sample operator plays (`OpData`): a table's frames by level, a sample's halved copies; the registry that hands them to the audio thread and the store that keeps them on the main thread |
 | `src/tables.h`, `src/tables.cpp` | The factory wavetables, generated from their spectra |
-| `src/tables/readers.h`, `src/tables/readers.cpp`, `src/tables/flac.cpp` | Reading wavetable and sample files (WAV and its chunks, FLAC, `.wt`, `.vitaltable`), guessing a frame size, normalizing frames; and writing a table as a WAV |
+| `src/tables/readers.h`, `src/tables/readers.cpp`, `src/tables/flac.cpp`, `src/tables/vital.cpp` | Reading wavetable and sample files (WAV and its chunks, FLAC, `.wt`, and `.vitaltable`, whose components `vital.cpp` renders into frames), guessing a frame size, normalizing frames; and writing a table as a WAV |
 | `src/tables/library.h`, `src/tables/library.cpp` | The table browser's folders: scanned on a thread of their own, cached between runs |
 | `src/fft.h` | A small FFT, for the tables' spectra |
 | `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |

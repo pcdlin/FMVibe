@@ -111,7 +111,7 @@ constexpr auto kReportEvery = std::chrono::milliseconds(100);
 constexpr auto kSaveEvery = std::chrono::seconds(5);
 
 constexpr uint32_t kCacheMagic = 0x43424C54; // "TLBC"
-constexpr uint32_t kCacheVersion = 1;
+constexpr uint32_t kCacheVersion = 2; // 2: Vital's tables read in full, which version 1 listed as unreadable
 
 } // namespace
 

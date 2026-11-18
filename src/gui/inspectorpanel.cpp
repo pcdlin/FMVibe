@@ -233,7 +233,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                                           tr(Str::LabelPhase),
                                           tr(Str::LabelPan)};
             const size_t row = list.size();
-            const float knobY = isTableOp(op) ? kOpTableKnobY : kOpKnobY;
+            const float knobY = data ? kOpDataKnobY : kOpKnobY;
             for (int i = 0; i < 6; ++i)
                 if (params[i] >= 0)
                     knob(params[i], data && !fixed ? opWideKnobCenter(i - 2, knobY) : Point{opKnobCenter(i - 2).x, knobY},
@@ -492,10 +492,10 @@ void InspectorPanel::paintBack(Canvas &c) {
             if (isTableOp(op))
                 paintTableTab(c, kTableDisplay, op);
             else
-                paintSampleTab(c, kOpDisplay, op);
+                paintSampleTab(c, kSampleDisplay, op);
             if (fileDrop_ == op) { // a file held over the display: it lands here
-                c.fillRect(kOpDisplay, kAccent.alpha(0.10f), kRadiusCard);
-                c.strokeRect(kOpDisplay.inset(-3.0f), kAccent, 2.0f, kRadiusCard + 3.0f);
+                c.fillRect(kSampleDisplay, kAccent.alpha(0.10f), kRadiusCard);
+                c.strokeRect(kSampleDisplay.inset(-3.0f), kAccent, 2.0f, kRadiusCard + 3.0f);
             }
             break;
         case InspectorTab::Inputs:

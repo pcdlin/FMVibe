@@ -33,6 +33,7 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/tables/flac.cpp
     ${PROJECT_SOURCE_DIR}/src/tables/library.cpp
     ${PROJECT_SOURCE_DIR}/src/tables/readers.cpp
+    ${PROJECT_SOURCE_DIR}/src/tables/vital.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/canvas_web.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/controller.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/dialogs.cpp

@@ -42,8 +42,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     unison copies start up to Phase Random's share of 50 ms apart. Phase does nothing on a sample, and Note Sync and
     the warps neither;
   - **Wavetables and samples from files**: WAV (8, 16, 24 and 32-bit integer and 32 and 64-bit float, its channels
-    mixed to one, RF64 and extensible WAVs too), FLAC (read by FMVibe's own decoder), `.wt` and Vital's `.vitaltable` (its sample-based
-    tables; its line-drawn ones are refused, saying so). A WAV's frame size comes from what the writing synth put in
+    mixed to one, RF64 and extensible WAVs too), FLAC (read by FMVibe's own decoder), `.wt` and Vital's `.vitaltable` (rendered as Vital
+    renders it: its waves, drawn lines and audio files, with its phase, window, filter, slew, fold and warp modifiers). A WAV's frame size comes from what the writing synth put in
     it (Serum's `clm` chunk, Surge's `srge`, u-he's `uhWT`, a cue list, a `smpl` loop), else from its folder's frame size,
     else it is guessed from the length (2048, else 1024, 512, 256, 4096 or 128 dividing it into 2 to 512 frames; a
     file of no more than 4096 points is one frame). A table's frames lose their DC and
@@ -1594,9 +1594,8 @@ one may have changed since it last did.
     buttons, the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine, Organ, Vowel and Custom
     (picked, one of these shows on that button). Under them the pitch, detune, phase and pan knobs, their
     labels on the Ratio readout's line. A table or a sample has no Ratio readout (nor a Ratio to modulate, and its
-    circle in the graph shows no ratio): its four knobs spread along the whole block, under a sample's picker, which
-    runs along the block's top and opens the browser on samples, and its import button, which opens the file dialog (a
-    sample's Phase dimmed: it does nothing there); a table's picker is on its TABLE tab. The Ratio readout is four digits of a 7-segment
+    circle in the graph shows no ratio): its four knobs spread along the whole block (a sample's Phase dimmed: it does
+    nothing there), and its picker is on its TABLE or SAMPLE tab. The Ratio readout is four digits of a 7-segment
     display (88.88, the tens dark below 10),
     each its own handle. A digit dragged up or down steps by its own place (tens 10, ones 1, tenths 0.1, hundredths
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
@@ -1660,7 +1659,8 @@ one may have changed since it last did.
       dropped anywhere on it modulates Position, its depth handles centered along the display's foot.
       Along the row under it, where the WARP tab has them, the warps' buttons, the warp's **Amount** and **NOTE**
       (note sync).
-    - **SAMPLE** (a Sample operator's, in WARP's place): the sample's waveform, its name at the top left and its
+    - **SAMPLE** (a Sample operator's, in WARP's place): along its top the sample's picker, which opens the table browser
+      on samples, and an import button, which opens the file dialog. Under them the sample's waveform, its
       **ROOT** at the top right (dragged up and down, or typed after a double-click: a note name or number). Over its upper
       part the loop's brackets, Loop Start's and Loop End's handles (Alt+drag puts them on zero crossings), the loop
       shaded faintly and its fade a ramp up to its end, with the fade's handle on it; along its foot Start's tab. Each
