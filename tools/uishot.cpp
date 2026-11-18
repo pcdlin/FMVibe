@@ -10078,7 +10078,7 @@ void testTableBounds(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
     const Point away{detail::kInspector.center().x, detail::kInspector.y + 40.0f};
     const Rect display = detail::kTableDisplay;
-    const Rect preview{detail::kTbPreview.x, detail::kTbPreview.y, detail::kTbPreview.w, detail::kTbPreview.h * 0.62f};
+    const Rect preview{detail::kTbPreview.x, detail::kTbPreview.y, detail::kTbPreview.w, detail::kTbPreviewView.h};
     // Above the display (the tabs' names), under it (to the controls' row), and above the preview.
     auto outside = [&](bool browsing) {
         std::vector<uint32_t> pixels;
@@ -10174,7 +10174,7 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     // (read off the rendered pixels).
     {
         const Rect stack{detail::kTbPreview.x + 4.0f, detail::kTbPreview.y + 4.0f, detail::kTbPreview.w - 8.0f,
-                         detail::kTbPreview.h * 0.62f - 8.0f};
+                         detail::kTbPreviewView.h - 8.0f};
         auto accent = [](uint32_t p) {
             return std::abs(static_cast<int>(p >> 16 & 255) - static_cast<int>(detail::kAccent.r * 255.0f)) < 30 &&
                    std::abs(static_cast<int>(p >> 8 & 255) - static_cast<int>(detail::kAccent.g * 255.0f)) < 30 &&

@@ -322,6 +322,8 @@ constexpr Rect kTbSources{kTableBrowser.x, kTbTop, 176.0f, kTbBottom - kTbTop};
 constexpr Rect kTbList{kTbSources.x + kTbSources.w + 12.0f, kTbTop, 404.0f, kTbBottom - kTbTop};
 constexpr Rect kTbPreview{kTbList.x + kTbList.w + 12.0f, kTbTop,
                           kTableBrowser.x + kTableBrowser.w - (kTbList.x + kTbList.w) - 12.0f, kTbBottom - kTbTop};
+// The preview's drawing, at the top of its column, what is known of the file under it.
+constexpr Rect kTbPreviewView{kTbPreview.x, kTbPreview.y, kTbPreview.w, kTbPreview.h * 0.4f};
 constexpr float kTbRowH = 24.0f;
 constexpr Rect kTbSearch{kTbList.x, kTableBrowser.y + 4.0f, kTbList.w, 26.0f};
 constexpr Rect kTbDone{kTableBrowser.x + kTableBrowser.w - 64.0f, kTableBrowser.y + 5.0f, 64.0f, 24.0f};

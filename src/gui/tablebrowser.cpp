@@ -140,7 +140,7 @@ void paintTableStack(Canvas &c, Rect r, const OpData &table, int most, float pos
     for (int j = shown - 1; j >= 0; --j) { // the back first, fainter
         const double f = shown > 1 ? std::round(static_cast<double>(j) * (frames - 1) / (shown - 1)) : 0.0;
         const float t = frames > 1 ? static_cast<float>(f / (frames - 1)) : 0.0f;
-        frameAt(f, t, color.alpha(0.12f + 0.38f * (1.0f - t)), 1.0f, WarpCoefs{});
+        frameAt(f, t, color.alpha(0.05f + 0.15f * (1.0f - t)), 1.0f, WarpCoefs{});
     }
     if (position >= 0.0f) { // the frame played, lit at its depth
         const double f = std::clamp(position, 0.0f, 1.0f) * (frames - 1);
@@ -459,7 +459,7 @@ void TableBrowser::paintBack(Canvas &c) {
         shown = all[hover->a];
     else if (pick_ >= 0 && pick_ < static_cast<int>(all.size()))
         shown = all[pick_];
-    const Rect view{kTbPreview.x, kTbPreview.y, kTbPreview.w, kTbPreview.h * 0.62f};
+    const Rect view = kTbPreviewView;
     c.fillRect(view, kDisplayColor, kRadiusCard);
     std::shared_ptr<const OpData> d;
     if (shown)
@@ -605,7 +605,7 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                     p[i] = {thumbnail.x + 2.0f + i * (thumbnail.w - 4.0f) / 32.0f,
                             thumbnail.center().y -
                                 x[i * (FrameTable::kFrameSize / 32) % FrameTable::kFrameSize] * height};
-                c.polyline(p, 33, (unreadable ? kFaint : kAccent).alpha(k == 0 ? 1.0f : 0.4f), k == 0 ? 1.6f : 1.0f);
+                c.polyline(p, 33, (unreadable ? kFaint : kAccent).alpha(k == 0 ? 1.0f : 0.2f), k == 0 ? 1.6f : 1.0f);
             }
         } else if (row.sample || (d && d->kind == DataKind::Sample)) {
             sampleGlyph(c, thumbnail.inset(4.0f), unreadable ? kFaint : kAccent);
