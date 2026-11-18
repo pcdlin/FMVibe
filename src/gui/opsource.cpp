@@ -1,6 +1,6 @@
 // A Wavetable or Sample operator's part of the inspector (InspectorPanel, see inspectorpanel.h): the source switch on
-// its page's title row and the pickers in its waves' place, its TABLE tab (its frames, Position's control, with its
-// warp) and its SAMPLE tab (its waveform with Start's and the loop's handles, the ROOT readout, LOOP, MODE and the
+// its page's title row, a sample's picker in its waves' place, its TABLE tab (the table's picker over its frames,
+// Position's control, with its warp) and its SAMPLE tab (its waveform with Start's and the loop's handles, the ROOT readout, LOOP, MODE and the
 // reverse switch), and a file dragged in from outside dropped on that display. The table browser the pickers open is
 // TableBrowser's (see tablebrowser.h).
 
@@ -104,19 +104,18 @@ void InspectorPanel::sourceWidgets(std::vector<Widget> &list, int op, InspectorT
         add(Kind::SourceSwitch, opSourceButton(s), -1, op, s);
     mergeButtons(list, switches);
     const bool table = isTableOp(op), sample = isSampleOp(op);
-    if (table) {
-        add(Kind::TableStep, tableStepButton(-1), -1, op, -1);
-        add(Kind::TablePicker, kTablePicker, paramIndex(op, OpParam::Table), op);
-        add(Kind::TableStep, tableStepButton(1), -1, op, 1);
-    } else if (sample) {
+    if (sample) {
         add(Kind::SamplePicker, kSamplePicker, paramIndex(op, OpParam::Sample), op);
         add(Kind::DataImport, kSampleImport, -1, op, static_cast<int>(DataKind::Sample));
     }
     if (tab != InspectorTab::Source)
         return;
     if (table) {
+        add(Kind::TableStep, tableStepButton(-1), -1, op, -1);
+        add(Kind::TablePicker, kTablePicker, paramIndex(op, OpParam::Table), op);
+        add(Kind::TableStep, tableStepButton(1), -1, op, 1);
         // Position is its display (see isTableDisplay()), dragged and modulated as a knob is.
-        add(Kind::Knob, kOpDisplay, paramIndex(op, OpParam::TablePos), op).label = tr(Str::LabelPosition);
+        add(Kind::Knob, kTableDisplay, paramIndex(op, OpParam::TablePos), op).label = tr(Str::LabelPosition);
         // Its warp, as the WARP tab of a plain wave has it: the warps' buttons, the amount and note sync.
         const size_t warps = list.size();
         for (int m = 0; m < static_cast<int>(OpWarp::Count); ++m)
@@ -519,13 +518,14 @@ bool InspectorPanel::sourcePress(const Widget &w, Point p, Modifiers mods) {
         controller().chooseOperatorFile(w.a, static_cast<DataKind>(w.b));
         return true;
     case Kind::Knob: // Position's display: a press sets Position where the mouse is, on the meter's scale, and a drag
-                     // goes on setting it, one undo step; with Shift, a knob's fine drag from where it is
-        if (!isTableDisplay(w) || mods.shift)
+                     // goes on from there, one undo step; with Shift it stays where it is, for a fine drag
+        if (!isTableDisplay(w))
             return false;
         controller().beginEdit(w.param);
-        drag_ = {DragKind::TablePosition, w, 0.0f};
+        if (const double v = meterValue(kTableDisplay, p.y); !mods.shift && v != value(w.param))
+            controller().setValue(w.param, v);
+        drag_ = {DragKind::TablePosition, w, static_cast<float>(value(w.param)), mods.shift, p.y};
         host_.startDrag(*this, w, p, false);
-        tablePosDrag(p);
         return true;
     case Kind::SampleRoot: // up and down, as a knob's value
         host_.dragValue(w, p, mods);
@@ -571,9 +571,17 @@ void InspectorPanel::sampleDrag(const DragState &d) {
         controller().setValue(w.param, v);
 }
 
-void InspectorPanel::tablePosDrag(Point p) {
+// Up and down along the meter's scale, a tenth as far as the mouse with Shift: Shift pressed or let go of part-way goes
+// on from where Position is, so it doesn't jump.
+void InspectorPanel::tablePosDrag(const DragState &d) {
     const int param = drag_.widget.param;
-    if (const double v = meterValue(kOpDisplay, p.y); v != value(param))
+    if (d.mods.shift != drag_.fine) {
+        drag_.fine = d.mods.shift;
+        drag_.startValue = static_cast<float>(value(param));
+        drag_.startY = d.now.y;
+    }
+    const double travel = (drag_.startY - d.now.y) / (kTableDisplay.h - 20.0f) * (drag_.fine ? 0.1 : 1.0);
+    if (const double v = std::clamp(drag_.startValue + travel, 0.0, 1.0); v != value(param))
         controller().setValue(param, v);
 }
 

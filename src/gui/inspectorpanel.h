@@ -95,7 +95,8 @@ private:
         DragKind kind = DragKind::None;
         Widget widget;
         float startValue = 0.0f;
-        bool fine = false; // a sample's handle, pressed with Shift: moving a tenth as far as the mouse
+        bool fine = false; // with Shift, a sample's handle or Position moving a tenth as far as the mouse
+        float startY = 0.0f; // where the mouse was as Position last started from startValue
     };
 
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
@@ -136,7 +137,7 @@ private:
     bool sourcePress(const Widget &w, Point p, Modifiers mods);
     bool sourceDoubleClick(const Widget &w);
     void sampleDrag(const DragState &d); // a handle on the SAMPLE tab's display follows the mouse across
-    void tablePosDrag(Point p);          // Position where the mouse is on the TABLE tab's display, on its meter's scale
+    void tablePosDrag(const DragState &d); // Position followed up and down the TABLE tab's display, finely with Shift
     void stepTable(int op, int dir);
     void switchSource(int op, int source);
     bool opSynced(int op) const;

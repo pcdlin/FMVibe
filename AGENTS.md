@@ -355,10 +355,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the DATA chunk: tables and samples coming back as saved, keys and samples alike, through a 5-byte stream (a table
     two operators share stored once), a state cut short inside it keeping its params and the entries that came
     whole, an older build reading up to the preset chunk as before, and a preset file carrying them;
-  - the table library: a folder's files listed with their frames and formats (subfolders as groups, guessed frame
-    sizes marked), its frame size used for files without one, a folder inside a source being that source and its
-    parent taking it in, a second scan reading only what changed, a folder gone showing missing, scans running while
-    the list is read and a folder removed, and twenty thousand files scanned in good time;
+  - the table library: the tables directly in a folder listed with their frames and formats (its subfolders' left
+    out, guessed frame sizes marked), how far a scan got, its frame size used for files without one, a folder scanned
+    again keeping its list until it is done, the same folder again being its source and one inside or around it a source of
+    its own, a second scan reading only what changed, a folder gone showing missing, scans running while the list is read
+    and a folder removed, twenty thousand files scanned in good time, and a library going away stopping its scan;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
   - an operator's Note Sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
     Pulse, Steps, Sync, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
@@ -847,9 +848,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator's source switch: on its title row, left of the edit button, the knobs, the well and the controls' labels inside
     the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place); TABLE making the operator a Wavetable and opening its tab, WAVE
     bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
-    picker opening the table browser, a row picking a table, Done closing it and the steps going through the tables;
+    picker, at the top of the TABLE tab and on no other, opening the table browser, a row picking a table, Done closing
+    it and the steps going through the tables; a table's and a sample's block with no Ratio readout, its knobs along it;
     a click on the TABLE tab's display (Position has no knob) setting Position where the mouse is on the meter's
-    scale and a drag following it, one undo step each, Shift dragging it finely from where it is, the wheel, a
+    scale and a drag following it, one undo step each, Shift dragging it finely from where it is, Shift pressed and let
+    go of part-way through a drag moving it on without a jump, the wheel, a
     double-click and Ctrl+Click as a knob's, and the lit frame in the stack moving with it, and a source's handle dropped on the display modulating Position, its depth handle centered along the display's
     foot and its band on the meter in the source's color (both read off the rendered pixels); the warp on the TABLE tab, a
     layout left on WARP showing it and asking for no scope, its buttons, Amount and NOTE each an undo step and the
@@ -859,14 +862,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - every factory table at its first, middle, a late and its last frame drawn inside the TABLE tab's display and the
     browser's preview, the strips around them as with nothing drawn (read off the rendered pixels);
   - the table browser over a library of made-up folders: a folder's table loading from its row, the preview drawing
-    the table under the mouse and a file that can't be read telling why (read off the rendered pixels), the step on
+    the table under the mouse, its first frame bold, and a file that can't be read telling why (read off the rendered pixels), the step on
     loading the next file in its folder, the search taking the keyboard only once clicked (ringed, read off the
     rendered pixels) and letting it go at Enter, at Escape (which first empties it) and at a click elsewhere, a key
     typed then going nowhere, and finding a table in every source with Down and Enter, a folder gone shown so and its
     menu setting the frame size for its files, its Rename... typing its name in its row (Enter or a click elsewhere
     keeping it, Escape leaving it), and + Add folder... opening the folder dialog; and over a folder of
     2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
-    and jumping to a click on its track;
+    and jumping to a click on its track; a folder being scanned showing a bar under Scanning..., as far along as the scan
+    is (read off the rendered pixels), and a real scan coming in through the editor's polls alone;
   - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
     does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
     loop's end dragged, each an undo step, a double-click putting one back; LOOP and
@@ -1403,9 +1407,11 @@ itself.
   the main thread (`takeMissing()`), which builds a factory table or tells it to stop asking. In the browser demo the
   store sends the data to the worklet's module as a message instead (its sink), and the DSP module registers it.
 - The table library (`src/tables/library.cpp`) scans the folders added in the table browser on a thread of its own
-  (none in the browser demo, which reads a folder the page hands it), reading each file only as far as it tells its
-  frames and format, at most 20,000 files a folder (`kMaxFiles`), and keeps what it found in `tables-cache.bin`
-  beside the settings file, by each file's size and time, so the next scan reads only what changed. The folders are in
+  (none in the browser demo, which reads a folder the page hands it), the tables directly in each folder and not its
+  subfolders', up to eight files at a time (`kScanThreads`: opening a file is most of the cost), reading each only as
+  far as it tells its frames and format, at most 20,000 files a folder (`kMaxFiles`), and keeps what it found in
+  `tables-cache.bin` beside the settings file, by each file's size and time, so the next scan reads only what changed
+  (saved every few seconds too, so a long first scan broken off goes on from there). The folders are in
   the settings file (`tableFolder=<frame size>|<name>|<path>`), shared by every FMVibe editor.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
   user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a

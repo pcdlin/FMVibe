@@ -29,10 +29,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <numbers>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace fmvibe;
@@ -9856,14 +9858,34 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::tableStepButton(-1).center());
     check(picked && closed && next && model.value(table) == 1.0,
           "the picker opens the browser, a row picks a table, Done closes it, and the steps go through the tables");
+    // The picker is the TABLE tab's: on another tab its steps aren't there.
+    model.ui.opTab = InspectorTab::Envelope;
+    view.poll();
+    click(view, detail::tableStepButton(1).center());
+    const bool onlyOnTab = model.value(table) == 1.0;
+    model.ui.opTab = InspectorTab::Source;
+    view.poll();
+    check(onlyOnTab && detail::kTablePicker.y >= detail::kOpDisplay.y && detail::kTablePicker.bottom() <= detail::kTableDisplay.y,
+          "the table's picker is at the top of the TABLE tab, over its display, and on no other tab");
+    // A table has no Ratio: dragged where its readout was, Ratio stays; its four knobs spread along the block.
+    {
+        const int ratio = paramIndex(0, OpParam::Ratio), pitch = paramIndex(0, OpParam::Transpose);
+        const double was = model.value(ratio);
+        const Point knobAt = detail::opWideKnobCenter(0, detail::kOpTableKnobY);
+        drag(view, knobAt, {knobAt.x, knobAt.y - 30.0f});
+        const bool turned = model.value(pitch) != 0.0 && model.value(ratio) == was;
+        view.undo();
+        renderer.save(view, dir / "wt-2b-no-ratio.png");
+        check(turned && model.value(pitch) == 0.0, "a Wavetable operator has no Ratio readout, its Pitch knob taking the room");
+    }
 
     // Position is the display, with no knob of its own. A click sets it where the mouse is, on the meter's scale (its
     // foot 0 %, its top 100 %, 10 px in), and a drag goes on setting it where the mouse is, one undo step; with Shift,
     // a knob's fine drag from where it is. The stack's front frame moves with it (read off the rendered pixels).
     const int position = paramIndex(0, OpParam::TablePos);
-    const Point middle = detail::kOpDisplay.center();
-    const float foot = detail::kOpDisplay.bottom() - 10.0f, top = detail::kOpDisplay.y + 10.0f;
-    auto at = [&](float v) { return Point{detail::kOpDisplay.x + 90.0f, foot + (top - foot) * v}; };
+    const Point middle = detail::kTableDisplay.center();
+    const float foot = detail::kTableDisplay.bottom() - 10.0f, top = detail::kTableDisplay.y + 10.0f;
+    auto at = [&](float v) { return Point{detail::kTableDisplay.x + 90.0f, foot + (top - foot) * v}; };
     click(view, at(0.25f));
     const double clicked = model.value(position);
     view.mouseDown(at(0.25f), {});
@@ -9881,6 +9903,25 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseUp({middle.x, middle.y - 30.0f}, {.shift = true});
     const double fine = model.value(position);
     view.undo();
+    // Shift pressed part-way through a drag: Position goes on from where it is, a tenth as far as the mouse, and let go
+    // of, at the mouse's pace, without a jump either time.
+    view.mouseDown(at(0.5f), {});
+    const double shiftFrom = model.value(position);
+    view.mouseMove(at(0.5f), {.shift = true});
+    view.mouseMove(at(0.8f), {.shift = true});
+    const double finely = model.value(position);
+    view.mouseMove(at(0.8f), {});
+    const double shiftLet = model.value(position);
+    view.mouseMove(at(0.9f), {});
+    const double onward = model.value(position);
+    view.mouseUp(at(0.9f), {});
+    view.undo();
+    std::printf("      Shift part-way: from %.3f, 30 %% of the scale on %.3f, let go %.3f, 10 %% on %.3f\n", shiftFrom, finely,
+                shiftLet, onward);
+    check(std::abs(finely - (shiftFrom + 0.03)) < 0.004 && std::abs(shiftLet - finely) < 1e-6 &&
+              std::abs(onward - (finely + 0.1)) < 0.004 && model.value(position) == 0.0,
+          "Shift pressed part-way through a drag of Position moves it a tenth as far as the mouse, let go of at its pace, "
+          "without a jump, one undo step");
     std::printf("      the display clicked at 25 %%: %.3f; dragged to 60 %% %.3f and 90 %% %.3f; undone %d, %d; Shift "
                 "dragged up from 0: %.3f\n",
                 clicked, following, dragged, oneStep, positionUndone, fine);
@@ -9900,8 +9941,8 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(position, 0.0);
     auto strip = [&] {
         std::vector<uint32_t> pixels;
-        for (float y = detail::kOpDisplay.y + 10.0f; y < detail::kOpDisplay.bottom() - 4.0f; y += 1.0f)
-            pixels.push_back(renderer.pixel({detail::kOpDisplay.x + 60.0f, y}));
+        for (float y = detail::kTableDisplay.y + 10.0f; y < detail::kTableDisplay.bottom() - 4.0f; y += 1.0f)
+            pixels.push_back(renderer.pixel({detail::kTableDisplay.x + 60.0f, y}));
         return pixels;
     };
     model.set(table, static_cast<double>(FactoryTable::BasicShapes));
@@ -9921,7 +9962,7 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(position, 0.2);
         model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Lfo));
         view.poll();
-        drag(view, sourceHandle(0), {detail::kOpDisplay.x + 70.0f, detail::kOpDisplay.y + 30.0f});
+        drag(view, sourceHandle(0), {detail::kTableDisplay.x + 70.0f, detail::kTableDisplay.y + 30.0f});
         const bool dropped = slotTarget(model.value(slotTargetIndex(2, 0))) == position;
         model.set(slotAmountIndex(2, 0), 0.3);
         view.poll();
@@ -9938,17 +9979,17 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
         // A depth handle along the display's foot, centered on it: its saturated pixels, and where their middle is.
         int handlePixels = 0;
         float handleSum = 0.0f;
-        for (float x = detail::kOpDisplay.x + 30.0f; x < detail::kOpDisplay.right() - 26.0f; x += 1.0f)
-            if (saturation(renderer.pixel({x, detail::kOpDisplay.bottom() - 8.0f})) > 60) {
+        for (float x = detail::kTableDisplay.x + 30.0f; x < detail::kTableDisplay.right() - 26.0f; x += 1.0f)
+            if (saturation(renderer.pixel({x, detail::kTableDisplay.bottom() - 8.0f})) > 60) {
                 ++handlePixels;
                 handleSum += x;
             }
         const float handleAt = handlePixels > 0 ? handleSum / static_cast<float>(handlePixels) : 0.0f;
-        const bool centered = std::abs(handleAt - detail::kOpDisplay.center().x) < 2.0f;
+        const bool centered = std::abs(handleAt - detail::kTableDisplay.center().x) < 2.0f;
         // The axis runs from the display's foot (0) to its top (1), 10 px in: the band read at 0.33, clear of the
         // diamond where Position plays (0.2) and inside the LFO's reach.
-        const float axisX = detail::kOpDisplay.right() - 14.0f;
-        const float foot = detail::kOpDisplay.bottom() - 10.0f, top = detail::kOpDisplay.y + 10.0f;
+        const float axisX = detail::kTableDisplay.right() - 14.0f;
+        const float foot = detail::kTableDisplay.bottom() - 10.0f, top = detail::kTableDisplay.y + 10.0f;
         for (float dx = -1.0f; dx <= 1.0f; dx += 1.0f)
             band = most(band, renderer.pixel({axisX + dx, foot + (top - foot) * 0.33f}));
         auto apart = [](uint32_t a, uint32_t b) {
@@ -9959,7 +10000,7 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
         std::printf("      Position modulated: dropped %d, the source's handle %06X, the meter's band %06X, %d apart, a "
                     "depth handle %d px at x %.1f (the display's middle %.1f)\n",
                     dropped, ring & 0xFFFFFF, band & 0xFFFFFF, apart(ring, band), handlePixels, handleAt,
-                    detail::kOpDisplay.center().x);
+                    detail::kTableDisplay.center().x);
         check(dropped && saturation(ring) > 60 && apart(ring, band) < 40 && handlePixels >= 4 && centered,
               "a source's handle dropped on the TABLE tab's display modulates Position, its depth handle centered "
               "along the display's foot and its band on the meter in its color");
@@ -10036,7 +10077,7 @@ void testTableBounds(const std::filesystem::path &dir, Renderer &renderer) {
     const int table = paramIndex(0, OpParam::Table), position = paramIndex(0, OpParam::TablePos);
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
     const Point away{detail::kInspector.center().x, detail::kInspector.y + 40.0f};
-    const Rect display = detail::kOpDisplay;
+    const Rect display = detail::kTableDisplay;
     const Rect preview{detail::kTbPreview.x, detail::kTbPreview.y, detail::kTbPreview.w, detail::kTbPreview.h * 0.62f};
     // Above the display (the tabs' names), under it (to the controls' row), and above the preview.
     auto outside = [&](bool browsing) {
@@ -10049,7 +10090,7 @@ void testTableBounds(const std::filesystem::path &dir, Renderer &renderer) {
         if (browsing) {
             strip(preview.x + 4.0f, preview.right() - 4.0f, preview.y - 8.0f, preview.y - 1.0f);
         } else {
-            strip(display.x + 4.0f, display.right() - 4.0f, detail::kOpTabsY + 2.0f, display.y - 2.0f);
+            strip(display.x + 4.0f, display.right() - 4.0f, detail::kTablePicker.bottom(), display.y);
             strip(display.x + 4.0f, display.right() - 4.0f, display.bottom() + 2.0f,
                   detail::kOpControlsY - 0.5f * detail::kOpKnobD - 2.0f);
         }
@@ -10095,26 +10136,28 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Source;
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
     model.set(paramIndex(0, OpParam::Table), 2.0);
     TableLibrary &library = *model.tableLibrary();
     library.setFolders({{"Gone", "Z:/nowhere/at/all", 0}});
     library.finish();
     const std::string text = "not a wave at all";
-    library.addFiles("Serum", {{"Analog/saw.wav", tableWav(4)},
-                               {"Analog/square.wav", tableWav(6, 2)},
-                               {"Digital/broken.wav", std::vector<uint8_t>(text.begin(), text.end())}});
+    library.addFiles("Serum", {{"saw.wav", tableWav(4)},
+                               {"square.wav", tableWav(6, 2)},
+                               {"broken.wav", std::vector<uint8_t>(text.begin(), text.end())}});
     const int table = paramIndex(0, OpParam::Table);
     click(view, detail::kTablePicker.center());
     // The sources: Factory, In this patch, then Gone (index 0) and Serum (1).
     click(view, detail::tbSourceRow(3).center());
     view.poll();
     renderer.save(view, dir / "wt-6-browser-serum.png");
-    // Its rows: Analog's header, saw, square, Digital's header, broken.
+    // Its rows: broken, saw, square.
     click(view, detail::tbListRow(1.0f).center());
     const OpData *saw = model.opData(dataKey(model.value(table)));
-    const bool loaded = saw && saw->origin == "Serum/Analog/saw.wav" && saw->frames == 4;
-    // The preview draws the table under the mouse (read off the rendered pixels): square's, against the header's.
+    const bool loaded = saw && saw->origin == "Serum/saw.wav" && saw->frames == 4;
+    // The preview draws the table under the mouse (read off the rendered pixels): square's, against nothing for the
+    // file that can't be read.
     auto preview = [&] {
         std::vector<uint32_t> pixels;
         for (float x = detail::kTbPreview.x + 10.0f; x < detail::kTbPreview.right() - 10.0f; x += 3.0f)
@@ -10127,13 +10170,33 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(detail::tbListRow(2.0f).center(), {});
     renderer.save(view, dir / "wt-8-preview-square.png");
     const bool previewed = preview() != overHeader;
+    // Its first frame is drawn bold, as the frame played is: a line in the accent nearly all the way across the stack
+    // (read off the rendered pixels).
+    {
+        const Rect stack{detail::kTbPreview.x + 4.0f, detail::kTbPreview.y + 4.0f, detail::kTbPreview.w - 8.0f,
+                         detail::kTbPreview.h * 0.62f - 8.0f};
+        auto accent = [](uint32_t p) {
+            return std::abs(static_cast<int>(p >> 16 & 255) - static_cast<int>(detail::kAccent.r * 255.0f)) < 30 &&
+                   std::abs(static_cast<int>(p >> 8 & 255) - static_cast<int>(detail::kAccent.g * 255.0f)) < 30 &&
+                   std::abs(static_cast<int>(p & 255) - static_cast<int>(detail::kAccent.b * 255.0f)) < 30;
+        };
+        int lit = 0, columns = 0;
+        for (float x = stack.x; x < stack.right(); x += 1.0f, ++columns) {
+            bool any = false;
+            for (float y = stack.y; y < stack.bottom() && !any; y += 1.0f)
+                any = accent(renderer.pixel({x, y}));
+            lit += any ? 1 : 0;
+        }
+        std::printf("      the preview's first frame: in the accent along %d of %d columns\n", lit, columns);
+        check(lit > columns / 2, "the browser's preview draws a table's first frame bold, as the frame played is drawn");
+    }
     // A file that can't be read is listed, its reason in its tooltip (read off the rendered pixels).
-    view.mouseMove(detail::tbListRow(4.0f).center(), {});
+    view.mouseMove(detail::tbListRow(0.0f).center(), {});
     renderer.save(view, dir / "wt-9-broken.png");
-    const uint32_t tip = renderer.pixel({detail::tbListRow(4.0f).center().x, detail::tbListRow(4.0f).bottom() + 16.0f});
+    const uint32_t tip = renderer.pixel({detail::tbListRow(0.0f).center().x, detail::tbListRow(0.0f).bottom() + 16.0f});
     view.mouseMove(detail::tbListRow(2.0f).center(), {});
     renderer.save(view, dir / "wt-9-not-broken.png");
-    const uint32_t noTip = renderer.pixel({detail::tbListRow(4.0f).center().x, detail::tbListRow(4.0f).bottom() + 16.0f});
+    const uint32_t noTip = renderer.pixel({detail::tbListRow(0.0f).center().x, detail::tbListRow(0.0f).bottom() + 16.0f});
     check(loaded && previewed && tip != noTip,
           "a folder's table loads from its row, the preview draws the table under the mouse, and a file that can't be "
           "read tells why");
@@ -10141,7 +10204,7 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::kTbDone.center());
     click(view, detail::tableStepButton(1).center());
     const OpData *square = model.opData(dataKey(model.value(table)));
-    check(square && square->origin == "Serum/Analog/square.wav", "the step on loads the next file in its folder");
+    check(square && square->origin == "Serum/square.wav", "the step on loads the next file in its folder");
 
     // The search takes the keyboard only once clicked: till then, and after a click elsewhere, Enter or Escape, the keys
     // go on to the host, which plays notes with them. Typed into, it narrows the list over every source; Down and
@@ -10176,7 +10239,7 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     std::printf("      search: free at open %d, clicked %d, ringed %d, Enter %d, Escape %d then %d, a click elsewhere %d\n",
                 freeAtOpen, clicked, ringed, found, emptied, escaped, letGo);
     check(freeAtOpen && clicked && ringed && found && emptied && escaped && letGo && again &&
-              again->origin == "Serum/Analog/square.wav",
+              again->origin == "Serum/square.wav",
           "the browser's search takes the keyboard only once clicked, and lets it go at Enter, Escape or a click "
           "elsewhere; it finds a table in every source, and Enter loads it");
     click(view, detail::kTbDone.center());
@@ -10234,11 +10297,12 @@ void testTableBrowserScroll(const std::filesystem::path &dir, Renderer &renderer
     FakeController model;
     View view(model);
     model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Source;
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
     const std::string text = "not a wave at all";
     std::vector<std::pair<std::string, std::vector<uint8_t>>> files;
     for (int i = 0; i < 2000; ++i)
-        files.push_back({"many/" + std::to_string(10000 + i) + ".wav", std::vector<uint8_t>(text.begin(), text.end())});
+        files.push_back({std::to_string(10000 + i) + ".wav", std::vector<uint8_t>(text.begin(), text.end())});
     model.tableLibrary()->addFiles("Many", std::move(files));
     click(view, detail::kTablePicker.center());
     click(view, detail::tbSourceRow(2).center());
@@ -10267,6 +10331,65 @@ void testTableBrowserScroll(const std::filesystem::path &dir, Renderer &renderer
     check(run + 1 >= 22 && trackElsewhere, "a list of thousands of files still has a thumb 24 px tall (read off the "
                                            "rendered pixels)");
     check(atEnd && jumped, "the thumb drags the list to its end, and a click on the track takes it there");
+}
+
+// A folder being scanned: the bar under "Scanning...", as far along as the scan is (read off the rendered pixels), its
+// rows left out until it is done; and a real scan coming in through the editor's polls alone, the tables directly in the
+// folder listed and its subfolder's left out.
+void testTableBrowserScan(const std::filesystem::path &dir, Renderer &renderer) {
+    std::printf("table browser's scan:\n");
+    namespace fs = std::filesystem;
+    FakeController model;
+    View view(model);
+    model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Source;
+    model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
+    const int table = paramIndex(0, OpParam::Table);
+    TableLibrary &library = *model.tableLibrary();
+    const int held = library.addFiles("Packs", {{"saw.wav", tableWav(4)}});
+    click(view, detail::kTablePicker.center());
+    click(view, detail::tbSourceRow(held + 2).center());
+    library.showScan(held, 50, 200);
+    view.poll();
+    const Point away{detail::kTableBrowser.x + 20.0f, detail::kTableBrowser.y + 12.0f};
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-21-scanning.png");
+    const Rect bar = detail::tbScanBar();
+    auto along = [&](float share) { return renderer.pixel({bar.x + bar.w * share, bar.center().y}); };
+    const bool quarter = along(0.05f) == along(0.2f) && along(0.3f) == along(0.9f) && along(0.2f) != along(0.3f);
+    const double before = model.value(table);
+    click(view, detail::tbListRow(0.0f).center());
+    check(quarter && model.value(table) == before,
+          "a folder being scanned shows a bar under Scanning..., filled as far as the scan is, and no rows yet");
+
+    std::error_code error;
+    const fs::path root = fs::temp_directory_path() / ("fmvibe-uishot-scan-" + std::to_string(std::rand()));
+    fs::create_directories(root / "inner", error);
+    auto put = [](const fs::path &path, const std::vector<uint8_t> &bytes) {
+        std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char *>(bytes.data()),
+                                                    static_cast<std::streamsize>(bytes.size()));
+    };
+    put(root / "one.wav", tableWav(4));
+    put(root / "two.wav", tableWav(6, 2));
+    put(root / "inner" / "three.wav", tableWav(8));
+    const std::u8string path = root.generic_u8string();
+    const int source = library.addFolder(std::string(reinterpret_cast<const char *>(path.data()), path.size()));
+    view.showTableSource(source);
+    bool done = false;
+    for (int tries = 0; tries < 2000 && !done; ++tries) { // the editor's polls alone take the scan in
+        view.poll();
+        done = !library.sources()[source].scanning;
+        if (!done)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-22-scanned.png");
+    click(view, detail::tbListRow(1.0f).center());
+    const OpData *picked = model.opData(dataKey(model.value(table)));
+    check(done && library.sources()[source].entries.size() == 2 && picked && picked->frames == 6,
+          "a folder's scan comes in as the editor polls, listing the tables directly in it and not its subfolder's");
+    click(view, detail::kTbDone.center());
+    fs::remove_all(root, error);
 }
 
 // The SAMPLE source, its row and tab, its handles, its lists and its playhead.
@@ -10376,15 +10499,27 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     check(renderer.pixel(at) != without, "the newest voice's playhead shows in the sample");
     // Phase is dimmed and takes no drag: Start takes its place.
     const int phase = paramIndex(1, OpParam::Phase);
-    drag(view, detail::opKnobCenter(2), {detail::opKnobCenter(2).x, detail::opKnobCenter(2).y - 40.0f});
+    const Point phaseAt = detail::opWideKnobCenter(2, detail::kOpKnobY);
+    drag(view, phaseAt, {phaseAt.x, phaseAt.y - 40.0f});
     check(model.value(phase) == 0.0, "a sample's Phase is dimmed and doesn't turn");
+    // A sample has no Ratio: its picker runs along the block, its Pitch knob where the readout was.
+    {
+        const int ratio = paramIndex(1, OpParam::Ratio), pitch = paramIndex(1, OpParam::Transpose);
+        const double was = model.value(ratio);
+        const Point knobAt = detail::opWideKnobCenter(0, detail::kOpKnobY);
+        drag(view, knobAt, {knobAt.x, knobAt.y - 30.0f});
+        const bool turned = model.value(pitch) != 0.0 && model.value(ratio) == was;
+        view.undo();
+        check(turned && detail::kSamplePicker.x == detail::kRatioBox.x,
+              "a Sample operator has no Ratio readout, its picker along the block and its Pitch knob taking the room");
+    }
 
     // A file dragged in from outside the editor (the system's file browser, a host's) lands on the SAMPLE tab's display,
     // as on the dashed card with no sample: lit while it is held there (read off the rendered pixels: a ring around the
     // display), not over the knobs nor on a plain wave's page. Dropped there, it is imported into the operator, one undo
     // step; dropped on a knob, it is refused.
     {
-        const Point onDisplay = detail::kOpDisplay.center(), onKnob = detail::opKnobCenter(0);
+        const Point onDisplay = detail::kOpDisplay.center(), onKnob = detail::opWideKnobCenter(0, detail::kOpKnobY);
         const Point ring{detail::kOpDisplay.x - 3.0f, detail::kOpDisplay.center().y};
         model.live.voices = 0;
         view.poll();
@@ -13798,6 +13933,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testTableBounds(dir, renderer);
     testTableBrowser(dir, renderer);
     testTableBrowserScroll(dir, renderer);
+    testTableBrowserScan(dir, renderer);
     testSamples(dir, renderer);
 }
 

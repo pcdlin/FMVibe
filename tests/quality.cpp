@@ -4158,6 +4158,16 @@ void readerChecks() {
                                  base64(b) + "\"}]}]}],\"name\":\"two\",\"version\":\"1.0\"}";
         const TableFile f = readTableFile(reinterpret_cast<const uint8_t *>(json.data()), json.size(), "two.vitaltable",
                                           ReadAs::Table);
+        // What a scan lists of it, with none of its audio decoded.
+        const TableInfo listed = probeTableFile(
+            [&json](uint64_t at, void *to, size_t n) -> size_t {
+                const size_t got = at < json.size() ? std::min<size_t>(n, json.size() - static_cast<size_t>(at)) : 0;
+                std::memcpy(to, json.data() + at, got);
+                return got;
+            },
+            json.size(), "two.vitaltable");
+        check(listed.error == ReadError::None && listed.frames == f.fileFrames && listed.frameSize == f.frameSize,
+              "a scan lists a .vitaltable's frames and frame size as reading it finds them");
         bool between = f.frames == 5;
         for (int i = 0; between && i < 2048; i += 97) // the middle frame half of each
             between = std::abs(f.data[2 * 2048 + i] - (0.5f * a[i] + 0.5f * b[i]) / 1.0f) < 0.02f;
@@ -4362,8 +4372,9 @@ void libraryChecks() {
     };
     const std::vector<std::pair<std::string, std::vector<uint8_t>>> clm = {{"clm ", textBytes("<!>2048 1")}};
     const fs::path folder = root / "Synth";
-    put(folder / "Basic" / "saw.wav", wavBytes(testFrames(4, 2048), 1, 16, false, 44100, clm));
-    put(folder / "Basic" / "Deep" / "square.wt",
+    put(folder / "saw.wav", wavBytes(testFrames(4, 2048), 1, 16, false, 44100, clm));
+    put(folder / "Basic" / "inner.wav", wavBytes(testFrames(2, 2048), 1, 16, false, 44100, clm));
+    put(folder / "square.wt",
         [] {
             std::vector<uint8_t> out = {'v', 'a', 'w', 't', 0, 4, 0, 0, 2, 0, 0, 0};
             out.resize(out.size() + 2 * 1024 * 4, 0);
@@ -4386,30 +4397,42 @@ void libraryChecks() {
         const int source = library.addFolder(utf8(folder));
         library.finish();
         const LibrarySource &s = library.sources()[source];
-        const LibraryEntry *saw = entryOf(s, "Basic/saw.wav"), *square = entryOf(s, "Basic/Deep/square.wt");
+        const LibraryEntry *saw = entryOf(s, "saw.wav"), *square = entryOf(s, "square.wt");
         const LibraryEntry *flac = entryOf(s, "sweep.flac"), *nochunk = entryOf(s, "nochunk.wav");
         const LibraryEntry *broken = entryOf(s, "broken.wav"), *fake = entryOf(s, "fake.wav");
         check(s.entries.size() == 6 && saw && saw->info.frames == 4 && saw->info.format == "clm" && square &&
-                  square->group == "Basic/Deep" && square->info.frames == 2 && flac && flac->info.frames == 3 && nochunk &&
+                  square->info.frames == 2 && flac && flac->info.frames == 3 && nochunk &&
                   nochunk->info.guessed && nochunk->info.frameSize == 1024 && broken &&
-                  broken->info.error != ReadError::None && fake && fake->info.error == ReadError::NotAudio,
-              "a folder scanned lists every table at any depth with its frame size and count, the broken ones with why");
+                  broken->info.error != ReadError::None && fake && fake->info.error == ReadError::NotAudio &&
+                  s.scanned == 6 && s.total == 6 && library.filesRead() == 6,
+              "a folder scanned lists the tables directly in it, not its subfolders', with their frame sizes and counts, "
+              "the broken ones with why, and says how far it got");
         // Its frame size for files without one.
         library.setFrameSize(source, 512);
         library.finish();
         const LibraryEntry *now = entryOf(library.sources()[source], "nochunk.wav");
         check(now && now->info.frameSize == 512 && now->info.frames == 6 && !now->info.guessed,
               "a folder's frame size is used for its files that have none");
-        // A folder inside it is the same source; its parent takes it in.
+        // While a folder is scanned again, its list stays as it was until the scan is done.
+        library.rescan(source);
+        bool steady = true;
+        for (int k = 0; k < 200 && library.sources()[source].scanning; ++k) {
+            library.poll();
+            steady = steady && library.sources()[source].entries.size() == 6;
+        }
+        library.finish();
+        check(steady && library.sources()[source].entries.size() == 6, "a folder scanned again keeps its list until it is done");
+        // The same folder again is that source; one inside it and one around it are sources of their own.
+        const int again = library.addFolder(utf8(folder) + "/");
         const int inside = library.addFolder(utf8(folder / "Basic"));
-        const size_t before = library.sources().size();
         const int parent = library.addFolder(utf8(root));
         library.finish();
-        check(inside == source && before == 1 && library.sources().size() == 1 && parent == 0 &&
-                  library.sources()[0].folder.path == utf8(root),
-              "a folder inside a source is that source, and its parent takes the source into itself");
-        library.removeFolder(0);
-        library.addFolder(utf8(folder));
+        check(again == source && inside == 1 && parent == 2 && library.sources().size() == 3 &&
+                  library.sources()[inside].entries.size() == 1 && library.sources()[parent].entries.empty() &&
+                  library.sources()[source].entries.size() == 6,
+              "a folder added again is its source, and a folder inside or around a source is a source of its own");
+        library.removeFolder(parent);
+        library.removeFolder(inside);
         library.setFrameSize(0, 0);
         library.finish();
     }
@@ -4470,6 +4493,15 @@ void libraryChecks() {
         std::printf("      %zu files scanned in %.2f s\n", library.sources()[0].entries.size(), seconds);
         check(library.sources()[0].entries.size() == static_cast<size_t>(TableLibrary::kMaxFiles) && seconds < 30.0,
               "twenty thousand files scan in good time");
+        // A library going away (its editor closed, its host quitting) doesn't wait for a scan to finish.
+        const auto going = std::chrono::steady_clock::now();
+        {
+            TableLibrary leaving;
+            leaving.addFolder(utf8(many));
+        }
+        const double gone = std::chrono::duration<double>(std::chrono::steady_clock::now() - going).count();
+        std::printf("      a library going away part-way through that scan: %.3f s\n", gone);
+        check(gone < seconds, "a library going away stops the scan under way");
     }
     fs::remove_all(root, error);
 }

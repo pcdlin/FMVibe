@@ -220,8 +220,8 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             opKnobRow(params, labels);
         } else {
             // The Ratio readout takes the first two places; fixed, Freq and Mult take its place, and Pitch and Detune,
-            // which it ignores, are dimmed.
-            const bool fixed = isFixed(op);
+            // which it ignores, are dimmed. A table or a sample plays at the note's pitch, with no Ratio.
+            const bool fixed = isFixed(op), data = isTableOp(op) || isSampleOp(op);
             const int params[] = {fixed ? paramIndex(op, OpParam::FixedFreq) : -1,
                                   fixed ? paramIndex(op, OpParam::FixedMult) : -1,
                                   paramIndex(op, OpParam::Transpose), paramIndex(op, OpParam::Detune),
@@ -233,13 +233,17 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                                           tr(Str::LabelPhase),
                                           tr(Str::LabelPan)};
             const size_t row = list.size();
-            opKnobRow(params, labels);
+            const float knobY = isTableOp(op) ? kOpTableKnobY : kOpKnobY;
+            for (int i = 0; i < 6; ++i)
+                if (params[i] >= 0)
+                    knob(params[i], data && !fixed ? opWideKnobCenter(i - 2, knobY) : Point{opKnobCenter(i - 2).x, knobY},
+                         kOpKnobD, labels[i]);
             // A sample has no cycle to start at Phase: Start takes its place, and its knob is dimmed, as Fixed dims
             // Pitch and Detune.
             for (size_t i = row; i < list.size(); ++i)
                 list[i].disabled = (fixed && (list[i].param == params[2] || list[i].param == params[3])) ||
                                    (isSampleOp(op) && list[i].param == params[4]);
-            if (!fixed) {
+            if (!fixed && !data) {
                 add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kOpLabelY + 17.0f - kRatioBox.y},
                     paramIndex(op, OpParam::Ratio));
                 list.back().label = tr(Str::LabelRatio);
@@ -486,7 +490,7 @@ void InspectorPanel::paintBack(Canvas &c) {
             break;
         case InspectorTab::Source:
             if (isTableOp(op))
-                paintTableTab(c, kOpDisplay, op);
+                paintTableTab(c, kTableDisplay, op);
             else
                 paintSampleTab(c, kOpDisplay, op);
             if (fileDrop_ == op) { // a file held over the display: it lands here
@@ -615,13 +619,14 @@ std::string InspectorPanel::fixedHzText(int op, bool compact) const {
                                compact);
 }
 
-// Switched to fixed, the operator plays where its ratio put it at A4: its Freq and Mult are set to that, with the
-// smallest Mult that keeps the Freq in its range, in the same undo step.
+// Switched to fixed, the operator plays where its ratio put it at A4 (a table or a sample, which has none, at the A4
+// itself): its Freq and Mult are set to that, with the smallest Mult that keeps the Freq in its range, in the same undo
+// step.
 void InspectorPanel::switchFixed(int op) {
     const int fixed = paramIndex(op, OpParam::Fixed);
     std::vector<std::pair<int, double>> changes;
     if (!isFixed(op)) {
-        const double hz = 440.0 * ratioFromNorm(value(paramIndex(op, OpParam::Ratio)));
+        const double hz = isTableOp(op) || isSampleOp(op) ? 440.0 : 440.0 * ratioFromNorm(value(paramIndex(op, OpParam::Ratio)));
         int mult = 0;
         while (mult + 1 < kFixedMultCount && hz / kFixedMults[mult] > kMaxFixedFreq)
             ++mult;
@@ -1213,7 +1218,7 @@ void InspectorPanel::drag(const DragState &d) {
         sampleDrag(d);
         break;
     case DragKind::TablePosition:
-        tablePosDrag(p);
+        tablePosDrag(d);
         break;
     case DragKind::None:
         break;

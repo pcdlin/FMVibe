@@ -343,8 +343,11 @@ void PluginCore::valuesInto(ParamValues &values) const {
 
 void PluginCore::sectionsChanged() {
     std::array<int64_t, kOps + 2 * kMaxSources> now{};
-    for (int op = 0; op < kOps; ++op)
-        now[op] = values_[paramIndex(op, OpParam::Fixed)].load() >= 0.5;
+    for (int op = 0; op < kOps; ++op) { // what its page shows in Ratio's place
+        const OpWave wave = opWave(values_[paramIndex(op, OpParam::Wave)].load());
+        now[op] = (values_[paramIndex(op, OpParam::Fixed)].load() >= 0.5 ? 1 : 0) +
+                  (wave == OpWave::Wavetable ? 2 : wave == OpWave::Sample ? 4 : 0);
+    }
     for (int source = 0; source < kMaxSources; ++source) {
         now[kOps + source] = std::lround(values_[paramIndex(source, SourceParam::Type)].load());
         now[kOps + kMaxSources + source] = layout_.sourceOrder[source];

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include <utility>
 
 namespace fmvibe {
 
@@ -34,35 +35,80 @@ bool tableExtension(const fs::path &path) {
     return ext == ".wav" || ext == ".flac" || ext == ".wt" || ext == ".vitaltable";
 }
 
-// Whether folder `inner` is `outer` or lies inside it.
-bool within(const fs::path &inner, const fs::path &outer) {
-    const std::string a = lower(utf8Of(inner.lexically_normal())), b = lower(utf8Of(outer.lexically_normal()));
-    auto trimmed = [](std::string s) {
+// Whether two paths name one folder, whatever their case and a slash at their end.
+bool sameFolder(const fs::path &a, const fs::path &b) {
+    auto plain = [](const fs::path &path) {
+        std::string s = lower(utf8Of(path.lexically_normal()));
         while (s.size() > 1 && s.back() == '/')
             s.pop_back();
         return s;
     };
-    const std::string i = trimmed(a), o = trimmed(b);
-    return i == o || (i.size() > o.size() && i.compare(0, o.size(), o) == 0 && i[o.size()] == '/');
+    return plain(a) == plain(b);
 }
 
-LibraryEntry entryOf(const std::string &relative) {
+// A file read a block at a time: a scan asks for a few bytes here and there, nearly all of them near the file's start
+// or past its audio, and each block saves the system calls of a seek and a read per chunk.
+class BlockFile {
+public:
+    explicit BlockFile(const fs::path &path) : in_(path, std::ios::binary) {}
+    explicit operator bool() const { return static_cast<bool>(in_); }
+
+    size_t read(uint64_t at, void *to, size_t size) {
+        auto *out = static_cast<uint8_t *>(to);
+        size_t got = 0;
+        while (got < size) {
+            if (at < from_ || at >= from_ + have_) {
+                if (size - got >= kBlock) // a whole file (a Vital table's), straight to where it goes
+                    return got + fetch(at, out + got, size - got);
+                from_ = at;
+                have_ = fetch(at, block_, kBlock);
+                if (have_ == 0)
+                    break;
+            }
+            const size_t offset = static_cast<size_t>(at - from_);
+            const size_t n = std::min(size - got, have_ - offset);
+            std::memcpy(out + got, block_ + offset, n);
+            got += n;
+            at += n;
+        }
+        return got;
+    }
+
+private:
+    static constexpr size_t kBlock = 16384;
+    size_t fetch(uint64_t at, void *to, size_t size) {
+        in_.clear();
+        in_.seekg(static_cast<std::streamoff>(at));
+        in_.read(static_cast<char *>(to), static_cast<std::streamsize>(size));
+        return static_cast<size_t>(std::max<std::streamsize>(in_.gcount(), 0));
+    }
+    std::ifstream in_;
+    uint64_t from_ = 0;
+    size_t have_ = 0;
+    uint8_t block_[kBlock];
+};
+
+LibraryEntry entryOf(const std::string &file) {
     LibraryEntry e;
-    e.path = relative;
-    const size_t slash = relative.rfind('/');
-    e.group = slash == std::string::npos ? std::string() : relative.substr(0, slash);
-    const std::string file = slash == std::string::npos ? relative : relative.substr(slash + 1);
+    e.path = file;
     const size_t dot = file.rfind('.');
     e.name = dot == std::string::npos ? file : file.substr(0, dot);
+    e.order = lower(e.name);
     return e;
 }
 
 void sortEntries(std::vector<LibraryEntry> &entries) {
-    std::sort(entries.begin(), entries.end(), [](const LibraryEntry &a, const LibraryEntry &b) {
-        const std::string x = lower(a.group), y = lower(b.group);
-        return x != y ? x < y : lower(a.name) < lower(b.name);
-    });
+    std::sort(entries.begin(), entries.end(),
+              [](const LibraryEntry &a, const LibraryEntry &b) { return a.order < b.order; });
 }
+
+// How many files a scan reads at once: opening a file is most of what reading its headers costs, more so with a virus
+// scanner looking at each one, and it waits on the disk rather than the processor.
+constexpr unsigned kScanThreads = 8;
+// A scan's progress goes to the main thread this often, and what it read so far to the cache file this often, so a
+// long first scan broken off doesn't start again from nothing.
+constexpr auto kReportEvery = std::chrono::milliseconds(100);
+constexpr auto kSaveEvery = std::chrono::seconds(5);
 
 constexpr uint32_t kCacheMagic = 0x43424C54; // "TLBC"
 constexpr uint32_t kCacheVersion = 1;
@@ -117,15 +163,8 @@ std::vector<TableFolder> TableLibrary::folders() const {
 int TableLibrary::addFolder(const std::string &path) {
     const fs::path folder = pathOf(path);
     for (size_t i = 0; i < sources_.size(); ++i)
-        if (sources_[i].held.empty() && within(folder, pathOf(sources_[i].folder.path)))
+        if (sources_[i].held.empty() && sameFolder(folder, pathOf(sources_[i].folder.path)))
             return static_cast<int>(i);
-    // The sources inside it go into it: it takes the first one's place.
-    int at = -1;
-    for (size_t i = sources_.size(); i-- > 0;)
-        if (sources_[i].held.empty() && within(pathOf(sources_[i].folder.path), folder)) {
-            removeFolder(static_cast<int>(i));
-            at = static_cast<int>(i);
-        }
     LibrarySource s;
     s.folder.path = utf8Of(folder.lexically_normal());
     while (s.folder.path.size() > 3 && s.folder.path.back() == '/')
@@ -133,11 +172,10 @@ int TableLibrary::addFolder(const std::string &path) {
     s.folder.name = utf8Of(pathOf(s.folder.path).filename());
     if (s.folder.name.empty())
         s.folder.name = s.folder.path;
-    const int index = at >= 0 ? at : static_cast<int>(sources_.size());
-    sources_.insert(sources_.begin() + index, std::move(s));
-    jobOf_.insert(jobOf_.begin() + index, 0);
-    start(index);
-    return index;
+    sources_.push_back(std::move(s));
+    jobOf_.push_back(0);
+    start(static_cast<int>(sources_.size()) - 1);
+    return static_cast<int>(sources_.size()) - 1;
 }
 
 void TableLibrary::removeFolder(int source) {
@@ -213,6 +251,7 @@ int TableLibrary::addFiles(const std::string &name, std::vector<std::pair<std::s
 void TableLibrary::start(int source) {
     LibrarySource &s = sources_[source];
     s.scanning = true;
+    s.scanned = s.total = 0;
     const uint64_t id = nextJob_++;
     jobOf_[source] = id;
 #ifdef __EMSCRIPTEN__
@@ -246,19 +285,25 @@ bool TableLibrary::poll() {
             if (jobOf_[i] != r.id)
                 continue;
             LibrarySource &s = sources_[i];
-            // A scan reports its files as it goes, then once more with all of them when it is done.
+            // A scan reports how far it got as it goes, then its files when it is done.
+            s.scanned = r.scanned;
+            s.total = r.total;
             if (r.done) {
                 s.entries = std::move(r.entries);
                 s.scanning = false;
                 s.missing = r.missing;
                 s.cut = r.cut;
-            } else {
-                s.entries.insert(s.entries.end(), r.entries.begin(), r.entries.end());
-                sortEntries(s.entries);
             }
             changed = true;
         }
     return changed;
+}
+
+void TableLibrary::showScan(int source, int scanned, int total) {
+    LibrarySource &s = sources_[source];
+    s.scanning = true;
+    s.scanned = scanned;
+    s.total = total;
 }
 
 void TableLibrary::finish() {
@@ -331,73 +376,112 @@ void TableLibrary::scan(const Job &job) {
         results_.push_back(std::move(done));
         return;
     }
-    std::vector<LibraryEntry> batch;
-    auto flush = [&] {
-        std::lock_guard lock(mutex_);
-        results_.push_back({job.id, false, false, false, batch});
-        batch.clear();
+    auto calledOff = [&] { return stopping_.load() || job.id < cancelBelow_.load(); };
+
+    // The tables directly in the folder, its subfolders left out.
+    struct Found {
+        fs::path file;
+        std::string key; // its path, in the cache
+        uint64_t size = 0;
+        int64_t time = 0;
+        LibraryEntry entry;
     };
-    int seen = 0;
-    auto lastFlush = std::chrono::steady_clock::now();
-    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, error), end;
+    std::vector<Found> found;
+    for (fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, error), end;
          !error && it != end; it.increment(error)) {
-        if (job.id < cancelBelow_.load())
-            return; // its source was removed
+        if (calledOff())
+            return;
         std::error_code e;
         if (!it->is_regular_file(e) || !tableExtension(it->path()))
             continue;
-        if (++seen > kMaxFiles) {
+        if (found.size() == static_cast<size_t>(kMaxFiles)) {
             done.cut = true;
             break;
         }
-        const fs::path &file = it->path();
-        LibraryEntry entry = entryOf(utf8Of(file.lexically_relative(root)));
-        const uint64_t size = it->file_size(e);
-        const auto time = static_cast<int64_t>(it->last_write_time(e).time_since_epoch().count());
-        const std::string key = utf8Of(file);
-        bool cached = false;
-        {
-            std::lock_guard lock(mutex_);
-            const auto found = std::lower_bound(cache_.begin(), cache_.end(), key,
-                                                [](const auto &a, const std::string &k) { return a.first < k; });
-            if (found != cache_.end() && found->first == key && found->second.size == size &&
-                found->second.time == time && found->second.frameSize == job.folder.frameSize) {
-                entry.info = found->second.info;
-                cached = true;
-            }
-        }
-        if (!cached) {
-            std::ifstream in(file, std::ios::binary);
-            const ReadAt read = [&in](uint64_t at, void *to, size_t n) -> size_t {
-                in.clear();
-                in.seekg(static_cast<std::streamoff>(at));
-                in.read(static_cast<char *>(to), static_cast<std::streamsize>(n));
-                return static_cast<size_t>(std::max<std::streamsize>(in.gcount(), 0));
-            };
-            entry.info = in ? probeTableFile(read, size, utf8Of(file.filename()), job.folder.frameSize)
-                            : TableInfo{ReadError::Broken};
-            filesRead_.fetch_add(1);
-            std::lock_guard lock(mutex_);
-            const auto found = std::lower_bound(cache_.begin(), cache_.end(), key,
-                                                [](const auto &a, const std::string &k) { return a.first < k; });
-            const CacheEntry c{size, time, job.folder.frameSize, entry.info};
-            if (found != cache_.end() && found->first == key)
-                found->second = c;
+        Found f;
+        f.file = it->path();
+        f.key = utf8Of(f.file);
+        f.size = it->file_size(e);
+        f.time = static_cast<int64_t>(it->last_write_time(e).time_since_epoch().count());
+        f.entry = entryOf(utf8Of(f.file.filename()));
+        found.push_back(std::move(f));
+    }
+
+    // What the cache knows of them; the rest is read.
+    std::vector<size_t> unread;
+    {
+        std::lock_guard lock(mutex_);
+        for (size_t i = 0; i < found.size(); ++i) {
+            const auto cached = cache_.find(found[i].key);
+            if (cached != cache_.end() && cached->second.size == found[i].size &&
+                cached->second.time == found[i].time && cached->second.frameSize == job.folder.frameSize)
+                found[i].entry.info = cached->second.info;
             else
-                cache_.insert(found, {key, c});
-            cacheDirty_ = true;
-        }
-        done.entries.push_back(entry);
-        batch.push_back(std::move(entry));
-        if (const auto now = std::chrono::steady_clock::now(); now - lastFlush > std::chrono::milliseconds(150)) {
-            flush();
-            lastFlush = now;
+                unread.push_back(i);
         }
     }
+    const int total = static_cast<int>(found.size());
+    int scanned = total - static_cast<int>(unread.size()); // under the mutex
+    auto report = [&] { // under the mutex: the newest in place of one the main thread hasn't taken yet
+        if (!results_.empty() && results_.back().id == job.id && !results_.back().done)
+            results_.back().scanned = scanned;
+        else
+            results_.push_back({job.id, false, false, false, scanned, total, {}});
+    };
+    {
+        std::lock_guard lock(mutex_);
+        report();
+    }
+
+    std::atomic<size_t> next{0};
+    auto lastReport = std::chrono::steady_clock::now(), lastSave = lastReport; // under the mutex
+    auto readFiles = [&] {
+        for (;;) {
+            const size_t at = next.fetch_add(1);
+            if (at >= unread.size() || calledOff())
+                return;
+            Found &f = found[unread[at]];
+            BlockFile in(f.file);
+            const ReadAt read = [&in](uint64_t from, void *to, size_t n) { return in.read(from, to, n); };
+            f.entry.info = in ? probeTableFile(read, f.size, f.entry.path, job.folder.frameSize)
+                              : TableInfo{ReadError::Broken};
+            filesRead_.fetch_add(1);
+            const auto now = std::chrono::steady_clock::now();
+            std::lock_guard lock(mutex_);
+            cache_[f.key] = CacheEntry{f.size, f.time, job.folder.frameSize, f.entry.info};
+            cacheDirty_ = true;
+            ++scanned;
+            if (now - lastReport >= kReportEvery) {
+                lastReport = now;
+                report();
+            }
+            if (now - lastSave >= kSaveEvery) {
+                lastSave = now;
+                saveCache();
+            }
+        }
+    };
+#ifdef __EMSCRIPTEN__
+    readFiles(); // no threads in the demo
+#else
+    std::vector<std::thread> helpers;
+    const unsigned threads = std::clamp(std::thread::hardware_concurrency(), 2u, kScanThreads);
+    for (unsigned t = 1; t < threads && t < unread.size(); ++t)
+        helpers.emplace_back(readFiles);
+    readFiles();
+    for (std::thread &helper : helpers)
+        helper.join();
+#endif
+    if (calledOff())
+        return;
+
+    done.scanned = done.total = total;
+    done.entries.reserve(found.size());
+    for (Found &f : found)
+        done.entries.push_back(std::move(f.entry));
     sortEntries(done.entries);
     std::lock_guard lock(mutex_);
-    if (job.id >= cancelBelow_.load())
-        results_.push_back(std::move(done));
+    results_.push_back(std::move(done));
 }
 
 // The cache file: magic, version, count, then each file's path, size, time, the folder's frame size and what was read.
@@ -420,6 +504,7 @@ void TableLibrary::loadCache() {
     if (!in || word() != kCacheMagic || word() != kCacheVersion)
         return;
     const uint32_t count = std::min<uint32_t>(word(), 1u << 20);
+    cache_.reserve(count);
     for (uint32_t i = 0; i < count && in; ++i) {
         std::string path = text();
         CacheEntry c;
@@ -435,9 +520,8 @@ void TableLibrary::loadCache() {
         c.info.guessed = word() != 0;
         c.info.frames = static_cast<int>(word());
         if (in)
-            cache_.push_back({std::move(path), c});
+            cache_.emplace(std::move(path), c);
     }
-    std::sort(cache_.begin(), cache_.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
 }
 
 void TableLibrary::saveCache() {

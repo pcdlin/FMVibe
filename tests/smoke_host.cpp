@@ -1087,6 +1087,17 @@ int main(int argc, char **argv) {
                     pulse2, pulse4);
         check(peakOf(sine) > 0.05f && sine2 < 0.01 && std::abs(pulse2 - 0.71) < 0.06 && pulse4 < 0.02,
               "a Wavetable operator plays Basic Shapes, a sine at Position 0 and a 25 % pulse at 1");
+        // It has no Ratio: set as high as it goes, an A4 plays at 440 Hz all the same, and Pitch still tunes it.
+        std::vector<clap_event_param_value_t> ratioed = table(0, 0.0);
+        ratioed.push_back(paramEvent(paramIndex(0, OpParam::Ratio), 1.0));
+        const std::vector<float> atRatio = playWith(ratioed, 69);
+        ratioed.push_back(paramEvent(paramIndex(0, OpParam::Transpose), 12.0));
+        const std::vector<float> pitched = playWith(ratioed, 69);
+        const clap_event_param_value_t ratioBack[] = {paramEvent(paramIndex(0, OpParam::Ratio), normFromRatio(1.0)),
+                                                      paramEvent(paramIndex(0, OpParam::Transpose), 0.0)};
+        runBlock({&ratioBack[0].header, &ratioBack[1].header});
+        check(magnitude(atRatio, 440.0) > 0.5 * magnitude(sine, 440.0) && magnitude(pitched, 880.0) > 0.5 * magnitude(sine, 440.0),
+              "a Wavetable operator ignores Ratio, playing at the note's pitch, and Pitch tunes it");
         // FM into a Wavetable operator, and out of one.
         std::vector<clap_event_param_value_t> into = table(0, 0.0);
         into.push_back(paramEvent(matrixIndex(1, 0), 0.5));
@@ -1176,6 +1187,11 @@ int main(int argc, char **argv) {
                      81);
         const clap_event_param_value_t unfixed = paramEvent(paramIndex(0, OpParam::Fixed), 0.0);
         runBlock({&unfixed.header});
+        const std::vector<float> sampleRatioed = playWith({paramEvent(paramIndex(0, OpParam::Ratio), 1.0)}, 69);
+        const clap_event_param_value_t sampleRatioBack = paramEvent(paramIndex(0, OpParam::Ratio), normFromRatio(1.0));
+        runBlock({&sampleRatioBack.header});
+        check(magnitude(sampleRatioed, 440.0) > 30.0 * magnitude(sampleRatioed, 880.0),
+              "a Sample operator ignores Ratio, playing at the note's pitch from its root");
         // As a modulator: B a sample, A a sine carrier.
         const std::vector<float> sampleFm =
             playWith({paramEvent(paramIndex(1, OpParam::Wave), static_cast<double>(OpWave::Sample)),

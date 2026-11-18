@@ -55,7 +55,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     patch, as the user picks them: other plugins' factory tables are theirs to share or not, and nothing of theirs
     comes with FMVibe. In the browser demo, Import file… and + Add folder… open the browser's own pickers, and a
     folder's files are read for that visit only;
-  - **Ratio**, 0.50 to 64.00 times the note, set to the hundredth. It is stored on a log curve, so a host's knob
+  - **Ratio**, 0.50 to 64.00 times the note, set to the hundredth (a wavetable or a sample has none: it plays at the
+    note's pitch, tuned by Pitch and Detune). It is stored on a log curve, so a host's knob
     gives 1 to 2 as much travel as 32 to 64, and a modulation's depth is the same interval wherever the ratio is set
     (a seventh of the range is an octave); modulated, it glides continuously, and goes on past 64 up to 128. Patches saved before it (state version
     4 and earlier), which had a stepped Coarse (0.5, 1…32) and a Fine adding up to +100 %, load their ratio from those
@@ -1589,13 +1590,13 @@ one may have changed since it last did.
   - Operators: on the title row, the source switch, **WAVE | TABLE | SAMPLE** (each an undo step; WAVE brings back
     the wave the operator had before, which the project keeps), then a Custom wave's edit button, the keyboard switch
     and the power switch. Under it, the operator's sound in one block. At its left, as tall as two rows, the Ratio
-    readout; at its right, along the top, what the source picks: for WAVE the waves as one segmented row of
+    readout; at its right, along the top, the waves as one segmented row of
     buttons, the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine, Organ, Vowel and Custom
-    (picked, one of these shows on that button); for TABLE a step back, the table's picker (its glyph, its name and a
-    chevron), which opens the table browser, and a step on (through the factory tables, the patch's own or the files
-    of the folder the table came from, round); for SAMPLE the sample's picker, which opens the browser on samples,
-    and an import button, which opens the file dialog. Under them the pitch, detune, phase and pan knobs, their
-    labels on the Ratio readout's line (a sample's Phase dimmed: it does nothing there). The Ratio readout is four digits of a 7-segment
+    (picked, one of these shows on that button). Under them the pitch, detune, phase and pan knobs, their
+    labels on the Ratio readout's line. A table or a sample has no Ratio readout (nor a Ratio to modulate, and its
+    circle in the graph shows no ratio): its four knobs spread along the whole block, under a sample's picker, which
+    runs along the block's top and opens the browser on samples, and its import button, which opens the file dialog (a
+    sample's Phase dimmed: it does nothing there); a table's picker is on its TABLE tab. The Ratio readout is four digits of a 7-segment
     display (88.88, the tens dark below 10),
     each its own handle. A digit dragged up or down steps by its own place (tens 10, ones 1, tenths 0.1, hundredths
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
@@ -1643,15 +1644,18 @@ one may have changed since it last did.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
     - **TABLE** (a Wavetable operator's, in WARP's place: it has no WARP tab, and no scope; picking TABLE, or
-      importing a table, opens it, and a layout left on WARP shows it): the table's frames as a stack seen from a
-      little above and to the side, the first at the front, the frame Position plays lit in the accent over them,
+      importing a table, opens it, and a layout left on WARP shows it): along its top a step back, the table's picker
+      (its glyph, its name and a chevron), which opens the table browser, and a step on (through the factory tables, the
+      patch's own or the files of the folder the table came from, round). Under them the table's frames as a stack seen
+      from a little above and to the side, the first at the front, the frame Position plays lit in the accent over them,
       drawn as the warp reads it (not as note sync restarts it), and Position in % at the top left. Along the right, a
       meter: Position's value ringed, each modulation's reach as a band in its source's color, as a knob's rings draw
       it (faint while the source is off or the modulation bypassed, wider while its depth handle is under the mouse),
       and the frame the newest voice plays as a diamond (with no note, Position with its modulation). The display is
       Position's control, which has no knob: a click anywhere on it sets Position to the height of the mouse on the
       meter's scale (its foot 0 %, its top 100 %), and a drag goes on setting it where the mouse is, each one undo
-      step; with Shift, a drag moves it finely from where it is, as a knob's does. A double-click puts it back to
+      step; with Shift, a drag moves it a tenth as far as the mouse from where it is, and Shift pressed or let go of
+      part-way through a drag goes on from there without a jump. A double-click puts it back to
       0 %, the wheel steps it, its menu and Ctrl+Click type it (over the % in its corner), and a source's handle
       dropped anywhere on it modulates Position, its depth handles centered along the display's foot.
       Along the row under it, where the WARP tab has them, the warps' buttons, the warp's **Amount** and **NOTE**
@@ -1691,13 +1695,16 @@ one may have changed since it last did.
     another source). At its left the sources: **Factory** (FMVibe's
     tables), **In this patch** (the tables and samples the patch holds), then the folders added, each with how many
     files it lists (greyed out, and saying so in its tooltip, while it can't be found), and **+ Add folder…**, which
-    asks for a folder and names it after it. A folder's right-click menu renames it (its name typed in its row, all of it selected: Enter or a click
+    asks for a folder and names it after it. A folder lists the tables directly in it: a subfolder's are left out, and
+    a subfolder can be added as a folder of its own. A folder's right-click menu renames it (its name typed in its row, all of it selected: Enter or a click
     elsewhere keeps it, Escape leaves it as it was), sets the frame size for its files
     that don't name one (Auto, 256, 512, 1024 or 2048), scans it again, shows it in Explorer or removes it. Folders are
-    kept in the settings file, every FMVibe editor sharing them, and scanned in the background (a list of what was
-    found kept in `tables-cache.bin` beside it, so they show at once the next time; a file is read again only once it
-    has changed); a folder of more than 20,000 files lists the first 20,000. In the middle the source's files, a
-    subfolder's under its name, which folds them: each its glyph, its name, its frames (or a sample's length) and its
+    kept in the settings file, every FMVibe editor sharing them, and scanned in the background, several files at a time
+    (a list of what was found kept in `tables-cache.bin` beside it, so they show at once the next time; a file is read
+    again only once it has changed); a folder of more than 20,000 files lists the first 20,000. While a folder is
+    scanned its list says **Scanning…** over a bar filling as the scan goes, with how many of its files are done, and
+    its tables show once it is through. In the middle the source's files: each its glyph (the thumbnail's first frame
+    bold), its name, its frames (or a sample's length) and its
     format, with a ? after a guessed frame size; one that can't be read greyed out, its tooltip saying why (an
     encrypted format, or a preset with its table inside, says to export the table from its synth as a WAV). A click on a row plays it at once,
     an undo step each, and the computer keyboard (or the host's) then plays it: the browser takes no keys until its
@@ -1705,7 +1712,7 @@ one may have changed since it last did.
     name; Up and Down pick a row there and Enter plays it. Enter, a click anywhere else, or Escape (which first empties
     it) lets the keyboard go. The list scrolls by the wheel, or by its scrollbar, whose thumb (24 px at least, however
     many files) drags it and whose track a click jumps along. At the right a preview of the row under the mouse (else
-    the one picked, else what the operator plays): a table's stack or a sample's waveform, with its path, format,
+    the one picked, else what the operator plays): a table's stack, its first frame bold as if it played, or a sample's waveform, with its path, format,
     frame size and frames. **Import file…** opens the file dialog, as a sample's import button does. A file picked
     from a folder, or imported, is copied into the patch, so a project plays without it.
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
@@ -2256,7 +2263,7 @@ one may have changed since it last did.
 | Section | Pages |
 | --- | --- |
 | Mix | Macros (the eight knobs, the page shown first), Global (Volume, FM Amount, Pitch, Pan), Play (Mono, Legato, Glide, Glide Always, Bend Range, Voices), Outputs (A–F, then S1 and S2 To Out) |
-| Operators | Op A … Op F: Wave, Ratio, Pitch (Fixed Freq and Fixed Mult while the operator is fixed), Detune, Attack, Decay, Sustain, Release |
+| Operators | Op A … Op F: Wave, Ratio (a Wavetable's Position, a Sample's Start), Pitch (Fixed Freq and Fixed Mult while the operator is fixed), Detune, Attack, Decay, Sustain, Release |
 | Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Mix, On, Slope; Filter links: F1 Feedback, F1 → F2, F2 → F1, F2 Feedback |
 | Shapers | Shaper 1 and 2: On, Curve, Drive, Output, Mix, Link, then what it feeds into F1 and F2 |
 | Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's and filter's send into that shaper, and the operators it modulates; "Shapers into shapers": S1 Feedback, S1 → S2, S2 → S1, S2 Feedback |

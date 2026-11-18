@@ -192,10 +192,12 @@ const host = {
   // pick folders picks the files themselves.
   chooseFolder() {
     pickFiles('webkitdirectory' in HTMLInputElement.prototype, async (files) => {
-      const tables = files.filter((f) => TABLE_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext)));
+      const path = (f) => f.webkitRelativePath || f.name;
+      // The tables directly in the folder, as the plugin lists a folder: not those of its subfolders.
+      const tables = files.filter((f) => path(f).split('/').length <= 2 &&
+                                         TABLE_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext)));
       if (tables.length === 0)
         return;
-      const path = (f) => f.webkitRelativePath || f.name;
       const top = path(tables[0]).split('/')[0];
       for (const file of tables.slice(0, 2000)) {
         const parts = path(file).split('/');

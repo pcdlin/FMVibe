@@ -326,8 +326,11 @@ private:
                     break;
                 default: out += c;
                 }
-            } else {
-                out += *at_++;
+            } else { // the run up to the next quote or escape at once: a table's audio is one long string
+                const char *const run = at_;
+                while (at_ < end_ && *at_ != '"' && *at_ != '\\')
+                    ++at_;
+                out.append(run, at_);
             }
         }
         if (at_ >= end_)
@@ -398,24 +401,37 @@ private:
     const char *at_, *end_;
 };
 
+// A base64 digit's value, or -1 for what isn't one (padding, line ends), which is skipped.
+int base64Digit(char c) {
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+' || c == '-')
+        return 62;
+    if (c == '/' || c == '_')
+        return 63;
+    return -1;
+}
+
+// How many floats base64Floats() would make of `text`, without making them.
+size_t base64FloatCount(const std::string &text) {
+    size_t digits = 0;
+    for (char c : text)
+        digits += base64Digit(c) >= 0 ? 1 : 0;
+    return digits * 6 / 8 / 4;
+}
+
 std::vector<float> base64Floats(const std::string &text) {
     std::vector<uint8_t> bytes;
     bytes.reserve(text.size() * 3 / 4);
     uint32_t acc = 0;
     int have = 0;
     for (char c : text) {
-        int v;
-        if (c >= 'A' && c <= 'Z')
-            v = c - 'A';
-        else if (c >= 'a' && c <= 'z')
-            v = c - 'a' + 26;
-        else if (c >= '0' && c <= '9')
-            v = c - '0' + 52;
-        else if (c == '+' || c == '-')
-            v = 62;
-        else if (c == '/' || c == '_')
-            v = 63;
-        else
+        const int v = base64Digit(c);
+        if (v < 0)
             continue;
         acc = (acc << 6) | static_cast<uint32_t>(v);
         if ((have += 6) >= 8) {
@@ -491,6 +507,53 @@ ReadError vitalFrames(const Json &root, std::vector<float> &frames, int &count, 
                     frames[static_cast<size_t>(f) * size + i] =
                         f < a.first ? a.second[i] : a.second[i] + (b.second[i] - a.second[i]) * std::clamp(t, 0.0f, 1.0f);
             }
+            return ReadError::None;
+        }
+    }
+    return lines ? ReadError::LineSource : ReadError::NotAudio;
+}
+
+// What vitalFrames() would make of a .vitaltable, from its keyframes alone, none of its audio decoded: its frames and
+// their size. What a scan lists of it.
+ReadError vitalShape(const Json &root, int &count, int &size) {
+    const Json *groups = root.find("groups");
+    if (!groups || groups->kind != Json::Array)
+        return root.find("settings") ? ReadError::PresetOnly : ReadError::NotAudio;
+    bool lines = false;
+    for (const Json &group : groups->items) {
+        const Json *components = group.find("components");
+        if (!components || components->kind != Json::Array)
+            continue;
+        for (const Json &c : components->items) {
+            const std::string type = c.str("type");
+            const Json *keyframes = c.find("keyframes");
+            if (type == "Line Source") {
+                lines = true;
+                continue;
+            }
+            if (!keyframes || keyframes->kind != Json::Array || keyframes->items.empty())
+                continue;
+            int last = -1;
+            auto keep = [&last](const Json &k) {
+                last = std::max(last, static_cast<int>(std::clamp(k.num("position", 0.0), 0.0, 256.0)));
+            };
+            if (type == "Wave Source") {
+                size = FrameTable::kFrameSize;
+                for (const Json &k : keyframes->items)
+                    if (base64FloatCount(k.str("wave_data")) >= static_cast<size_t>(size))
+                        keep(k);
+            } else if (type == "Audio File Source") {
+                const size_t audio = base64FloatCount(c.str("audio_file"));
+                size = static_cast<int>(std::clamp(c.num("window_size", 2048.0), 16.0, 4096.0));
+                for (const Json &k : keyframes->items)
+                    if (static_cast<size_t>(std::max(0.0, k.num("start_position", 0.0))) + static_cast<size_t>(size) <= audio)
+                        keep(k);
+            } else {
+                continue;
+            }
+            if (last < 0)
+                continue;
+            count = last + 1;
             return ReadError::None;
         }
     }
@@ -737,10 +800,11 @@ TableInfo probeTableFile(const ReadAt &read, uint64_t size, const std::string &n
         std::vector<uint8_t> all(static_cast<size_t>(size));
         if (read(0, all.data(), all.size()) != all.size())
             return info.error = ReadError::Broken, info;
-        const TableFile file = readTableFile(all.data(), all.size(), name, ReadAs::Table, frameSize);
-        info.error = file.error;
-        info.frameSize = file.frameSize;
-        info.frames = file.fileFrames;
+        Json root;
+        JsonParser parser(reinterpret_cast<const char *>(all.data()), reinterpret_cast<const char *>(all.data()) + all.size());
+        if (!parser.parse(root) || root.kind != Json::Object)
+            return info.error = ReadError::Broken, info;
+        info.error = vitalShape(root, info.frames, info.frameSize);
         return info;
     }
     if (got >= 4 && std::memcmp(head, "CcnK", 4) == 0)

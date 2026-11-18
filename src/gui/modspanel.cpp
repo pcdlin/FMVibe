@@ -362,7 +362,8 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
             node.children.push_back(heading(title));
             node.children.back().newColumn = title == Str::CascadeEnvelope;
             for (OpParam field : fields)
-                add(node, paramIndex(op, field), prefix);
+                if (field != OpParam::Ratio || !isDataWave(opWave(value(paramIndex(op, OpParam::Wave))))) // none of its own
+                    add(node, paramIndex(op, field), prefix);
         }
         operators.children.push_back(std::move(node));
     }

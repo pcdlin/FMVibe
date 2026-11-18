@@ -87,8 +87,9 @@ constexpr float kTitleLetterW = 16.0f;
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
 // An operator's sound in one block under the title row, whose place its source switch (WAVE | TABLE | SAMPLE) takes:
 // at its left, its pitch (the Ratio readout, Freq and Mult when fixed, or a noise operator's Slope and Spread), as tall
-// as two rows; at its right, the waves (or the table's or the sample's picker), and under them the Pitch, Detune, Phase
-// and Pan knobs. Their labels, and the Ratio readout's, share one line.
+// as two rows; at its right, the waves, and under them the Pitch, Detune, Phase and Pan knobs. Their labels, and the
+// Ratio readout's, share one line. A table or a sample has no Ratio: unless fixed, its four knobs spread along the whole
+// block, a sample's under its picker and a table's, whose picker is on its TABLE tab, a little higher.
 constexpr float kOpHeroY = kInspector.y + 64.0f;
 constexpr float kOpPitchW = 88.0f; // the left column
 constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
@@ -104,20 +105,20 @@ inline Rect opSourceButton(int source) {
 constexpr float kOpRowY = kOpHeroY;
 constexpr float kOpWavesH = 20.0f; // the waves' row, over the knobs
 constexpr float kOpKnobY = kOpHeroY + 38.0f, kOpKnobD = 28.0f;
-// The TABLE row: a step back, the table's picker (its glyph, its name and a chevron), a step on. The SAMPLE row: the
-// sample's picker, then the import button.
-inline Rect tableStepButton(int dir) {
-    return {dir < 0 ? kOpRightX : kOpRightX + kOpRightW - 18.0f, kOpRowY, 18.0f, kOpWavesH};
-}
-constexpr Rect kTablePicker{kOpRightX + 20.0f, kOpRowY, kOpRightW - 40.0f, kOpWavesH};
-constexpr Rect kSamplePicker{kOpRightX, kOpRowY, 144.0f, kOpWavesH};
+constexpr float kOpTableKnobY = kOpHeroY + 30.0f;
+// The SAMPLE row, along the whole block: the sample's picker, then the import button.
 constexpr Rect kSampleImport{kOpRightX + kOpRightW - 20.0f, kOpRowY, 20.0f, kOpWavesH};
+constexpr Rect kSamplePicker{kInspector.x + 16.0f, kOpRowY, kSampleImport.x - 4.0f - (kInspector.x + 16.0f), kOpWavesH};
 // Place 0-3 along the right column (Pitch, Detune, Phase, Pan); the left column's two (Freq and Mult, or Slope and
 // Spread) are places -2 and -1.
 inline Point opKnobCenter(int place) {
     if (place < 0)
         return {kInspector.x + 16.0f + kOpPitchW * (place + 2.5f) * 0.5f, kOpKnobY};
     return {kOpRightX + kOpRightW * (place + 0.5f) / 4.0f, kOpKnobY};
+}
+// Place 0-3 along the whole block, for a table or a sample that has no Ratio readout beside them.
+inline Point opWideKnobCenter(int place, float y) {
+    return {kInspector.x + 16.0f + (kInspector.w - 32.0f) * (place + 0.5f) / 4.0f, y};
 }
 // An operator's Ratio: a 7-segment readout, 0.50 to 64.00, the left column of its block, each digit dragged on its
 // own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along its
@@ -184,10 +185,18 @@ inline Rect opTab(int tab, OpTabs tabs = OpTabs::Plain) {
     const float w = (kOpWell.w - 8.0f) / count;
     return {kOpWell.x + 4.0f + places[tab] * w, kOpTabsY, w, kOpTabH};
 }
-// The TABLE tab: its display, which is Position's control, then along the row under it the warps' buttons, the warp's
-// Amount knob and the NOTE (note sync) switch, where the WARP tab has them (warpButton(), kWarpAmountKnob,
-// kSyncButton). The SAMPLE tab: its display with the ROOT readout in its top right corner, then LOOP and MODE, each a
+// The TABLE tab: along its top a step back, the table's picker (its glyph, its name and a chevron) and a step on; under
+// them its display, which is Position's control; then along the row under it the warps' buttons, the warp's Amount knob
+// and the NOTE (note sync) switch, where the WARP tab has them (warpButton(), kWarpAmountKnob, kSyncButton). The SAMPLE
+// tab: its display with the ROOT readout in its top right corner, then LOOP and MODE, each a
 // row of three, under it, named under them, and the reverse switch between them.
+constexpr Rect kTablePickerRow{kOpDisplay.x + 6.0f, kOpDisplay.y + 4.0f, kOpDisplay.w - 12.0f, kOpWavesH};
+inline Rect tableStepButton(int dir) {
+    return {dir < 0 ? kTablePickerRow.x : kTablePickerRow.right() - 18.0f, kTablePickerRow.y, 18.0f, kTablePickerRow.h};
+}
+constexpr Rect kTablePicker{kTablePickerRow.x + 20.0f, kTablePickerRow.y, kTablePickerRow.w - 40.0f, kTablePickerRow.h};
+constexpr float kTableDisplayY = kTablePickerRow.y + kTablePickerRow.h + 2.0f;
+constexpr Rect kTableDisplay{kOpDisplay.x, kTableDisplayY, kOpDisplay.w, kOpDisplay.y + kOpDisplay.h - kTableDisplayY};
 inline Rect sampleRootBox(Rect display) { return {display.right() - 6.0f - 56.0f, display.y + 4.0f, 56.0f, 16.0f}; }
 constexpr float kSampleChoiceW = 36.0f;
 inline Rect sampleLoopButton(int choice, float y) {
@@ -319,6 +328,8 @@ constexpr Rect kTbDone{kTableBrowser.x + kTableBrowser.w - 64.0f, kTableBrowser.
 constexpr Rect kTbImport{kTbDone.x - 8.0f - 104.0f, kTableBrowser.y + 5.0f, 104.0f, 24.0f};
 inline Rect tbSourceRow(int row) { return {kTbSources.x, kTbSources.y + row * kTbRowH, kTbSources.w, kTbRowH - 2.0f}; }
 inline Rect tbListRow(float row) { return {kTbList.x, kTbList.y + row * kTbRowH, kTbList.w - 10.0f, kTbRowH - 2.0f}; }
+// A folder's scan: its bar, under the list's "Scanning...".
+inline Rect tbScanBar() { return {kTbList.x + 0.5f * kTbList.w - 110.0f, kTbList.y + 46.0f, 220.0f, 4.0f}; }
 
 // The row between the header and the panels: the view tabs at its left.
 constexpr float kTopRowY = kHeaderH + 8.0f;

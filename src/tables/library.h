@@ -1,12 +1,12 @@
 #pragma once
 
-// The wavetable library the table browser lists (see View::paintTableBrowser()): the user's folders, which they add by
-// hand (FMVibe never searches the disk for other plugins' tables), each a source with every subfolder in it at any
-// depth. A worker thread the library owns scans them, reading each file's headers and chunks only (see
-// probeTableFile()), and keeps what it read in a cache file keyed by path, size and time, so a scan only reads what
-// changed; the main thread takes what it found in with poll(), so the browser fills in as it goes. The browser demo,
-// which has no threads and no folders to keep, lists the files a user picks on the page for the session instead (see
-// addFiles()). Independent of Windows: tests/quality.cpp covers it.
+// The wavetable library the table browser lists (see TableBrowser): the user's folders, which they add by hand (FMVibe
+// never searches the disk for other plugins' tables), each a source of the tables directly in it, its subfolders left
+// out (a subfolder is added as a folder of its own). A worker thread the library owns scans them, reading each file's
+// headers and chunks only (see probeTableFile()), several files at a time, and keeps what it read in a cache file keyed
+// by path, size and time, so a scan only reads what changed; the main thread takes how far it got, and in the end what
+// it found, in with poll(). The browser demo, which has no threads and no folders to keep, lists the files a user picks
+// on the page for the session instead (see addFiles()). Independent of Windows: tests/quality.cpp covers it.
 
 #include "readers.h"
 
@@ -18,6 +18,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace fmvibe {
@@ -31,9 +32,9 @@ struct TableFolder {
 
 // A file a source lists.
 struct LibraryEntry {
-    std::string path;  // within its source, "/" between folders
-    std::string group; // its folder within the source, "" at its top
+    std::string path;  // its file's name in its source
     std::string name;  // its file's name without the extension
+    std::string order; // the name in lower case, which the list is sorted by
     TableInfo info;
 };
 
@@ -42,7 +43,8 @@ struct LibrarySource {
     bool missing = false;  // its folder isn't there (moved, or a drive not plugged in)
     bool scanning = false; // a scan is under way
     bool cut = false;      // it holds more files than a scan lists (kMaxFiles)
-    std::vector<LibraryEntry> entries; // by path
+    int scanned = 0, total = 0; // how many of its files the scan under way is through, and how many it found
+    std::vector<LibraryEntry> entries; // by name, the last scan's until the one under way is done
     // Files picked on the page (the browser demo), held for the session: by entry.
     std::vector<std::shared_ptr<const std::vector<uint8_t>>> held;
 };
@@ -60,8 +62,8 @@ public:
     // Main thread. The folders as the settings file has them, scanned anew.
     void setFolders(const std::vector<TableFolder> &folders);
     std::vector<TableFolder> folders() const;
-    // Adds a folder as a source and scans it: the index of its source. A folder that is a source already, or lies
-    // inside one, is that source; a folder holding sources takes them into it.
+    // Adds a folder as a source and scans it: the index of its source. A folder that is a source already is that
+    // source; one inside another source, or holding one, is a source of its own.
     int addFolder(const std::string &path);
     void removeFolder(int source);
     void renameFolder(int source, const std::string &name);
@@ -81,6 +83,8 @@ public:
     void finish();
     // How many files the scans read since the library was made, past the cache (tests).
     int filesRead() const { return filesRead_.load(); }
+    // Shows source `source` as a scan part-way through its files (the editor's checks).
+    void showScan(int source, int scanned, int total);
 
 private:
     struct Job {
@@ -92,7 +96,8 @@ private:
         bool done = false;
         bool missing = false;
         bool cut = false;
-        std::vector<LibraryEntry> entries;
+        int scanned = 0, total = 0;
+        std::vector<LibraryEntry> entries; // once it is done
     };
     struct CacheEntry {
         uint64_t size = 0;
@@ -116,11 +121,11 @@ private:
     std::condition_variable idle_;
     std::deque<Job> jobs_;
     std::vector<Result> results_;
-    std::vector<std::pair<std::string, CacheEntry>> cache_; // by path, sorted
+    std::unordered_map<std::string, CacheEntry> cache_; // by path
     bool cacheLoaded_ = false;
     bool cacheDirty_ = false;
     bool busy_ = false;
-    bool stopping_ = false;
+    std::atomic<bool> stopping_{false};    // the library is going: a scan under way stops
     std::atomic<uint64_t> cancelBelow_{0}; // jobs before this are called off
     std::atomic<int> filesRead_{0};
     std::thread worker_;

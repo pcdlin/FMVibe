@@ -3,9 +3,10 @@
 // The table browser (see tablebrowser.cpp): over the routing panel, as the partial editor is, while an operator's TABLE
 // or SAMPLE picker has it open, it lists the tables (or samples) the operator can take: along its top its title, its
 // search, Import file... and Done; under them the sources' column at its left (Factory, In this patch, then the
-// library's folders, each with its menu, and + Add folder...), the list of the source shown in the middle (a
-// subfolder's rows under its header, which folds them; a search lists what it finds in every source) with its
-// scrollbar, and the preview of the row under the mouse at its right. A click on a row loads it into the operator.
+// library's folders, each with its menu, and + Add folder...), the list of the source shown in the middle (a folder
+// being scanned shows how far the scan is instead; a search lists what it finds in every source, each source's under
+// its name) with its scrollbar, and the preview of the row under the mouse at its right. A click on a row loads it into
+// the operator.
 //
 // It also holds what the inspector's pages draw of a table or a sample (the pickers' glyphs, and a table's frames as a
 // stack), which its preview shares.
@@ -55,6 +56,7 @@ public:
     void showSource(int source);
 
     void forgetScoped() override;
+    bool step() override; // takes in what the library's scans found
     void widgets(std::vector<Widget> &list) const override;
     void paintBack(Canvas &c) override;
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
@@ -77,22 +79,25 @@ public:
 private:
     using Kind = WidgetKind;
 
-    // A row of the list: a subfolder's header, or a table (or sample) of the source shown.
+    // A row of the list: a source's name over what a search found in it, or a table (or sample).
     struct Row {
         bool header = false;
         int source = -2;  // -2 Factory, -1 In this patch, else the library's
         int entry = -1;   // the library source's entry
         uint32_t key = 0; // a factory table's or the patch's
-        std::string name, group, tag;
+        std::string name, path, tag; // its file's name in a library source
         int frames = 0;
         bool sample = false, guessed = false;
         ReadError error = ReadError::None;
     };
 
+    // The list, shared rather than copied: a folder's can run to thousands of rows, and each row painted asks for it.
+    using RowList = std::shared_ptr<const std::vector<Row>>;
+
     Controller &controller() const { return host_.controller(); }
     double value(int index) const;
     TableLibrary *library() const;
-    std::vector<Row> rows() const;     // kept while the host's scope goes on
+    RowList rows() const;              // kept while the host's scope goes on
     std::vector<Row> makeRows() const;
     void pick(const Row &row);         // loads it into the operator
     float end() const;                 // how many rows the list scrolls past at most
@@ -114,7 +119,6 @@ private:
     int source_ = -2;
     float scroll_ = 0.0f;
     int pick_ = -1; // the row picked with the keys
-    std::vector<std::string> folded_; // the subfolders folded, by source and group
     // Whether its search has the keyboard: once clicked, until a click elsewhere, Enter or Escape lets it go; till then
     // the keys play notes, as the host has them.
     bool searching_ = false;
@@ -126,7 +130,7 @@ private:
     bool scrolling_ = false;
     // The data it read from the library's files: the last few, by source and path.
     mutable std::vector<std::pair<std::string, std::shared_ptr<const OpData>>> read_;
-    ScopeCache<std::vector<Row>> rows_;
+    ScopeCache<RowList> rows_;
 };
 
 } // namespace fmvibe::gui

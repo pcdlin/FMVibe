@@ -224,8 +224,16 @@ void TableBrowser::forgetScoped() {
     rows_.forget();
 }
 
-std::vector<TableBrowser::Row> TableBrowser::rows() const {
-    return rows_.get(host_, [&] { return makeRows(); });
+bool TableBrowser::step() {
+    TableLibrary *lib = op_ >= 0 ? library() : nullptr;
+    if (!lib || !lib->poll())
+        return false;
+    pick_ = -1; // a scan done may have changed the list under it
+    return true;
+}
+
+TableBrowser::RowList TableBrowser::rows() const {
+    return rows_.get(host_, [&] { return std::make_shared<const std::vector<Row>>(makeRows()); });
 }
 
 std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
@@ -234,10 +242,6 @@ std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
     const bool searching = !words.empty();
     TableLibrary *lib = library();
     const DataStore &store = controller().data();
-    auto folded = [&](int source, const std::string &group) {
-        return !searching &&
-               std::find(folded_.begin(), folded_.end(), std::to_string(source) + "|" + group) != folded_.end();
-    };
     auto listSource = [&](int source, const std::string &heading) {
         std::vector<Row> found;
         if (source == -2) {
@@ -265,13 +269,15 @@ std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
             }
         } else if (lib && source < static_cast<int>(lib->sources().size())) {
             const LibrarySource &s = lib->sources()[source];
+            if (s.scanning && !searching)
+                return; // it shows how far the scan is (see paintBack()); a search finds what it listed last
             for (size_t e = 0; e < s.entries.size(); ++e) {
                 const LibraryEntry &entry = s.entries[e];
                 Row row;
                 row.source = source;
                 row.entry = static_cast<int>(e);
                 row.name = entry.name;
-                row.group = entry.group;
+                row.path = entry.path;
                 row.frames = entry.info.frames;
                 row.sample = entry.info.sample;
                 row.guessed = entry.info.guessed;
@@ -280,31 +286,19 @@ std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
                 found.push_back(row);
             }
         }
-        std::string lastGroup = "\x01";
         bool headed = false;
         for (Row &row : found) {
-            if (searching && !TextField::holds(heading + " " + row.group + " " + row.name, words))
+            if (searching && !TextField::holds(heading + " " + row.name, words))
                 continue;
             if (searching && !headed) { // each source's matches under its name
                 Row head;
                 head.header = true;
                 head.source = source;
                 head.name = heading;
-                head.group = "\x02";
                 rows.push_back(head);
                 headed = true;
             }
-            if (!searching && row.group != lastGroup && !row.group.empty()) { // a subfolder's header
-                Row head;
-                head.header = true;
-                head.source = source;
-                head.group = row.group;
-                head.name = row.group;
-                rows.push_back(head);
-            }
-            lastGroup = row.group;
-            if (!folded(source, row.group))
-                rows.push_back(row);
+            rows.push_back(std::move(row));
         }
     };
     if (!searching) {
@@ -319,7 +313,7 @@ std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
 }
 
 float TableBrowser::end() const {
-    return std::max(static_cast<float>(rows().size()) - kTbList.h / kTbRowH, 0.0f);
+    return std::max(static_cast<float>(rows()->size()) - kTbList.h / kTbRowH, 0.0f);
 }
 
 std::shared_ptr<const OpData> TableBrowser::data(const Row &row) const {
@@ -327,7 +321,7 @@ std::shared_ptr<const OpData> TableBrowser::data(const Row &row) const {
         return nullptr;
     if (row.source < 0)
         return controller().data().get(row.key);
-    const std::string id = std::to_string(row.source) + "|" + row.group + "/" + row.name;
+    const std::string id = std::to_string(row.source) + "|" + row.path;
     for (const auto &[have, d] : read_)
         if (have == id)
             return d;
@@ -387,7 +381,8 @@ void TableBrowser::widgets(std::vector<Widget> &list) const {
     }
     // The list, cut off at its ends as it scrolls.
     add(Kind::TbScroll, kTbList);
-    const std::vector<Row> all = rows();
+    const RowList held = rows();
+    const std::vector<Row> &all = *held;
     const float first = std::clamp(scroll_, 0.0f, end());
     for (int r = static_cast<int>(first); r < static_cast<int>(all.size()); ++r) {
         const float at = static_cast<float>(r) - first;
@@ -424,18 +419,37 @@ void TableBrowser::paintBack(Canvas &c) {
     c.line({kTbList.right() + 6.0f, kTbTop}, {kTbList.right() + 6.0f, kTbBottom}, kBorder, 1.0f);
     c.text({kTableBrowser.x, kTbBottom + 4.0f, kTableBrowser.w, 18.0f}, tr(Str::TablesFooter), kTextLabel, kFaint,
            Align::Left);
-    // A list with nothing in it says so.
-    const std::vector<Row> all = rows();
+    // A list with nothing in it says so; a folder being scanned, how far the scan is, along a bar under the words.
+    const RowList held = rows();
+    const std::vector<Row> &all = *held;
     TableLibrary *lib = library();
     if (all.empty()) {
         std::string say = tr(Str::TablesEmpty);
-        if (!search_.text.empty())
+        const LibrarySource *scanning = nullptr;
+        if (!search_.text.empty()) {
             say = trf(Str::TablesNoMatch, {search_.text});
-        else if (lib && source_ >= 0 && source_ < static_cast<int>(lib->sources().size())) {
+        } else if (lib && source_ >= 0 && source_ < static_cast<int>(lib->sources().size())) {
             const LibrarySource &s = lib->sources()[source_];
-            say = s.missing ? trf(Str::TablesMissing, {s.folder.path}) : s.scanning ? tr(Str::TablesScanning) : say;
+            if (s.missing) {
+                say = trf(Str::TablesMissing, {s.folder.path});
+            } else if (s.scanning) {
+                say = tr(Str::TablesScanning);
+                scanning = &s;
+            }
         }
         c.text({kTbList.x, kTbList.y + 20.0f, kTbList.w, 20.0f}, say, kTextBody, kDim);
+        if (scanning) {
+            const Rect bar = tbScanBar();
+            c.fillRect(bar, kTrack, kRadiusMark);
+            if (scanning->total > 0) {
+                const float share = std::clamp(static_cast<float>(scanning->scanned) / scanning->total, 0.0f, 1.0f);
+                if (share > 0.0f)
+                    c.fillRect({bar.x, bar.y, std::max(bar.w * share, bar.h), bar.h}, kAccent, kRadiusMark);
+                c.text({kTbList.x, bar.bottom() + 6.0f, kTbList.w, 16.0f},
+                       trf(Str::TablesScanCount, {std::to_string(scanning->scanned), std::to_string(scanning->total)}),
+                       kTextSmall, kFaint);
+            }
+        }
     }
     // The preview: the row under the mouse, else the one picked with the keys, else what the operator plays.
     std::optional<Row> shown;
@@ -454,7 +468,7 @@ void TableBrowser::paintBack(Canvas &c) {
         d = controller().data().get(
             dataKey(value(paramIndex(op, kind_ == DataKind::Table ? OpParam::Table : OpParam::Sample))));
     if (d && d->kind == DataKind::Table) {
-        paintTableStack(c, view.inset(4.0f), *d, 24, -1.0f, kAccent);
+        paintTableStack(c, view.inset(4.0f), *d, 24, 0.0f, kAccent); // its first frame lit, as if played
     } else if (d && d->kind == DataKind::Sample && !d->peakMin.empty()) {
         const Rect a = view.inset(8.0f);
         std::vector<Point> top, bottom;
@@ -474,8 +488,7 @@ void TableBrowser::paintBack(Canvas &c) {
         std::vector<std::string> lines;
         if (shown && shown->source >= 0 && lib && shown->source < static_cast<int>(lib->sources().size())) {
             const LibrarySource &s = lib->sources()[shown->source];
-            lines.push_back(s.folder.name + " \xE2\x80\xBA " +
-                            (shown->group.empty() ? shown->name : shown->group + " \xE2\x80\xBA " + shown->name));
+            lines.push_back(s.folder.name + " \xE2\x80\xBA " + shown->name);
             if (shown->error != ReadError::None)
                 lines.push_back(tr(readErrorText(shown->error)));
             const LibraryEntry &e = s.entries[shown->entry];
@@ -540,20 +553,16 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.text({w.rect.x + 8.0f, w.rect.y, w.rect.w - 8.0f, w.rect.h}, tr(Str::TablesAddFolder), kTextBody,
                hovered ? kText : kAccent, Align::Left);
         return true;
-    case Kind::TbGroup: {
-        const std::vector<Row> all = rows();
-        if (w.a < 0 || w.a >= static_cast<int>(all.size()))
-            return true;
-        const Row &row = all[w.a];
-        const std::string id = std::to_string(row.source) + "|" + row.group;
-        const bool folded = std::find(folded_.begin(), folded_.end(), id) != folded_.end();
-        chevron(c, {w.rect.x + 8.0f, w.rect.center().y}, folded ? 1 : 0, hovered ? kText : kFaint);
-        c.text({w.rect.x + 18.0f, w.rect.y, w.rect.w - 18.0f, w.rect.h}, row.name, kTextLabel, hovered ? kText : kFaint,
-               Align::Left, true);
+    case Kind::TbGroup: { // a source's name over what a search found in it
+        const RowList held = rows();
+        if (w.a >= 0 && w.a < static_cast<int>(held->size()))
+            c.text({w.rect.x + 8.0f, w.rect.y, w.rect.w - 8.0f, w.rect.h}, (*held)[w.a].name, kTextLabel, kFaint,
+                   Align::Left, true);
         return true;
     }
     case Kind::TbRow: {
-        const std::vector<Row> all = rows();
+        const RowList held = rows();
+        const std::vector<Row> &all = *held;
         if (w.a < 0 || w.a >= static_cast<int>(all.size()))
             return true;
         const Row &row = all[w.a];
@@ -576,7 +585,7 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             c.fillRect(w.rect, current ? kAccent.alpha(0.2f) : pick_ == w.a ? kAccent.alpha(0.1f) : kTrack,
                        kRadiusControl);
         const Color ink = unreadable ? kFaint : current ? kText : kDim;
-        // A thumbnail: the first, middle and last frames over one another, or a sample's glyph.
+        // A thumbnail: the last, middle and first frames over one another, the first bold, or a sample's glyph.
         const Rect thumbnail{w.rect.x + 6.0f, w.rect.y + 3.0f, 40.0f, w.rect.h - 6.0f};
         c.fillRect(thumbnail, kDisplayColor, kRadiusMark);
         std::shared_ptr<const OpData> d;
@@ -584,11 +593,11 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             d = controller().data().get(row.key);
         else
             for (const auto &[id, read] : read_)
-                if (id == std::to_string(row.source) + "|" + row.group + "/" + row.name)
+                if (id == std::to_string(row.source) + "|" + row.path)
                     d = read;
         if (d && d->kind == DataKind::Table && d->frames > 0) {
             const float height = thumbnail.h * 0.4f / tablePeak(*d);
-            for (int k = 0; k < 3; ++k) {
+            for (int k = 2; k >= 0; --k) {
                 const int f = k * (d->frames - 1) / 2;
                 const float *x = &d->pcm[static_cast<size_t>(f) * FrameTable::kFrameSize];
                 Point p[33];
@@ -596,7 +605,7 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                     p[i] = {thumbnail.x + 2.0f + i * (thumbnail.w - 4.0f) / 32.0f,
                             thumbnail.center().y -
                                 x[i * (FrameTable::kFrameSize / 32) % FrameTable::kFrameSize] * height};
-                c.polyline(p, 33, (unreadable ? kFaint : kAccent).alpha(k == 2 ? 1.0f : 0.4f), 1.0f);
+                c.polyline(p, 33, (unreadable ? kFaint : kAccent).alpha(k == 0 ? 1.0f : 0.4f), k == 0 ? 1.6f : 1.0f);
             }
         } else if (row.sample || (d && d->kind == DataKind::Sample)) {
             sampleGlyph(c, thumbnail.inset(4.0f), unreadable ? kFaint : kAccent);
@@ -642,7 +651,8 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
 std::string TableBrowser::tooltip(const Widget &w) const {
     switch (w.kind) {
     case Kind::TbRow: {
-        const std::vector<Row> all = rows();
+        const RowList held = rows();
+        const std::vector<Row> &all = *held;
         if (w.a >= 0 && w.a < static_cast<int>(all.size()) && all[w.a].error != ReadError::None)
             return tr(readErrorText(all[w.a].error));
         return {};
@@ -665,7 +675,6 @@ std::optional<CursorKind> TableBrowser::cursor(const Widget &w) const {
         return CursorKind::Arrow;
     case Kind::TbSource:
     case Kind::TbAddFolder:
-    case Kind::TbGroup:
     case Kind::TbRow:
     case Kind::TbDone:
     case Kind::TbImport:
@@ -750,19 +759,11 @@ bool TableBrowser::press(const Widget &w, Point p, Modifiers) {
     case Kind::TbAddFolder:
         controller().chooseTableFolder();
         return true;
-    case Kind::TbGroup: {
-        const std::vector<Row> all = rows();
-        if (w.a >= 0 && w.a < static_cast<int>(all.size()) && all[w.a].group != "\x02") {
-            const std::string id = std::to_string(all[w.a].source) + "|" + all[w.a].group;
-            if (const auto at = std::find(folded_.begin(), folded_.end(), id); at != folded_.end())
-                folded_.erase(at);
-            else
-                folded_.push_back(id);
-        }
+    case Kind::TbGroup:
         return true;
-    }
     case Kind::TbRow: {
-        const std::vector<Row> all = rows();
+        const RowList held = rows();
+        const std::vector<Row> &all = *held;
         if (w.a >= 0 && w.a < static_cast<int>(all.size())) {
             pick_ = w.a;
             pick(all[w.a]);
@@ -822,7 +823,8 @@ bool TableBrowser::wheel(Point p, float steps) {
 }
 
 void TableBrowser::searchKey(Key key) {
-    const std::vector<Row> all = rows();
+    const RowList held = rows();
+    const std::vector<Row> &all = *held;
     switch (key) {
     case Key::Enter: // loads the row picked, and lets the keyboard go, so its keys play it
         if (pick_ >= 0 && pick_ < static_cast<int>(all.size()))
