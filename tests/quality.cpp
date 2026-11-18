@@ -4177,6 +4177,29 @@ void readerChecks() {
         check(f.error == ReadError::None && between && vital.error == ReadError::PresetOnly,
               "a .vitaltable's keyframes are read and filled in between; a Vital preset says its table is inside it");
     }
+    // A loop only hints at a frame size: read as it is, or at the size asked for, which a Serum table's chunk still goes
+    // before.
+    {
+        const std::vector<float> frames = testFrames(4, 2048);
+        const std::vector<uint8_t> looped = wavBytes(frames, 1, 16, false, 44100, {{"smpl", std::vector<uint8_t>(36, 0)}});
+        const std::vector<uint8_t> serum = wavBytes(frames, 1, 16, false, 44100, {{"clm ", textBytes("<!>2048 1")}});
+        auto listed = [](const std::vector<uint8_t> &bytes) {
+            return probeTableFile(
+                [&bytes](uint64_t at, void *to, size_t n) -> size_t {
+                    const size_t got = at < bytes.size() ? std::min<size_t>(n, bytes.size() - static_cast<size_t>(at)) : 0;
+                    std::memcpy(to, bytes.data() + at, got);
+                    return got;
+                },
+                bytes.size(), "x.wav", 0);
+        };
+        const TableFile hinted = readTableFile(looped.data(), looped.size(), "x.wav", ReadAs::Table);
+        const TableFile asked = readTableFile(looped.data(), looped.size(), "x.wav", ReadAs::Table, 1024);
+        const TableFile written = readTableFile(serum.data(), serum.size(), "x.wav", ReadAs::Table, 1024);
+        check(hinted.frameSize == 2048 && asked.frameSize == 1024 && asked.frames == 8 && written.frameSize == 2048 &&
+                  frameSizeOpen(listed(looped)) && !frameSizeOpen(listed(serum)) &&
+                  frameSizeOpen(listed(wavBytes(frames, 1, 16, false, 44100))),
+              "a frame size asked for goes before a loop's hint but not a wavetable's own chunk, and only the former leave it open");
+    }
     // .vitaltable: what Vital's own tables are made of.
     {
         auto vital = [](const std::string &json) {

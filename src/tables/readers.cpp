@@ -239,6 +239,10 @@ int wavFrameSize(const WavInfo &w, std::string &tag) {
     return 0;
 }
 
+// Whether a frame size from these chunks is only a hint: a cue list or a loop may be there for a sample's sake, where
+// the other chunks are written for wavetables. A frame size asked for goes before a hint.
+bool hintedFrameSize(const std::string &tag) { return tag == "cue" || tag == "smpl"; }
+
 // --- Surge's and Bitwig's .wt.
 
 struct WtHeader {
@@ -372,7 +376,7 @@ TableFile readTableFile(const uint8_t *bytes, size_t size, const std::string &na
         }
         std::string tag = "wav";
         int frame = wavFrameSize(w, tag);
-        const bool chunkless = frame <= 0;
+        const bool chunkless = frame <= 0 || (frameSize > 0 && hintedFrameSize(tag));
         if (chunkless)
             frame = guessFrameSize(static_cast<int64_t>(samples.size()), frameSize);
         if (frame <= 0 || frame > 4096)
@@ -447,7 +451,7 @@ TableInfo probeTableFile(const ReadAt &read, uint64_t size, const std::string &n
             return info.sample = true, info.frames = static_cast<int>(std::min<int64_t>(length, INT32_MAX)), info;
         std::string tag = "wav";
         int frame = wavFrameSize(w, tag);
-        const bool chunkless = frame <= 0;
+        const bool chunkless = frame <= 0 || (frameSize > 0 && hintedFrameSize(tag));
         if (chunkless)
             frame = guessFrameSize(length, frameSize);
         info.guessed = chunkless && frameSize <= 0;

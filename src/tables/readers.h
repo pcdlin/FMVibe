@@ -51,8 +51,8 @@ struct TableFile {
     int fileFrames = 0;
 };
 
-// How a file is read: as a table (its frame size from its chunks, else `frameSize` when it isn't 0, else guessed) or
-// as a sample.
+// How a file is read: as a table (its frame size from its chunks, `frameSize` when it isn't 0 going before a cue list's
+// or a loop's hint and for a file with none, else guessed) or as a sample.
 enum class ReadAs { Table, Sample };
 TableFile readTableFile(const uint8_t *bytes, size_t size, const std::string &name, ReadAs as, int frameSize = 0);
 
@@ -70,6 +70,12 @@ struct TableInfo {
     int frames = 0;      // a table's frames as the file has them (before thinning), a sample's length
 };
 TableInfo probeTableFile(const ReadAt &read, uint64_t size, const std::string &name, int frameSize = 0);
+
+// Whether a file read as a table leaves its frame size open: nothing in it gives one, or only a cue list or a loop hints
+// at one. Importing such a file asks.
+inline bool frameSizeOpen(const TableInfo &info) {
+    return info.error == ReadError::None && (info.guessed || info.format == "cue" || info.format == "smpl");
+}
 
 // A frame size for a file of `length` samples that no chunk gives one for: `folder` (a folder's own setting) when it
 // isn't 0, else 2048 when the length divides by it, else the first of 1024, 512, 256, 4096 and 128 that divides it into

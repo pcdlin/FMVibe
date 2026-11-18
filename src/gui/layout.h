@@ -1520,14 +1520,15 @@ inline Rect confirmThirdButton(Rect panel) {
     return {panel.right() - 24.0f - 252.0f, panel.bottom() - 24.0f - 28.0f, 80.0f, 28.0f};
 }
 // Asking where a split's middle band's effects go, back in two bands: a row more, of a button for each band they can go
-// onto (2 the low band's end, 3 the high band's start) over Remove (confirmButton()'s 1) and Cancel.
+// onto (2 the low band's end, 3 the high band's start) over Remove (confirmButton()'s 1) and Cancel; or the frame sizes
+// a file can be cut into, over Auto and Cancel. `count` buttons share the row.
 inline Rect confirmBandsPanel(float viewHeight) {
     const float h = kConfirmH + 20.0f;
     return {(View::kWidth - kConfirmW) * 0.5f, std::round((viewHeight - h) * 0.5f), kConfirmW, h};
 }
-inline Rect confirmBandButton(Rect panel, int choice) {
-    const float w = (panel.w - 48.0f - 8.0f) * 0.5f;
-    return {panel.x + 24.0f + (choice == 3 ? w + 8.0f : 0.0f), panel.y + 74.0f, w, 28.0f};
+inline Rect confirmBandButton(Rect panel, int choice, int count = 2) {
+    const float w = (panel.w - 48.0f - 8.0f * (count - 1)) / count;
+    return {panel.x + 24.0f + (choice - 2) * (w + 8.0f), panel.y + 74.0f, w, 28.0f};
 }
 
 // On screen, at least in part, for a card `span` places wide, of a row that shows `shown` at a time.

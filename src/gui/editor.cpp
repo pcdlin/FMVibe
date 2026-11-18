@@ -1202,7 +1202,7 @@ void Editor::browseOperatorFile(int op, DataKind kind) {
     if (!guard.alive() || !picked || picked->empty())
         return;
     lastImportFolder_ = std::filesystem::path(*picked).parent_path().wstring();
-    const std::string said = controller_.importOperatorData(op, kind, readFile(*picked), fileNameOf(*picked));
+    const std::string said = view_.importOperatorFile(op, kind, readFile(*picked), fileNameOf(*picked));
     if (!guard.alive())
         return;
     if (!said.empty())

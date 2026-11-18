@@ -16,6 +16,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <iterator>
+#include <string>
 
 namespace fmvibe::gui {
 
@@ -36,6 +39,9 @@ double meterValue(Rect display, float y) {
     const float foot = display.bottom() - 10.0f, top = display.y + 10.0f;
     return std::clamp(static_cast<double>((foot - y) / (foot - top)), 0.0, 1.0);
 }
+
+// The frame sizes a file that leaves its own open can be cut into, as the table browser's folders offer them.
+constexpr int kFrameSizes[] = {256, 512, 1024, 2048};
 
 // The source switch's names, and its tooltips.
 constexpr Str kSourceNames[] = {Str::SourceWave, Str::SourceTable, Str::SourceSample};
@@ -80,10 +86,53 @@ std::string InspectorPanel::dataName(int op) const {
 
 int InspectorPanel::fileDropOp(Point p) const {
     const int op = controller().layout().selectedNode;
-    if (covered() || shapes_.partialEditing() >= 0 || op < 0 || op >= kOps || !isSampleOp(op) ||
+    if (covered() || shapes_.partialEditing() >= 0 || op < 0 || op >= kOps || (!isSampleOp(op) && !isTableOp(op)) ||
         opTabShown(op) != InspectorTab::Source || !kSampleDisplay.contains(p))
         return -1;
     return op;
+}
+
+DataKind InspectorPanel::fileDropKind(int op) const {
+    return isTableOp(op) ? DataKind::Table : DataKind::Sample;
+}
+
+std::string InspectorPanel::importFile(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name) {
+    const ReadAt read = [&bytes](uint64_t at, void *to, size_t size) -> size_t {
+        if (at >= bytes.size())
+            return 0;
+        const size_t got = static_cast<size_t>(std::min<uint64_t>(size, bytes.size() - at));
+        std::memcpy(to, bytes.data() + at, got);
+        return got;
+    };
+    if (kind != DataKind::Table || !frameSizeOpen(probeTableFile(read, bytes.size(), name)))
+        return controller().importOperatorData(op, kind, bytes, name);
+    pendingImport_ = {op, bytes, name};
+    host_.askConfirm(*this, kConfirmFrameSize);
+    return {};
+}
+
+Panel::ConfirmWords InspectorPanel::confirmWords(int) const {
+    ConfirmWords words;
+    words.title = tr(Str::FrameSizeTitle);
+    words.what = tr(Str::FrameSizeWhat);
+    words.ok = tr(Str::TablesFolderAuto);
+    words.plainChoices = true;
+    for (const int size : kFrameSizes)
+        words.choices.push_back({std::to_string(size), kAccent});
+    return words;
+}
+
+// Auto, or one of the sizes (the buttons from 2 on); cancelled, the file is let go of.
+void InspectorPanel::confirmed(int, int button) {
+    PendingImport file = std::move(pendingImport_);
+    pendingImport_ = {};
+    const int choice = button - 2;
+    if (button != 1 && (choice < 0 || choice >= static_cast<int>(std::size(kFrameSizes))))
+        return;
+    const std::string said = controller().importOperatorData(file.op, DataKind::Table, file.bytes, file.name, {},
+                                                             button == 1 ? 0 : kFrameSizes[choice]);
+    if (!said.empty())
+        host_.flash(said);
 }
 
 // --- Widgets.

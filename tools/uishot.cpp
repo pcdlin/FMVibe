@@ -10392,6 +10392,98 @@ void testTableBrowserScan(const std::filesystem::path &dir, Renderer &renderer) 
     fs::remove_all(root, error);
 }
 
+// A WAV with nothing in it about frames: `samples` of 16-bit mono.
+std::vector<uint8_t> plainWav(int samples) {
+    std::vector<uint8_t> out;
+    auto text = [&](const char *t) { out.insert(out.end(), t, t + 4); };
+    auto word = [&](uint32_t v, int bytes) {
+        for (int b = 0; b < bytes; ++b)
+            out.push_back(static_cast<uint8_t>(v >> (8 * b)));
+    };
+    text("RIFF");
+    word(36 + static_cast<uint32_t>(samples) * 2, 4);
+    text("WAVE");
+    text("fmt ");
+    word(16, 4);
+    word(1, 2);
+    word(1, 2);
+    word(44100, 4);
+    word(88200, 4);
+    word(2, 2);
+    word(16, 2);
+    text("data");
+    word(static_cast<uint32_t>(samples) * 2, 4);
+    for (int i = 0; i < samples; ++i)
+        word(static_cast<uint16_t>(static_cast<int16_t>(12000.0 * std::sin(i * 0.05))), 2);
+    return out;
+}
+
+// A file that doesn't say how long its frames are asks, imported or dropped on the TABLE tab's display: Auto, a size or
+// Cancel; a wavetable that says goes straight in.
+void testTableFrameSize(const std::filesystem::path &dir, Renderer &renderer) {
+    std::printf("a table's frame size:\n");
+    FakeController model;
+    View view(model);
+    model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Source;
+    model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
+    view.poll();
+    const int table = paramIndex(0, OpParam::Table);
+    const std::vector<uint8_t> plain = plainWav(8192);
+    auto frames = [&] {
+        const uint32_t key = dataKey(model.value(table));
+        const OpData *const d = key >= kUserDataBase ? model.opData(key) : nullptr;
+        return d ? d->frames : 0;
+    };
+    const Rect panel = detail::confirmBandsPanel(view.height());
+    auto size = [&](int choice) { return detail::confirmBandButton(panel, 2 + choice, 4).center(); }; // 256, 512, 1024, 2048
+
+    const std::string said = view.importOperatorFile(0, DataKind::Table, plain, "plain.wav");
+    const bool asked = said.empty() && view.confirmShown() && frames() == 0;
+    view.mouseMove({detail::kInspector.center().x, detail::kInspector.y + 40.0f}, {});
+    renderer.save(view, dir / "wt-23-frame-size.png");
+    click(view, size(2));
+    const bool cut = !view.confirmShown() && frames() == 8;
+    view.undo();
+    const bool undone = frames() == 0;
+    view.importOperatorFile(0, DataKind::Table, plain, "plain.wav");
+    view.dialogKey(View::Key::Enter);
+    const bool automatic = !view.confirmShown() && frames() == 4;
+    view.undo();
+    view.importOperatorFile(0, DataKind::Table, plain, "plain.wav");
+    view.dialogKey(View::Key::Escape);
+    const bool cancelled = !view.confirmShown() && frames() == 0;
+    check(asked && cut && undone && automatic && cancelled,
+          "a file that doesn't say how long its frames are asks: a size cuts it so, Enter is Auto, Escape leaves the "
+          "operator as it was, one undo step");
+    view.importOperatorFile(0, DataKind::Table, tableWav(8), "Saws.wav");
+    const bool straight = !view.confirmShown() && frames() == 8;
+    view.undo();
+    view.importOperatorFile(0, DataKind::Sample, plain, "plain.wav");
+    const bool sampled = !view.confirmShown();
+    view.undo();
+    check(straight && sampled, "a wavetable that says, or a file taken as a sample, goes straight in");
+
+    // Dropped on the TABLE tab's display: lit while held there, and asking as importing does.
+    view.poll();
+    const Point on = detail::kTableDisplay.center();
+    const bool target = view.fileDropTarget(on) == View::FileDropTarget{0, DataKind::Table};
+    const bool lit = view.fileDragOver(on);
+    renderer.save(view, dir / "wt-24-table-drop.png");
+    const std::optional<std::string> dropped = view.fileDrop(on, plain, "plain.wav");
+    const bool droppedAsks = dropped && dropped->empty() && view.confirmShown();
+    click(view, size(1));
+    const bool droppedIn = frames() == 16;
+    view.undo();
+    model.ui.opTab = InspectorTab::Envelope;
+    view.poll();
+    const bool otherTab = !view.fileDropTarget(on);
+    std::printf("      dropped: a target %d, lit %d, asks %d, in %d; refused on another tab %d\n", target, lit, droppedAsks,
+                droppedIn, otherTab);
+    check(target && lit && droppedAsks && droppedIn && otherTab,
+          "a file dropped on the TABLE tab's display is imported as a table, asking for its frame size");
+}
+
 // The SAMPLE source, its row and tab, its handles, its lists and its playhead.
 void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     std::printf("sample operators:\n");
@@ -13944,6 +14036,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testTableBrowser(dir, renderer);
     testTableBrowserScroll(dir, renderer);
     testTableBrowserScan(dir, renderer);
+    testTableFrameSize(dir, renderer);
     testSamples(dir, renderer);
 }
 

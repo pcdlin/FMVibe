@@ -540,8 +540,8 @@ EMSCRIPTEN_KEEPALIVE char *ui_name_buffer(int size) {
 
 // The file in the buffers, imported as operator `op`'s table or sample (DataKind, by number); what went wrong flashes.
 EMSCRIPTEN_KEEPALIVE void ui_import(int op, int kind) {
-    const std::string said = controller->importOperatorData(op, static_cast<DataKind>(kind), incoming,
-                                                            std::string(incomingName.data()));
+    const std::string said = view->importOperatorFile(op, static_cast<DataKind>(kind), incoming,
+                                                      std::string(incomingName.data()));
     if (!said.empty())
         js_toast(said.c_str());
 }

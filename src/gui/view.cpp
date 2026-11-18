@@ -1189,13 +1189,13 @@ void View::showTableSource(int source) {
     tables_.showSource(source);
 }
 
-// A file dragged in from outside lands where the inspector takes one (a Sample operator's SAMPLE tab's display), while
-// no dialog is open over it.
+// A file dragged in from outside lands where the inspector takes one (the display of a Wavetable operator's TABLE tab
+// or a Sample operator's SAMPLE tab), while no dialog is open over it.
 std::optional<View::FileDropTarget> View::fileDropTarget(Point p) const {
     if (dialogOpen() || inspectorCovered())
         return std::nullopt;
     const int op = inspector_.fileDropOp(p);
-    return op >= 0 ? std::optional(FileDropTarget{op, DataKind::Sample}) : std::nullopt;
+    return op >= 0 ? std::optional(FileDropTarget{op, inspector_.fileDropKind(op)}) : std::nullopt;
 }
 
 bool View::fileDragOver(std::optional<Point> p) {
@@ -1213,8 +1213,12 @@ std::optional<std::string> View::fileDrop(Point p, const std::vector<uint8_t> &b
     const std::optional<FileDropTarget> target = fileDropTarget(p);
     if (!target)
         return std::nullopt;
+    return importOperatorFile(target->op, target->kind, bytes, name);
+}
+
+std::string View::importOperatorFile(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name) {
     endTyping(true);
-    return controller_.importOperatorData(target->op, target->kind, bytes, name);
+    return inspector_.importFile(op, kind, bytes, name);
 }
 
 bool View::isStepperParam(int param) {
@@ -4875,14 +4879,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // split's middle band's effects onto its low band or its high one), each in its color.
         const std::optional<Panel::ConfirmWords> words =
             confirmFrom_ ? std::optional(confirmFrom_->confirmWords(confirm_)) : std::nullopt;
-        if (w.a == 4 && words) {
+        if (w.a == 4 && words && !words->third.empty()) {
             c.text(w.rect, words->third, kTextBody, face(false, kAccent), Align::Center);
             break;
         }
         if (w.a >= 2 && words && w.a - 2 < static_cast<int>(words->choices.size())) {
             const auto &[label, color] = words->choices[static_cast<size_t>(w.a - 2)];
-            const Color ink = face(true, color);
-            c.text(w.rect, label, kTextBody, ink, Align::Center, true);
+            const Color ink = face(!words->plainChoices, color);
+            c.text(w.rect, label, kTextBody, ink, Align::Center, !words->plainChoices);
             break;
         }
         const bool ok = w.a == 1;

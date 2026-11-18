@@ -53,10 +53,18 @@ public:
     int scopeShown() const;
     // The list of more waves closes, as an open list does as something scrolls under the middle button.
     void closeWaveMenu() { waveMenu_ = -1; }
-    // A file dragged over the editor from outside it: the Sample operator whose SAMPLE tab's display, shown, takes it
-    // at `p`, or -1; and the operator whose display is lit for one held over it (-1 for none), which repaints it.
+    // A file dragged over the editor from outside it: the Wavetable or Sample operator whose TABLE or SAMPLE tab's
+    // display, shown, takes it at `p`, or -1; what that operator takes it as; and the operator whose display is lit for
+    // one held over it (-1 for none), which repaints it.
     int fileDropOp(Point p) const;
+    DataKind fileDropKind(int op) const;
     void lightFileDrop(int op) { fileDrop_ = op; }
+    // A file imported as operator `op`'s table or sample. Read as a table, one that leaves its frame size open waits
+    // here while the user is asked for it. "" if it went in or waits, else what to tell the user.
+    std::string importFile(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name);
+    static constexpr int kConfirmFrameSize = 10; // its question, numbered apart from the others' (see View::confirm_)
+    ConfirmWords confirmWords(int kind) const override;
+    void confirmed(int kind, int button) override;
 
     void widgets(std::vector<Widget> &list) const override;
     void popups(std::vector<Widget> &list) const override; // the list of more waves, and its pages' lists
@@ -178,7 +186,13 @@ private:
     int waveMenu_ = -1;          // the operator whose list of more waves is open, or -1
     float inputsScroll_ = 0.0f;  // rows the INPUTS tab is scrolled to, before clamping
     float opScopeLevel_ = 0.0f;  // the operator scope's level, following its spans' peaks, which its dB readout shows
-    int fileDrop_ = -1;          // the operator whose SAMPLE display a file dragged in from outside is held over, lit
+    // The file waiting for its frame size to be picked.
+    struct PendingImport {
+        int op = -1;
+        std::vector<uint8_t> bytes;
+        std::string name;
+    } pendingImport_;
+    int fileDrop_ = -1;          // the operator whose TABLE or SAMPLE display a file dragged in from outside is held over, lit
     ScopeCache<std::vector<Assignment>> assignments_;
 };
 

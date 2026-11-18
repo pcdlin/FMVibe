@@ -348,9 +348,9 @@ public:
     // and whether it says to save the patch first (it replaces the patch; else what goes is no part of it, or undo
     // brings it back); whether it is a line shorter (it says one line), whether its way ahead is lit in the accent
     // (which Enter presses; else none is more likely than the others, and Enter leaves it open), a third button
-    // beside them, if any, and choices of their own over them on a taller dialog, each in its color; and the button
-    // pressed (0 cancels, 1 goes ahead, 2 and on the choices, 4 the third). Its kinds are numbered apart from the
-    // others' (see View::confirm_).
+    // beside them, if any, and choices of their own over them on a taller dialog, each in its color (or all plain); and
+    // the button pressed (0 cancels, 1 goes ahead, 2 and on the choices, 4 the third where there is one). Its kinds are
+    // numbered apart from the others' (see View::confirm_).
     struct ConfirmWords {
         std::string title, what;
         std::string ok;
@@ -359,6 +359,7 @@ public:
         bool lit = true;
         std::string third;
         std::vector<std::pair<std::string, Color>> choices;
+        bool plainChoices = false;
     };
     virtual ConfirmWords confirmWords(int /*kind*/) const { return {}; }
     virtual void confirmed(int /*kind*/, int /*button*/) {}

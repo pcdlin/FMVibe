@@ -65,7 +65,8 @@ public:
     // The table browser shows the library's source `source` (a folder just added).
     void showTableSource(int source);
     // A file dragged over the editor from outside it (the system's file browser, a host's): where one can land, an
-    // operator and what it takes the file as. A Sample operator's SAMPLE tab takes one on its display.
+    // operator and what it takes the file as. A Wavetable operator's TABLE tab and a Sample operator's SAMPLE tab take
+    // one on their displays.
     struct FileDropTarget {
         int op = -1;
         DataKind kind = DataKind::Sample;
@@ -79,6 +80,9 @@ public:
     // Controller::importOperatorData()), the drag's light going out. Nullopt where nothing takes one; else "" if it went
     // in, or what to tell the user.
     std::optional<std::string> fileDrop(Point p, const std::vector<uint8_t> &bytes, const std::string &name);
+    // A file the user picked, imported as operator `op`'s table or sample: one that leaves its frame size open asks for
+    // it first, and goes in once answered. "" if it went in or waits for that answer, else what to tell the user.
+    std::string importOperatorFile(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name);
 
     // True if what the editor shows changed: what is under the mouse, or what a drag moves. A move that changes
     // neither needs no paint.
@@ -814,7 +818,8 @@ private:
     bool ctrlHeld_ = false; // see setCtrl()
     // The PresetAction the confirm dialog asks about, a panel's kind, or -1. The panels' kinds are numbered apart from
     // the View's: the preset browser's 1, 8 and 9 (PresetBrowser::kConfirmLoad and on), the FX view's 4 to 6
-    // (FxPanel::kConfirmFxClear and on), the SEQ view's 7 (SeqPanel::kConfirmClear).
+    // (FxPanel::kConfirmFxClear and on), the SEQ view's 7 (SeqPanel::kConfirmClear), the inspector's 10
+    // (InspectorPanel::kConfirmFrameSize).
     int confirm_ = -1;
     Panel *confirmFrom_ = nullptr; // the panel that asked (see askConfirm()), or none for the View's own questions
     static_assert(FxPanel::kConfirmFxClear > static_cast<int>(PresetAction::SaveAs) &&

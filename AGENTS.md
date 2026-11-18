@@ -871,6 +871,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
     and jumping to a click on its track; a folder being scanned showing a bar under Scanning..., as far along as the scan
     is (read off the rendered pixels), and a real scan coming in through the editor's polls alone;
+  - a file that doesn't say how long its frames are, imported or dropped on the TABLE tab's display (lit while held
+    there), asking for its frame size: a size cutting it so, Enter taking Auto and Escape leaving the operator as it was,
+    one undo step; a wavetable that says, or a file taken as a sample, going straight in;
   - a Sample operator: its picker and import button at the top of the SAMPLE tab and on no other; SAMPLE with none
     showing the dashed card, which opens the file dialog, as the import button does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
     loop's end dragged, each an undo step, a double-click putting one back; LOOP and

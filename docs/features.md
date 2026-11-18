@@ -1658,7 +1658,10 @@ one may have changed since it last did.
       0 %, the wheel steps it, its menu and Ctrl+Click type it (over the % in its corner), and a source's handle
       dropped anywhere on it modulates Position, its depth handles centered along the display's foot.
       Along the row under it, where the WARP tab has them, the warps' buttons, the warp's **Amount** and **NOTE**
-      (note sync).
+      (note sync). A file the dialog would offer, dragged in from outside, can be dropped on the display, as on the
+      SAMPLE tab's. Imported or dropped, a file that doesn't say how long its frames are (no wavetable chunk, or only a
+      cue list or a loop that may be a sample's) asks first: **256**, **512**, **1024** or **2048**, **Auto** (Enter),
+      which guesses from its length, or **Cancel** (Escape).
     - **SAMPLE** (a Sample operator's, in WARP's place): along its top the sample's picker, which opens the table browser
       on samples, and an import button, which opens the file dialog. Under them the sample's waveform, its
       **ROOT** at the top right (dragged up and down, or typed after a double-click: a note name or number). Over its upper
