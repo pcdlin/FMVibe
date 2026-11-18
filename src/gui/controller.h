@@ -620,14 +620,15 @@ public:
     void refreshData();
     // Asks the window for a file dialog to import a table or a sample into operator `op` (see importOperatorData()).
     virtual void chooseOperatorFile(int, DataKind) {}
-    // The wavetable library the table browser lists (made when first asked for), null where there is none.
-    virtual TableLibrary *tableLibrary() { return nullptr; }
-    // Asks the window for a folder dialog, and adds the folder picked to the library: the source to show, or -1.
-    virtual void chooseTableFolder() {}
-    // The library's folders changed (added, renamed, removed, their frame size): the settings file keeps them.
-    virtual void tableFoldersChanged() {}
-    // Shows a library folder in the system's file browser.
-    virtual void showTableFolder(int) {}
+    // The library of wavetables or of samples the table browser lists (made when first asked for), null where there is
+    // none.
+    virtual TableLibrary *tableLibrary(DataKind) { return nullptr; }
+    // Asks the window for a folder dialog, and adds the folder picked to that library: the source to show, or -1.
+    virtual void chooseTableFolder(DataKind) {}
+    // That library's folders changed (added, renamed, removed, their frame size): the settings file keeps them.
+    virtual void tableFoldersChanged(DataKind) {}
+    // Shows one of that library's folders in the system's file browser.
+    virtual void showTableFolder(DataKind, int) {}
 
 protected:
     // The audio thread's render count, and whether it renders nothing now (see DataStore::keep()).

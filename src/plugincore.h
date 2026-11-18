@@ -195,10 +195,10 @@ public:
 
     // The Wavetable and Sample operators' file and folder dialogs, through the editor window, and the library.
     void chooseOperatorFile(int op, DataKind kind) override;
-    TableLibrary *tableLibrary() override;
-    void chooseTableFolder() override;
-    void tableFoldersChanged() override;
-    void showTableFolder(int source) override;
+    TableLibrary *tableLibrary(DataKind kind) override;
+    void chooseTableFolder(DataKind kind) override;
+    void tableFoldersChanged(DataKind kind) override;
+    void showTableFolder(DataKind kind, int source) override;
 
     // The editor window, while the host shows it. Main thread.
     gui::Editor *editor() const { return editor_.get(); }
@@ -373,7 +373,7 @@ private:
     std::atomic<bool> inBlock_{false};
     std::atomic<bool> dataAsked_{false};
     // The wavetable library the table browser lists, made when first asked for.
-    std::unique_ptr<TableLibrary> library_;
+    std::unique_ptr<TableLibrary> library_, sampleLibrary_;
 };
 
 } // namespace fmvibe

@@ -158,7 +158,7 @@ double TableBrowser::value(int index) const {
 }
 
 TableLibrary *TableBrowser::library() const {
-    return controller().tableLibrary();
+    return controller().tableLibrary(kind_);
 }
 
 int TableBrowser::browsing() const {
@@ -169,8 +169,8 @@ int TableBrowser::browsing() const {
     return wave == (kind_ == DataKind::Table ? OpWave::Wavetable : OpWave::Sample) ? op_ : -1;
 }
 
-Rect TableBrowser::sourceRow(int source) {
-    return tbSourceRow(source + 2);
+Rect TableBrowser::sourceRow(int source) const {
+    return tbSourceRow(source + (kind_ == DataKind::Table ? 2 : 1));
 }
 
 void TableBrowser::open(int op, DataKind kind) {
@@ -179,6 +179,8 @@ void TableBrowser::open(int op, DataKind kind) {
         return;
     }
     endRename(true);
+    if (kind != kind_)
+        read_.clear(); // by source number, which the other library's are numbered apart from
     op_ = op;
     kind_ = kind;
     pick_ = -1;
@@ -256,7 +258,7 @@ std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
         } else if (source == -1) {
             for (uint32_t key : store.keys()) {
                 const OpData *d = key >= kUserDataBase ? store.find(key) : nullptr;
-                if (!d)
+                if (!d || d->kind != kind_)
                     continue;
                 Row row;
                 row.source = -1;
@@ -282,7 +284,7 @@ std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
                 row.sample = entry.info.sample;
                 row.guessed = entry.info.guessed;
                 row.error = entry.info.error;
-                row.tag = entry.info.format.empty() ? "" : entry.info.format + (entry.info.guessed ? "?" : "");
+                row.tag = entry.info.format.empty() ? "" : entry.info.format + (entry.info.guessed && !entry.info.sample ? "?" : "");
                 found.push_back(row);
             }
         }
@@ -305,7 +307,8 @@ std::vector<TableBrowser::Row> TableBrowser::makeRows() const {
         listSource(source_, "");
         return rows;
     }
-    listSource(-2, tr(Str::TablesFactory));
+    if (kind_ == DataKind::Table)
+        listSource(-2, tr(Str::TablesFactory));
     listSource(-1, tr(Str::TablesInPatch));
     for (size_t s = 0; lib && s < lib->sources().size(); ++s)
         listSource(static_cast<int>(s), lib->sources()[s].folder.name);
@@ -364,11 +367,12 @@ void TableBrowser::widgets(std::vector<Widget> &list) const {
     add(Kind::SearchField, kTbSearch, static_cast<int>(Field::Tables));
     if (!search_.text.empty())
         add(Kind::SearchClear, fieldClear(kTbSearch), static_cast<int>(Field::Tables));
-    // The sources: Factory and the patch's own, then the library's folders, then + Add folder... after them. A folder
-    // being renamed is its name's field.
-    add(Kind::TbSource, sourceRow(-2), -2);
+    // The sources: for a table Factory, then the patch's own, then the library's folders, then + Add folder... after
+    // them. A folder being renamed is its name's field.
+    if (kind_ == DataKind::Table)
+        add(Kind::TbSource, sourceRow(-2), -2);
     add(Kind::TbSource, sourceRow(-1), -1);
-    int row = 2;
+    int row = kind_ == DataKind::Table ? 2 : 1;
     if (TableLibrary *lib = library()) {
         for (size_t s = 0; s < lib->sources().size() && tbSourceRow(row + 1).bottom() <= kTbSources.bottom(); ++s) {
             if (renaming_ == static_cast<int>(s))
@@ -408,8 +412,9 @@ Rect TableBrowser::thumb() const {
 void TableBrowser::paintBack(Canvas &c) {
     const Rect panel = kTableBrowser.inset(-6.0f);
     c.fillRect(panel, kPanel, kRadiusCard);
-    c.text({kTableBrowser.x, kTableBrowser.y + 4.0f, 160.0f, 26.0f}, tr(Str::TablesTitle), kTextBody, kText,
-           Align::Left, true);
+    const bool samples = kind_ == DataKind::Sample;
+    c.text({kTableBrowser.x, kTableBrowser.y + 4.0f, 160.0f, 26.0f}, tr(samples ? Str::SamplesTitle : Str::TablesTitle),
+           kTextBody, kText, Align::Left, true);
     host_.paintField(c, Field::Tables, kTbSearch, fieldTyped(kTbSearch), tr(Str::TablesSearchHint));
     if (renaming_ >= 0) { // a folder's name being typed, in its row
         const Rect box = sourceRow(renaming_);
@@ -422,7 +427,7 @@ void TableBrowser::paintBack(Canvas &c) {
     const std::vector<Row> &all = *held;
     TableLibrary *lib = library();
     if (all.empty()) {
-        std::string say = tr(Str::TablesEmpty);
+        std::string say = tr(samples ? Str::SamplesEmpty : Str::TablesEmpty);
         const LibrarySource *scanning = nullptr;
         if (!search_.text.empty()) {
             say = trf(Str::TablesNoMatch, {search_.text});
@@ -462,24 +467,34 @@ void TableBrowser::paintBack(Canvas &c) {
     std::shared_ptr<const OpData> d;
     if (shown)
         d = data(*shown);
-    else if (const int op = browsing(); op >= 0)
-        d = controller().data().get(
-            dataKey(value(paramIndex(op, kind_ == DataKind::Table ? OpParam::Table : OpParam::Sample))));
+    else if (const int op = browsing(); op >= 0) {
+        // What the operator plays: a sample's key of 0 is no sample, where a table's is the first factory table.
+        const uint32_t key = dataKey(value(paramIndex(op, samples ? OpParam::Sample : OpParam::Table)));
+        if (!samples || key != 0)
+            d = controller().data().get(key);
+    }
     if (d && d->kind == DataKind::Table) {
         paintTableStack(c, view.inset(4.0f), *d, 24, 0.0f, kAccent); // its first frame lit, as if played
     } else if (d && d->kind == DataKind::Sample && !d->peakMin.empty()) {
         const Rect a = view.inset(8.0f);
         std::vector<Point> top, bottom;
         for (int i = 0; i < 128; ++i) {
-            const int k = i * OpData::kPeakColumns / 128;
+            // The lowest and highest of the peaks this column of the drawing covers.
+            const int from = i * OpData::kPeakColumns / 128;
+            const int to = std::max(from + 1, (i + 1) * OpData::kPeakColumns / 128);
+            float low = 0.0f, high = 0.0f;
+            for (int k = from; k < to && k < OpData::kPeakColumns; ++k) {
+                low = std::min(low, d->peakMin[k]);
+                high = std::max(high, d->peakMax[k]);
+            }
             const float px = a.x + (i + 0.5f) * a.w / 128.0f;
-            top.push_back({px, a.center().y - d->peakMax[k] * a.h * 0.48f});
-            bottom.push_back({px, a.center().y - d->peakMin[k] * a.h * 0.48f});
+            top.push_back({px, a.center().y - high * a.h * 0.48f});
+            bottom.push_back({px, a.center().y - low * a.h * 0.48f});
         }
         top.insert(top.end(), bottom.rbegin(), bottom.rend());
         c.fillPolygon(top.data(), top.size(), kAccent.alpha(0.55f));
     } else {
-        c.text(view, tr(Str::TablesNoPreview), kTextLabel, kFaint);
+        c.text(view, tr(samples ? Str::SamplesNoPreview : Str::TablesNoPreview), kTextLabel, kFaint);
     }
     // What it is: its path, its format, its frame size (read or guessed) and frames.
     if (shown || d) {
@@ -492,7 +507,7 @@ void TableBrowser::paintBack(Canvas &c) {
             const LibraryEntry &e = s.entries[shown->entry];
             if (!e.info.format.empty())
                 lines.push_back(trf(Str::TablesFormat, {e.info.format}));
-            if (e.info.frameSize > 0)
+            if (!samples && e.info.frameSize > 0)
                 lines.push_back(trf(e.info.guessed ? Str::TablesFrameSizeGuessed : Str::TablesFrameSize,
                                     {std::to_string(e.info.frameSize)}));
         } else if (d) {
@@ -529,8 +544,10 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         } else if (w.a == -1) {
             name = tr(Str::TablesInPatch);
             int n = 0;
-            for (uint32_t key : controller().data().keys())
-                n += key >= kUserDataBase ? 1 : 0;
+            for (uint32_t key : controller().data().keys()) {
+                const OpData *const d = key >= kUserDataBase ? controller().data().find(key) : nullptr;
+                n += d && d->kind == kind_ ? 1 : 0;
+            }
             count = std::to_string(n);
         } else if (lib && w.a < static_cast<int>(lib->sources().size())) {
             const LibrarySource &s = lib->sources()[w.a];
@@ -577,8 +594,7 @@ bool TableBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                 current = d->origin == lib->sources()[row.source].folder.name + "/" +
                                            lib->sources()[row.source].entries[row.entry].path;
         }
-        const bool unreadable = row.error != ReadError::None || (kind_ == DataKind::Sample && row.source == -2) ||
-                                (row.source == -1 && row.sample != (kind_ == DataKind::Sample));
+        const bool unreadable = row.error != ReadError::None;
         if (current || pick_ == w.a || hovered)
             c.fillRect(w.rect, current ? kAccent.alpha(0.2f) : pick_ == w.a ? kAccent.alpha(0.1f) : kTrack,
                        kRadiusControl);
@@ -755,7 +771,7 @@ bool TableBrowser::press(const Widget &w, Point p, Modifiers) {
         host_.clearField(Field::Tables);
         return true;
     case Kind::TbAddFolder:
-        controller().chooseTableFolder();
+        controller().chooseTableFolder(kind_);
         return true;
     case Kind::TbGroup:
         return true;
@@ -873,13 +889,13 @@ void TableBrowser::endRename(bool commit) {
     if (commit && start != std::string::npos && lib && source < static_cast<int>(lib->sources().size())) {
         const std::string name = text.substr(start, text.find_last_not_of(' ') - start + 1);
         lib->renameFolder(source, name.substr(0, kMaxFolderName));
-        controller().tableFoldersChanged();
+        controller().tableFoldersChanged(kind_);
     }
     host_.resetHover();
 }
 
-// A library folder's menu: renaming it, the frame size for its files that name none, rescanning it, showing it in the
-// system's file browser and removing it from the library (its files left as they are).
+// A library folder's menu: renaming it, the frame size for its files that name none (a folder of wavetables'), rescanning
+// it, showing it in the system's file browser and removing it from the library (its files left as they are).
 bool TableBrowser::contextMenu(const std::optional<Widget> &hit, Point, std::vector<MenuItem> &items) {
     menuSource_ = -1;
     TableLibrary *lib = library();
@@ -890,12 +906,14 @@ bool TableBrowser::contextMenu(const std::optional<Widget> &hit, Point, std::vec
     const int size = lib->sources()[hit->a].folder.frameSize;
     items.push_back({kTbRenameCommand, tr(Str::MenuRename)});
     items.push_back({0, ""});
-    for (int k = 0; k < static_cast<int>(std::size(kTbFrameSizes)); ++k)
-        items.push_back({kTbFrameSizeCommand + k,
-                         trf(Str::MenuFrameSize, {k == 0 ? std::string(tr(Str::TablesFolderAuto))
-                                                         : std::to_string(kTbFrameSizes[k])}),
-                         size == kTbFrameSizes[k]});
-    items.push_back({0, ""});
+    if (kind_ == DataKind::Table) {
+        for (int k = 0; k < static_cast<int>(std::size(kTbFrameSizes)); ++k)
+            items.push_back({kTbFrameSizeCommand + k,
+                             trf(Str::MenuFrameSize, {k == 0 ? std::string(tr(Str::TablesFolderAuto))
+                                                             : std::to_string(kTbFrameSizes[k])}),
+                             size == kTbFrameSizes[k]});
+        items.push_back({0, ""});
+    }
     items.push_back({kTbRescanCommand, tr(Str::MenuRescan)});
     items.push_back({kTbShowCommand, tr(Str::MenuShowFolder)});
     items.push_back({0, ""});
@@ -925,12 +943,12 @@ bool TableBrowser::menuCommand(int command) {
     else if (command == kTbRescanCommand)
         lib->rescan(source);
     else if (command == kTbShowCommand)
-        controller().showTableFolder(source);
+        controller().showTableFolder(kind_, source);
     else if (command == kTbRemoveCommand) {
         lib->removeFolder(source);
-        source_ = source_ == source ? -2 : source_ > source ? source_ - 1 : source_;
+        source_ = source_ == source ? (kind_ == DataKind::Table ? -2 : -1) : source_ > source ? source_ - 1 : source_;
     }
-    controller().tableFoldersChanged();
+    controller().tableFoldersChanged(kind_);
     return true;
 }
 

@@ -501,7 +501,7 @@ void InspectorPanel::stepTable(int op, int dir) {
         return;
     }
     const OpData *d = controller().opData(key);
-    TableLibrary *lib = controller().tableLibrary();
+    TableLibrary *lib = controller().tableLibrary(DataKind::Table);
     if (d && !d->origin.empty() && lib) { // the next file in its folder that reads as a table
         lib->poll();
         for (size_t s = 0; s < lib->sources().size(); ++s) {

@@ -523,7 +523,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         browseOperatorFile(static_cast<int>(wParam), static_cast<DataKind>(lParam));
         return 0;
     case kFolderMessage:
-        browseTableFolder();
+        browseTableFolder(static_cast<DataKind>(wParam));
         return 0;
     case kDropMessage:
         importFile(droppedAt_, std::exchange(droppedPath_, std::wstring()));
@@ -1188,9 +1188,9 @@ void Editor::chooseOperatorFile(int op, DataKind kind) {
         PostMessageW(hwnd_, kImportMessage, static_cast<WPARAM>(op), static_cast<LPARAM>(kind));
 }
 
-void Editor::chooseTableFolder() {
+void Editor::chooseTableFolder(DataKind kind) {
     if (hwnd_)
-        PostMessageW(hwnd_, kFolderMessage, 0, 0);
+        PostMessageW(hwnd_, kFolderMessage, static_cast<WPARAM>(kind), 0);
 }
 
 void Editor::browseOperatorFile(int op, DataKind kind) {
@@ -1210,16 +1210,16 @@ void Editor::browseOperatorFile(int op, DataKind kind) {
     invalidate();
 }
 
-void Editor::browseTableFolder() {
+void Editor::browseTableFolder(DataKind kind) {
     const ModalGuard guard(alive_);
-    TableLibrary *library = controller_.tableLibrary();
+    TableLibrary *library = controller_.tableLibrary(kind);
     std::optional<std::wstring> picked =
         shellFileDialog(hwnd_, false, L"", L"", widen(tr(Str::DialogAddFolder)), {}, true);
     if (!guard.alive() || !picked || picked->empty() || !library)
         return;
     const std::u8string path = std::filesystem::path(*picked).u8string();
     const int source = library->addFolder(std::string(reinterpret_cast<const char *>(path.data()), path.size()));
-    controller_.tableFoldersChanged();
+    controller_.tableFoldersChanged(kind);
     view_.showTableSource(source);
     invalidate();
 }

@@ -122,12 +122,18 @@ public:
 
     void chooseOperatorFile(int op, DataKind kind) override { js_choose_file(op, static_cast<int>(kind)); }
     // Folders picked on the page, listed for the session only: the demo keeps no paths.
-    TableLibrary *tableLibrary() override {
-        if (!tables_)
-            tables_ = std::make_unique<TableLibrary>();
-        return tables_.get();
+    TableLibrary *tableLibrary(DataKind kind) override {
+        const bool samples = kind == DataKind::Sample;
+        std::unique_ptr<TableLibrary> &library = samples ? samples_ : tables_;
+        if (!library)
+            library = std::make_unique<TableLibrary>(std::string(), samples);
+        return library.get();
     }
-    void chooseTableFolder() override { js_choose_folder(); }
+    void chooseTableFolder(DataKind kind) override {
+        folderKind = kind;
+        js_choose_folder();
+    }
+    DataKind folderKind = DataKind::Table; // the library the folder being picked goes into
 
     const ParamValues &values() const { return values_; }
     Telemetry &received() { return received_; }
@@ -300,7 +306,7 @@ private:
     int mpeBendRange_ = 48;
     EditorSettings settings_;
     double tempo_ = kDefaultTempo;
-    std::unique_ptr<TableLibrary> tables_;
+    std::unique_ptr<TableLibrary> tables_, samples_;
 };
 
 std::unique_ptr<WebController> controller;
@@ -552,7 +558,7 @@ EMSCRIPTEN_KEEPALIVE void ui_folder_file() {
 }
 
 EMSCRIPTEN_KEEPALIVE void ui_folder_end() {
-    if (TableLibrary *library = controller->tableLibrary()) {
+    if (TableLibrary *library = controller->tableLibrary(controller->folderKind)) {
         const int source = library->addFiles(std::string(incomingName.data()), std::move(picked));
         view->showTableSource(source);
     }

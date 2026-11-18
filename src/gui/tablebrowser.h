@@ -2,8 +2,8 @@
 
 // The table browser (see tablebrowser.cpp): over the routing panel, as the partial editor is, while an operator's TABLE
 // or SAMPLE picker has it open, it lists the tables (or samples) the operator can take: along its top its title, its
-// search, Import file... and Done; under them the sources' column at its left (Factory, In this patch, then the
-// library's folders, each with its menu, and + Add folder...), the list of the source shown in the middle (a folder
+// search, Import file... and Done; under them the sources' column at its left (for a table Factory, then In this patch,
+// then the folders of the library of what it picks, each with its menu, and + Add folder...), the list of the source shown in the middle (a folder
 // being scanned shows how far the scan is instead; a search lists what it finds in every source, each source's under
 // its name) with its scrollbar, and the preview of the row under the mouse at its right. A click on a row loads it into
 // the operator.
@@ -109,8 +109,8 @@ private:
     void searchKey(Key key);
     // A folder's new name, typed into its row: kept (`commit`), or let go of; emptied, it keeps the old one.
     void endRename(bool commit);
-    // The rect of the library's source `source` in the sources' column.
-    static Rect sourceRow(int source);
+    // The rect of the source `source` in the sources' column, which only a table's browser starts with Factory in.
+    Rect sourceRow(int source) const;
 
     PanelHost &host_;
     ShapeEditor &shapes_;

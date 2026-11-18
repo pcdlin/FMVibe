@@ -6,7 +6,9 @@
 // headers and chunks only (see probeTableFile()), several files at a time, and keeps what it read in a cache file keyed
 // by path, size and time, so a scan only reads what changed; the main thread takes how far it got, and in the end what
 // it found, in with poll(). The browser demo, which has no threads and no folders to keep, lists the files a user picks
-// on the page for the session instead (see addFiles()). Independent of Windows: tests/quality.cpp covers it.
+// on the page for the session instead (see addFiles()). The table browser keeps two, each with folders and a cache of
+// its own: one of wavetables, and one of samples, which lists WAV and FLAC files, each as a sample. Independent of
+// Windows: tests/quality.cpp covers it.
 
 #include "readers.h"
 
@@ -53,8 +55,8 @@ class TableLibrary {
 public:
     static constexpr int kMaxFiles = 20000; // a folder's files a scan lists, at most
 
-    // `cache`: the cache file's path (UTF-8), "" for none.
-    explicit TableLibrary(std::string cache = {});
+    // `cache`: the cache file's path (UTF-8), "" for none. `samples`: a library of samples, not of wavetables.
+    explicit TableLibrary(std::string cache = {}, bool samples = false);
     ~TableLibrary();
     TableLibrary(const TableLibrary &) = delete;
     TableLibrary &operator=(const TableLibrary &) = delete;
@@ -112,6 +114,7 @@ private:
     void scan(const Job &job);
 
     std::string cachePath_;
+    bool samples_ = false;
     std::vector<LibrarySource> sources_; // main thread
     std::vector<uint64_t> jobOf_;         // the job each source waits for, by source
     uint64_t nextJob_ = 1;

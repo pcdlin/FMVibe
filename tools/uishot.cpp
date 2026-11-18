@@ -234,20 +234,26 @@ public:
         bpm = v;
         ++tempoSets;
     }
-    // The table browser's library: made-up sources (see testTableBrowser()); and the dialogs it would open.
-    TableLibrary *tableLibrary() override {
-        if (!tables)
-            tables = std::make_unique<TableLibrary>();
-        return tables.get();
+    // The table browser's libraries: made-up sources (see testTableBrowser()); and the dialogs it would open.
+    TableLibrary *tableLibrary(DataKind kind) override {
+        const bool sampled = kind == DataKind::Sample;
+        std::unique_ptr<TableLibrary> &library = sampled ? samples : tables;
+        if (!library)
+            library = std::make_unique<TableLibrary>(std::string(), sampled);
+        return library.get();
     }
     void chooseOperatorFile(int op, DataKind kind) override {
         ++fileDialogs;
         fileDialogOp = op;
         fileDialogKind = kind;
     }
-    void chooseTableFolder() override { ++folderDialogs; }
-    void tableFoldersChanged() override { ++folderChanges; }
-    std::unique_ptr<TableLibrary> tables;
+    void chooseTableFolder(DataKind kind) override {
+        ++folderDialogs;
+        folderDialogKind = kind;
+    }
+    void tableFoldersChanged(DataKind) override { ++folderChanges; }
+    std::unique_ptr<TableLibrary> tables, samples;
+    DataKind folderDialogKind = DataKind::Table;
     int fileDialogs = 0, fileDialogOp = -1, folderDialogs = 0, folderChanges = 0;
     DataKind fileDialogKind = DataKind::Table;
 
@@ -10139,7 +10145,7 @@ void testTableBrowser(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.opTab = InspectorTab::Source;
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
     model.set(paramIndex(0, OpParam::Table), 2.0);
-    TableLibrary &library = *model.tableLibrary();
+    TableLibrary &library = *model.tableLibrary(DataKind::Table);
     library.setFolders({{"Gone", "Z:/nowhere/at/all", 0}});
     library.finish();
     const std::string text = "not a wave at all";
@@ -10303,7 +10309,7 @@ void testTableBrowserScroll(const std::filesystem::path &dir, Renderer &renderer
     std::vector<std::pair<std::string, std::vector<uint8_t>>> files;
     for (int i = 0; i < 2000; ++i)
         files.push_back({std::to_string(10000 + i) + ".wav", std::vector<uint8_t>(text.begin(), text.end())});
-    model.tableLibrary()->addFiles("Many", std::move(files));
+    model.tableLibrary(DataKind::Table)->addFiles("Many", std::move(files));
     click(view, detail::kTablePicker.center());
     click(view, detail::tbSourceRow(2).center());
     const Rect track{detail::kTbList.x + detail::kTbList.w - 5.0f, detail::kTbList.y, 4.0f, detail::kTbList.h};
@@ -10345,7 +10351,7 @@ void testTableBrowserScan(const std::filesystem::path &dir, Renderer &renderer) 
     model.ui.opTab = InspectorTab::Source;
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
     const int table = paramIndex(0, OpParam::Table);
-    TableLibrary &library = *model.tableLibrary();
+    TableLibrary &library = *model.tableLibrary(DataKind::Table);
     const int held = library.addFiles("Packs", {{"saw.wav", tableWav(4)}});
     click(view, detail::kTablePicker.center());
     click(view, detail::tbSourceRow(held + 2).center());
@@ -10482,6 +10488,79 @@ void testTableFrameSize(const std::filesystem::path &dir, Renderer &renderer) {
                 droppedIn, otherTab);
     check(target && lit && droppedAsks && droppedIn && otherTab,
           "a file dropped on the TABLE tab's display is imported as a table, asking for its frame size");
+}
+
+// The browser a sample's picker opens: its own folders, no factory wavetables, and of the patch's data its samples.
+void testSampleBrowser(const std::filesystem::path &dir, Renderer &renderer) {
+    std::printf("the sample browser:\n");
+    FakeController model;
+    View view(model);
+    model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Source;
+    model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Sample));
+    const int sample = paramIndex(0, OpParam::Sample), table = paramIndex(0, OpParam::Table);
+    model.tableLibrary(DataKind::Table)->addFiles("Wavetables", {{"saw.wav", tableWav(6, 2)}});
+    TableLibrary &samples = *model.tableLibrary(DataKind::Sample);
+    samples.addFiles("Drums", {{"kick.wav", plainWav(4096)}, {"left out.wt", tableWav(1)}});
+    model.importOperatorData(1, DataKind::Table, tableWav(4), "a table.wav");
+    model.ui.selectedNode = 0;
+    view.poll();
+    click(view, detail::kSamplePicker.center());
+    view.poll();
+    const Point away{detail::kTableBrowser.x + 20.0f, detail::kTableBrowser.y + 12.0f};
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-25-sample-browser.png");
+    // With no sample picked its preview draws nothing, not the factory table a key of 0 is for a table (read off the
+    // rendered pixels: the bands over and under the words it says).
+    bool blank = true;
+    const Rect preview = detail::kTbPreviewView;
+    const uint32_t face = renderer.pixel({preview.center().x, preview.y + 8.0f});
+    for (float x = preview.x + 10.0f; x < preview.right() - 10.0f; x += 1.0f)
+        for (const float y : {preview.y + 12.0f, preview.y + 26.0f, preview.bottom() - 26.0f, preview.bottom() - 12.0f})
+            blank = blank && renderer.pixel({x, y}) == face;
+    check(blank, "a sample's browser shows no factory table in its preview while the operator has no sample");
+    // Its sources: In this patch, Drums, then + Add folder...
+    click(view, detail::tbSourceRow(1).center());
+    view.poll();
+    renderer.save(view, dir / "wt-26-sample-folder.png");
+    click(view, detail::tbListRow(0.0f).center());
+    const OpData *const kick = model.opData(dataKey(model.value(sample)));
+    const bool loaded = samples.sources()[0].entries.size() == 1 && kick && kick->kind == DataKind::Sample &&
+                        kick->origin == "Drums/kick.wav";
+    // In this patch: the sample alone, the table the patch holds not among it.
+    click(view, detail::tbSourceRow(0).center());
+    view.poll();
+    view.mouseMove(detail::tbListRow(1.0f).center(), {});
+    renderer.save(view, dir / "wt-27-sample-in-patch.png");
+    const uint32_t second = renderer.pixel({detail::tbListRow(1.0f).x + 26.0f, detail::tbListRow(1.0f).center().y});
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "wt-27-sample-in-patch.png");
+    const bool one = renderer.pixel({detail::tbListRow(1.0f).x + 26.0f, detail::tbListRow(1.0f).center().y}) == second;
+    // The search doesn't find the factory tables.
+    const double before = model.value(sample);
+    click(view, detail::kTbSearch.center());
+    type(view, "basic");
+    view.typeKey(View::Key::Down);
+    view.typeKey(View::Key::Enter);
+    const bool unfound = model.value(sample) == before && model.value(table) == 0.0;
+    view.typeKey(View::Key::Escape);
+    click(view, detail::tbSourceRow(1).center());
+    click(view, detail::tbSourceRow(2).center());
+    const bool asksForSamples = model.folderDialogs == 1 && model.folderDialogKind == DataKind::Sample;
+    std::printf("      a folder's sample %d, the patch's samples alone %d, no factory table found %d, its own folders %d\n", loaded,
+                one, unfound, asksForSamples);
+    check(loaded && one && unfound && asksForSamples,
+          "a sample's browser lists its own folders and the patch's samples, not the factory wavetables");
+    click(view, detail::kTbDone.center());
+    // A table's browser keeps Factory and its own folders.
+    model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Wavetable));
+    view.poll();
+    click(view, detail::kTablePicker.center());
+    click(view, detail::tbSourceRow(2).center());
+    click(view, detail::tbListRow(0.0f).center());
+    const OpData *const saw = model.opData(dataKey(model.value(table)));
+    check(saw && saw->origin == "Wavetables/saw.wav", "a table's browser keeps its folders apart from a sample's");
+    click(view, detail::kTbDone.center());
 }
 
 // The SAMPLE source, its row and tab, its handles, its lists and its playhead.
@@ -14037,6 +14116,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testTableBrowserScroll(dir, renderer);
     testTableBrowserScan(dir, renderer);
     testTableFrameSize(dir, renderer);
+    testSampleBrowser(dir, renderer);
     testSamples(dir, renderer);
 }
 

@@ -30,9 +30,10 @@ std::string lower(std::string s) {
     return s;
 }
 
-bool tableExtension(const fs::path &path) {
+// The files a library lists: a wavetable's formats, or a sample's.
+bool listedFile(const fs::path &path, bool samples) {
     const std::string ext = lower(utf8Of(path.extension()));
-    return ext == ".wav" || ext == ".flac" || ext == ".wt" || ext == ".vitaltable";
+    return ext == ".wav" || ext == ".flac" || (!samples && (ext == ".wt" || ext == ".vitaltable"));
 }
 
 // Whether two paths name one folder, whatever their case and a slash at their end.
@@ -115,7 +116,7 @@ constexpr uint32_t kCacheVersion = 2; // 2: Vital's tables read in full, which v
 
 } // namespace
 
-TableLibrary::TableLibrary(std::string cache) : cachePath_(std::move(cache)) {
+TableLibrary::TableLibrary(std::string cache, bool samples) : cachePath_(std::move(cache)), samples_(samples) {
 #ifndef __EMSCRIPTEN__
     worker_ = std::thread([this] { work(); });
 #endif
@@ -217,6 +218,8 @@ int TableLibrary::addFiles(const std::string &name, std::vector<std::pair<std::s
     LibrarySource s;
     s.folder.name = name;
     for (auto &[path, bytes] : files) {
+        if (!listedFile(pathOf(path), samples_))
+            continue;
         LibraryEntry e = entryOf(path);
         const auto held = std::make_shared<const std::vector<uint8_t>>(std::move(bytes));
         const ReadAt read = [&held](uint64_t at, void *to, size_t n) -> size_t {
@@ -227,6 +230,7 @@ int TableLibrary::addFiles(const std::string &name, std::vector<std::pair<std::s
             return got;
         };
         e.info = probeTableFile(read, held->size(), path);
+        e.info.sample = e.info.sample || samples_;
         s.entries.push_back(std::move(e));
         s.held.push_back(held);
     }
@@ -392,7 +396,7 @@ void TableLibrary::scan(const Job &job) {
         if (calledOff())
             return;
         std::error_code e;
-        if (!it->is_regular_file(e) || !tableExtension(it->path()))
+        if (!it->is_regular_file(e) || !listedFile(it->path(), samples_))
             continue;
         if (found.size() == static_cast<size_t>(kMaxFiles)) {
             done.cut = true;
@@ -445,6 +449,7 @@ void TableLibrary::scan(const Job &job) {
             const ReadAt read = [&in](uint64_t from, void *to, size_t n) { return in.read(from, to, n); };
             f.entry.info = in ? probeTableFile(read, f.size, f.entry.path, job.folder.frameSize)
                               : TableInfo{ReadError::Broken};
+            f.entry.info.sample = f.entry.info.sample || samples_;
             filesRead_.fetch_add(1);
             const auto now = std::chrono::steady_clock::now();
             std::lock_guard lock(mutex_);

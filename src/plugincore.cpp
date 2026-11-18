@@ -63,32 +63,38 @@ void PluginCore::chooseOperatorFile(int op, DataKind kind) {
         editor_->chooseOperatorFile(op, kind);
 }
 
-TableLibrary *PluginCore::tableLibrary() {
-    if (!library_) {
+TableLibrary *PluginCore::tableLibrary(DataKind kind) {
+    const bool samples = kind == DataKind::Sample;
+    std::unique_ptr<TableLibrary> &library = samples ? sampleLibrary_ : library_;
+    if (!library) {
         const std::string folder = userSettingsFolder();
-        library_ = std::make_unique<TableLibrary>(folder.empty() ? std::string() : folder + "/tables-cache.bin");
+        library = std::make_unique<TableLibrary>(
+            folder.empty() ? std::string() : folder + (samples ? "/samples-cache.bin" : "/tables-cache.bin"), samples);
         readUserSettings();
-        library_->setFolders(userSettings.tableFolders);
+        library->setFolders(samples ? userSettings.sampleFolders : userSettings.tableFolders);
     }
-    return library_.get();
+    return library.get();
 }
 
-void PluginCore::chooseTableFolder() {
+void PluginCore::chooseTableFolder(DataKind kind) {
     if (editor_)
-        editor_->chooseTableFolder();
+        editor_->chooseTableFolder(kind);
 }
 
-void PluginCore::tableFoldersChanged() {
-    if (!library_)
+void PluginCore::tableFoldersChanged(DataKind kind) {
+    const bool samples = kind == DataKind::Sample;
+    const TableLibrary *const library = (samples ? sampleLibrary_ : library_).get();
+    if (!library)
         return;
     readUserSettings();
-    userSettings.tableFolders = library_->folders();
+    (samples ? userSettings.sampleFolders : userSettings.tableFolders) = library->folders();
     writeUserSettings();
 }
 
-void PluginCore::showTableFolder(int source) {
-    if (library_ && source >= 0 && source < static_cast<int>(library_->sources().size()))
-        gui::showFolder(library_->sources()[source].folder.path);
+void PluginCore::showTableFolder(DataKind kind, int source) {
+    const TableLibrary *const library = (kind == DataKind::Sample ? sampleLibrary_ : library_).get();
+    if (library && source >= 0 && source < static_cast<int>(library->sources().size()))
+        gui::showFolder(library->sources()[source].folder.path);
 }
 
 void PluginCore::layoutChanged() {

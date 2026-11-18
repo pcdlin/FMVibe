@@ -38,9 +38,9 @@ public:
     // Opens the preset file dialog, after the current mouse gesture is over.
     void choosePreset(bool save);
     // Likewise, the file dialog that imports a table or sample into an operator, and the folder dialog that adds a
-    // folder to the wavetable library.
+    // folder to the library of wavetables or of samples.
     void chooseOperatorFile(int op, DataKind kind);
-    void chooseTableFolder();
+    void chooseTableFolder(DataKind kind);
     // A key the host's window took in, which the editor's keyboard hook passes on: true if it was
     // an undo or redo shortcut meant for this editor, which the host then doesn't see.
     bool shortcut(WPARAM key, bool up);
@@ -69,7 +69,7 @@ private:
     void contextMenu(int x, int y);
     void browsePreset(bool save);
     void browseOperatorFile(int op, DataKind kind);
-    void browseTableFolder();
+    void browseTableFolder(DataKind kind);
     std::wstring lastImportFolder_; // where the import dialog was last left
     // Files dragged in from outside (the system's file browser, a host's): an OLE drop target on the window (see
     // FileDrop in editor.cpp), or WM_DROPFILES where OLE can't be had. The view lights where the file would land; a

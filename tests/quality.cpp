@@ -4535,6 +4535,18 @@ void libraryChecks() {
                   !entryOf(library.sources()[0], "nochunk.wav"),
               "a second scan reads only what changed, from its cache, and a file removed is gone");
     }
+    // A library of samples lists a folder's WAV and FLAC files, each as a sample, and not a wavetable's own formats.
+    {
+        TableLibrary library({}, true);
+        library.addFolder(utf8(folder));
+        library.finish();
+        const LibrarySource &s = library.sources()[0];
+        bool samples = !s.entries.empty();
+        for (const LibraryEntry &e : s.entries)
+            samples = samples && e.info.sample;
+        check(s.entries.size() == 4 && samples && entryOf(s, "saw.wav") && !entryOf(s, "square.wt"),
+              "a library of samples lists WAV and FLAC files as samples, and leaves a wavetable's own formats out");
+    }
     // A folder that has gone, and nothing scanned outside the sources.
     {
         TableLibrary library;

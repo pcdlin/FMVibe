@@ -1695,15 +1695,16 @@ one may have changed since it last did.
 
     The **table browser** takes the routing panel's place beside the inspector, opened by a table's or a sample's
     picker (a second click closes it, as does **Done**, another view, another node shown, or the operator switched to
-    another source). At its left the sources: **Factory** (FMVibe's
-    tables), **In this patch** (the tables and samples the patch holds), then the folders added, each with how many
+    another source). Tables and samples each have a browser of their own, with folders of their own: a sample's lists WAV
+    and FLAC files and has no factory tables. At its left the sources: for a table **Factory** (FMVibe's
+    tables), then **In this patch** (the tables, or the samples, the patch holds), then the folders added, each with how many
     files it lists (greyed out, and saying so in its tooltip, while it can't be found), and **+ Add folder…**, which
     asks for a folder and names it after it. A folder lists the tables directly in it: a subfolder's are left out, and
     a subfolder can be added as a folder of its own. A folder's right-click menu renames it (its name typed in its row, all of it selected: Enter or a click
-    elsewhere keeps it, Escape leaves it as it was), sets the frame size for its files
+    elsewhere keeps it, Escape leaves it as it was), for a table's folder sets the frame size for its files
     that don't name one (Auto, 256, 512, 1024 or 2048), scans it again, shows it in Explorer or removes it. Folders are
     kept in the settings file, every FMVibe editor sharing them, and scanned in the background, several files at a time
-    (a list of what was found kept in `tables-cache.bin` beside it, so they show at once the next time; a file is read
+    (a list of what was found kept in `tables-cache.bin` or `samples-cache.bin` beside it, so they show at once the next time; a file is read
     again only once it has changed); a folder of more than 20,000 files lists the first 20,000. While a folder is
     scanned its list says **Scanning…** over a bar filling as the scan goes, with how many of its files are done, and
     its tables show once it is through. In the middle the source's files: each its glyph (the thumbnail's first frame

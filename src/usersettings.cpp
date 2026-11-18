@@ -48,8 +48,10 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("zoom="))
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
-        else if (line.starts_with("tableFolder=")) { // its frame size, its name, then its path, "|" between them
-            const std::string rest = line.substr(12);
+        else if (line.starts_with("tableFolder=") || line.starts_with("sampleFolder=")) {
+            // its frame size, its name, then its path, "|" between them
+            const bool samples = line.starts_with("sampleFolder=");
+            const std::string rest = line.substr(samples ? 13 : 12);
             const size_t a = rest.find('|'), b = a == std::string::npos ? a : rest.find('|', a + 1);
             if (b != std::string::npos && b + 1 < rest.size()) {
                 TableFolder folder;
@@ -57,7 +59,7 @@ UserSettings readFile(const std::filesystem::path &file) {
                 folder.frameSize = size == 256 || size == 512 || size == 1024 || size == 2048 ? size : 0;
                 folder.name = rest.substr(a + 1, b - a - 1);
                 folder.path = rest.substr(b + 1);
-                settings.tableFolders.push_back(std::move(folder));
+                (samples ? settings.sampleFolders : settings.tableFolders).push_back(std::move(folder));
             }
         }
         else if (line.starts_with("favorite=") && line.size() > 9)
@@ -124,6 +126,8 @@ void writeUserSettings() {
         merged.zoom = userSettings.zoom;
     if (!sameFolders(userSettings.tableFolders, asRead.tableFolders))
         merged.tableFolders = userSettings.tableFolders;
+    if (!sameFolders(userSettings.sampleFolders, asRead.sampleFolders))
+        merged.sampleFolders = userSettings.sampleFolders;
     if (userSettings.favorites != asRead.favorites)
         merged.favorites = userSettings.favorites;
     if (userSettings.recent != asRead.recent)
@@ -150,11 +154,15 @@ void writeUserSettings() {
             out << "hue=" << merged.hue << '\n';
         if (merged.zoom > 0.0)
             out << "zoom=" << merged.zoom << '\n';
-        for (const TableFolder &folder : merged.tableFolders) {
-            std::string name = folder.name; // a "|" in the name would end it early
-            std::replace(name.begin(), name.end(), '|', '/');
-            out << "tableFolder=" << folder.frameSize << '|' << name << '|' << folder.path << '\n';
-        }
+        auto writeFolders = [&out](const char *key, const std::vector<TableFolder> &folders) {
+            for (const TableFolder &folder : folders) {
+                std::string name = folder.name; // a "|" in the name would end it early
+                std::replace(name.begin(), name.end(), '|', '/');
+                out << key << folder.frameSize << '|' << name << '|' << folder.path << '\n';
+            }
+        };
+        writeFolders("tableFolder=", merged.tableFolders);
+        writeFolders("sampleFolder=", merged.sampleFolders);
         if (!merged.browserPlace.empty())
             out << "browser=" << merged.browserPlace << '\n';
         for (const auto &[name, color] : merged.categories)

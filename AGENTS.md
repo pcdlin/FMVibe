@@ -874,6 +874,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a file that doesn't say how long its frames are, imported or dropped on the TABLE tab's display (lit while held
     there), asking for its frame size: a size cutting it so, Enter taking Auto and Escape leaving the operator as it was,
     one undo step; a wavetable that says, or a file taken as a sample, going straight in;
+  - a sample's browser: its own folders and no factory tables, in its list or its search, the patch's samples alone
+    under In this patch, its + Add folder... asking for a folder of samples, and a table's browser keeping its folders apart;
   - a Sample operator: its picker and import button at the top of the SAMPLE tab and on no other; SAMPLE with none
     showing the dashed card, which opens the file dialog, as the import button does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
     loop's end dragged, each an undo step, a double-click putting one back; LOOP and
@@ -1413,9 +1415,9 @@ itself.
   (none in the browser demo, which reads a folder the page hands it), the tables directly in each folder and not its
   subfolders', up to eight files at a time (`kScanThreads`: opening a file is most of the cost), reading each only as
   far as it tells its frames and format, at most 20,000 files a folder (`kMaxFiles`), and keeps what it found in
-  `tables-cache.bin` beside the settings file, by each file's size and time, so the next scan reads only what changed
+  `tables-cache.bin` (a second library, of samples, in `samples-cache.bin`) beside the settings file, by each file's size and time, so the next scan reads only what changed
   (saved every few seconds too, so a long first scan broken off goes on from there). The folders are in
-  the settings file (`tableFolder=<frame size>|<name>|<path>`), shared by every FMVibe editor.
+  the settings file (`tableFolder=<frame size>|<name>|<path>`, and `sampleFolder=` for samples), shared by every FMVibe editor.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
   user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a
   bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`.
