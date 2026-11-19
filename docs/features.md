@@ -1552,8 +1552,8 @@ one may have changed since it last did.
   the editor and its window is the active one: a keyboard hook catches them before the host does, so the host's
   own shortcuts keep working everywhere else.
 - **Inspector** (left): a lens, a card floating over the routing panel's left end a little in from its edges, on a
-  soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 % (in Spectrum
-  and Porcelain, as their cards, on its shadow alone, without an outline; a filter's response and a shaper's curve on
+  soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 % (in Spectrum,
+  Porcelain and Ember, as their cards, on its shadow alone, without an outline; a filter's response and a shaper's curve on
   it a shade darker than the displays elsewhere in Porcelain, whose displays are nearly the lens's own face); while
   the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
   and S2, in three groups with a hairline between two, pick what it shows; tabs of switched-off nodes are
@@ -2130,24 +2130,25 @@ one may have changed since it last did.
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,
   and aren't undo steps.
   **Theme**: Spectrum (deep indigo, the default), Porcelain (Spectrum in light: white panels lifted off a cool gray
-  by soft shadows, their cards with a slight one too), Midnight or Light (crisp: white cards and knob caps on a cool
-  gray, with deep colors), each button shown in its own colors. The browser demo's page around the editor is in
-  Spectrum's colors. Spectrum and Porcelain share a flat look: each
+  by soft shadows, their cards with a slight one too), Midnight, Light (crisp: white cards and knob caps on a cool
+  gray, with deep colors) or Ember (warm charcoal with an amber accent and cream text, its panels, cards and knob caps
+  lifted by deep shadows rather than outlined), each button shown in its own colors. The browser demo's page around
+  the editor is in Spectrum's colors. Spectrum, Porcelain and Ember share a flat look: each
   effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it
   belongs to (its card's; in the inspector a filter's and a shaper's, and the routes into them on its INPUTS tab, in
   that node's color, as its switches are, an operator's in the accent), modulated or not: a modulation ring whose
-  source's color is like the arc's is drawn lighter (in Spectrum) or darker (in Porcelain), keeping its hue, so it
+  source's color is like the arc's is drawn lighter (in Spectrum and Ember) or darker (in Porcelain), keeping its hue, so it
   stands apart from the arc, while the others keep their sources' colors; and its pointer a dot; an LFO's shape filled on
   its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and polarity icons
   a little smaller there), and so the split's 2 | 3, the scope's cycle counts, the Param EQ's band chips (the picked
   one tinted with its band's color), the octave buttons and the dialogs' buttons; list buttons, a source card's MODS
   button, the lists and menus they open, tooltips, the name tags and the messages (on a soft shadow, white in
-  Porcelain and a step lighter than the rows in Spectrum, their rows shaded under the mouse), the title bar's
+  Porcelain and a step lighter than the rows in Spectrum and Ember, their rows shaded under the mouse), the title bar's
   buttons, the preset's name, the output scope, the Ratio readout (outlined under the mouse), the note source's and
   velocity's curves and the wheels without outlines, and search fields outlined only while typed in or holding
-  words; the dialogs lifted by a shadow in Porcelain, as its panels are; + EFFECT, + SOURCE and the MODS view's + Aux
+  words; the dialogs lifted by a shadow in Porcelain and Ember, as their panels are; + EFFECT, + SOURCE and the MODS view's + Aux
   and + Add modulation as filled pills, an aux that is set a chip tinted with its source's color, and the cards that
   add an effect, a source or a band's effect filled faintly, a disc behind their plus; each operator, its tab, its
   names in the matrix (whose legend shows the operators' colors side by side) and the routes it sends to another
@@ -2157,8 +2158,8 @@ one may have changed since it last did.
   the effects graph's nodes, a split and a join too, filled
   with a tint of their color, without an outline; and meters and a dimmed control taking the tint of the card they are on. Settings
   that name a theme no longer offered show the nearest one: Graphite and Machined as Midnight, Paper as Light.
-  **Hue**, a slider under the themes along every hue, turns the theme's main color, its accent (and in Spectrum and
-  Porcelain operator A's, which is the accent there), round the color wheel, as saturated and as light as the theme
+  **Hue**, a slider under the themes along every hue, turns the theme's main color, its accent (and in Spectrum,
+  Porcelain and Ember operator A's, which is the accent there), round the color wheel, as saturated and as light as the theme
   has it: Default to begin with, the theme's own color, and its hue in degrees once one is picked. It is kept as the
   theme changes, each theme taking it in its own saturation and lightness.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter

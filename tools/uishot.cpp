@@ -3462,7 +3462,7 @@ void checkLensDisplays(const std::filesystem::path &dir, Renderer &renderer) {
             sum += std::abs(static_cast<int>((a >> shift) & 0xFF) - static_cast<int>((b >> shift) & 0xFF));
         return sum;
     };
-    for (const char *theme : {"Porcelain", "Spectrum", "Midnight", "Light"}) {
+    for (const char *theme : {"Porcelain", "Spectrum", "Midnight", "Light", "Ember"}) {
         FakeController model;
         model.themeName = theme;
         View view(model);
