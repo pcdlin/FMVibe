@@ -85,6 +85,8 @@ private:
     Point droppedAt_;
     // The editor takes the keyboard while a value is typed or a dialog is open, and hands it back after.
     bool wantsKeyboard() const { return view_.typing() || view_.dialogOpen(); }
+    // Whether a key the host's loop took for the window `to` is this editor's (see typedKey()).
+    bool keysFor(HWND to) const;
     void syncFocus();
     bool key(WPARAM key, LPARAM flags);
 

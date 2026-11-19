@@ -5,6 +5,7 @@
 // the View and the panels whose cards and pages hold lists (see inspectorpanel.h), in namespace detail.
 
 #include "layout.h"
+#include "widget.h"
 #include "../params.h"
 
 #include <string>
@@ -80,6 +81,27 @@ inline bool isSteppableList(int param) {
     return isFilterTypeList(param) || isClipMode(param) || field == FxParam::AmpModel || field == FxParam::AmpCab ||
            field == FxParam::ReverbType || isLfoShape(param);
 }
+
+// Adds widgets to a list: `add(kind, rect, param, a, b)`. A list button whose list has arrows gets them, over it.
+struct WidgetAdder {
+    std::vector<Widget> &list;
+    void operator()(WidgetKind kind, Rect rect, int param = -1, int a = -1, int b = -1) const {
+        Widget w;
+        w.kind = kind;
+        w.rect = rect;
+        w.param = param;
+        w.a = a;
+        w.b = b;
+        list.push_back(w);
+        if (kind == WidgetKind::ListButton && isSteppableList(param))
+            for (int dir : {-1, 1}) {
+                w.kind = WidgetKind::ListStep;
+                w.rect = listStepButton(rect, dir);
+                w.b = dir;
+                list.push_back(w);
+            }
+    }
+};
 
 // A voice filter's morph mode, or the filter effect's: whether its Morph type goes through the notch (a switch).
 inline bool isMorphMode(int param) {

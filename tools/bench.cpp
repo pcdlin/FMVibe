@@ -410,6 +410,7 @@ int renderPresets(const Module &module, const char *folder) {
 } // namespace
 
 int main(int argc, char **argv) {
+    SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1"); // every build's notes draw the same randomness
     const bool timing = argc >= 3 && std::strcmp(argv[1], "time") == 0;
     const bool rendering = argc >= 4 && std::strcmp(argv[1], "render") == 0;
     if (!timing && !rendering) {

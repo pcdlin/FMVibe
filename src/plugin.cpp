@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <vector>
 
 namespace fmvibe {
@@ -174,7 +175,8 @@ Plugin::Plugin(const clap_host_t *host) : host_(host) {
         [](const clap_plugin_t *p, double sampleRate, uint32_t, uint32_t) {
             Plugin &plugin = self(p);
             const int before = plugin.latency();
-            plugin.activate(sampleRate);
+            if (!plugin.activate(sampleRate))
+                return false;
             // The latency may only change here: the host reads it again once told.
             if (plugin.hostLatency_ && plugin.latency() != before)
                 plugin.hostLatency_->changed(plugin.host_);
@@ -233,6 +235,12 @@ clap_process_status Plugin::process(const clap_process_t *process) {
     if (process->audio_outputs_count < 1 || process->audio_outputs[0].channel_count < 2 ||
         !process->audio_outputs[0].data32)
         return CLAP_PROCESS_ERROR;
+    if (outOfMemory()) { // a host running it though its activate failed
+        std::fill_n(process->audio_outputs[0].data32[0], process->frames_count, 0.0f);
+        std::fill_n(process->audio_outputs[0].data32[1], process->frames_count, 0.0f);
+        process->audio_outputs[0].constant_mask = 3;
+        return CLAP_PROCESS_SLEEP;
+    }
 
     sendEdits(process->out_events);
     if (process->transport)
@@ -533,12 +541,22 @@ const clap_plugin_params_t Plugin::kParamsExt = {
 };
 
 const clap_plugin_state_t Plugin::kState = {
-    [](const clap_plugin_t *p, const clap_ostream_t *stream) { return self(p).saveState(stream); },
+    [](const clap_plugin_t *p, const clap_ostream_t *stream) {
+        try {
+            return self(p).saveState(stream);
+        } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+            return false;
+        }
+    },
     [](const clap_plugin_t *p, const clap_istream_t *stream) {
-        const bool loaded = self(p).loadState(stream);
-        if (loaded)
-            self(p).clearHistory();
-        return loaded;
+        try {
+            const bool loaded = self(p).loadState(stream);
+            if (loaded)
+                self(p).clearHistory();
+            return loaded;
+        } catch (const std::bad_alloc &) {
+            return false;
+        }
     },
 };
 

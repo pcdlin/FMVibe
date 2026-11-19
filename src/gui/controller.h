@@ -31,9 +31,9 @@ constexpr int kSeqSnapCount = static_cast<int>(std::size(kSeqSnaps));
 constexpr const char *kSeqSnapNames[] = {nullptr, "1/4", "1/8", "1/16", "1/32", "1/64", "1/8T", "1/16T"};
 static_assert(std::size(kSeqSnapNames) == std::size(kSeqSnaps));
 // The values the SEQ view's lane shows for each note: its velocity, or its chance.
-// What the lane under the roll shows: the notes' velocities or chances, or the pattern's pitch bend or mod wheel curve
-// (see SeqCurve). Stored by number: only append.
-enum class SeqLane { Velocity, Chance, Bend, ModWheel, Count };
+// What the lane under the roll shows: the notes' velocities or chances, or the pattern's pitch bend, mod wheel or a
+// macro's curve (see SeqCurve). Stored by number: only append.
+enum class SeqLane { Velocity, Chance, Bend, ModWheel, Macro1, Count = Macro1 + kMacros };
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
 // the page (Envelope, Unison, Warp, Inputs) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note
@@ -249,9 +249,11 @@ std::vector<int> shownSources(const UiLayout &layout, const Get &get) {
 }
 
 // What the editor and the host's remote pages call a source: "LFO 2", "Env 1", "Random 1" or "MIDI 1",
-// numbered by type in the order the sources show, a macro's name, "Note" or "Mod Wheel".
+// numbered by type in the order the sources show, a macro's name, "Note", "Mod Wheel" or an operator's "Op A".
 template <class Get>
 std::string sourceName(const UiLayout &layout, const Get &get, int source) {
+    if (isOpSource(source))
+        return trf(Str::SourceNameOp, {std::string(1, static_cast<char>('A' + source - kOpSource))});
     if (isNote(source))
         return tr(Str::SourceNameNote);
     if (isWheel(source))
@@ -439,6 +441,10 @@ struct UndoStep {
     // The preset the patch came from, and whether it had changed since, before and after the step.
     std::wstring presetBefore, presetAfter;
     bool editedBefore = false, editedAfter = false;
+    // For a step that brings the SEQ view's picked notes back (a duplicate): their pattern (-1 for any other step) and
+    // the slots picked before and after it.
+    int seqPattern = -1;
+    std::vector<int> seqPickedBefore, seqPickedAfter;
 };
 
 class Controller;
@@ -471,9 +477,11 @@ public:
     void recordAll();
     const UndoStep *nextUndo() const { return undo_.empty() ? nullptr : &undo_.back(); }
     const UndoStep *nextRedo() const { return redo_.empty() ? nullptr : &redo_.back(); }
-    // Not while a step is open.
-    void undo();
-    void redo();
+    // The open step brings these notes picked in the SEQ view back as it is undone and redone.
+    void keepSeqPicks(int pattern, std::vector<int> before, std::vector<int> after);
+    // Not while a step is open. The step undone or redone, if there was one.
+    const UndoStep *undo();
+    const UndoStep *redo();
     // When the host replaces the whole state, what the history would bring back is gone.
     void clear();
     // How many times the whole patch was replaced (a preset loaded, Init, the host's state), as clear() counts
@@ -543,8 +551,11 @@ public:
     void recordAll() { history_.recordAll(); }
     const UndoStep *nextUndo() const { return history_.nextUndo(); }
     const UndoStep *nextRedo() const { return history_.nextRedo(); }
-    void undo() { history_.undo(); }
-    void redo() { history_.redo(); }
+    void keepSeqPicks(int pattern, std::vector<int> before, std::vector<int> after) {
+        history_.keepSeqPicks(pattern, std::move(before), std::move(after));
+    }
+    const UndoStep *undo() { return history_.undo(); }
+    const UndoStep *redo() { return history_.redo(); }
     void clearHistory() { history_.clear(); }
     uint64_t patchLoads() const { return history_.patchLoads(); }
 
@@ -555,11 +566,12 @@ public:
     // Editor::followDpi()). A host that won't leaves it as it is.
     virtual void requestEditorSize(uint32_t, uint32_t) {}
 
-    // The virtual keyboard: a MIDI note number (60 is middle C). (Its bend wheel is the Pitch Bend param, edited.)
-    virtual void playNote(int note, bool on) = 0;
+    // The virtual keyboard: a MIDI note number (60 is middle C) at a MIDI velocity (0-127; a note off ignores it).
+    // (Its bend wheel is the Pitch Bend param, edited.)
+    virtual void playNote(int note, bool on, int velocity) = 0;
     // A note the SEQ view plays to be heard (a key or a note clicked in its roll): that note alone, never the
-    // sequencer's pattern, as the keyboard's would in Key or Latch.
-    virtual void auditionNote(int note, bool on) { playNote(note, on); }
+    // sequencer's pattern, as the keyboard's would in Key or Latch. At velocity 100.
+    virtual void auditionNote(int note, bool on) { playNote(note, on, 100); }
     // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
     // over how many of its cycles.
     virtual void setScope(int op, int cycles) = 0;

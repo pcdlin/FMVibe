@@ -45,6 +45,9 @@ public:
     // Whether `name` can be a file's or a folder's name: not empty, none of the characters Windows refuses in one,
     // nor a name it keeps for itself.
     static bool validName(const std::string &name);
+    // Whether `folder` is the subfolder versions up to 0.11 wrote the factory presets into, whatever its case: no folder
+    // is made or renamed to that, since the library takes the files named as a factory preset in it for the built-in ones.
+    static bool oldFactorySubfolder(const std::string &folder);
 
     // Lists the factory presets and the folder's presets, each with its info, and the folder's subfolders. Of the
     // Factory subfolder versions up to 0.11 wrote the factory presets into, it leaves out the files named as a factory

@@ -12,6 +12,13 @@
 #include <tuple>
 #include <type_traits>
 
+// What only some patches use stays out of renderBlock()'s code, which MSVC builds worse the more goes into it.
+#ifdef _MSC_VER
+#define FMVIBE_NOINLINE __declspec(noinline)
+#else
+#define FMVIBE_NOINLINE __attribute__((noinline))
+#endif
+
 namespace fmvibe {
 
 namespace {
@@ -20,7 +27,17 @@ namespace {
 bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
 
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
+constexpr double kPhaseModCycles = 64.0;      // how many cycles modulation takes an operator's Phase either way
 constexpr double kWarpSlew = 250.0;           // how fast an operator's warp amount moves at most, a second
+// Filter FM: the octaves a modulation at full swing and depth takes a cutoff, as far as the knob goes, and the seconds
+// a filter effect's cutoff takes to get over the jump as the voice it follows changes.
+const double kCutoffOctaves = std::log2(kMaxCutoff / kMinCutoff);
+constexpr double kFxFmJump = 0.005;
+// Whether a filter of this type follows filter FM: the Formant type's cutoff stays with the control blocks.
+bool followsCutoffFm(double type) {
+    return std::clamp(static_cast<int>(std::lround(type)), 0, static_cast<int>(FilterType::Count) - 1) !=
+           static_cast<int>(FilterType::Formant);
+}
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
 constexpr double kMaxFeedback = std::numbers::pi;
 // The other ways a route can act on an operator (see RouteMode), at a 100 % amount and FM Amount: Linear FM swings
@@ -171,6 +188,11 @@ Synth::Synth() : table_(paramTable()), waves_(waveTables()) {
     // Modulation takes an operator's Ratio past its range, to 128 (see kRatioModNorm).
     for (int op = 0; op < kOps; ++op)
         paramMax_[paramIndex(op, OpParam::Ratio)] = kRatioModNorm;
+    // And an operator's Phase round its cycle either way, past 0 % and 100 %, rather than stopping there.
+    for (int op = 0; op < kOps; ++op) {
+        paramMin_[paramIndex(op, OpParam::Phase)] = -kPhaseModCycles;
+        paramMax_[paramIndex(op, OpParam::Phase)] = kPhaseModCycles;
+    }
 }
 
 namespace {
@@ -199,8 +221,8 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     seqStale_ = true;
     changedCount_ = 0;
     capacity_ = std::clamp(capacity, 1, kMaxVoices);
+    active_.clear(); // first: the voices it points at go, even if there is no memory for the new ones
     voices_.assign(static_cast<size_t>(capacity_ + std::clamp(capacity_, kFadeSlots, kMaxFadeSlots)), Voice{});
-    active_.clear();
     active_.reserve(voices_.size()); // never grows past this on the audio thread
     combSize_ = combLength(rate_);
     combs_.assign(voices_.size() * kFilters * 2 * combSize_, 0.0f);
@@ -217,6 +239,9 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     effects_.prepare(sampleRate);
     noiseColor_.prepare(rate_, sampleRate);
     volumeGlide_ = 1.0 - std::exp(-1.0 / (kVolumeGlide * sampleRate));
+    voiceFmRange_ = cutoffFmRange(rate_);
+    fxFmDelay_ = std::clamp(static_cast<int>(std::lround(decimatorDelay(sampleRate, oversampling_))), 0, kFxFmDelay - 1);
+    fxFmDecay_ = std::exp(-1.0 / (kFxFmJump * sampleRate));
     { // the DC blocker's high-pass (see DcBlocker)
         const double k = std::tan(std::numbers::pi * 5.0 / sampleRate), norm = 1.0 / (1.0 + std::sqrt(2.0) * k + k * k);
         dcCoefs_ = {norm, -2.0 * norm, norm, 2.0 * (k * k - 1.0) * norm, (1.0 - std::sqrt(2.0) * k + k * k) * norm};
@@ -261,6 +286,12 @@ void Synth::reset() {
         filterAnalyzed_[f].clear();
     }
     effects_.reset();
+    for (int slot = 0; slot < kFxSlots; ++slot) {
+        effects_.setCutoffFm(slot, nullptr);
+        fxCutoffFm_[slot] = {};
+    }
+    fxFmLive_ = false;
+    fxFmOrder_ = 0;
     fxPitch_ = 60.0;
     fxTail_.on = false;
     fxLast_ = nullptr;
@@ -731,7 +762,14 @@ void Synth::applyMacros(const ParamValues &params) {
     // The knobs first, as the macros' and the mod wheel's slots on them take them, then what the knobs move.
     macroGraph_ = macroGraph(get);
     macroSet_ = macroKnobsSet(get);
-    macroKnobs_ = sharedMacroKnobs(get, macroGraph_);
+    for (int m = 0; m < kMacros; ++m) { // a curve playing holds its knob, the host's modulation on top; the editor shows it
+        const double set = macroSet_[m];
+        if (seqMacroHeld_ >> m & 1u)
+            macroSet_[m] = std::clamp(seqMacro_[m] + globalMod_[paramIndex(m, MacroParam::Value)], 0.0, 1.0);
+        seqMacroAdded_[m] = macroSet_[m] - set;
+    }
+    macroKnobs_ = macroSet_;
+    runMacroGraph(macroGraph_, get, macroKnobs_, nullptr, [](int) { return -1.0; }, [](int, int, double) {});
     voiceMovedSlotCount_ = 0;
     forEachMacroMod(get, macroKnobs_, [&](int target, double offset, int source, int slot) {
         macroMod_[target] += offset;
@@ -844,7 +882,15 @@ double Synth::seqCurveValue(SeqCurve c) const {
 }
 
 bool Synth::seqCurvesMoved() const {
-    return seqCurveValue(SeqCurve::Bend) != seqBend_ || seqCurveValue(SeqCurve::ModWheel) != seqWheel_;
+    if (seqCurveValue(SeqCurve::Bend) != seqBend_ || seqCurveValue(SeqCurve::ModWheel) != seqWheel_)
+        return true;
+    for (int m = 0; m < kMacros; ++m) {
+        const double knob = seq_.curve(seqMacroCurve(m));
+        const bool held = std::isfinite(knob);
+        if (held != ((seqMacroHeld_ >> m & 1u) != 0) || (held && knob != seqMacro_[m]))
+            return true;
+    }
+    return false;
 }
 
 void Synth::followSeqCurves() {
@@ -854,6 +900,18 @@ void Synth::followSeqCurves() {
         seqWheel_ = wheel;
         paramChanged(paramIndex(GlobalParam::ModWheel));
     }
+    uint32_t heldNow = 0;
+    for (int m = 0; m < kMacros; ++m) {
+        const double knob = seq_.curve(seqMacroCurve(m));
+        const bool held = std::isfinite(knob);
+        if (held)
+            heldNow |= 1u << m;
+        if (held != ((seqMacroHeld_ >> m & 1u) != 0) || (held && knob != seqMacro_[m])) {
+            seqMacro_[m] = held ? knob : 0.0; // the macro's knob moved, and what it moves with it
+            paramChanged(paramIndex(m, MacroParam::Value));
+        }
+    }
+    seqMacroHeld_ = heldNow;
 }
 
 void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
@@ -894,6 +952,15 @@ void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamVa
                 scopeRestart();
             }
             scope_.live = scopeVoice_ != nullptr;
+        }
+        // The filter effects' FM follows the newest voice (see runOpSources()).
+        fxFmCount_ = 0;
+        fxFmOps_ = 0;
+        fxFmVoice_ = nullptr;
+        if (fxFmWanted_) {
+            fxFmVoice_ = newestVoice();
+            for (std::array<float, kFxFmBlock> &out : fxOpOut_)
+                out.fill(0.0f);
         }
         bool sounding = false;
         forEachActive([&](Voice &v) { // in their order, as they always summed; one may end as it renders
@@ -963,6 +1030,8 @@ void Synth::renderSpan(float *left, float *right, uint32_t frames, const ParamVa
 
         // So are the free and anchored LFOs' clocks, which run even while no voice listens.
         runSharedLfos(params, newest, n, done + n);
+        if (fxFmWanted_ || fxFmLive_)
+            runFxCutoffFm(n);
         effects_.process(left + done, right + done, n, fxParams_, tempo_, fxPitch_);
         // The tail's modulation stops once the effects have been silent for a while: the params then go back to
         // their knobs where nothing is heard, and the effects can rest.
@@ -1093,6 +1162,7 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
     fxTail_.silent = 0.0;
     fxTail_.lfos = v.lfos;
     fxTail_.auxOut = v.auxOut;
+    std::fill_n(fxTail_.auxOut.begin() + kOpSource, kOps, 0.0); // the voice's operators have stopped
     fxTail_.rng = v.rng;
     // The LFOs' slots are worked out again each block; the other sources' keep what they gave last.
     fxTail_.heldCount = 0;
@@ -1103,6 +1173,10 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
             continue;
         const int source = mod.slot / kSlots;
         if (source < kMaxSources && runsLfo(sourceType(params[paramIndex(source, SourceParam::Type)])))
+            continue;
+        // The voice's operators have stopped: nothing of a moment of their wave stays held, as a source or an aux.
+        if (isOpSource(source) ||
+            isOpSource(slotAux([&params](int i) { return params[i]; }, source, mod.slot % kSlots)))
             continue;
         fxTail_.held[fxTail_.heldCount++] = mod;
     }
@@ -1419,6 +1493,9 @@ void Synth::telemetry(Telemetry &out) const {
     out.seqPosition = seq_.position();
     out.seqPattern = seq_.pattern();
     out.seqKeys = seq_.soundingPitches();
+    out.seqWheel = static_cast<float>(seqWheel_);
+    for (int m = 0; m < kMacros; ++m)
+        out.seqMacro[m] = static_cast<float>(seqMacroAdded_[m]);
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quicker one a whole span at a time,
         // blending into the next (see kScopeBlendSpan).
@@ -1644,12 +1721,18 @@ void Synth::clearVoiceMods(Voice &v) {
 
 void Synth::shareSlots(const ParamValues &params) {
     auto get = [&params](int i) { return params[i]; };
+    opSourceMask_ = 0;
+    fxFmWanted_ = false;
     for (int source = 0; source < kAllSources; ++source) {
         int count = 0;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(source, s)]);
             if (target < 0 || params[slotBypassIndex(source, s)] >= 0.5)
                 continue;
+            if (isOpSource(source))
+                opSourceMask_ |= 1u << (source - kOpSource);
+            if (const int aux = slotAux(get, source, s); isOpSource(aux))
+                opSourceMask_ |= 1u << (aux - kOpSource);
             SharedSlot &slot = sharedSlots_[source][count++];
             slot.slot = s;
             slot.target = target;
@@ -1665,10 +1748,149 @@ void Synth::shareSlots(const ParamValues &params) {
             }
             slot.range = table_[target].max - table_[target].min;
             slot.depth = hostValue(params, slotAmountIndex(source, s));
+            slot.fmFilter = slot.fmFx = -1;
+            if (isOpSource(source)) {
+                for (int f = 0; f < kFilters; ++f)
+                    if (target == paramIndex(f, FilterParam::Cutoff))
+                        slot.fmFilter = f;
+                if (fxSlotOf(target) >= 0 && fxFieldOf(target) == FxParam::FilterCutoff) {
+                    slot.fmFx = fxSlotOf(target);
+                    fxFmWanted_ = true;
+                }
+            }
         }
         sharedSlotCount_[source] = count;
     }
     sharedSlotsReady_ = true;
+}
+
+// Kept out of renderBlock(), which patches without an operator as a source run as they did.
+FMVIBE_NOINLINE void Synth::runOpSources(Voice &v, const ParamValues &params) {
+    voiceFmCount_ = 0;
+    for (int op = 0; op < kOps; ++op) {
+        if (!(opSourceMask_ >> op & 1u))
+            continue;
+        const int source = kOpSource + op;
+        v.auxOut[source] = v.opLevel[op];
+        if (params[paramIndex(op, OpParam::Enabled)] < 0.5)
+            continue; // switched off, it stands still and modulates nothing
+        const bool bipolar = params[paramIndex(op, OpSourceParam::Bipolar)] >= 0.5;
+        const double swing = bipolar ? 0.5 * v.opMean[op] : v.opLevel[op];
+        for (int k = 0; k < sharedSlotCount_[source]; ++k) {
+            const SharedSlot &slot = sharedSlots_[source][k];
+            if (slot.depth == 0.0)
+                continue;
+            const double scale =
+                slot.voiceAux >= 0 ? slot.scale * auxScale(slot.auxDepth, v.auxOut[slot.voiceAux]) : slot.scale;
+            // On a filter's Cutoff, it moves the filter sample by sample instead (see moveCutoffs(), runFxCutoffFm()).
+            const CutoffFm fm{slot.fmFilter >= 0 ? slot.fmFilter : slot.fmFx, op,
+                              slot.depth * scale * slot.range * kCutoffOctaves, slot.curve, bipolar};
+            if (slot.fmFilter >= 0 && followsCutoffFm(params[paramIndex(slot.fmFilter, FilterParam::Type)])) {
+                voiceFm_[voiceFmCount_++] = fm;
+                continue;
+            }
+            if (slot.fmFx >= 0 && fxType(params[paramIndex(slot.fmFx, FxParam::Type)]) == FxType::Filter &&
+                followsCutoffFm(params[paramIndex(slot.fmFx, FxParam::FilterType)])) {
+                if (&v == fxFmVoice_) {
+                    fxFm_[fxFmCount_++] = fm;
+                    fxFmOps_ |= 1u << op;
+                }
+                continue;
+            }
+            v.slotMods[v.slotModCount++] = {slot.target,
+                                            slotCurveValue(swing, slot.curve, bipolar) * slot.depth * scale * slot.range,
+                                            source * kSlots + slot.slot};
+        }
+    }
+}
+
+double Synth::cutoffFmOctaves(const CutoffFm &fm, double out, double env) {
+    const double swing = fm.bipolar ? 0.5 * std::clamp(out, -1.0, 1.0) : std::clamp(0.5 * (out + env), 0.0, 1.0);
+    return (fm.curve != 0.0 ? slotCurveValue(swing, fm.curve, fm.bipolar) : swing) * fm.octaves;
+}
+
+FMVIBE_NOINLINE bool Synth::startCutoffFm(std::array<const FilterSettings *, kFilters> &filter) {
+    voiceFmBase_.fill(nullptr);
+    bool any = false;
+    for (int k = 0; k < voiceFmCount_; ++k) {
+        const int f = voiceFm_[k].place;
+        if (!filter[f] || voiceFmBase_[f])
+            continue;
+        voiceFmBase_[f] = filter[f];
+        voiceFmNow_[f] = *filter[f];
+        filter[f] = &voiceFmNow_[f];
+        any = true;
+    }
+    return any;
+}
+
+FMVIBE_NOINLINE void Synth::moveCutoffs(const Voice &v, uint32_t sample) {
+    std::array<double, kFilters> octaves{};
+    for (int k = 0; k < voiceFmCount_; ++k) {
+        const CutoffFm &fm = voiceFm_[k];
+        const Operator &op = v.ops[fm.op];
+        octaves[fm.place] += cutoffFmOctaves(fm, op.out, op.env.level());
+    }
+    for (int f = 0; f < kFilters; ++f) {
+        const FilterSettings *base = voiceFmBase_[f];
+        // The diode's stages take a system solved anew: every other sample is enough at the voices' oversampling.
+        if (base && (base->type != FilterType::Diode || (sample & 1u) == 0))
+            modulateCutoff(voiceFmNow_[f], *base, std::exp2(octaves[f]), voiceFmRange_);
+    }
+}
+
+void Synth::runFxCutoffFm(uint32_t frames) {
+    const uint64_t voice = fxFmVoice_ ? fxFmVoice_->order + 1 : 0;
+    const bool changed = voice != fxFmOrder_;
+    fxFmOrder_ = voice;
+    fxFmLive_ = false;
+    for (int slot = 0; slot < kFxSlots; ++slot) {
+        FxCutoffFm &out = fxCutoffFm_[slot];
+        bool listed = false;
+        for (int k = 0; k < fxFmCount_ && !listed; ++k)
+            listed = fxFm_[k].place == slot;
+        if (!listed && !out.on)
+            continue;
+        std::array<double, kFxFmBlock> octaves{};
+        for (int k = 0; k < fxFmCount_; ++k) {
+            const CutoffFm &fm = fxFm_[k];
+            if (fm.place != slot)
+                continue;
+            for (uint32_t s = 0; s < frames; ++s)
+                octaves[s] += cutoffFmOctaves(fm, fxOpOut_[fm.op][s] / oversampling_, fxOpEnv_[fm.op]);
+        }
+        // Another voice, or the modulation coming or going: from where the cutoff was, over a few milliseconds.
+        if (changed || listed != out.listed || !out.on)
+            out.jump = out.last - octaves[0];
+        out.listed = listed;
+        float most = 0.0f;
+        for (uint32_t s = 0; s < frames; ++s) {
+            out.last = octaves[s] + out.jump;
+            out.jump *= fxFmDecay_;
+            // As late as the voices' sound coming down to the host's rate.
+            out.line[out.linePos] = static_cast<float>(out.last);
+            const int read = out.linePos - fxFmDelay_;
+            out.octaves[s] = out.line[read < 0 ? read + kFxFmDelay : read];
+            out.linePos = out.linePos + 1 == kFxFmDelay ? 0 : out.linePos + 1;
+            most = std::max(most, std::abs(out.octaves[s]));
+        }
+        out.on = listed || most > 1e-5f || std::abs(out.jump) > 1e-5;
+        fxFmLive_ = fxFmLive_ || out.on;
+        effects_.setCutoffFm(slot, out.on ? out.octaves.data() : nullptr);
+    }
+}
+
+FMVIBE_NOINLINE void Synth::finishOpSources(Voice &v, const std::array<bool, kOps> &opOn, uint32_t frames) {
+    for (int op = 0; op < kOps; ++op) {
+        if (&v == fxFmVoice_)
+            fxOpEnv_[op] = opOn[op] ? v.ops[op].env.level() : 0.0;
+        // Unison's copies can sum past full scale; a source puts out -1..1.
+        const double mean = opOn[op] && frames > 0 ? std::clamp(v.opSum[op] / frames, -1.0, 1.0) : 0.0;
+        v.opSum[op] = 0.0;
+        v.opMean[op] = mean;
+        // From nothing to the envelope's level as the wave swings, so that silence is 0, as an LFO's lowest point is.
+        v.opLevel[op] = opOn[op] ? std::clamp(0.5 * (mean + v.ops[op].env.level()), 0.0, 1.0) : 0.0;
+    }
 }
 
 void Synth::shareVoiceParams(const ParamValues &params) {
@@ -1791,6 +2013,30 @@ __attribute__((noinline))
 #endif
 std::array<double, kMaxUnison> Synth::unisonDetunes(int index, int copies, const UnisonModes &modes) {
     return unisonSpread(copies, modes.curve, modes.pan, modes.blend, modes.seed, index).detune;
+}
+
+// Takes what the last block's ramp moved operator `i`'s wave by into its copies' phases, and returns how far its Phase,
+// modulated as the voice has it, still is from where the wave stands, the short way round (100 % is 0 % again), for
+// this block's ramp.
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+double Synth::turnPhase(Voice &v, int i, double phase) {
+    Operator &op = v.ops[i];
+    const double moved = v.levels.phase[i];
+    for (int k = 0; k < kMaxUnison; ++k) {
+        op.phases[k] += moved - std::floor(op.phases[k] + moved);
+        op.startPhases[k] += moved - std::floor(op.startPhases[k] + moved);
+    }
+    v.levels.phase[i] = 0.0;
+    v.phaseSet[i] += moved;
+    const double left = std::remainder(phase - v.phaseSet[i], 1.0);
+    if (std::abs(left) >= 1e-9)
+        return left;
+    v.phaseSet[i] = phase; // there
+    return 0.0;
 }
 
 // Each copy read through its warp, and restarted by its master.
@@ -2169,6 +2415,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
         }
     };
+    // The operators, from what they put out over the last block, known before the places run, so the slots they scale
+    // as their aux take it too.
+    if (opSourceMask_ != 0)
+        runOpSources(v, params);
     // Empty places and switched-off sources stand still and modulate nothing.
     auto get = [&p](int i) { return p[i]; };
     for (int s = 0; s < kMaxSources; ++s) {
@@ -2334,6 +2584,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
+            v.phaseSet[i] = start;
             for (int k = 0; k < kMaxUnison; ++k) {
                 const double phase = start + amount * 0.5 * (nextRandom(v.rng) + 1.0);
                 v.ops[i].phases[k] = phase - std::floor(phase);
@@ -2398,6 +2649,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // the release down rather than jumping back; it renders nothing meanwhile, and ends once they have.
     if (v.silent) {
         v.peak = 0.0;
+        v.opMean.fill(0.0); // its operators play no more
+        v.opLevel.fill(0.0);
         if (v.fading || !modEnvReleasing(v, params))
             endVoice(v);
         return;
@@ -2465,6 +2718,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     bool stereo = false;
     for (int i = 0; i < kOps; ++i) {
         Operator &op = v.ops[i];
+        // Phase moved under the note, by its knob or its modulation, moves the wave along with it.
+        const double phaseNow = p[paramIndex(i, OpParam::Phase)];
+        if (phaseNow != v.phaseSet[i] || v.levels.phase[i] != 0.0)
+            target.phase[i] = turnPhase(v, i, phaseNow);
         opOn[i] = p[paramIndex(i, OpParam::Enabled)] >= 0.5;
         if (!opOn[i]) {
             // Off is off at once; switched on again, it comes back from silence. It plays nothing and routes
@@ -2587,9 +2844,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         }
         // Blended copies weigh into the mono sum other operators hear, which only that loop does (and a table's and a
         // sample's own): the plain loops below, which most operators run, sum them as they are (a multiply a copy there
-        // cost every patch 2-3 %).
+        // cost every patch 2-3 %). So does one whose Phase is moving its wave, for as long as that takes (a sample has
+        // no cycle for it to move).
         warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying ||
-                    (modes.blend > 0.0 && copies[i] > 1 && !tableOp[i] && !sampleOp[i]);
+                    (modes.blend > 0.0 && copies[i] > 1 && !tableOp[i] && !sampleOp[i]) ||
+                    (!noise[i] && !sampleOp[i] && target.phase[i] != 0.0);
         special[i] = warped[i] || tableOp[i] || sampleOp[i];
 
         // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
@@ -2974,6 +3233,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
+    // The operators something listens to as they play, a single test a sample for the scope and the sources alike.
+    const uint32_t tapped = opSourceMask_ | (scopeOp >= 0 ? 1u << scopeOp : 0u);
+    const uint32_t fxOps = &v == fxFmVoice_ ? fxFmOps_ : 0u; // those the filter effects' FM hears, from the newest voice
+    // Operators moving this voice's filters' cutoffs, sample by sample.
+    const bool cutoffFm = opSourceMask_ != 0 && voiceFmCount_ > 0 && startCutoffFm(filter);
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
         v.gainL += gainLStep;
@@ -3054,9 +3318,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             double mono = 0.0, l = 0.0, r = 0.0;
             if (special[i]) {
                 // Synced or warped (see Operator), blended, a table or a sample: in functions of their own, so the
-                // plain loops below are as they were.
+                // plain loops below are as they were. A moving Phase moves a cycle's wave along with it.
                 const OpSample out = specialSample(
-                    op, v.plays[i], i, wave[i], warped[i], tableOp[i], sampleOp[i], offset, factor, copies[i], copyGains[i],
+                    op, v.plays[i], i, wave[i], warped[i], tableOp[i], sampleOp[i],
+                    sampleOp[i] ? offset : offset + level.phase[i], factor, copies[i], copyGains[i],
                     v.copyWeights[i].data(), route.out || route.sendCount > 0 || route.shaperSendCount > 0, syncIncStep[i],
                     warpStep[i]);
                 mono = out.mono;
@@ -3127,8 +3392,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;
-            if (i == scopeOp)
-                scopeTake(scopePhase, op.out);
+            if (tapped >> i & 1u) {
+                if (i == scopeOp) {
+                    const double moved = op.syncOn ? scopePhase : scopePhase + level.phase[i]; // where its wave stands
+                    scopeTake(moved - std::floor(moved), op.out);
+                }
+                v.opSum[i] += op.out;
+                if (fxOps >> i & 1u)
+                    fxOpOut_[i][s / static_cast<uint32_t>(oversampling_)] += static_cast<float>(op.out);
+            }
             l *= envLevel * level.panL[i];
             r *= envLevel * level.panR[i];
             if (route.out) {
@@ -3173,6 +3445,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
         }
 
+        if (cutoffFm)
+            moveCutoffs(v, s);
         for (int f = 0; f < kFilters; ++f) {
             if (!filterOn[f]) {
                 v.filterOut[f] = 0.0;
@@ -3215,6 +3489,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (opOn[i] && sampleOp[i] && v.plays[i].finished && !v.ops[i].env.idle())
             v.ops[i].env.stop();
     }
+    if (tapped != 0)
+        finishOpSources(v, opOn, frames);
     bool filtersHeard = false; // whether a filter heard has put out anything within a comb line
     for (int f = 0; f < kFilters; ++f)
         if (filterOn[f]) {

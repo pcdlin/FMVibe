@@ -81,6 +81,7 @@ void Sequencer::readPattern(int pattern) {
         return;
     const ParamValues &p = *params_;
     const int steps = kSeqStepsPerBar * std::clamp(stepped(p[paramIndex(pattern, SeqPatternParam::Length)], kSeqBars), 1, kSeqBars);
+    curvePeriod_ = steps;
     loopStart_ = std::clamp(stepped(p[paramIndex(pattern, SeqPatternParam::LoopStart)], kSeqMaxSteps), 0, steps - 1);
     const int end = stepped(p[paramIndex(pattern, SeqPatternParam::LoopEnd)], kSeqMaxSteps);
     loopEnd_ = end <= 0 ? steps : std::clamp(end, loopStart_ + 1, steps);
@@ -114,7 +115,7 @@ void Sequencer::readPattern(int pattern) {
             };
             last = std::max(last, field(PointField::X, 0.0, kSeqMaxSteps));
             curves_[static_cast<size_t>(c)][static_cast<size_t>(i)] = {
-                last, field(PointField::Y, curve == SeqCurve::ModWheel ? 0.0 : -1.0, 1.0), field(PointField::Curve, -1.0, 1.0)};
+                last, field(PointField::Y, curve == SeqCurve::Bend ? -1.0 : 0.0, 1.0), field(PointField::Curve, -1.0, 1.0)};
         }
         curveCount_[static_cast<size_t>(c)] = count;
     }
@@ -280,7 +281,8 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     // The curves where the stretch starts.
     const double place = patternPlace(from);
     for (size_t c = 0; c < curveNow_.size(); ++c)
-        curveNow_[c] = seqCurveAt(curveCount_[c], [&](int i) { return curves_[c][static_cast<size_t>(i)]; }, place);
+        curveNow_[c] = seqCurveAt(curveCount_[c], [&](int i) { return curves_[c][static_cast<size_t>(i)]; }, place,
+                                  static_cast<double>(curvePeriod_));
 
     // The notes starting in this stretch, in order.
     struct Start {

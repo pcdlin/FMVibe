@@ -80,7 +80,7 @@ public:
     void telemetry(Telemetry &out) const override { telemetry_.load(out); }
     gui::UiLayout &layout() override { return layout_; }
     void layoutChanged() override;
-    void playNote(int note, bool on) override;
+    void playNote(int note, bool on, int velocity) override;
     void auditionNote(int note, bool on) override;
     void setScope(int op, int cycles) override {
         scopeOp_.store(op, std::memory_order_relaxed);
@@ -97,7 +97,10 @@ public:
         return presetHasFile() && !presetFile().starts_with(PresetLibrary::kFactoryPrefix);
     }
     void choosePreset(bool save) override;
-    void rescanPresets() override { presets_.rescan(); }
+    void rescanPresets() override { // the favorites and categories other instances changed show along with their files
+        presets_.rescan();
+        readUserSettings();
+    }
     const std::vector<gui::PresetEntry> &presets() const override { return presets_.entries(); }
     int presetIndex() const override;
     std::string presetName() const override;
@@ -107,7 +110,7 @@ public:
     std::vector<std::string> presetFolders() const override { return presets_.folders(); }
     bool makePresetFolder(const std::string &folder) override { return presets_.makeFolder(folder); }
     bool renamePresetFolder(const std::string &from, const std::string &to) override;
-    bool deletePresetFolder(const std::string &folder) override { return presets_.deleteFolder(folder); }
+    bool deletePresetFolder(const std::string &folder) override;
     bool savePresetIn(const std::string &folder, const std::string &name, const gui::PresetInfo &info) override;
     bool presetExists(const std::string &folder, const std::string &name) const override;
     bool setPresetInfo(int index, const gui::PresetInfo &info) override;
@@ -149,15 +152,24 @@ public:
     int voiceLimit() const;
 
     // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling, and takes the
-    // latency the host is told.
-    void activate(double sampleRate);
+    // latency the host is told. False where there isn't the memory for them: the host is told so, and the plugin plays
+    // silence (see outOfMemory()) until an activate goes through.
+    bool activate(double sampleRate);
+    // Whether the last activate() found no memory, which leaves the voices unfit to run. Any thread.
+    bool outOfMemory() const { return outOfMemory_.load(std::memory_order_relaxed); }
     // How many samples late the output is, as activate() worked it out: the voices' decimator's delay and the
     // effects' latest path's (see fxlag.h), rounded. An edit that moves it asks the host for a restart, which takes the
     // new one. Any thread.
     int latency() const { return latency_.load(); }
+    // How late the output would be from an activate() at `sampleRate` with the params as they are now, for a host that
+    // asks while the plugin is inactive. Main thread.
+    int latencyAt(double sampleRate) const;
     void deactivate() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
     // Main thread, while not processing (or the audio thread, between blocks).
-    void resetVoices() { synth_.reset(); }
+    void resetVoices() {
+        if (!outOfMemory())
+            synth_.reset();
+    }
 
     // Audio thread. A block starts with beginBlock(), which takes what the editor did since the last one (its keys
     // and scope) and a copy of the params; renders in spans, between which the host's notes and values
@@ -264,8 +276,6 @@ protected:
 
     // The host was told param `index`'s value just now (see setHostValue()).
     void told(int index, int64_t now) { toldAt_[index].store(now, std::memory_order_relaxed); }
-    // Main thread: whether a restart was asked for and not yet done (activate() clears it).
-    bool restartPending() const { return restartAskedFor_.load() != 0; }
 
     // Main thread: tells the host when the remote pages differ.
     void sectionsChanged();
@@ -290,6 +300,8 @@ private:
     void keepEditorLayout(const gui::UiLayout &from);
     // Loads a preset's bytes, which came from `path` (a file, or a factory preset's), as the patch's preset.
     bool loadPresetFrom(const clap_istream_t *stream, const std::wstring &path);
+    // What follows a preset folder renamed to `to`, or deleted (an empty `to`).
+    void presetFolderMoved(const std::wstring &from, const std::wstring &to);
     // Puts the preset loaded from `path` first among the recent ones, in the user's settings.
     void rememberRecent(const std::wstring &path);
     void openPresetFolder(const std::string &folder) override { presets_.openFolder(folder); }
@@ -299,6 +311,7 @@ private:
         int note;
         bool on;
         bool audition = false; // heard on its own (see Controller::auditionNote())
+        int velocity = 100;    // MIDI's, 0-127
     };
 
     Synth synth_;
@@ -313,9 +326,12 @@ private:
     double voicesDelay_ = 0.0;
     // Main thread: an undo or redo step being applied, and whether an edit in it marks the project changed.
     bool applyingStep_ = false;
+    // Main thread: an effect or wire was edited, and onMainThread() has yet to see whether the latency moved.
+    bool latencyEdited_ = false;
     bool dirtyAfterStep_ = false;
     std::atomic<int> oversampling_{kDefaultOversampling};
     // MPE over MIDI and its member channels' bend range: settings, set on the main thread, read by the audio thread.
+    std::atomic<bool> outOfMemory_{false}; // see outOfMemory()
     std::atomic<bool> mpe_{false};
     std::atomic<int> mpeBendRange_{kDefaultMpeBendRange};
     // Written by the audio thread (param events) and the main thread (editor,
@@ -352,6 +368,7 @@ private:
     double sampleRate_ = 48000.0;
     double telemetryFrames_ = 0.0;
     bool telemetryOpen_ = false;
+    bool telemetryCurves_ = false; // whether the sequencer's curves took the wheels anywhere as the last block ended
     std::unique_ptr<Telemetry> telemetryScratch_ = std::make_unique<Telemetry>();
     const std::unique_ptr<const Telemetry> noTelemetry_ = std::make_unique<const Telemetry>(); // what nothing playing shows
     std::atomic<bool> editorOpen_{false};

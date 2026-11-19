@@ -11,6 +11,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <new>
 
 namespace {
 
@@ -97,7 +98,12 @@ public:
         *obj = nullptr;
         if (!cid || !wanted || std::memcmp(cid, fmvibe::vst3::kClassId, sizeof(TUID)) != 0)
             return kNoInterface;
-        FUnknown *plugin = fmvibe::vst3::createPlugin();
+        FUnknown *plugin = nullptr;
+        try {
+            plugin = fmvibe::vst3::createPlugin();
+        } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+            return kOutOfMemory;
+        }
         const tresult result = plugin->queryInterface(wanted, obj);
         plugin->release(); // the caller's reference, if it took one, keeps it
         return result;

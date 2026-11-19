@@ -127,6 +127,10 @@ bool PresetLibrary::validName(const std::string &name) {
     return std::none_of(std::begin(kReserved), std::end(kReserved), [&](const char *r) { return upper == r; });
 }
 
+bool PresetLibrary::oldFactorySubfolder(const std::string &folder) {
+    return _stricmp(folder.c_str(), "Factory") == 0;
+}
+
 std::wstring PresetLibrary::presetFile(const std::string &folder, const std::string &name) {
     const std::wstring top = folderPath();
     if (top.empty() || !validName(name))
@@ -277,7 +281,7 @@ void PresetLibrary::showFile(int index) const {
 
 bool PresetLibrary::makeFolder(const std::string &sub) {
     const std::wstring file = presetFile(sub, "x");
-    if (file.empty())
+    if (file.empty() || oldFactorySubfolder(sub))
         return false;
     std::error_code error;
     std::filesystem::create_directories(std::filesystem::path(file).parent_path(), error);
@@ -294,7 +298,7 @@ std::wstring PresetLibrary::subfolderPath(const std::string &sub) {
 
 bool PresetLibrary::renameFolder(const std::string &from, const std::string &to) {
     const std::wstring a = subfolderPath(from), b = subfolderPath(to);
-    if (from.empty() || to.empty() || a.empty() || b.empty())
+    if (from.empty() || to.empty() || a.empty() || b.empty() || (oldFactorySubfolder(to) && !oldFactorySubfolder(from)))
         return false;
     std::error_code error;
     if (_wcsicmp(a.c_str(), b.c_str()) != 0 && std::filesystem::exists(b, error)) // another of that name; not itself

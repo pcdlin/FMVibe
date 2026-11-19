@@ -56,14 +56,20 @@ constexpr float kFilterHalfW = 33.0f;
 constexpr float kFilterHalfH = 17.0f;
 constexpr int kGridCols = kNodes + 1; // operators, filters, shapers, output
 // The matrix lists every operator, filter and shaper, and fills the panel's height: the column names 14 px below
-// the panel's top, then the rows, the last one 14 px above its bottom.
+// the panel's top, then the rows, the last one 14 px above its bottom. Its cells are kCellAspect times as wide as
+// they are tall, and the legend takes what is left of the panel at their right.
 constexpr float kMatrixMargin = 14.0f;
 constexpr float kMatrixNamesH = 22.0f; // the column names' row, over the first row of cells
 constexpr float kCellGap = 4.0f;
-constexpr float kCellStep = (kRouting.h - 2.0f * kMatrixMargin - kMatrixNamesH + kCellGap) / kNodes;
-constexpr float kCell = kCellStep - kCellGap;
+constexpr float kCellAspect = 1.5f; // a cell's width over its height
+constexpr float kCellStepY = (kRouting.h - 2.0f * kMatrixMargin - kMatrixNamesH + kCellGap) / kNodes;
+constexpr float kCellH = kCellStepY - kCellGap;
+constexpr float kCellW = kCellH * kCellAspect;
+constexpr float kCellStepX = kCellW + kCellGap;
 constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMatrixNamesH};
-constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
+constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStepX - kCellGap + 28.0f;
+constexpr float kLegendW = kRouting.x + kRouting.w - 16.0f - kLegendX;
+static_assert(kLegendW >= 150.0f, "the matrix's legend needs this much of the panel beside the cells");
 // The inspector's tabs, one per node along its top: the operators', the filters' and the shapers' in three groups, a
 // hairline between two groups (kNodeTabDivider()).
 constexpr float kNodeTabStep = 24.0f, kNodeTabGroupGap = 13.0f;
@@ -83,6 +89,8 @@ constexpr Rect kInspectorPage{kInspector.x + 1.0f, kInspector.y + 60.0f, kInspec
 // switches at its right end.
 constexpr Rect kTitleRow{kInspector.x + 16.0f, kInspector.y + 37.0f, kInspector.w - 32.0f, 20.0f};
 constexpr float kTitleLetterW = 16.0f;
+// An operator's letter there is its output's handle as a modulation source: dragged onto what it should modulate.
+constexpr Rect kOpNameHandle{kTitleRow.x - 4.0f, kTitleRow.y, kTitleLetterW + 8.0f, kTitleRow.h};
 // An operator's Fixed switch, a keyboard on the title row left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
 // An operator's sound in one block under the title row, whose place its source switch (WAVE | TABLE | SAMPLE) takes:
@@ -94,9 +102,10 @@ constexpr float kOpHeroY = kInspector.y + 69.0f; // centered between the title r
 constexpr float kOpPitchW = 88.0f; // the left column
 constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
 constexpr float kOpRightW = kInspector.x + kInspector.w - 16.0f - kOpRightX;
-// The source switch, three equal segments along the title row, where a filter's or shaper's page has its summary; it
-// stops short of a Custom wave's edit button, left of the keyboard switch.
-constexpr Rect kOpSourceRow{kTitleRow.x, kFixedSwitch.y, kFixedSwitch.x - kFixedSwitch.w - 10.0f - kTitleRow.x,
+// The source switch, three equal segments along the title row after the operator's letter, where a filter's or
+// shaper's page has its summary; it stops short of a Custom wave's edit button, left of the keyboard switch.
+constexpr float kOpSourceX = kOpNameHandle.x + kOpNameHandle.w + 4.0f;
+constexpr Rect kOpSourceRow{kOpSourceX, kFixedSwitch.y, kFixedSwitch.x - kFixedSwitch.w - 10.0f - kOpSourceX,
                             kFixedSwitch.h};
 inline Rect opSourceButton(int source) {
     const float w = kOpSourceRow.w / 3.0f;
@@ -409,6 +418,17 @@ constexpr Rect kSeqScrollYTrack{kSeqGrid.x + kSeqGrid.w + 3.0f, kSeqGrid.y + 2.0
 constexpr Rect kSeqRuler{kSeqGrid.x, kSeqBox.y, kSeqGrid.w, kSeqRulerH};
 constexpr Rect kSeqLaneArea{kSeqGrid.x, kSeqGrid.y + kSeqGrid.h, kSeqGrid.w, kSeqLaneH};
 constexpr Rect kSeqLaneTabs{kSeqBox.x, kSeqLaneArea.y + kSeqLaneArea.h, kSeqBox.w, kSeqLaneTabsH};
+// After the lane's tabs, the macros' curves: one more tab, wider for its macro's number and its arrow, and over it the
+// list of macros it opens.
+constexpr float kSeqLaneTabStep = 76.0f; // a tab and the gap after it
+constexpr Rect kSeqMacroTab{kSeqGrid.x + 4.0f * kSeqLaneTabStep, kSeqLaneTabs.y + 3.0f, 92.0f, kSeqLaneTabs.h - 6.0f};
+constexpr float kSeqMacroRowH = 22.0f;
+constexpr Rect kSeqMacroList{kSeqMacroTab.x, kSeqMacroTab.y - 4.0f - (8.0f + 8.0f * kSeqMacroRowH), 180.0f,
+                             8.0f + 8.0f * kSeqMacroRowH};
+constexpr Rect seqMacroRow(int macro) {
+    return {kSeqMacroList.x + 4.0f, kSeqMacroList.y + 4.0f + static_cast<float>(macro) * kSeqMacroRowH,
+            kSeqMacroList.w - 8.0f, kSeqMacroRowH};
+}
 // The card's rows, from its top: its title, PATTERN, PLAY, two rows of knobs, ORDER and ROOT, SCALE and FOLD.
 constexpr float kSeqTitleY = kSeqCard.y + 12.0f;
 constexpr float kSeqPatternY = kSeqCard.y + 46.0f;
@@ -1333,10 +1353,6 @@ inline Rect velocityDisplay(float keyboardTop) {
 inline Rect velocityHandle(float keyboardTop) {
     return {1082.0f, keyboardTop + kStripRow - 10.0f, 20.0f, 20.0f};
 }
-// The display of the note source or velocity, and its handle.
-inline Rect stripDisplay(float keyboardTop, bool velocity) {
-    return velocity ? velocityDisplay(keyboardTop) : noteDisplay(keyboardTop);
-}
 inline Rect bendWheel(float top) {
     return {34.0f, top + kKeys.y, 26.0f, 90.0f};
 }
@@ -1396,7 +1412,7 @@ constexpr float kKeyLightRise = 0.5f, kKeyLightFall = 0.22f;
 
 // Position in the grid: rows are nodes, columns nodes and then the output.
 inline Rect gridCell(int row, int col) {
-    return {kGridOrigin.x + col * kCellStep, kGridOrigin.y + row * kCellStep, kCell, kCell};
+    return {kGridOrigin.x + col * kCellStepX, kGridOrigin.y + row * kCellStepY, kCellW, kCellH};
 }
 
 inline Rect knobRect(Point center, float diameter) {

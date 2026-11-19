@@ -232,25 +232,35 @@ private:
 
 // How late, in host samples, low frequencies come out of the voices' decimator from `factor` times the rate, and out of
 // an UpDown at `factor`: the centroid of their impulse responses, their group delay at 0 Hz.
+inline constexpr int kCentroidFrames = 32;
+// The centroid of the impulse response `block(out, first)` puts out, kCentroidFrames at a time (`first` for the block
+// the impulse goes in with).
+template <class Block>
+double impulseCentroid(const Block &block) {
+    constexpr int kRounds = 32;
+    double moment = 0.0, sum = 0.0;
+    for (int round = 0; round < kRounds; ++round) {
+        float out[kCentroidFrames]{};
+        block(out, round == 0);
+        for (int i = 0; i < kCentroidFrames; ++i) {
+            moment += static_cast<double>(round * kCentroidFrames + i) * out[i];
+            sum += out[i];
+        }
+    }
+    return sum != 0.0 ? moment / sum : 0.0;
+}
+
 inline double decimatorDelay(double hostRate, int factor) {
     if (factor < 2)
         return 0.0;
     Decimator down;
     down.prepare(hostRate, factor);
-    constexpr int kFrames = 32, kRounds = 32;
-    double moment = 0.0, sum = 0.0;
-    for (int round = 0; round < kRounds; ++round) {
-        double in[kFrames * Decimator::kMaxFactor]{};
-        if (round == 0)
+    return impulseCentroid([&down](float *out, bool first) {
+        double in[kCentroidFrames * Decimator::kMaxFactor]{};
+        if (first)
             in[0] = 1.0;
-        float out[kFrames]{};
-        down.process(in, out, kFrames);
-        for (int i = 0; i < kFrames; ++i) {
-            moment += static_cast<double>(round * kFrames + i) * out[i];
-            sum += out[i];
-        }
-    }
-    return sum != 0.0 ? moment / sum : 0.0;
+        down.process(in, out, kCentroidFrames);
+    });
 }
 
 inline double upDownDelay(double hostRate, int factor) {
@@ -258,19 +268,11 @@ inline double upDownDelay(double hostRate, int factor) {
         return 0.0;
     UpDown path;
     path.prepare(hostRate, factor);
-    constexpr int kFrames = 32, kRounds = 32;
-    double moment = 0.0, sum = 0.0;
-    for (int round = 0; round < kRounds; ++round) {
-        float x[kFrames]{};
-        if (round == 0)
-            x[0] = 1.0f;
-        path.run(x, kFrames);
-        for (int i = 0; i < kFrames; ++i) {
-            moment += static_cast<double>(round * kFrames + i) * x[i];
-            sum += x[i];
-        }
-    }
-    return sum != 0.0 ? moment / sum : 0.0;
+    return impulseCentroid([&path](float *out, bool first) {
+        if (first)
+            out[0] = 1.0f;
+        path.run(out, kCentroidFrames);
+    });
 }
 
 } // namespace fmvibe

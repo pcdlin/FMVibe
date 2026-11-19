@@ -1440,7 +1440,23 @@ void PresetBrowser::saveKey(Key key) {
     else if (key == Key::Escape) {
         saveMode_ = SaveMode::None;
         host_.resetHover();
+    } else if (key == Key::Tab || key == Key::BackTab) {
+        stepSaveField(key == Key::Tab ? 1 : -1);
     }
+}
+
+// Tab and Shift+Tab: the dialog's next text field or the one before, round its ends, its text all selected to type
+// over. Editing a preset's info, the name isn't one of them.
+void PresetBrowser::stepSaveField(int step) {
+    static constexpr Field kFields[] = {Field::SaveName, Field::SaveAuthor, Field::SaveDescription};
+    const int first = saveMode_ == SaveMode::Save ? 0 : 1, count = 3 - first;
+    const int at = static_cast<int>(std::find(std::begin(kFields), std::end(kFields), saveFocus_) - std::begin(kFields));
+    TextField &left = *field(saveFocus_);
+    left.anchor = left.caret; // a field shows its selection with or without the keyboard
+    saveFocus_ = kFields[first + (at - first + step + count) % count];
+    TextField &entered = *field(saveFocus_);
+    entered.anchor = 0;
+    entered.caret = entered.text.size();
 }
 
 void PresetBrowser::runSave() {

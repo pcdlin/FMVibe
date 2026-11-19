@@ -11,7 +11,10 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <new>
+#include <random>
 
+#include <windows.h>
 #include <xmmintrin.h>
 
 namespace fmvibe {
@@ -20,9 +23,6 @@ namespace {
 
 // How long after the plugin tells the host a param's value it takes none for that param from the host.
 constexpr int64_t kHostEchoMs = 500;
-
-// Velocity of notes played from the virtual keyboard.
-constexpr double kKeyVelocity = 100.0 / 127.0;
 
 } // namespace
 
@@ -36,9 +36,12 @@ PluginCore::PluginCore() {
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(table[i].def);
     // A new instance opens at the size the user last gave an editor; a state loaded after it brings its own.
-    readUserSettings();
-    if (userSettings.zoom >= 0.5)
-        layout_.zoom = static_cast<float>(userSettings.zoom);
+    if (const double zoom = savedEditorZoom(); zoom >= 0.5)
+        layout_.zoom = static_cast<float>(zoom);
+    // Randomness of its own, so that instances layered don't play the same noise. The tests and fmvibe-bench, which
+    // compare what plays sample for sample, ask for the same every time.
+    if (GetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr, 0) == 0)
+        synth_.seedNotes(std::random_device{}());
     // The Wavetable and Sample operators' data reaches the audio thread through the synth's registry.
     data().attach(&synth_.registry());
     refreshData(); // operator A's table (Basic Shapes), should it be switched to Wavetable
@@ -51,6 +54,10 @@ PluginCore::~PluginCore() {
 
 void PluginCore::onMainThread() {
     sectionsChanged();
+    if (latencyEdited_) {
+        latencyEdited_ = false;
+        askRestart();
+    }
     dataAsked_.store(false);
     for (const uint32_t key : synth_.registry().takeMissing())
         if (!data().ensure(key))
@@ -132,20 +139,38 @@ void PluginCore::performSetValue(int index, double value) {
     if (index == paramIndex(GlobalParam::Voices)) {
         voiceLimitChanged();
         hostVoicesChanged();
-    } else if (fxLagParam(index)) { // an effect or wire that makes the output later or sooner
-        askRestart();
+    } else if (fxLagParam(index) && !latencyEdited_) { // an effect or wire that may make the output later or sooner
+        // Looked at from the main-thread callback, once the edit is whole: an effect moved along the line leaves it for
+        // a moment as its wires change one by one, and a restart asked for then would cut the notes off for nothing.
+        latencyEdited_ = true;
+        hostRequestCallback();
     }
 }
 
 // Voices are allocated here, on the main thread, for the current voice limit.
-void PluginCore::activate(double sampleRate) {
+bool PluginCore::activate(double sampleRate) {
     sampleRate_ = sampleRate;
-    synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
+    try {
+        synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
+    } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+        outOfMemory_.store(true);
+        return false;
+    }
+    outOfMemory_.store(false);
     for (int kind = 0; kind < FxLag::kKinds; ++kind)
         pathDelays_[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
     voicesDelay_ = decimatorDelay(sampleRate, synth_.oversampling());
     latency_.store(latencyNow());
     restartAskedFor_.store(0);
+    return true;
+}
+
+int PluginCore::latencyAt(double sampleRate) const {
+    std::array<double, FxLag::kKinds> paths{};
+    for (int kind = 0; kind < FxLag::kKinds; ++kind)
+        paths[kind] = upDownDelay(sampleRate, FxLag::factorOf(kind));
+    const FxLag lag = fxOutputLag([this](int i) { return values_[i].load(std::memory_order_relaxed); });
+    return static_cast<int>(std::lround(decimatorDelay(sampleRate, oversampling_.load()) + fxLagSamples(lag, paths)));
 }
 
 // The voices' decimator, then the effects' latest path (see fxlag.h), at the rate and oversampling activate() took.
@@ -258,9 +283,12 @@ void PluginCore::render(float *left, float *right, uint32_t frames) {
 void PluginCore::endBlock() {
     synth_.clearEndedNotes();
     // The editor paints about 60 times a second: a snapshot every kTelemetrySeconds of audio is plenty, however short
-    // the host's blocks, and the first one as soon as the editor opens.
+    // the host's blocks, and the first one as soon as the editor opens. One too as the sequencer's curves stop: the host
+    // may let the plugin sleep right after, which would leave the wheels showing where the curves last took them.
     const bool open = editorOpen_.load(std::memory_order_relaxed);
-    if (open && (!telemetryOpen_ || telemetryFrames_ >= kTelemetrySeconds * sampleRate_)) {
+    const bool curves = synth_.seqCurvesApplied(), curvesStopped = telemetryCurves_ && !curves;
+    telemetryCurves_ = curves;
+    if (open && (!telemetryOpen_ || curvesStopped || telemetryFrames_ >= kTelemetrySeconds * sampleRate_)) {
         telemetryFrames_ = 0.0;
         Telemetry &t = *telemetryScratch_;
         synth_.telemetry(t);
@@ -277,8 +305,8 @@ void PluginCore::endBlock() {
 }
 
 // Main thread: the virtual keyboard. The host may be asleep, so ask it to run us.
-void PluginCore::playNote(int note, bool on) {
-    keys_.push({note, on});
+void PluginCore::playNote(int note, bool on, int velocity) {
+    keys_.push({note, on, false, velocity});
     hostRequestProcess();
 }
 
@@ -287,14 +315,14 @@ void PluginCore::auditionNote(int note, bool on) {
     hostRequestProcess();
 }
 
-// Audio thread: notes from the virtual keyboard play like MIDI notes without a note id; those the SEQ view plays to be
+// Audio thread: notes from the virtual keyboard play like MIDI notes without a note id, at their velocity; those the SEQ view plays to be
 // heard on a port of their own, which the sequencer leaves be.
 void PluginCore::playKeys() {
     KeyEvent ev;
     while (keys_.pop(ev)) {
         const NoteRef note{-1, ev.audition ? kAuditionPort : int16_t{0}, 0, static_cast<int16_t>(ev.note)};
         if (ev.on)
-            synth_.noteOn(note, kKeyVelocity);
+            synth_.noteOn(note, std::clamp(ev.velocity, 0, 127) / 127.0);
         else
             synth_.noteOff(note);
     }
@@ -545,25 +573,51 @@ void PluginCore::notifyParams(const ParamValues &before) {
     hostMarkDirty();
 }
 
-// The files in it are elsewhere now: the preset the patch is, and the favorite and recent presets, follow them.
+// The files in the folder `from` are in `to` now, or gone for an empty `to`: the preset the patch is, and the favorite
+// and recent presets, follow them. A patch whose file went stays as it sounds, an edited patch with no preset.
+void PluginCore::presetFolderMoved(const std::wstring &from, const std::wstring &to) {
+    const std::wstring prefix = from + L"\\";
+    const std::wstring &file = presetFile();
+    if (file.size() > prefix.size() && _wcsnicmp(file.c_str(), prefix.c_str(), prefix.size()) == 0) {
+        if (to.empty())
+            setPreset(L"", true);
+        else
+            setPreset(to + file.substr(from.size()), patchEdited());
+    }
+    const std::string from8 = utf8(std::filesystem::path(from)) + "\\", to8 = utf8(std::filesystem::path(to)) + "\\";
+    auto inFolder = [&](const std::string &kept) {
+        return kept.size() > from8.size() && _strnicmp(kept.c_str(), from8.c_str(), from8.size()) == 0;
+    };
+    readUserSettings(); // those another instance marked in it follow too
+    bool moved = false;
+    for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent}) {
+        if (to.empty()) {
+            moved = std::erase_if(*list, inFolder) > 0 || moved;
+            continue;
+        }
+        for (std::string &kept : *list)
+            if (inFolder(kept)) {
+                kept = to8 + kept.substr(from8.size());
+                moved = true;
+            }
+    }
+    if (moved)
+        writeUserSettings();
+}
+
 bool PluginCore::renamePresetFolder(const std::string &from, const std::string &to) {
     const std::wstring a = PresetLibrary::subfolderPath(from), b = PresetLibrary::subfolderPath(to);
     if (!presets_.renameFolder(from, to))
         return false;
-    const std::wstring prefix = a + L"\\";
-    const std::wstring &file = presetFile();
-    if (file.size() > prefix.size() && _wcsnicmp(file.c_str(), prefix.c_str(), prefix.size()) == 0)
-        setPreset(b + file.substr(a.size()), patchEdited());
-    const std::string from8 = utf8(std::filesystem::path(a)) + "\\", to8 = utf8(std::filesystem::path(b)) + "\\";
-    bool moved = false;
-    for (std::vector<std::string> *list : {&userSettings.favorites, &userSettings.recent})
-        for (std::string &kept : *list)
-            if (kept.size() > from8.size() && _strnicmp(kept.c_str(), from8.c_str(), from8.size()) == 0) {
-                kept = to8 + kept.substr(from8.size());
-                moved = true;
-            }
-    if (moved)
-        writeUserSettings();
+    presetFolderMoved(a, b);
+    return true;
+}
+
+bool PluginCore::deletePresetFolder(const std::string &folder) {
+    const std::wstring path = PresetLibrary::subfolderPath(folder);
+    if (!presets_.deleteFolder(folder))
+        return false;
+    presetFolderMoved(path, L"");
     return true;
 }
 
@@ -629,7 +683,9 @@ bool PluginCore::savePreset(const std::wstring &path) {
     // Written beside the file first and put in its place once whole, so a write that fails (a full disk, a file
     // another program holds) leaves the preset it would replace as it was. The scan lists only .fmv files.
     namespace fs = std::filesystem;
-    if (path.starts_with(PresetLibrary::kFactoryPrefix)) // a factory preset is built in: Save As saves it anew
+    // A factory preset is built in: Save As saves it anew. A file in the old Factory subfolder named as one would never
+    // be listed, and would load as the built-in one (see PresetLibrary::resolve()).
+    if (path.starts_with(PresetLibrary::kFactoryPrefix) || PresetLibrary::factoryPreset(PresetLibrary::resolve(path)))
         return false;
     const fs::path target(path), part(path + L".part");
     FILE *file = nullptr;
@@ -651,8 +707,6 @@ bool PluginCore::savePreset(const std::wstring &path) {
         return false;
     }
     if (!replaceFile(part.wstring(), target.wstring())) {
-        std::error_code ignored;
-        fs::remove(part, ignored);
         layout_.savedTempo = tempoBefore;
         return false;
     }

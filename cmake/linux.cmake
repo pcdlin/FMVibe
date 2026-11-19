@@ -94,6 +94,7 @@ add_executable(fmvibe-uishot tools/uishot.cpp)
 target_link_libraries(fmvibe-uishot PRIVATE fmvibe-core)
 fmvibe_options(fmvibe-uishot)
 add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
+include(cmake/manual.cmake)
 
 add_executable(fmvibe-presettool tools/presettool.cpp)
 target_link_libraries(fmvibe-presettool PRIVATE fmvibe-core)

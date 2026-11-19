@@ -347,12 +347,6 @@ inline void arrowHead(Canvas &c, Point base, Point dir, Color color) {
     c.fillPolygon(points, 3, color);
 }
 
-// What can be grabbed of an arrowhead with its base at `base`, pointing along `dir`.
-inline Rect arrowGrip(Point base, Point dir) {
-    const Point middle{base.x + dir.x * 4.0f, base.y + dir.y * 4.0f};
-    return {middle.x - 9.0f, middle.y - 9.0f, 18.0f, 18.0f};
-}
-
 // The grips that drag a wire by its ends, reaching back along it from where it meets its nodes: its arrowhead (from
 // the base at `base`, pointing along `dir`), and its start (at `start`, leaving along `dir`).
 inline Rect wireEndGrip(Point base, Point dir) {

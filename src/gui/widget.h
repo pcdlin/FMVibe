@@ -30,7 +30,7 @@ struct MenuItem {
 };
 
 // The keys the window sends while typing goes on or a dialog is open (see View::typing() and View::dialogKey()).
-enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste };
+enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down, Copy, Cut, Paste, Tab, BackTab, Duplicate };
 
 // What a widget is, which says what its param, a and b mean.
 enum class WidgetKind {
@@ -51,7 +51,7 @@ enum class WidgetKind {
     NoteDisplay,  // a = kNoteSource or kVelocitySource: its display in the keyboard strip; a click opens its curve
     FxFold,       // a = effect slot: folds its card to a strip, or unfolds it
     SourceFold,   // a = source place: the same for its card
-    MacroHandle,  // a = kMaxSources + macro, kNoteSource, kWheelSource, kVelocitySource or kBendSource: drag onto a target, as a
+    MacroHandle,  // a = kMaxSources + macro, kNoteSource, kWheelSource, kVelocitySource, kBendSource or kOpSource + op (an operator's letter on its page): drag onto a target, as a
                   // source's handle
     WaveButton,   // a = op, b = wave: one of the common waves
     WaveMore,     // a = op: "..." opens the list of the other waves
@@ -252,6 +252,9 @@ enum class WidgetKind {
     SeqSnap,      // the snap's button: opens its list
     SeqSnapMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
     SeqSnapItem,  // b = the snap it picks (see kSeqSnaps)
+    SeqMacroTab,  // the lane's tab of the macros' curves: shows the macro last shown and opens their list
+    SeqMacroMenu, // a = 1 on the open list, 0 around it (a click there closes it)
+    SeqMacroItem, // b = the macro whose curve it shows
     SeqStretch,   // b = 2 twice as long, -2 half as long: the notes picked, or the whole pattern
     SeqField,     // b = 0 pitch, 1 velocity, 2 chance, 3 length, 4 offset: a value of the notes picked, dragged
     SeqFlag,      // b = 0 Slide, 1 Mute: switches it for the notes picked

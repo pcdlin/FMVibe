@@ -1,6 +1,7 @@
 # Builds a release whenever a version tag (v0.1, v1.2.3, ...) is pushed: the plugins, CLAP and VST3, built and tested
 # on Windows and run through clap-validator and Steinberg's VST3 validator, go into a GitHub release as two zips, one
-# per format, and the browser demo (web/, see AGENTS.md) goes on GitHub Pages. Nothing is published unless both build.
+# per format with the user manual, and the browser demo (web/, see AGENTS.md) goes on GitHub Pages with the manual
+# beside it. Nothing is published unless both build.
 # Needs Pages set to deploy from GitHub Actions, and the github-pages environment to allow v* tags (see "Releasing" in
 # AGENTS.md).
 name: Release
@@ -37,19 +38,23 @@ jobs:
         run: .\build.ps1 -Validate
 
       # One zip per format, so a download holds only the plugin a DAW takes. The MIT licenses of FMVibe and of the
-      # SDK whose code is compiled in go with every copy.
+      # SDK whose code is compiled in go with every copy, and so does the user manual: one HTML file that opens
+      # offline.
       - name: Package
         run: |
           $tag = $env:GITHUB_REF_NAME
 
+          python tools\manual.py docs\manual.md dist\FMVibe-Manual.html
+          if ($LASTEXITCODE -ne 0) { throw 'The user manual did not build.' }
+
           New-Item -ItemType Directory dist\clap | Out-Null
-          Copy-Item build\release\FMVibe.clap, LICENSE dist\clap
+          Copy-Item build\release\FMVibe.clap, LICENSE, dist\FMVibe-Manual.html dist\clap
           Copy-Item build\release\_deps\clap-src\LICENSE dist\clap\LICENSE-CLAP
           Compress-Archive dist\clap\* "FMVibe-$tag-windows-x64-clap.zip"
 
           New-Item -ItemType Directory dist\vst3 | Out-Null
           Copy-Item -Recurse build\release\FMVibe.vst3 dist\vst3
-          Copy-Item LICENSE dist\vst3
+          Copy-Item LICENSE, dist\FMVibe-Manual.html dist\vst3
           Copy-Item build\release\_deps\vst3sdk\pluginterfaces\LICENSE.txt dist\vst3\LICENSE-VST3
           Compress-Archive dist\vst3\* "FMVibe-$tag-windows-x64-vst3.zip"
 
@@ -107,6 +112,11 @@ jobs:
           source build/emsdk/emsdk_env.sh
           cmake --preset web
           cmake --build --preset web
+
+      # The user manual beside the demo, at https://pcdlin.github.io/FMVibe/manual.html, which the README links to.
+      # The page doesn't load it, so it stays out of version.txt's hash.
+      - name: Manual
+        run: python3 tools/manual.py docs/manual.md build/web/site/manual.html
 
       - uses: actions/configure-pages@v6
 

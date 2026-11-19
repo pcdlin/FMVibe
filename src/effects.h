@@ -53,6 +53,9 @@ public:
     // In place. Reads the slot params and the graph's from `p`; synced delays and sweeps use `tempo` (BPM),
     // and a filter's key tracking follows `pitch`, the newest voice's (semitones, 69 is A4).
     void process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch);
+    // Filter FM on the filter effect in `slot`: how many octaves its cutoff moves each sample of the next process(),
+    // which takes at most kChunk frames while one is set; null for none. The caller keeps them until then.
+    void setCutoffFm(int slot, const float *octaves) { cutoffFm_[slot] = octaves; }
     // Something is still to be heard after the input went silent: delay echoes, a reverb's tail.
     bool ringing() const { return tail_ > 0; }
     // Silences what the effects still hold (MIDI's All Sound Off): every effect running fades out over a few
@@ -115,8 +118,9 @@ private:
 
     // What the effect in `slot` runs with (see fx::Context), and where it puts what the editor's meters show.
     fx::Context context(int slot, const ParamValues &p, double tempo, double pitch) const {
-        return {p, slot, sampleRate_, rampShortest_, tempo, pitch};
+        return {p, slot, sampleRate_, rampShortest_, tempo, pitch, cutoffFm_[slot]};
     }
+    std::array<const float *, kFxSlots> cutoffFm_{}; // see setCutoffFm()
     fx::Meters meters(int slot) { return {reduction_[slot], bandLevel_[slot], bandGain_[slot]}; }
 
     // A slot's effect in place on `io`, fading as it is switched; `keep` grows while it rings on.

@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount <= 9 * 3000);
+static_assert(kParamCount == 32298 && kParamCount <= 11 * 3000);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -60,6 +60,10 @@ static_assert(idsRoundTrip(21000, 22500), "param id layout overlaps");
 static_assert(idsRoundTrip(22500, 24000), "param id layout overlaps");
 static_assert(idsRoundTrip(24000, 25500), "param id layout overlaps");
 static_assert(idsRoundTrip(25500, 27000), "param id layout overlaps");
+static_assert(idsRoundTrip(27000, 28500), "param id layout overlaps");
+static_assert(idsRoundTrip(28500, 30000), "param id layout overlaps");
+static_assert(idsRoundTrip(30000, 31500), "param id layout overlaps");
+static_assert(idsRoundTrip(31500, 33000), "param id layout overlaps");
 #endif
 
 namespace {
@@ -208,6 +212,7 @@ std::string letter(int op) {
 // A source as hosts name its fields ("Mod 3", "Macro 2", "Note"), or None for -1: an Aux param's value text.
 std::string auxSourceName(int source) {
     return source < 0             ? std::string(tr(Str::ValueNone))
+           : isOpSource(source) ? trf(Str::ParamOp, {letter(source - kOpSource)})
            : isBend(source)     ? std::string(tr(Str::ParamBendSource))
            : isVelocity(source) ? std::string(tr(Str::ParamVelocitySource))
            : isWheel(source)    ? std::string(tr(Str::ParamModWheel))
@@ -681,9 +686,25 @@ void buildTable(ParamTable &t) {
         add(paramIndex(BendParam::Bipolar), bend + " " + tr(Str::ParamBipolar), bend, ParamKind::Toggle, 0.0, 1.0, 1.0);
     }
 
+    // The operators start mapped to nothing, bipolar like an LFO: their outputs swing about nothing.
+    for (int op = 0; op < kOps; ++op) {
+        const std::string name = trf(Str::ParamOp, {letter(op)});
+        const std::string module = tr(Str::ModuleModulation) + ("/" + name);
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const std::string n = std::to_string(slot + 1);
+            add(slotTargetIndex(kOpSource + op, slot), name + " " + trf(Str::ParamTarget, {n}), module,
+                ParamKind::ModTarget, 0.0, kMaxParamId + 1.0, 0.0);
+            add(slotAmountIndex(kOpSource + op, slot), name + " " + trf(Str::ParamAmount, {n}), module,
+                ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        }
+        add(paramIndex(op, OpSourceParam::Bipolar), name + " " + tr(Str::ParamBipolar), module, ParamKind::Toggle, 0.0,
+            1.0, 1.0);
+    }
+
     // Every slot of every source has an aux, an Amount, a curve and an aux depth, and those of the sources under the keyboard their bypass.
     for (int source = 0; source < kAllSources; ++source) {
-        const std::string name = isBend(source)       ? tr(Str::ParamBendSource)
+        const std::string name = isOpSource(source)   ? trf(Str::ParamOp, {letter(source - kOpSource)})
+                                 : isBend(source)     ? tr(Str::ParamBendSource)
                                  : isVelocity(source) ? tr(Str::ParamVelocitySource)
                                  : isWheel(source)  ? tr(Str::ParamModWheel)
                                  : isNote(source)   ? tr(Str::ParamNote)
@@ -1092,8 +1113,11 @@ void buildTable(ParamTable &t) {
             // Its curves, empty to begin with.
             for (int c = 0; c < kSeqCurves; ++c) {
                 const SeqCurve curve = static_cast<SeqCurve>(c);
-                const std::string n =
-                    name + " " + tr(curve == SeqCurve::Bend ? Str::ParamSeqBendCurve : Str::ParamSeqWheelCurve) + " ";
+                const std::string label = curve == SeqCurve::Bend       ? std::string(tr(Str::ParamSeqBendCurve))
+                                          : curve == SeqCurve::ModWheel ? std::string(tr(Str::ParamSeqWheelCurve))
+                                                                        : trf(Str::ParamSeqMacroCurve,
+                                                                              {std::to_string(seqCurveMacro(curve) + 1)});
+                const std::string n = name + " " + label + " ";
                 add(seqCurveCountIndex(pattern, curve), n + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 0.0,
                     kSeqCurvePoints, 0.0);
                 for (int point = 0; point < kSeqCurvePoints; ++point) {

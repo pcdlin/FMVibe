@@ -24,6 +24,10 @@
 
 namespace fmvibe::gui {
 
+namespace detail {
+enum class Curve; // see icons.h
+}
+
 // Drawn shapes, by number: a freeform LFO's (shape = the source), a shaper's curve (shape = kMaxSources + the shaper's
 // unit: an effect slot, or kFxSlots + a shaper), the note source's curve (shape = kNoteCurve) or velocity's
 // (kVelocityCurve). Shaper units (see shaperParams()): the shaper effects, by slot, then the voices' shapers, kFxSlots +
@@ -70,10 +74,9 @@ public:
     int partialEditing() const;
     // The panel the big editor fills.
     Rect shapePanel() const;
-    // Opening and closing them. A shape opened (an effect's or a voice shaper's edit button, the note source's display),
-    // or toggled: open, or closed if it is the one asked for already. Both full-size editors closed (another view
-    // shown), the partials of `op` opened in their place, or closed unless they are `op`'s (another node shown).
-    void openShape(int shape) { shapeEditor_ = shape; }
+    // Opening and closing them. A shape toggled (an effect's or a voice shaper's edit button, the note source's display):
+    // open, or closed if it is the one asked for already. Both full-size editors closed (another view shown), the
+    // partials of `op` opened in their place, or closed unless they are `op`'s (another node shown).
     void toggleShape(int shape) { shapeEditor_ = shapeEditor_ == shape ? -1 : shape; }
     void close();
     void openPartials(int op);
@@ -224,6 +227,9 @@ private:
     void paintClipCurveEditor(Canvas &c, int shape);
     void paintNoteCurveEditor(Canvas &c);
     void paintVelocityCurveEditor(Canvas &c);
+    // The note source's or velocity's curve over the plot `r`, filled under it, and a dot `dot` of the way across it (0..1,
+    // below 0 for none).
+    void paintSourceCurve(Canvas &c, int shape, detail::Curve curve, Rect r, Color color, double dot);
     // The editor's grid; `zero` is where the zero line goes, and a centered grid stresses its middle line.
     void paintShapeGrid(Canvas &c, Rect area, double zero, bool centered);
     void paintShapeGridControls(Canvas &c);

@@ -21,13 +21,18 @@ struct Hilbert {
 
     // The in-phase and quadrature parts of `x`.
     std::array<double, 2> process(double x, const HilbertCoefs &coefs);
+    // The real part of what the complex signal `re` + j `im` holds at positive frequencies, those at negative ones
+    // gone: each part through a chain of its own, at the level the real part alone has for a positive frequency.
+    double positive(double re, double im, const HilbertCoefs &coefs);
 };
 // The same for every frequency shifter at a rate (Effects works them out once, in prepare()).
 HilbertCoefs hilbertCoefs(double sampleRate);
 
-// The frequency shifter: each side's analytic signal turned by an oscillator, fed back.
+// The frequency shifter: each side's analytic signal turned by an oscillator, what that takes past 0 Hz or half the
+// rate left out, fed back.
 struct Shifter {
     std::array<Hilbert, 2> hilbert{};
+    std::array<Hilbert, 2> oneSided{}; // keeps the turned signal's positive frequencies
     std::array<double, 2> phase{}; // the oscillators, in cycles
     std::array<double, 2> last{};  // the shifted sound, fed back
     double mix = 1.0;

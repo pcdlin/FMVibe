@@ -3,7 +3,7 @@
 Notes for anyone (human or agent) working on FMVibe, a six-operator FM synthesizer as a CLAP and a VST3 instrument
 plugin for Windows. The README introduces the plugin and says how to build and install it. What the plugin does and how
 its editor works, in full, is in [docs/features.md](docs/features.md): read the parts you need before changing a
-feature.
+feature. How to use it, for the plugin's users, is in the user manual, [docs/manual.md](docs/manual.md).
 
 ## Ground rules
 
@@ -19,8 +19,10 @@ feature.
 - Both plugins sit on one core, `PluginCore` (`src/plugincore.cpp`): the params, the state, the editor's
   `Controller`, presets and the editor window. What one format does goes in its own file (`src/plugin.cpp` for CLAP,
   `src/vst3plugin.cpp` for VST3), and what both do in the core, which tells each host through its `host...()` hooks.
-- When a feature changes, update [docs/features.md](docs/features.md); keep `README.md` to its short
-  description and the build and install instructions.
+- When a feature changes, update [docs/features.md](docs/features.md), and the user manual,
+  [docs/manual.md](docs/manual.md), where it says how to use what changed: the manual is for the plugin's users, so
+  it says what a control does and how to work it, not how the engine does it, in short, plain sentences. Keep
+  `README.md` to its short description and the build and install instructions.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
 - The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
   demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`) and Cairo for the Linux development
@@ -40,11 +42,18 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 ## Testing
 
-`ctest` runs four programs, four at a time (the test presets' and `build.sh`'s jobs):
+`ctest` runs five programs, four at a time (the test presets' and `build.sh`'s jobs):
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
-  settings file.) It loads the `.clap` and checks the parameter
+  settings file.) It first runs itself as other processes sharing a settings file: categories, favorites and recent
+  presets edited in two at once all counting, four editing at once losing no edit, and a file another program holds
+  waited for or, held longer, left as it is with the edit written later. It sets `FMVIBE_FIXED_SEED`, as the VST3 test
+  and `fmvibe-bench` do, for instances whose notes draw the same randomness each time (the plugin otherwise draws its
+  own for each instance). It loads the `.clap`, creates instances on two threads at once, checks that two instances'
+  noise differs without that variable, that an instance run out of memory (a process of its own, limited by a job
+  object) tells the host, plays silence and activates once there is room, that Enter in one of two editors in one host
+  window leaves a question open in the other, and checks the parameter
   table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
   neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
@@ -176,7 +185,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   It opens the editor inside a hidden host window, where the preset bar's next arrow loads a preset with no param
   events, the host asked to rescan the values and marking the project changed, and drags the Volume knob with mouse
   messages. It checks that the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
-  value the host hands back right after isn't taken; that on the SEQ tab a wheel message with Ctrl in its keys zooms
+  value the host hands back right after isn't taken; that a shaper effect dragged along the line, and that undone, ask
+  the host for no restart while one taken out of the line asks for one, from the main-thread callback; that on the SEQ tab a wheel message with Ctrl in its keys zooms
   the roll, though the thread's own idea of Ctrl is up (as while the host has the keyboard); that with nothing
   sounding processing sleeps, but not while the
   editor shows a free LFO running (the plugin asking the host to process again as one comes on); and that an editor
@@ -246,7 +256,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
     saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
     Alternate, the pan a new operator starts with, and its depth on a source's Division loading 26/28 as deep, as it
-    grew two note values slower, a version 13 state's as saved;
+    grew two note values slower, a version 13 state's as saved; and a version 13 state's sequencer curves loading with
+    points that hold their ends as they played, a version 14 state's as saved, wrapping around;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -287,7 +298,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
   - a frequency shifter's mirror image 60 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
-    192 kHz;
+    192 kHz; what it takes past 0 Hz or half the rate 60 dB down rather than reflected back, what stays between them
+    at its level, and a spiral of its feedback running out at 0 Hz;
   - the effects keeping the top where their knobs don't take it: a quiet 15 kHz sine through a soft shaper and a
     driven high-pass filter effect within 1.5 dB of a 1 kHz one, the parametric EQ's bands up high (a bell, a dip, a
     high shelf, a low cut and a high cut) sounding within 1.25 dB of their drawn curves from 3 to 15 kHz, and a
@@ -310,6 +322,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the DC blocker before the effects: a squeezed square coming out with no DC, a Ring route at unison going into
     a hard shaper as its octave alone (clipped evenly, no 4th harmonic), and the output exactly silent once the
     note has rung out, the effects resting;
+  - an operator's output as a source: one at 5 Hz swinging its target both ways, one at 12 kHz averaging away, unipolar
+    taking its target one way, silent or switched off moving nothing, and silent as an aux scaling its modulation to
+    nothing;
+  - filter FM, an operator on the Cutoff of a voice's filter and of the filter effect: sidebands from a modulator at
+    3 kHz (two whole cycles a control block), every filter type finite at full depth and resonance in both places and
+    a voice ending with its note, the aliasing at each oversampling factor, a slow operator moving a cutoff as far as an
+    LFO does, and the filter effect's FM taken over by a new note without a click;
   - a macro's knob modulated: along a chain of macros out of their numbers' order (the telemetry saying where the
     knobs stand), in a loop a state holds, steadily and alike each time, and per voice by velocity, a loud note's
     knob silencing it while a soft one played with it plays as it would alone;
@@ -366,7 +385,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     again keeping its list until it is done, the same folder again being its source and one inside or around it a source of
     its own, a second scan reading only what changed, a folder gone showing missing, scans running while the list is read
     and a folder removed, twenty thousand files scanned in good time, and a library going away stopping its scan;
-  - an operator's Phase starting its wave that far into its cycle, set or modulated;
+  - an operator's Phase starting its wave that far into its cycle, set or modulated; turned under a held note (a
+    synced one too) playing on as a note started there, without a click, 100 % leaving it as at 0 %, a new note
+    starting where the knob stands, and an LFO on it swinging a held note's phase as far both ways, from a knob at 0 %
+    too, without zipper;
   - an operator's Note Sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
     Pulse, Steps, Sync, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
     plain wave bit for bit, sync switched on and off and a warp switched on and changed to another under a note
@@ -403,8 +425,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     reported, the sequencer's notes' never, the playhead in the telemetry, and the keys its notes are written on, not those they play), the keys the telemetry shows held leaving
     its notes out, and through the synth a note sounding from its sample however the blocks are split; its curves
     standing where the playhead is (back through a step played reversed, a bent segment off the straight line, held
-    before the first point), doing nothing without points or while it doesn't play, and through the synth a bend curve
-    bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot;
+    wrapping round the pattern's end from the last point to the first, a point past the end left out), doing nothing without points or while it doesn't play, and through the synth a bend curve
+    bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot, the telemetry telling the
+    wheels what both add as they play and nothing once the key is let go or the sequencer is switched off; and a macro's
+    curve taking the place of its knob wherever the knob is set, moving what the macro modulates and no other macro, the
+    telemetry saying how far it moves the knob from where it is set and nothing once it stops;
   - the effects' latency, on an impulse through effects that run oversampled and leave the sound as it is (a filter
     and an amp at Mix 0): the input straight out beside a filter, the filter on and off, a split with an amp at 4x on
     one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row beside the input
@@ -454,7 +479,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the row changing nothing, the split showing there as its container;
   - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
   - the output meter and scope moving repainting the header alone, a key, the Pitch Bend param and the host's bend
-    on top of it (its wheel) the keyboard alone and an operator's scope
+    on top of it (its wheel) the keyboard alone, the sequencer's bend and mod wheel curves moving their wheels the
+    keyboard's panel alone, editing no param and each wheel back at its param as they stop (read off the rendered
+    pixels), and an operator's scope
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
     as notes play, likewise: an LFO modulating nothing moving repainting its card alone, on an operator's param its
     card and the panels' row, on the header's Pan its card and the header, on another LFO's Rate the two cards,
@@ -491,6 +518,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     offering Move to High only (Move to nothing on the main line's cards), which puts it at the high band's end,
     undone; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
     pixels), the first's list putting an effect at the line's start;
+  - a split's solo and band count buttons and a switched-off node's ghost showing their tooltips (read off the rendered
+    pixels);
   - the effects graph's box taking the room the inspector's card leaves, more beside a narrow card than a wide one
     (read off the rendered pixels);
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
@@ -521,6 +550,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
+  - an operator picked as a source from the MODS tab's source menu, given a target, bipolar to begin with, and its
+    row's switch making it unipolar, undoably;
+  - an operator's letter on its page lit under the mouse (read off the rendered pixels) and dragged onto a knob
+    modulating it, undoably; and its handle and an LFO's held over a view's tab half a second showing that view (not
+    before, and passed over the tabs showing none), let go of there modulating nothing, held as long over a node in
+    the graph, an operator's and a filter's name in the matrix (a row's and a column's) and a node's tab atop the
+    inspector showing that node in the inspector, still off (passed over one, not), and carried back still landing on a knob;
   - a MODS row's depth bar ticking where its modulation is now: an LFO's under a playing note (none with no note),
     a macro's from its knob (read off the rendered pixels);
   - a node switched on where another one shown sits coming back clear of it, undoably, and one whose place is free
@@ -549,7 +585,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     from it;
   - a wire label under the mouse opening into a pill (read off the rendered pixels): its mode part's list picking
     the route's mode and the wheel stepping it, undoably, its × removing the route (and an OUT label's its node's
-    output); resting, a label showing a mode other than Phase (read off the rendered pixels); the mode also picked
+    output), the open pill taking clicks and the wheel over the wire ends under it, which take them beside the label
+    once it closes, and a resting label taking a drag over a wire's start under it;
+    resting, a label showing a mode other than Phase (read off the rendered pixels); the mode also picked
     from its label's and its matrix cell's
     right-click menus (the cell's corner showing the glyph, read off the rendered pixels) and from the operator
     page's INPUTS tab, whose label sets the depth, each an undo step; a route moved onto another operator keeping
@@ -574,6 +612,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
     they modulate something
     (read off the rendered pixels);
+  - the matrix's cells keeping their width-to-height ratio, the mouse finding a cell across its width and not in the
+    gap after it, and the cells and legend staying inside the panel (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, the output meter and its clip light, and the
     output scope beside it, empty with nothing captured and drawing a span at its peak (read off the rendered
     pixels), its height easing down to a quieter span, and its spans too small to draw painting nothing again;
@@ -631,6 +671,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
+  - an envelope's curve following the modulation of its release and sustain, a faint line staying where the knobs
+    set it (read off the rendered pixels);
   - an operator's Ratio readout: each digit dragged by its own place, carrying and held to 64.00, each drag an undo
     step; the wheel stepping the digit under the mouse, a double-click rounding to it, its depth handle dragging an octave every 60 px, the hovered digit lit (read off
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
@@ -706,7 +748,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     their displays faint until they modulate something (read off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
-    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
+    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; a key clicked playing at
+    velocity 1 at its top and 127 at its bottom (a black key along its own height), and a key slid onto as hard as
+    where the mouse enters it; a key the host holds easing up to lit over a few polls (read off the rendered pixels); collapsing the keyboard
     strip to its top row by its chevron or title, the wheels' handles staying in it and still mapping the wheels; and
     Bend's knob, in the header after Pitch, turning; the bend wheel dragged editing the Pitch Bend param in one
     gesture (the host following it), springing back to the middle and leaving nothing to undo;
@@ -730,7 +774,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     name, category, author and description; its + by FOLDERS making a folder and the Save dialog's + New a category;
     the x on one of the user's categories removing it after asking, its presets keeping it, listed in grey;
     Edit Info writing a preset's author and line into its file; a Save dialog's folder's right-click menu opening it in
-    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); underscores typed into the Save dialog's name showing (read off
+    Explorer, making a folder in it, renaming it (a name taken refused) and deleting it after asking, and the browser's tree's the same (none on Factory); Tab and Shift+Tab stepping through the Save dialog's text fields, round their ends, each entered all selected (in Edit Info passing over the name); underscores typed into the Save dialog's name showing (read off
     the rendered pixels); a text field given UTF-8 (a preset's author from its file) cut, stepped through, erased and
     placed by the mouse between whole characters; Save As saving the patch as a new preset in its preset's
     folder with its info, as the patch's preset; the browser's Save Here beside Close, only on a folder of the user's and
@@ -818,7 +862,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
     text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history;
   - the SEQ tab, between FX and MODS (a note put down by a double-click and held dragged across lengthening it, to the right its end, to the left its start): its card and an empty roll, and a dot on the tab while the sequencer is on (read
-    off the rendered pixels), as on FX's while an effect in the line is switched on; a double-click putting a note down on its step (a
+    off the rendered pixels), as on FX's while an effect in the line is switched on; a slight line parting the roll from the lane in every theme (read off the rendered pixels); a double-click putting a note down on its step (a
     step long at 1/16) and on the note deleting it; the notes and the playhead where the telemetry puts it (read off
     the rendered pixels); a note the playhead reaches glowing, and not with the glow setting off (read off the rendered
     pixels); a note landing on another's start and pitch (dragged, or by the arrows) taking its place,
@@ -848,12 +892,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     click doing nothing (no pen) and a Ctrl+double-click putting a point down on the grid and a Ctrl+drag moving it
     onto the grid (the cursor moving over it), undoably, with Draw a click putting one down where the mouse is (a pen)
     and a double-click there leaving it, a segment's middle dragged up bending it (the cursor up and down) and
-    double-clicked straightening it, with Select a point double-clicked going, and the curve drawn where the lane was
-    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
+    double-clicked straightening it, the last segment's too, round the pattern's end, with Select a point double-clicked going, and the curve drawn where the lane was
+    bare (read off the rendered pixels); on MOD WHEEL Draw's Shift+drag drawing a point a step; the MACRO tab looking as the lane's other tabs do, lit only while picked and with no border (read off the rendered pixels), its list of macros picking the one the lane shows, a point drawn on its curve alone, undoably, a macro with a curve showing it small in its row and its dot full where one without has it faint, on the tab and in the list (read off the rendered pixels), a click around the list and Escape closing it, the wheel stepping the tab along the macros, and where the curve holds the macro's knob showing on the knob with no param edited (read off the rendered pixels); a double-click on the ruler looping the whole pattern; the scale's list picking Minor and FOLD showing
     only its rows, and a note off it keeping its row, hatched (read off the rendered pixels); the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
     says (read off the rendered pixels); copying the pattern into the next empty one; and the bin clearing the pattern,
     asking first, undoably.
-  - an operator's source switch: on its title row, left of the edit button, the knobs, the well and the controls' labels inside
+  - an operator's source switch: on its title row, after its letter and left of the edit button, the knobs, the well and the controls' labels inside
     the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place); TABLE making the operator a Wavetable and opening its tab, WAVE
     bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
     picker, at the top of the TABLE tab and on no other, opening the table browser, a row picking a table, Done closing
@@ -917,7 +961,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
     (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
-    allocated asking the host for a restart, and the latency the CLAP plugin reports (the voices' decimator's);
+    allocated asking the host for a restart, the latency the CLAP plugin reports (the voices' decimator's), asked for
+    while inactive what the next activation makes it, and
+    `setActive()` out of memory answering `kOutOfMemory` and going through once there is room;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
     host read the values again, a foreign blob refused, and a state with a table of its own playing it and
@@ -927,6 +973,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
     the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
     opening again after.
+- **User manual** (`tools/manual.py`, `cmake/manual.cmake`): turns `docs/manual.md` into the one self-contained
+  HTML file the release ships, `FMVibe-Manual.html` in the build folder (its styles inline, the screenshots as data
+  URIs, system fonts, so it opens offline), and fails on a link to a heading that isn't there (the manual's links
+  use GitHub's heading ids), an image that isn't there, a link to a file, which the page can't carry, or Markdown
+  it couldn't convert. It reads only what the manual uses: headings, paragraphs, lists nested by two spaces, tables,
+  fenced blocks, images, links, bold, italics and code; something else the manual takes up needs a line there. It
+  needs Python 3 and nothing else, and without Python the test is left out (CMake says so).
 
 More checks:
 
@@ -972,10 +1025,11 @@ built there, `./build.sh` builds: the engine and the editor (`fmvibe-core`, draw
 `src/gui/canvas_cairo.cpp`), the audio quality test, the UI snapshots and the preset tool (`cmake/linux.cmake`, which
 `CMakeLists.txt` takes in on any system but Windows). It needs CMake, Ninja, a C++20 compiler (GCC 13 or Clang 18),
 pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK with a git clone of the tag
-`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads.
+`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads. The manual's check takes
+Python 3 too, where there is one.
 
 ```bash
-./build.sh                  # build/linux: build, then ctest (quality, ui); about a minute from scratch
+./build.sh                  # build/linux: build, then ctest (quality, ui, manual); about a minute from scratch
 ./build.sh --skip-tests     # build only
 ./build.sh --debug          # build/linux-debug
 ./build.sh --shots 2        # render the snapshots only, at 2x, into build/linux/ui-shots
@@ -1058,7 +1112,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme, hue, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
-  the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
+  the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with). The editor's keyboard plays as hard as where its keys are
+  clicked.
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
   what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which the editor's
@@ -1079,10 +1134,12 @@ A version tag publishes a release. `.github/workflows/release.yml` builds the pl
 2026) with `build.ps1 -Validate`, so every test and both validators have to pass. It packs each format into a zip
 of its own: `FMVibe.clap`, `LICENSE` and the CLAP SDK's license (`LICENSE-CLAP`) into
 `FMVibe-<tag>-windows-x64-clap.zip`, and the `FMVibe.vst3` folder, `LICENSE` and the VST3 SDK's license
-(`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`. It then creates a GitHub release for the tag with both
+(`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`, each with the user manual, `FMVibe-Manual.html`
+(`tools/manual.py`, from `docs/manual.md`). It then creates a GitHub release for the tag with both
 zips and notes generated from the commits since the previous tag. Meanwhile it builds the
 browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
-(`https://pcdlin.github.io/FMVibe/`). Neither goes out unless both build.
+(`https://pcdlin.github.io/FMVibe/`), with the manual beside it as `manual.html`, which the README links to: the
+manual online is the released version's, as the download is. Neither goes out unless both build.
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
@@ -1136,7 +1193,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks, and the DATA chunk of the patch's tables and samples; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the factory presets, built in, and the preset folder and its scan |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories and where the preset browser opens, the table browser's folders) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, the editor's size, favorite and recent presets, the user's own categories and where the preset browser opens, the table browser's folders), which processes share under a lock, each merging its own edits into the file as it is |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
@@ -1199,6 +1256,7 @@ breakpoints in `src/` then hit.
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
 | `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
 | `tools/bench.cpp` | `fmvibe-bench`: what a build of the CLAP plugin costs (`time`) and what it plays (`render`), to compare builds by |
+| `tools/manual.py`, `cmake/manual.cmake` | The user manual (`docs/manual.md`) as one self-contained HTML file, for the zips and GitHub Pages, and the `manual` test that checks it |
 | `tools/bench.ps1` | Builds commits (or the working tree) and compares them with `fmvibe-bench`: bit for bit, then CPU, round-robin |
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `build.sh`, `cmake/linux.cmake` | The Linux development build: the engine, the editor over Cairo, the quality test and the UI snapshots (see [Linux development build](#linux-development-build)) |
@@ -1249,10 +1307,10 @@ itself.
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
   17000 + 200·slot; the slots past the first 16 every field 30000 + 200·(slot - 16)), the chain's order 33400 + place,
   slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's,
-  velocity's and the pitch bend's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
+  velocity's, the pitch bend's and the operators', 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
   10000 + 100·op, macros 11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod
   wheel's slots 11500+, velocity 11600+ (its slots, then its curve and Bipolar), the pitch bend 11700+ (its slots,
-  then Bipolar), the
+  then Bipolar), the operators as sources 57000 + 40·op (their slots, then Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the routes' modes
   700 + 10·from + to (from by the routing graph's node order: the operators, the filters, the shapers; to an
   operator; an operator's own field, its feedback, hidden and always Phase), the voice shapers'
@@ -1270,8 +1328,8 @@ itself.
   two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
   read when loading a state from before version 9. The sequencer's settings are 40000+, each pattern's length and
   loop 40100 + 10·pattern, each pattern's notes 41000 + 10·(128·pattern + note), and each pattern's curves
-  47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, a point count and 64 (x, y, curve) points each
-  (see `SeqParam`, `SeqCurveParam`).
+  47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, and each macro's 50000 + 200·(8·pattern + macro), a
+  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
@@ -1300,8 +1358,8 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,329 of the 25,444 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
-  `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
+- Hosts are given 1,527 of the 32,298 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+  `src/params.h`), 1,088 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, a Sample operator's
   root, loop, mode and reverse, the chain's retired order, the feedback's route modes and the retired fields), the operators'
   Table and Sample (wiring, as a slot's target is), every slot's target, aux, curve and bypass, the effect slots'
@@ -1331,7 +1389,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 13: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 14: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1353,7 +1411,9 @@ itself.
   since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
   its copies played, and a modulation's depth on a source's Division loads scaled by
   `kRetiredSourceDivisionSteps / kSourceDivisionSteps`, since it now reaches two note values slower, 8/1T and 8/1,
-  numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values), followed by the editor
+  numbered -1 and -2 (`kSlowestDivision`) so that its stored values keep their note values; before version 14, a
+  pattern's bend and mod wheel curves, which held their first and last points' values and now wrap around the pattern's
+  end, load with points at the pattern's start and end that hold them (`holdSeqCurveEnds()`)), followed by the editor
   layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
@@ -1401,7 +1461,8 @@ itself.
   reports to the host in its place in the block (CLAP's output events, VST3's output param changes), as a hardware mod
   wheel turning the wheel in the editor's keyboard strip.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
-  allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
+  allocates. Where there isn't the memory, the activate fails (CLAP's `activate` returns false, VST3's `setActive()`
+  `kOutOfMemory`), and the plugin plays silence until one goes through. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then
   deactivates and reactivates the plugin (a host that doesn't is asked again once more voices or another
   oversampling factor need one). So does an edit or a state that moves the latency (`PluginCore::latency()`: the

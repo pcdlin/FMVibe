@@ -9,6 +9,7 @@ void FilterFx::prepare(double sampleRate) {
     for (ZeroBuffer &comb : combs) // the filter runs at twice the rate (see run())
         comb.assign(static_cast<size_t>(combLength(2.0 * sampleRate)), 0.0f);
     settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // for this rate
+    fmRange = cutoffFmRange(2.0 * sampleRate);
     const double transition = halfBandTransition(sampleRate);
     for (auto *bands : {&up, &down})
         for (HalfBand &band : *bands)
@@ -24,6 +25,36 @@ void FilterFx::start(const Context &ctx) {
         down[ch].reset();
     }
     mix = ctx.at(FxParam::FilterMix);
+    fmLast = 0.0;
+}
+
+double FilterFx::runModulated(const float *octaves, float *const *io, uint32_t n, double mixStep) {
+    FilterSettings moved = settings;
+    const int combSize = static_cast<int>(combs[0].size());
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        mix += mixStep;
+        double twice[2][2];
+        for (int ch = 0; ch < 2; ++ch)
+            up[ch].processUp(io[ch][s], twice[ch][0], twice[ch][1]);
+        // The modulator comes at the host's rate: half way to this sample's, then there.
+        const double to = octaves[s];
+        for (int t = 0; t < 2; ++t) {
+            // The diode's stages take a system solved anew: every other sample of these is enough at twice the rate.
+            if (t == 0 || moved.type != FilterType::Diode)
+                modulateCutoff(moved, settings, std::exp2(t == 0 ? 0.5 * (fmLast + to) : to), fmRange);
+            for (int ch = 0; ch < 2; ++ch) {
+                double &x = twice[ch][t];
+                const double y = channels[ch].process(x, moved, combs[ch].data(), combSize);
+                peak = std::max(peak, std::abs(y));
+                x += (y - x) * mix;
+            }
+        }
+        fmLast = to;
+        for (int ch = 0; ch < 2; ++ch)
+            io[ch][s] = static_cast<float>(down[ch].process(twice[ch][0], twice[ch][1]));
+    }
+    return peak;
 }
 
 double FilterFx::run(const Context &ctx, float *const *io, uint32_t n) {
@@ -60,6 +91,9 @@ double FilterFx::run(const Context &ctx, float *const *io, uint32_t n) {
     // two stay in step.
     const FilterSettings &now = settings;
     const double mixStep = rampStep(mix, ctx.at(FxParam::FilterMix), n, ctx.rampShortest);
+    if (ctx.cutoffOctaves)
+        return runModulated(ctx.cutoffOctaves, io, n, mixStep);
+    fmLast = 0.0;
     const int combSize = static_cast<int>(combs[0].size());
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {

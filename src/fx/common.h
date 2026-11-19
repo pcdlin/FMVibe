@@ -41,7 +41,8 @@ constexpr uint32_t kSweepStep = 8;
 
 // What an effect runs with, from the slot it is in (see Effects::runSlot()): the params (its own read by `slot`), the
 // host rate and the fewest samples a gain's or mix's ramp is spread over at it, the host's tempo (BPM) for synced
-// delays and sweeps, and the pitch a filter's key tracking follows, the newest voice's (semitones, 69 is A4).
+// delays and sweeps, the pitch a filter's key tracking follows, the newest voice's (semitones, 69 is A4), and while an
+// operator modulates a filter effect's cutoff, how many octaves it moves it each sample of the chunk (else null).
 struct Context {
     const ParamValues &p;
     int slot;
@@ -49,6 +50,7 @@ struct Context {
     uint32_t rampShortest;
     double tempo;
     double pitch;
+    const float *cutoffOctaves = nullptr;
 
     // The slot's field `f`.
     double at(FxParam f) const { return p[paramIndex(slot, f)]; }

@@ -1,4 +1,5 @@
 #include "shapeeditor.h"
+#include "lists.h"
 
 #include "icons.h"
 #include "layout.h"
@@ -877,6 +878,31 @@ void ShapeEditor::paintClipCurveEditor(Canvas &c, int shape) {
 // the source puts out up, from nothing at the bottom to all of it at the top, and for reference, dashed, what would
 // take a cutoff at 0 by 100 % onto the note (the line it starts as); while notes play, a dot where the newest
 // voice is.
+void ShapeEditor::paintSourceCurve(Canvas &c, int shape, detail::Curve curve, Rect r, Color color, double dot) {
+    auto get = [this](int index) { return value(index); };
+    const int base = shapeBase(shape);
+    std::vector<double> key = curveKey(curve, r);
+    keyShape(key, base);
+    const std::vector<Point> points = curveCache().get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 400; ++i) {
+            const double x = i / 400.0;
+            points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
+        }
+        return points;
+    });
+    std::vector<Point> area = points;
+    area.push_back(shapeAt(1.0, -1.0));
+    area.push_back(shapeAt(0.0, -1.0));
+    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
+    plotLine(c, points.data(), points.size(), color, 2.0f);
+    if (dot >= 0.0) {
+        const Point at = shapeAt(dot, clipCurveValue(get, base, 2.0 * dot - 1.0));
+        c.fillCircle(at, 8.0f, color.alpha(0.25f));
+        c.fillCircle(at, 3.5f, kText);
+    }
+}
+
 void ShapeEditor::paintNoteCurveEditor(Canvas &c) {
     const int shape = kNoteCurve;
     const Color color = shapeColor(shape);
@@ -910,30 +936,9 @@ void ShapeEditor::paintNoteCurveEditor(Canvas &c) {
     }
     c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
 
-    auto get = [this](int index) { return value(index); };
-    const int base = shapeBase(shape);
-    key = curveKey(Curve::NoteEditor, r);
-    keyShape(key, base);
-    const std::vector<Point> points = curveCache().get(key, [&] {
-        std::vector<Point> points;
-        for (int i = 0; i <= 400; ++i) {
-            const double x = i / 400.0;
-            points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
-        }
-        return points;
-    });
-    std::vector<Point> area = points;
-    area.push_back(shapeAt(1.0, -1.0));
-    area.push_back(shapeAt(0.0, -1.0));
-    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
-    plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (host_.telemetry().voices > 0) {
-        const double x = high == low ? (host_.telemetry().notePitch >= low ? 1.0 : 0.0)
-                                     : std::clamp((host_.telemetry().notePitch - low) / (high - low), 0.0, 1.0);
-        const Point dot = shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0));
-        c.fillCircle(dot, 8.0f, color.alpha(0.25f));
-        c.fillCircle(dot, 3.5f, kText);
-    }
+    const double pitch = host_.telemetry().notePitch;
+    const double across = high == low ? (pitch >= low ? 1.0 : 0.0) : std::clamp((pitch - low) / (high - low), 0.0, 1.0);
+    paintSourceCurve(c, shape, Curve::NoteEditor, r, color, host_.telemetry().voices > 0 ? across : -1.0);
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = focused(DragKind::ShapePoint);
@@ -971,29 +976,9 @@ void ShapeEditor::paintVelocityCurveEditor(Canvas &c) {
     c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisVelocity), kTextLabel, kFaint, Align::Right);
     c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
 
-    auto get = [this](int index) { return value(index); };
-    const int base = shapeBase(shape);
-    std::vector<double> key = curveKey(Curve::VelocityEditor, r);
-    keyShape(key, base);
-    const std::vector<Point> points = curveCache().get(key, [&] {
-        std::vector<Point> points;
-        for (int i = 0; i <= 400; ++i) {
-            const double x = i / 400.0;
-            points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
-        }
-        return points;
-    });
-    std::vector<Point> area = points;
-    area.push_back(shapeAt(1.0, -1.0));
-    area.push_back(shapeAt(0.0, -1.0));
-    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
-    plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (host_.telemetry().voices > 0) {
-        const double x = std::clamp(static_cast<double>(host_.telemetry().noteVelocity), 0.0, 1.0);
-        const Point dot = shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0));
-        c.fillCircle(dot, 8.0f, color.alpha(0.25f));
-        c.fillCircle(dot, 3.5f, kText);
-    }
+    paintSourceCurve(c, shape, Curve::VelocityEditor, r, color,
+                     host_.telemetry().voices > 0 ? std::clamp(static_cast<double>(host_.telemetry().noteVelocity), 0.0, 1.0)
+                                                  : -1.0);
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = focused(DragKind::ShapePoint);
@@ -1324,9 +1309,7 @@ void addTo(std::vector<Widget> &list, WidgetKind kind, Rect rect, int param = -1
 } // namespace
 
 void ShapeEditor::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        addTo(list, kind, rect, param, a, b);
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     const int editing = shapeEditing();
     const int partials = partialEditing();
@@ -1382,9 +1365,7 @@ void ShapeEditor::widgets(std::vector<Widget> &list) const {
 }
 
 void ShapeEditor::drawnWidgets(std::vector<Widget> &list, int unit, Rect display) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        addTo(list, kind, rect, param, a, b);
-    };
+    const WidgetAdder add{list};
     const int shape = kMaxSources + unit;
     add(Kind::ShapeArea, display, -1, shape);
     const int count = shapePointCount(shape);
@@ -1406,9 +1387,7 @@ void ShapeEditor::drawnWidgets(std::vector<Widget> &list, int unit, Rect display
 }
 
 void ShapeEditor::cardWidgets(std::vector<Widget> &list, int lfo, float card) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        addTo(list, kind, rect, param, a, b);
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     const int s = lfo;
     // Its shape in the card: the title row's buttons, the tools and modes where a normal card's display is,

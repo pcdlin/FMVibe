@@ -404,6 +404,8 @@ bool TextField::key(Key key, bool extend) {
     case Key::Escape:
     case Key::Up:
     case Key::Down:
+    case Key::Tab:
+    case Key::BackTab:
         break;
     }
     return false;

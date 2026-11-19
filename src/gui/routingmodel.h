@@ -69,6 +69,10 @@ public:
     int currentAlgorithm() const;
 
 private:
+    // The route `param` moved onto `next`, which isn't wired yet: its depth, mode and modulation go along, undoably, and
+    // the filter or shaper `goesOut` (if there is one) goes out.
+    void moveRoute(int param, int next, int goesOut = -1);
+
     ModulationModel modulation() const { return ModulationModel(controller_, messages_); }
 };
 

@@ -75,9 +75,12 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    played. And a source's synced Division reaches two note values slower, 8/1T and 8/1 (-1 and -2, see
 //    kSlowestDivision), so its stored values keep their note values, but an earlier state's depths on it load smaller
 //    (by 26 steps over 28), to step it as far as they did.
+// 14: A pattern's curves wrap around its end, the last point's segment going on to the first point; they held their
+//    first and last points' values before and after them. An earlier state's bend and mod wheel curves load with points
+//    at the pattern's start and end that hold those values, playing as they played (see holdSeqCurveEnds()).
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
-constexpr uint32_t kStateVersion = 13;
+constexpr uint32_t kStateVersion = 14;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -545,6 +548,44 @@ void loadCurveSources(ParamValues &values) {
         }
 }
 
+// Before version 14, a pattern's curves held their first point's value before it and their last's after it, and a point
+// past the pattern's end (a pattern made shorter leaves them) still shaped the segment leading to it. A point at the
+// pattern's start and one at its end keep each curve playing as it did, where the curve has room for them.
+void holdSeqCurveEnds(ParamValues &values) {
+    auto get = [&values](int index) { return values[index]; };
+    for (int pattern = 0; pattern < kSeqPatterns; ++pattern) {
+        const double steps = kSeqStepsPerBar * std::clamp(std::lround(values[paramIndex(pattern, SeqPatternParam::Length)]),
+                                                          1L, static_cast<long>(kSeqBars));
+        for (const SeqCurve curve : {SeqCurve::Bend, SeqCurve::ModWheel}) {
+            const int count = seqCurvePointCount(get, pattern, curve);
+            if (count == 0)
+                continue;
+            std::vector<SeqCurvePoint> points;
+            for (int i = 0; i < count; ++i)
+                points.push_back({values[seqCurveIndex(pattern, curve, i, PointField::X)],
+                                  values[seqCurveIndex(pattern, curve, i, PointField::Y)],
+                                  values[seqCurveIndex(pattern, curve, i, PointField::Curve)]});
+            if (points.front().x > 0.0 && count < kSeqCurvePoints)
+                points.insert(points.begin(), {0.0, points.front().y, 0.0});
+            const auto past = std::find_if(points.begin(), points.end(), [&](const SeqCurvePoint &q) { return q.x > steps; });
+            const bool endless = past == points.begin(); // every point past the end: the first's value throughout
+            if (static_cast<int>(points.size()) < kSeqCurvePoints && !endless && std::prev(past)->x < steps) {
+                const SeqCurvePoint a = *std::prev(past);
+                double y = a.y;
+                if (past != points.end())
+                    y += (past->y - a.y) * shapeBend((steps - a.x) / (past->x - a.x), a.curve);
+                points.insert(past, {steps, y, 0.0});
+            }
+            values[seqCurveCountIndex(pattern, curve)] = static_cast<double>(points.size());
+            for (size_t i = 0; i < points.size(); ++i) {
+                values[seqCurveIndex(pattern, curve, static_cast<int>(i), PointField::X)] = points[i].x;
+                values[seqCurveIndex(pattern, curve, static_cast<int>(i), PointField::Y)] = points[i].y;
+                values[seqCurveIndex(pattern, curve, static_cast<int>(i), PointField::Curve)] = points[i].curve;
+            }
+        }
+    }
+}
+
 } // namespace
 
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
@@ -652,6 +693,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         loadRandomSources(loaded);
     if (header[1] < 12)
         loadCurveSources(loaded);
+    if (header[1] < 14)
+        holdSeqCurveEnds(loaded);
     if (header[1] < 9) { // the chain's effects in its order, as the graph's line
         if (!outWired) {
             std::vector<int> chain;

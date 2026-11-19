@@ -72,7 +72,7 @@ public:
     };
 
     void widgets(std::vector<Widget> &list) const override;
-    void popups(std::vector<Widget> &list) const override; // the panel of algorithms, and a label's list of modes
+    void popups(std::vector<Widget> &list) const override; // the graph's labels, a label's list of modes, the panel of algorithms
     void paintBack(Canvas &c) override;
     void paintDrag(Canvas &c) override; // a route being connected or moved, following the mouse
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;

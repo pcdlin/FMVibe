@@ -148,6 +148,7 @@ private:
     std::vector<Widget> saveWidgets() const;
     void paintSave(Canvas &c);
     void saveKey(Key key);
+    void stepSaveField(int step);
     void runSave();
     struct SaveLayout {
         Rect panel, name, author, description, folders, warning, toFile, cancel, save, close;

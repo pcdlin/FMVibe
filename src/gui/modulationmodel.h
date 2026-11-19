@@ -67,7 +67,7 @@ public:
     double resetValue(int param) const;
 
     // Every modulation: the sources' slots that have a target, the places' (in `places`' order, as sources() has
-    // them), then the macros', the note source's, the mod wheel's, velocity's and the pitch bend's.
+    // them), then the macros', the note source's, the mod wheel's, velocity's, the pitch bend's and the operators'.
     std::vector<Assignment> assignments() const;
     std::vector<Assignment> assignments(const std::vector<int> &places) const;
     std::vector<int> usedSlots(int source) const;

@@ -60,6 +60,7 @@ public:
     bool menuCommand(int command) override;
     // The SEQ view's keys, while it shows (see View::seqKey()).
     bool key(Key key, bool shift) override;
+    void stepApplied(const UndoStep &step, bool forward) override;
     ConfirmWords confirmWords(int kind) const override;
     void confirmed(int kind, int button) override;
 
@@ -145,6 +146,11 @@ private:
     int seqCurvePointAt(Point p) const;
     int seqCurveBendAt(Point p) const;
     Point seqCurveBendPos(const std::vector<SeqCurvePoint> &points, SeqCurve curve, int segment) const;
+    // The curve's segments: as many as its points within the pattern, the last going round the pattern's end to the
+    // first point (where it ends, counted on past the end), and whether one has a bend handle (see seqCurveBendAt()).
+    int seqCurveSegments(const std::vector<SeqCurvePoint> &points) const;
+    SeqCurvePoint seqCurveSegmentEnd(const std::vector<SeqCurvePoint> &points, int segment) const;
+    bool seqCurveBends(const std::vector<SeqCurvePoint> &points, int segment) const;
     // Painting the curve, from `from` (at `fromValue`) on to `step` (at `v`): a point on every line of the grid
     // (`unit` steps apart) past `from` up to `step`, the values between in a straight line, in place of the points
     // there.
@@ -258,6 +264,12 @@ private:
     std::vector<int> seqSelection_; // the slots picked (of the pattern shown)
     int seqSelectionPattern_ = 0;   // and which pattern that was: another one's picks are forgotten
     bool seqSnapMenu_ = false;
+    // The macros' list, open over its tab; the macro the tab names while the lane shows something else; and the macro
+    // the tab names now.
+    bool seqMacroMenu_ = false;
+    int seqLastMacro_ = 0;
+    int seqTabMacro() const;
+    void showSeqMacro(int macro);
 
     PanelHost &host_;
     PatchEdits &edits_; // the params, edited as the editor edits them, with why an edit was refused flashed up

@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <sstream>
 #include <system_error>
 
 #include <windows.h>
@@ -12,6 +14,12 @@
 namespace fmvibe {
 
 namespace {
+
+// How long a file that another program holds for a moment (a virus scanner, the search indexer) is waited out.
+constexpr int kBusyAttempts = 20;
+constexpr DWORD kBusyWaitMs = 10;
+// Longer than another process can hold the lock while it waits out such a program, reading and then replacing.
+constexpr DWORD kLockWaitMs = 1000;
 
 std::filesystem::path userSettingsFile() {
     // The tests name a folder of their own, so they leave the user's settings alone.
@@ -27,9 +35,39 @@ std::filesystem::path userSettingsFile() {
     return file;
 }
 
-UserSettings readFile(const std::filesystem::path &file) {
+// Held from reading the file until the new one is in its place, so that processes (Bitwig runs instances in several)
+// take turns. Where Windows gives no mutex, each goes ahead alone.
+class FileLock {
+public:
+    explicit FileLock(const std::filesystem::path &file) {
+        const std::wstring name =
+            L"Local\\FMVibeSettings-" + std::to_wstring(std::hash<std::wstring>{}(file.wstring()));
+        mutex_ = CreateMutexW(nullptr, FALSE, name.c_str());
+        if (!mutex_)
+            return;
+        // Abandoned, by a process that ended holding it: the file is still whole, as it is only ever replaced.
+        const DWORD waited = WaitForSingleObject(mutex_, kLockWaitMs);
+        owned_ = waited == WAIT_OBJECT_0 || waited == WAIT_ABANDONED;
+    }
+    ~FileLock() {
+        if (owned_)
+            ReleaseMutex(mutex_);
+        if (mutex_)
+            CloseHandle(mutex_);
+    }
+    FileLock(const FileLock &) = delete;
+    FileLock &operator=(const FileLock &) = delete;
+
+    bool held() const { return owned_ || !mutex_; }
+
+private:
+    HANDLE mutex_ = nullptr;
+    bool owned_ = false;
+};
+
+UserSettings parsed(const std::string &text) {
     UserSettings settings;
-    std::ifstream in(file);
+    std::istringstream in(text);
     std::string line;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r')
@@ -76,14 +114,169 @@ UserSettings readFile(const std::filesystem::path &file) {
     return settings;
 }
 
-// The settings as this process last read or wrote them, which tells what it changed since.
-UserSettings asRead;
+// The file's settings, the defaults if there is no file yet. False for a file that is there but can't be read, which
+// says nothing of what it holds: taken for the defaults, they would be written over it.
+bool readFile(const std::filesystem::path &file, UserSettings &settings) {
+    HANDLE in = INVALID_HANDLE_VALUE;
+    for (int attempt = 0;; ++attempt) {
+        in = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (in != INVALID_HANDLE_VALUE)
+            break;
+        const DWORD error = GetLastError();
+        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+            settings = {};
+            return true;
+        }
+        if (attempt >= kBusyAttempts || (error != ERROR_SHARING_VIOLATION && error != ERROR_ACCESS_DENIED))
+            return false;
+        Sleep(kBusyWaitMs);
+    }
+    std::string text;
+    char buffer[4096];
+    DWORD got = 0;
+    bool whole = false;
+    while (ReadFile(in, buffer, sizeof(buffer), &got, nullptr)) {
+        whole = got == 0; // read to its end
+        if (whole)
+            break;
+        text.append(buffer, got);
+    }
+    CloseHandle(in);
+    if (whole)
+        settings = parsed(text);
+    return whole;
+}
+
+// Written beside the file under this process's own name, then put in its place: another process reading it meanwhile
+// finds the old file or the new one, never one cut short.
+bool writeFile(const std::filesystem::path &file, const UserSettings &settings) {
+    std::error_code error;
+    std::filesystem::create_directories(file.parent_path(), error);
+    error.clear(); // a folder that couldn't be made shows as the write failing
+    std::filesystem::path part = file;
+    part += L"." + std::to_wstring(GetCurrentProcessId()) + L".part";
+    {
+        std::ofstream out(part);
+        out << "theme=" << settings.theme << "\nglowLevel=" << settings.glow << "\nhandleSize=" << settings.handleSize
+            << "\nlinkIntensity=" << settings.links << "\ngridIntensity=" << settings.grid << '\n';
+        if (settings.hue >= 0.0)
+            out << "hue=" << settings.hue << '\n';
+        if (settings.zoom > 0.0)
+            out << "zoom=" << settings.zoom << '\n';
+        auto writeFolders = [&out](const char *key, const std::vector<TableFolder> &folders) {
+            for (const TableFolder &folder : folders) {
+                std::string name = folder.name; // a "|" in the name would end it early
+                std::replace(name.begin(), name.end(), '|', '/');
+                out << key << folder.frameSize << '|' << name << '|' << folder.path << '\n';
+            }
+        };
+        writeFolders("tableFolder=", settings.tableFolders);
+        writeFolders("sampleFolder=", settings.sampleFolders);
+        if (!settings.browserPlace.empty())
+            out << "browser=" << settings.browserPlace << '\n';
+        for (const auto &[name, color] : settings.categories)
+            out << "category=" << name << '|' << color << '\n';
+        for (const std::string &favorite : settings.favorites)
+            out << "favorite=" << favorite << '\n';
+        for (const std::string &recent : settings.recent)
+            out << "recent=" << recent << '\n';
+        out.close();
+        if (!out)
+            error = std::make_error_code(std::errc::io_error);
+    }
+    if (!error)
+        return replaceFile(part.wstring(), file.wstring());
+    std::error_code ignored;
+    std::filesystem::remove(part, ignored);
+    return false;
+}
+
+// `theirs` with what `mine` added to `base` and took out of it, an entry being known by its key.
+template <class T, class Key>
+std::vector<T> mergedList(const std::vector<T> &base, const std::vector<T> &mine, const std::vector<T> &theirs, Key key) {
+    auto has = [&](const std::vector<T> &list, const auto &wanted) {
+        return std::any_of(list.begin(), list.end(), [&](const T &entry) { return key(entry) == wanted; });
+    };
+    std::vector<T> merged = theirs;
+    std::erase_if(merged, [&](const T &entry) { return has(base, key(entry)) && !has(mine, key(entry)); });
+    for (const T &entry : mine) {
+        if (has(base, key(entry)))
+            continue;
+        const auto same = std::find_if(merged.begin(), merged.end(), [&](const T &e) { return key(e) == key(entry); });
+        if (same != merged.end())
+            *same = entry;
+        else
+            merged.push_back(entry);
+    }
+    return merged;
+}
+
+// The recent presets, the last first: those `mine` put ahead of what it kept in order from `base`, then `theirs`.
+std::vector<std::string> mergedRecent(const std::vector<std::string> &base, const std::vector<std::string> &mine,
+                                      const std::vector<std::string> &theirs) {
+    size_t ahead = mine.size();
+    for (size_t at = base.size(); ahead > 0; --ahead) {
+        size_t found = at;
+        while (found > 0 && base[found - 1] != mine[ahead - 1])
+            --found;
+        if (found == 0)
+            break;
+        at = found - 1;
+    }
+    std::vector<std::string> merged(mine.begin(), mine.begin() + static_cast<std::ptrdiff_t>(ahead));
+    auto has = [](const std::vector<std::string> &list, const std::string &entry) {
+        return std::find(list.begin(), list.end(), entry) != list.end();
+    };
+    for (const std::string &entry : theirs)
+        if (!has(merged, entry) && (has(mine, entry) || !has(base, entry)))
+            merged.push_back(entry);
+    if (merged.size() > kMaxRecentPresets)
+        merged.resize(kMaxRecentPresets);
+    return merged;
+}
 
 bool sameFolders(const std::vector<TableFolder> &a, const std::vector<TableFolder> &b) {
     return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](const TableFolder &x, const TableFolder &y) {
         return x.name == y.name && x.path == y.path && x.frameSize == y.frameSize;
     });
 }
+
+// `theirs`, the file as it is now, with what this process changed from `base` to `mine`. Another process's changes to
+// the same file stay, down to each entry of the lists.
+UserSettings merged(const UserSettings &base, const UserSettings &mine, const UserSettings &theirs) {
+    UserSettings out = theirs;
+    if (mine.theme != base.theme)
+        out.theme = mine.theme;
+    if (mine.glow != base.glow)
+        out.glow = mine.glow;
+    if (mine.hue != base.hue)
+        out.hue = mine.hue;
+    if (mine.handleSize != base.handleSize)
+        out.handleSize = mine.handleSize;
+    if (mine.links != base.links)
+        out.links = mine.links;
+    if (mine.grid != base.grid)
+        out.grid = mine.grid;
+    if (mine.zoom != base.zoom)
+        out.zoom = mine.zoom;
+    if (mine.browserPlace != base.browserPlace)
+        out.browserPlace = mine.browserPlace;
+    if (!sameFolders(mine.tableFolders, base.tableFolders))
+        out.tableFolders = mine.tableFolders;
+    if (!sameFolders(mine.sampleFolders, base.sampleFolders))
+        out.sampleFolders = mine.sampleFolders;
+    out.favorites = mergedList(base.favorites, mine.favorites, theirs.favorites, [](const std::string &e) { return e; });
+    out.categories = mergedList(base.categories, mine.categories, theirs.categories,
+                                [](const std::pair<std::string, int> &e) { return e.first; });
+    if (mine.recent != base.recent)
+        out.recent = mergedRecent(base.recent, mine.recent, theirs.recent);
+    return out;
+}
+
+// The file as this process last read or wrote it: what userSettings differs from it by, this process changed and has
+// yet to write.
+UserSettings asRead;
 
 } // namespace
 
@@ -99,88 +292,32 @@ std::string userSettingsFolder() {
 
 void readUserSettings() {
     const std::filesystem::path file = userSettingsFile();
-    userSettings = file.empty() ? UserSettings{} : readFile(file);
-    asRead = userSettings;
+    if (file.empty())
+        return;
+    const FileLock lock(file);
+    UserSettings theirs;
+    if (!readFile(file, theirs))
+        return;
+    userSettings = merged(asRead, userSettings, theirs);
+    asRead = std::move(theirs);
 }
 
 void writeUserSettings() {
     const std::filesystem::path file = userSettingsFile();
     if (file.empty())
         return;
-    // Another process may have written the file since this one read it: what this one didn't change since keeps
-    // the file's value.
-    UserSettings merged = readFile(file);
-    if (userSettings.theme != asRead.theme)
-        merged.theme = userSettings.theme;
-    if (userSettings.glow != asRead.glow)
-        merged.glow = userSettings.glow;
-    if (userSettings.hue != asRead.hue)
-        merged.hue = userSettings.hue;
-    if (userSettings.handleSize != asRead.handleSize)
-        merged.handleSize = userSettings.handleSize;
-    if (userSettings.links != asRead.links)
-        merged.links = userSettings.links;
-    if (userSettings.grid != asRead.grid)
-        merged.grid = userSettings.grid;
-    if (userSettings.zoom != asRead.zoom)
-        merged.zoom = userSettings.zoom;
-    if (!sameFolders(userSettings.tableFolders, asRead.tableFolders))
-        merged.tableFolders = userSettings.tableFolders;
-    if (!sameFolders(userSettings.sampleFolders, asRead.sampleFolders))
-        merged.sampleFolders = userSettings.sampleFolders;
-    if (userSettings.favorites != asRead.favorites)
-        merged.favorites = userSettings.favorites;
-    if (userSettings.recent != asRead.recent)
-        merged.recent = userSettings.recent;
-    if (userSettings.categories != asRead.categories)
-        merged.categories = userSettings.categories;
-    if (userSettings.browserPlace != asRead.browserPlace)
-        merged.browserPlace = userSettings.browserPlace;
-    userSettings = asRead = merged;
+    const FileLock lock(file);
+    UserSettings theirs;
+    if (!lock.held() || !readFile(file, theirs))
+        return; // what this process changed stays to write, with its next read or write
+    userSettings = merged(asRead, userSettings, theirs);
+    asRead = writeFile(file, userSettings) ? userSettings : std::move(theirs);
+}
 
-    std::error_code error;
-    std::filesystem::create_directories(file.parent_path(), error);
-    error.clear(); // a folder that couldn't be made shows as the write failing
-    // Written beside it under this process's own name, then put in its place: another process reading it meanwhile
-    // (Bitwig runs instances in several) finds the old file or the new one, never one cut short, which would read
-    // as the defaults.
-    std::filesystem::path part = file;
-    part += L"." + std::to_wstring(GetCurrentProcessId()) + L".part";
-    {
-        std::ofstream out(part);
-        out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
-            << "\nlinkIntensity=" << merged.links << "\ngridIntensity=" << merged.grid << '\n';
-        if (merged.hue >= 0.0)
-            out << "hue=" << merged.hue << '\n';
-        if (merged.zoom > 0.0)
-            out << "zoom=" << merged.zoom << '\n';
-        auto writeFolders = [&out](const char *key, const std::vector<TableFolder> &folders) {
-            for (const TableFolder &folder : folders) {
-                std::string name = folder.name; // a "|" in the name would end it early
-                std::replace(name.begin(), name.end(), '|', '/');
-                out << key << folder.frameSize << '|' << name << '|' << folder.path << '\n';
-            }
-        };
-        writeFolders("tableFolder=", merged.tableFolders);
-        writeFolders("sampleFolder=", merged.sampleFolders);
-        if (!merged.browserPlace.empty())
-            out << "browser=" << merged.browserPlace << '\n';
-        for (const auto &[name, color] : merged.categories)
-            out << "category=" << name << '|' << color << '\n';
-        for (const std::string &file : merged.favorites)
-            out << "favorite=" << file << '\n';
-        for (const std::string &file : merged.recent)
-            out << "recent=" << file << '\n';
-        out.close();
-        if (!out)
-            error = std::make_error_code(std::errc::io_error);
-    }
-    if (!error)
-        replaceFile(part.wstring(), file.wstring());
-    else {
-        std::error_code ignored;
-        std::filesystem::remove(part, ignored);
-    }
+double savedEditorZoom() {
+    const std::filesystem::path file = userSettingsFile();
+    UserSettings settings;
+    return !file.empty() && readFile(file, settings) ? settings.zoom : 0.0;
 }
 
 bool replaceFile(const std::wstring &part, const std::wstring &target) {
@@ -188,9 +325,9 @@ bool replaceFile(const std::wstring &part, const std::wstring &target) {
         if (MoveFileExW(part.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
             return true;
         const DWORD error = GetLastError();
-        if (attempt >= 20 || (error != ERROR_SHARING_VIOLATION && error != ERROR_ACCESS_DENIED))
+        if (attempt >= kBusyAttempts || (error != ERROR_SHARING_VIOLATION && error != ERROR_ACCESS_DENIED))
             break;
-        Sleep(10);
+        Sleep(kBusyWaitMs);
     }
     DeleteFileW(part.c_str());
     return false;

@@ -943,6 +943,9 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         case VK_DOWN:
             view_.typeKey(View::Key::Down);
             return true;
+        case VK_TAB:
+            view_.typeKey(shift ? View::Key::BackTab : View::Key::Tab);
+            return true;
         default: {
             // The character the key makes with the current layout and modifiers, if any. Flag 4
             // leaves the keyboard state alone, so dead keys still work for the host afterwards.
@@ -967,7 +970,7 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         return true;
     }
     // The SEQ view's: Ctrl+A picks every note, the arrows move those picked, Ctrl+C, Ctrl+X and Ctrl+V copy, cut and
-    // paste them.
+    // paste them, and Ctrl+D duplicates them.
     if (const std::optional<View::Key> seq = seqKeyOf(key, ctrl))
         return view_.seqKey(*seq, shift);
     return false;
@@ -979,6 +982,7 @@ std::optional<View::Key> Editor::seqKeyOf(WPARAM key, bool ctrl) {
                : key == 'C' ? std::optional(View::Key::Copy)
                : key == 'X' ? std::optional(View::Key::Cut)
                : key == 'V' ? std::optional(View::Key::Paste)
+               : key == 'D' ? std::optional(View::Key::Duplicate)
                             : std::nullopt;
     switch (key) {
     case VK_LEFT:
@@ -998,11 +1002,11 @@ std::optional<View::Key> Editor::seqKeyOf(WPARAM key, bool ctrl) {
 
 // Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, while the mouse is over the editor in the active
 // window, so the host's own shortcuts work everywhere else; so do the SEQ view's keys (see View::seqKey()), Ctrl+A,
-// Ctrl+C, Ctrl+X, Ctrl+V, the arrows and Delete, when it takes them. A shortcut's key going up is taken too.
+// Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D, the arrows and Delete, when it takes them. A shortcut's key going up is taken too.
 bool Editor::shortcut(WPARAM key, bool up) {
     const bool undoKey = key == 'Z' || key == 'Y';
-    if (!undoKey && key != 'A' && key != 'C' && key != 'X' && key != 'V' && key != VK_LEFT && key != VK_RIGHT && key != VK_UP && key != VK_DOWN &&
-        key != VK_DELETE)
+    if (!undoKey && key != 'A' && key != 'C' && key != 'X' && key != 'V' && key != 'D' && key != VK_LEFT && key != VK_RIGHT && key != VK_UP &&
+        key != VK_DOWN && key != VK_DELETE)
         return false;
     if (up) {
         const bool taken = shortcutKey_ == key;
@@ -1036,9 +1040,11 @@ bool Editor::shortcut(WPARAM key, bool up) {
 // While a value is typed, a key for the window around the editor comes here straight off the queue, as
 // WM_KEYDOWN would bring it, and the host's loop never sees it; nor the key going up.
 bool Editor::typedKey(const MSG &msg) {
-    if (!hwnd_ || !msg.hwnd || (msg.hwnd != hwnd_ && GetAncestor(msg.hwnd, GA_ROOT) != GetAncestor(hwnd_, GA_ROOT)))
+    if (!hwnd_ || !msg.hwnd)
         return false;
     const auto code = static_cast<uint8_t>(msg.wParam);
+    if (msg.message != WM_KEYUP && !keysFor(msg.hwnd)) // a key taken here goes up here, wherever the mouse went since
+        return false;
     switch (msg.message) {
     case WM_KEYDOWN:
         if (!(view_.typing() || (view_.dialogOpen() && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE))) ||
@@ -1059,6 +1065,31 @@ bool Editor::typedKey(const MSG &msg) {
     default:
         return false;
     }
+}
+
+// A key sent to this editor, or to the host's window around it. Where that window shows other editors too (a host may
+// show several plugins in one), a key sent to one of them is that one's, and one sent to the window itself is for the
+// editor being typed in or else the one under the mouse: Enter pressed elsewhere doesn't answer a question open here.
+bool Editor::keysFor(HWND to) const {
+    if (to == hwnd_ || IsChild(hwnd_, to))
+        return true;
+    const HWND root = GetAncestor(hwnd_, GA_ROOT);
+    if (GetAncestor(to, GA_ROOT) != root)
+        return false;
+    bool alone = true;
+    for (const Editor *other : hookedEditors) {
+        if (other == this || !other->hwnd_)
+            continue;
+        if (to == other->hwnd_ || IsChild(other->hwnd_, to))
+            return false;
+        alone = alone && GetAncestor(other->hwnd_, GA_ROOT) != root;
+    }
+    if (alone || view_.typing())
+        return true;
+    POINT p;
+    GetCursorPos(&p);
+    const HWND under = WindowFromPoint(p);
+    return under == hwnd_ || IsChild(hwnd_, under);
 }
 
 void Editor::syncFocus() {

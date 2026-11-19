@@ -128,6 +128,8 @@ std::string ModulationModel::paramName(int index) const {
 }
 
 bool ModulationModel::sourceOn(int source) const {
+    if (isOpSource(source)) // an operator switched off puts out nothing
+        return value(paramIndex(source - kOpSource, OpParam::Enabled)) >= 0.5;
     return isStripSource(source) || value(sourceEnabledIndex(source)) >= 0.5;
 }
 
@@ -158,6 +160,8 @@ std::vector<Assignment> ModulationModel::assignments(const std::vector<int> &pla
     all.push_back(kWheelSource);
     all.push_back(kVelocitySource);
     all.push_back(kBendSource);
+    for (int op = 0; op < kOps; ++op)
+        all.push_back(kOpSource + op);
     for (int s : all) {
         const bool bipolar = sourceBipolar(s);
         for (int slot = 0; slot < kSlots; ++slot) {

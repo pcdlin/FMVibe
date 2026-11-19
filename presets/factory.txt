@@ -58,3 +58,5 @@ Future Plucks
 Acid Rubber
 Offbeat Stabs
 Random Glass
+Cutoff Growl
+Filter Bloom

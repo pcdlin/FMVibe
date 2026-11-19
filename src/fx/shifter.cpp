@@ -9,6 +9,21 @@ namespace {
 // Where the shifters' Hilbert pair keeps 90 degrees from: where Niemitalo's coefficients put it at 48 kHz.
 constexpr double kHilbertLowHz = 43.68;
 
+// One of the pair's all-pass chains. Each section is y[n] = c (x[n] + y[n-2]) - x[n-2].
+inline double runChain(std::array<std::array<double, 4>, kMaxHilbertSections> &sections,
+                       const std::array<double, kMaxHilbertSections> &c, int count, double in) {
+    for (int i = 0; i < count; ++i) {
+        std::array<double, 4> &s = sections[i];
+        const double y = c[i] * (in + s[3]) - s[1];
+        s[1] = s[0];
+        s[0] = in;
+        s[3] = s[2];
+        s[2] = y;
+        in = y;
+    }
+    return in;
+}
+
 } // namespace
 
 HilbertCoefs hilbertCoefs(double sampleRate) {
@@ -28,25 +43,21 @@ HilbertCoefs hilbertCoefs(double sampleRate) {
 }
 
 std::array<double, 2> Hilbert::process(double x, const HilbertCoefs &coefs) {
-    // Each section is y[n] = c (x[n] + y[n-2]) - x[n-2].
-    auto chain = [&coefs](std::array<std::array<double, 4>, kMaxHilbertSections> &sections,
-                          const std::array<double, kMaxHilbertSections> &c, double in) {
-        for (int i = 0; i < coefs.sections; ++i) {
-            std::array<double, 4> &s = sections[i];
-            const double y = c[i] * (in + s[3]) - s[1];
-            s[1] = s[0];
-            s[0] = in;
-            s[3] = s[2];
-            s[2] = y;
-            in = y;
-        }
-        return in;
-    };
-    const double first = chain(a, coefs.a, x);
-    const double second = chain(b, coefs.b, x);
+    const double first = runChain(a, coefs.a, coefs.sections, x);
+    const double second = runChain(b, coefs.b, coefs.sections, x);
     const double inPhase = delayed;
     delayed = first;
     return {inPhase, -second}; // the second chain runs 90 degrees ahead: turned round, it lags like a Hilbert transform
+}
+
+double Hilbert::positive(double re, double im, const HilbertCoefs &coefs) {
+    // With I and Q the pair's in-phase and quadrature chains, I(w) + j Q(w) is twice I(w) at a positive frequency,
+    // where Q lags I by 90 degrees, and nothing at a negative one, where it leads. Its real part is I(re) - Q(im).
+    const double first = runChain(a, coefs.a, coefs.sections, re);
+    const double second = runChain(b, coefs.b, coefs.sections, im);
+    const double inPhase = delayed;
+    delayed = first;
+    return 0.5 * (inPhase + second);
 }
 
 void Shifter::start(const Context &ctx) {
@@ -79,8 +90,12 @@ double Shifter::run(const Context &ctx, const HilbertCoefs &coefs, float *const 
             phase[ch] -= std::floor(phase[ch]);
             const double x = io[ch][s];
             const std::array<double, 2> parts = hilbert[ch].process(x + feedback * last[ch], coefs);
-            // The analytic signal turned by the oscillator: every partial moves up by `hz` (down if negative).
-            const double y = parts[0] * cosNow[ch] - parts[1] * sinNow[ch];
+            // The analytic signal turned by the oscillator: every partial moves up by `hz` (down if negative). A
+            // partial taken past 0 Hz or past half the rate lands on a negative frequency, whose real part would be
+            // its mirror image, coming back the other way: only the positive frequencies go on.
+            const double turnedRe = parts[0] * cosNow[ch] - parts[1] * sinNow[ch];
+            const double turnedIm = parts[0] * sinNow[ch] + parts[1] * cosNow[ch];
+            const double y = oneSided[ch].positive(turnedRe, turnedIm, coefs);
             const double c = cosNow[ch];
             cosNow[ch] = c * cosStep[ch] - sinNow[ch] * sinStep[ch];
             sinNow[ch] = sinNow[ch] * cosStep[ch] + c * sinStep[ch];

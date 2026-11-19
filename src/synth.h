@@ -154,6 +154,12 @@ struct Telemetry {
     float seqPosition = -1.0f;
     int seqPattern = 0;
     std::array<uint32_t, 4> seqKeys{}; // the pitches the notes the sequencer holds on are written at, as `keys` has keys
+    // What the sequencer's mod wheel curve adds to the Mod Wheel param as it plays, 0 while it doesn't: the mod wheel
+    // shows the param as the editor has it with this on top. (What its bend curve adds is in `bend`.)
+    float seqWheel = 0.0f;
+    // How far the sequencer's macro curves, which take the place of the knobs as they play, move each macro's knob from
+    // where it is set, either way; 0 while they don't. `macroOffset` goes on from there.
+    std::array<float, kMacros> seqMacro{};
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -171,6 +177,9 @@ public:
     // Allocates `capacity` voices that run at `oversampling` (1, 2, 4 or 8)
     // times the host rate. Main thread, while the plugin is inactive.
     void prepare(double sampleRate, int capacity, int oversampling = 1);
+    // The number the notes count on from, which each note draws its randomness from (its noise, its random phases,
+    // Random LFOs and unison): synths given different ones don't play the same noise. Before the first note.
+    void seedNotes(uint32_t seed) { noteCounter_ = seed; }
     void reset();
     int capacity() const { return capacity_; }
     int oversampling() const { return oversampling_; }
@@ -270,6 +279,8 @@ public:
     int activeVoiceCount() const;
     // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
     bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
+    // Whether the sequencer's curves take the pitch bend, the mod wheel or a macro's knob anywhere now.
+    bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0 || seqMacroHeld_ != 0; }
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
     // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects
@@ -422,6 +433,7 @@ private:
         std::array<double, kShapers> shaperOutput{};
         std::array<double, kShapers> shaperMix{};
         std::array<double, kShapers> shaperBetween{}; // after each Stack stage but the last
+        std::array<double, kOps> phase{}; // how far its Phase has moved its wave this block, in cycles
     };
 
     struct Voice {
@@ -509,6 +521,12 @@ private:
         // Each operator's copies' weights in the mono sum other operators hear, as its unison gains last worked them
         // out (1 until Blend moves them): beside the operators, which grew slower in renderBlock() as they grew.
         std::array<std::array<double, kMaxUnison>, kOps> copyWeights{};
+        // The operators as sources (see OpSourceParam), for those that modulate something: what each has put out so far
+        // this block, and over the last block: on average (-1..1), and as a unipolar source puts it out (0..1).
+        std::array<double, kOps> opSum{};
+        std::array<double, kOps> opMean{};
+        std::array<double, kOps> opLevel{};
+        std::array<double, kOps> phaseSet{}; // where each operator's Phase has moved its wave to (see turnPhase())
     };
 
     struct HeldNote {
@@ -545,6 +563,7 @@ private:
     // Adds the voice to `left` and `right`, which run at the voices' rate: hostFrames * oversampling_ samples, and
     // while analyzing, what its filters put out to filterTaps_.
     void renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params);
+    static double turnPhase(Voice &v, int i, double phase);
     // A synced or warped operator's sample (see renderBlock()): its copies' sum and, with `sides`, their left and
     // right. Kept out of the voices' loop: inside it, MSVC's code made the voices a twenty-fifth slower with one copy
     // when no operator was synced or warped.
@@ -650,10 +669,15 @@ private:
     int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
     double bendSet_ = 0.0; // the Pitch Bend param as the last render() had it (see Telemetry::bendSet)
-    // What the sequencer's curves add as its pattern plays (see Sequencer::curve()): to the pitch bend, and to the Mod
-    // Wheel param, as the host's modulation of it would; 0 while they don't.
+    // What the sequencer's curves do as its pattern plays (see Sequencer::curve()): what they add to the pitch bend and to
+    // the Mod Wheel param, as the host's modulation of it would, 0 while they don't; the macros whose curves hold their
+    // knobs now (a bit each), where they hold them, in place of the knobs as set, and how far that is from where each is
+    // set (see Telemetry::seqMacro).
     double seqBend_ = 0.0;
     double seqWheel_ = 0.0;
+    uint32_t seqMacroHeld_ = 0;
+    std::array<double, kMacros> seqMacro_{};
+    std::array<double, kMacros> seqMacroAdded_{};
     // Where a curve stands as the last plan()'s stretch starts, 0 where it does nothing; whether either stands elsewhere
     // than the voices hear it; and the voices taking them up.
     double seqCurveValue(SeqCurve c) const;
@@ -719,7 +743,8 @@ private:
     }
     void applyMacros(const ParamValues &params);
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
-    // note source read their knobs, depths and range.
+    // note source read their knobs, depths and range. (The sequencer's curves take the macros' knobs' places in
+    // applyMacros(), the one place those are read.)
     double hostValue(const ParamValues &params, int index) const {
         const double wheel = index == paramIndex(GlobalParam::ModWheel) ? seqWheel_ : 0.0;
         return std::clamp(params[index] + globalMod_[index] + wheel, table_[index].min, table_[index].max);
@@ -757,11 +782,70 @@ private:
         double auxDepth = 1.0; // voiceAux's (see auxScale())
         double range = 0.0;
         double depth = 0.0;
+        // An operator's slot on a voice filter's or a filter effect's Cutoff (the filter, the effect's slot), or -1: filter
+        // FM, sample by sample (see CutoffFm).
+        int fmFilter = -1;
+        int fmFx = -1;
     };
     std::array<std::array<SharedSlot, kSlots>, kAllSources> sharedSlots_{};
     std::array<int, kAllSources> sharedSlotCount_{};
     bool sharedSlotsReady_ = false;
     void shareSlots(const ParamValues &params);
+    // The operators whose output modulates something or scales a modulation as its aux, a bit each: the voices keep
+    // what those put out (see Voice::opSum), and add their slots' modulation (see runOpSources()).
+    uint32_t opSourceMask_ = 0;
+    void runOpSources(Voice &v, const ParamValues &params);
+    void finishOpSources(Voice &v, const std::array<bool, kOps> &opOn, uint32_t frames);
+    // Filter FM: an operator on a filter's Cutoff moves it every sample, rather than as of the last control block. A
+    // modulation as the block has it: the filter (a voice's, or the effect's slot), the operator, how many octaves its
+    // full swing takes the cutoff, the slot's curve and the operator's polarity.
+    struct CutoffFm {
+        int place = 0;
+        int op = 0;
+        double octaves = 0.0;
+        double curve = 0.0;
+        bool bipolar = true;
+    };
+    // How many octaves a modulation moves the cutoff, for what its operator puts out now and its envelope's level.
+    static double cutoffFmOctaves(const CutoffFm &fm, double out, double env);
+    // The voice being rendered: its modulations, and each filter it moves as the block set it and as it plays now.
+    std::array<CutoffFm, kOps * kSlots> voiceFm_{};
+    int voiceFmCount_ = 0;
+    std::array<const FilterSettings *, kFilters> voiceFmBase_{};
+    std::array<FilterSettings, kFilters> voiceFmNow_{};
+    CutoffFmRange voiceFmRange_;
+    // Points the filters the voice's modulations move at settings of their own; whether there are any.
+    bool startCutoffFm(std::array<const FilterSettings *, kFilters> &filter);
+    void moveCutoffs(const Voice &v, uint32_t sample);
+    // The filter effects', which follow the newest voice, as all the effects' modulation does: its modulations, the
+    // operators they listen to, a bit each, and what those put out this block at the host's rate. Whether any slot asks
+    // for it, and whether any effect is still being moved.
+    static constexpr uint32_t kFxFmBlock = 32; // a control block
+    static constexpr int kFxFmDelay = 32;      // samples of the voices' decimator's delay held, at most
+    const Voice *fxFmVoice_ = nullptr;
+    std::array<CutoffFm, kOps * kSlots> fxFm_{};
+    int fxFmCount_ = 0;
+    uint32_t fxFmOps_ = 0;
+    std::array<std::array<float, kFxFmBlock>, kOps> fxOpOut_{};
+    std::array<double, kOps> fxOpEnv_{};
+    bool fxFmWanted_ = false;
+    bool fxFmLive_ = false;
+    uint64_t fxFmOrder_ = 0; // the voice followed, its order + 1, 0 for none
+    int fxFmDelay_ = 0;      // the voices' decimator's delay, in samples
+    double fxFmDecay_ = 0.0; // of a jump as the voice followed changes, each sample
+    // What moves each filter effect: its octaves this block, and what takes them there: the jump left of a change of
+    // voice, where the last block ended, and the line that keeps them in step with the voices' sound.
+    struct FxCutoffFm {
+        std::array<float, kFxFmBlock> octaves{};
+        std::array<float, kFxFmDelay> line{};
+        int linePos = 0;
+        double jump = 0.0;
+        double last = 0.0;
+        bool listed = false;
+        bool on = false;
+    };
+    std::vector<FxCutoffFm> fxCutoffFm_ = std::vector<FxCutoffFm>(kFxSlots);
+    void runFxCutoffFm(uint32_t frames);
     std::vector<double> voiceBase_ = std::vector<double>(kVoiceParamCount, 0.0);
     std::vector<double> voiceClamped_ = std::vector<double>(kVoiceParamCount, 0.0);
     bool voiceBaseReady_ = false;

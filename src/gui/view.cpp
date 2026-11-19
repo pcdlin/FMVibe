@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -318,6 +319,29 @@ Panel *View::modalPanel() const {
     return nullptr;
 }
 
+void View::paintCardLanding(Canvas &c, Rect landing, Rect row, float radius, Color color) {
+    c.pushClip(row);
+    c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
+    c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
+    c.popClip();
+}
+
+void View::paintCarriedCard(Canvas &c, Rect landing, Rect start, Rect row, float radius, Color color,
+                            const std::function<void()> &paintCard, const std::vector<Widget> &widgets) {
+    paintCardLanding(c, landing, row, radius, color);
+    const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
+                       start.y + drag_.now.y - drag_.start.y - landing.y};
+    c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
+    c.pushClip(landing);
+    paintCard();
+    for (const Widget &w : widgets)
+        if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x &&
+            w.rect.y < landing.bottom() && w.rect.bottom() > landing.y)
+            paintWidget(c, w);
+    c.popClip();
+    c.popLayer();
+}
+
 std::string View::panelTip(const Widget &w) const {
     for (const Panel *panel : panels_)
         if (std::string tip = panel->tooltip(w); !tip.empty())
@@ -512,6 +536,53 @@ void View::showView(RoutingView view) {
     listMenu_ = -1;
 }
 
+double View::steadySeconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+std::optional<Widget> View::dwellTarget(const std::optional<Widget> &at) const {
+    if (!at)
+        return std::nullopt;
+    const RoutingView view = controller_.layout().view;
+    switch (at->kind) {
+    case Kind::ViewTab:
+        return at;
+    case Kind::NodeTab: // the inspector's tab of a node
+        return Widget{Kind::Node, {}, -1, at->a};
+    case Kind::Node:
+    case Kind::Port: // a node's edge, its node
+        if (view != RoutingView::Graph)
+            return std::nullopt;
+        return Widget{Kind::Node, {}, -1, at->a};
+    case Kind::MatrixLabel: // a row's or column's name in the matrix, not one of the INPUTS tab's rows
+        if (view != RoutingView::Matrix || kInspector.contains(at->rect.center()))
+            return std::nullopt;
+        return Widget{Kind::Node, {}, -1, at->a};
+    default:
+        return std::nullopt;
+    }
+}
+
+bool View::dwellStep() {
+    if (drag_.kind != DragKind::ModSource || !dwell_.over || dwell_.done || clock_() - dwell_.since < kDwellSeconds)
+        return false;
+    dwell_.done = true;
+    const Widget &w = *dwell_.over;
+    UiLayout &layout = controller_.layout();
+    if (w.kind == Kind::ViewTab) {
+        if (layout.view == static_cast<RoutingView>(w.a))
+            return false;
+        modList_.reset(); // a pill's, of the view it leaves
+        showView(static_cast<RoutingView>(w.a));
+        return true;
+    }
+    if (layout.selectedNode == w.a)
+        return false;
+    layout.selectedNode = w.a; // shown, as it is, on or off
+    shapes_.closePartialsBut(w.a);
+    return true;
+}
+
 void View::showSourceMods(int source) {
     showView(RoutingView::Mods);
     modsPanel_.showSource(source);
@@ -679,6 +750,12 @@ void View::flash(std::string message) {
 
 int View::keyboardBase() const {
     return kBaseNote + 12 * octave_;
+}
+
+int View::keyVelocity(const Rect &key, Point p) {
+    const float along = key.h > 0.0f ? (p.y - key.y) / key.h : 1.0f;
+    // At least 1, so a key struck at its very top still sounds where velocity sets the level.
+    return std::max(1, static_cast<int>(std::lround(std::clamp(along, 0.0f, 1.0f) * 127.0f)));
 }
 
 std::vector<int> View::sources() const {
@@ -954,8 +1031,16 @@ bool View::poll() {
     controller_.setScope(inspector_.scopeShown(), controller_.layout().scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
-    if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet) // where the bend stands: the bend wheel
+    // Where the bend stands, and what the sequencer's curve adds to the mod wheel: the wheels.
+    if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet || t.seqWheel != telemetry_.seqWheel)
         in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
+    // Where the sequencer's curves hold the macros' knobs: the knobs, and with no voice to tell where they take their
+    // targets, whatever those are.
+    for (int m = 0; m < kMacros; ++m)
+        if (t.seqMacro[m] != telemetry_.seqMacro[m]) {
+            in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
+            everywhere = everywhere || t.voices == 0;
+        }
     everywhere = everywhere || changed; // a param: it may show anywhere
     const Rect header{0.0f, 0.0f, kWidth, kHeaderH};
     // The editor's bands, as paint() leaves out those an area doesn't reach: the panels' row (the routing panel or
@@ -1137,7 +1222,7 @@ bool View::poll() {
     }
     if (flashTicks_ > 0 && --flashTicks_ == 0)
         everywhere = true;
-    if (edgeScroll())
+    if (edgeScroll() || dwellStep())
         everywhere = true;
     // What moves by itself in the panels: the SEQ view's roll scrolling under a drag held at its edge, or fitted to a
     // patch loaded; the MODS view's rows gliding where the wheel sent them; the FX view's row under a card held at its
@@ -1290,8 +1375,21 @@ Rect View::envRect(int env) const {
     return env < kOps ? kOpEnvRect : sourceDisplay(card == kOffScreen ? 0.0f : card);
 }
 
+float View::envFit(int env) const {
+    const DerivedScope scope(*this);
+    return envFitScale(envRect(env), envIndices(env), [this](int index) {
+        const ParamDef &def = table_[index];
+        double longest = value(index);
+        forEachMod(index, [&](const Assignment &m) {
+            if (!m.bypassed && mods_.sourceOn(m.source))
+                longest += modReach(m).second * (def.max - def.min);
+        });
+        return std::clamp(longest, def.min, def.max);
+    });
+}
+
 float View::envScale(int env) const {
-    const float fit = envFitScale(envRect(env), envIndices(env), [this](int index) { return value(index); });
+    const float fit = envFit(env);
     // While its zoom is held, it stays still, so a point stays where it was put, until the envelope would run past the
     // display's end: then it zooms out to keep all of it in.
     return envZoom_.env == env ? std::min(envZoom_.scale, fit) : fit;
@@ -1324,7 +1422,7 @@ bool View::envZoomStep() {
     const Rect r = envRect(env);
     const EnvIndices e = envIndices(env);
     auto get = [this](int index) { return value(index); };
-    const float fit = envFitScale(r, e, get);
+    const float fit = envFit(env);
     const float scale = envZoom_.scale = std::min(envZoom_.scale, fit); // as drawn: never further in than fits
     if (drag_.kind == DragKind::EnvPoint && drag_.widget.a == env) {
         // Pushed past where it stops, up to 24 px further, a handle zooms the envelope out by up to 2.5 % a poll (and
@@ -1352,15 +1450,7 @@ bool View::envZoomStep() {
 }
 
 void View::envelopeWidgets(std::vector<Widget> &list, int env) const {
-    auto add = [&list](Kind kind, Rect rect, int param, int a, int b) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     const EnvIndices e = envIndices(env);
     const EnvShape s = envShape(envRect(env), e, [this](int index) { return value(index); }, envScale(env));
     // Curve handles halfway along each segment, under the points so those win where they overlap.
@@ -1380,22 +1470,7 @@ std::vector<View::Widget> View::widgets() const {
     const DerivedScope scope(*this);
     std::vector<Widget> list;
     list.reserve(400);
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
-            for (int dir : {-1, 1}) {
-                w.kind = Kind::ListStep;
-                w.rect = listStepButton(rect, dir);
-                w.b = dir;
-                list.push_back(w);
-            }
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
@@ -1926,22 +2001,7 @@ std::vector<View::Widget> View::widgets() const {
 // What an effect's card holds below its title row (see FxPanel::cardWidgets(), whose title row it is): its knobs,
 // switches and lists, and the handles on its display.
 void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
-            for (int dir : {-1, 1}) {
-                w.kind = Kind::ListStep;
-                w.rect = listStepButton(rect, dir);
-                w.b = dir;
-                list.push_back(w);
-            }
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
@@ -2310,7 +2370,9 @@ void View::paint(Canvas &c, Rect area) {
         auto get = [this](int i) { return value(i); };
         const MacroGraph graph = macroGraph(get);
         voiceMovedMacros_ = graph.voiceMoved;
-        const MacroKnobs set = macroKnobsSet(get);
+        MacroKnobs set = macroKnobsSet(get);
+        for (int m = 0; m < kMacros; ++m) // where the sequencer's curves hold them as they play
+            set[m] = std::clamp(set[m] + static_cast<double>(telemetry_.seqMacro[m]), 0.0, 1.0);
         MacroKnobs knobs = set;
         runMacroGraph(
             graph, get, knobs, nullptr, [](int) { return -1.0; },
@@ -2421,30 +2483,6 @@ void View::paint(Canvas &c, Rect area) {
     for (Panel *panel : panels_) // what veils some of their widgets (the FX view's cards a card carried lands among)
         panel->paintOverWidgets(c);
     paintWidgets(true);
-    // The card being dragged: where it would land only its outline, and a faint image of it under the mouse wherever
-    // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container, or
-    // a source's card. The image is the card painted at its landing place, moved, with the widgets on it (not the
-    // row's dashed card, which may glide through there).
-    auto outlined = [&](Rect landing, Rect row, float radius, Color color) {
-        c.pushClip(row);
-        c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
-        c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
-        c.popClip();
-    };
-    auto carried = [&](Rect landing, Rect start, Rect row, float radius, Color color, auto paintCard) {
-        outlined(landing, row, radius, color);
-        const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
-                           start.y + drag_.now.y - drag_.start.y - landing.y};
-        c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
-        c.pushClip(landing);
-        paintCard();
-        for (const Widget &w : list)
-            if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x && w.rect.y < landing.bottom() &&
-                w.rect.bottom() > landing.y)
-                paintWidget(c, w);
-        c.popClip();
-        c.popLayer();
-    };
     for (Panel *panel : panels_) // what a drag of theirs carries (an effect's card or a split's container, a route)
         panel->paintDrag(c);
     if (drag_.kind == DragKind::SourceMove && drag_.moved) {
@@ -2453,9 +2491,10 @@ void View::paint(Canvas &c, Rect area) {
         const auto at = std::find(shown.begin(), shown.end(), source);
         if (at != shown.end()) {
             const float place = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
-            carried(sourceCard(place, sourceSpan(source)),
-                    sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(source)),
-                    sourceCardClip(), kRadiusCard, kSourceColors[source], [&] { paintSource(c, place, source); });
+            paintCarriedCard(c, sourceCard(place, sourceSpan(source)),
+                             sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(source)),
+                             sourceCardClip(), kRadiusCard, kSourceColors[source], [&] { paintSource(c, place, source); },
+                             list);
         }
     }
     if (drag_.kind == DragKind::ModSource)
@@ -2649,8 +2688,9 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
         c.fillRect(r, kTrack.alpha(0.5f), kRadiusCard);
     if (w.kind == Kind::ModWheel) {
         // Fills up from the bottom with the wheel's value, in the color of its handle; bipolar, from the middle, where
-        // it moves nothing.
-        const float y = bottom - (bottom - top) * static_cast<float>(value(w.param));
+        // it moves nothing. Where it stands: the param as the editor has it, with what the sequencer's curve adds as it
+        // plays.
+        const float y = bottom - (bottom - top) * static_cast<float>(std::clamp(value(w.param) + telemetry_.seqWheel, 0.0, 1.0));
         const float from = mods_.sourceBipolar(kWheelSource) ? 0.5f * (top + bottom) : bottom;
         c.fillRect({r.x + inset, std::min(y, from), r.w - 2.0f * inset, std::abs(from - y)},
                    kSourceColors[kWheelSource].alpha(0.6f), kRadiusMark);
@@ -2659,8 +2699,8 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
         c.line({r.x + 3.0f, y}, {r.right() - 3.0f, y}, kText, 2.0f);
     } else {
         // Springs back to the middle: fills up or down from the center. Where the bend stands: the Pitch Bend param as
-        // the editor has it (so a drag moves it at once), with what the host adds on top (see Telemetry::bend): its
-        // MIDI bend and its modulation of the param.
+        // the editor has it (so a drag moves it at once), with what is added on top (see Telemetry::bend): the host's
+        // MIDI bend and modulation of the param, and the sequencer's bend curve.
         const float mid = r.y + r.h * 0.5f;
         const double bend =
             std::clamp(value(paramIndex(GlobalParam::PitchBend)) + telemetry_.bend - telemetry_.bendSet, -1.0, 1.0);
@@ -3772,26 +3812,44 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
         c.line({r.x + 8.0f, r.y + r.h * i / 4.0f}, {r.right() - 8.0f, r.y + r.h * i / 4.0f}, kBorder.alpha(0.6f), 1.0f);
 
     const EnvIndices e = envIndices(env);
-    const double sustain = value(e.sustain);
-    const EnvShape s = envShape(r, e, [this](int index) { return value(index); }, envScale(env));
+    // The curve as modulation takes it now. While that isn't where the knobs set it, a faint line shows where they do,
+    // which the handles keep to.
+    auto now = [this](int index) { return liveValue(index); };
+    auto setAt = [this](int index) { return value(index); };
+    const double sustain = now(e.sustain);
+    const float scale = envScale(env);
+    const EnvShape s = envShape(r, e, now, scale);
     const float height = s.bottom - s.top;
-    std::vector<double> key = curveKey(Curve::Envelope, r);
-    key.insert(key.end(), {s.scale, value(e.attack), value(e.hold), value(e.decay), sustain, value(e.release),
-                           value(e.curve(0)), value(e.curve(1)), value(e.curve(2))});
-    const std::vector<Point> points = curveCache().get(key, [&] {
-        std::vector<Point> points{s.p0};
+    auto curve = [&](const EnvShape &shape, const auto &get) {
+        std::vector<Point> points{shape.p0};
         for (int segment = 0; segment < 3; ++segment) {
             if (segment == 1)
-                points.push_back(s.ph); // the end of the hold
+                points.push_back(shape.ph); // the end of the hold
             for (int i = 1; i <= 24; ++i)
-                points.push_back(envSegmentPoint(s, segment, i / 24.0, value(e.curve(segment)), sustain));
+                points.push_back(envSegmentPoint(shape, segment, i / 24.0, get(e.curve(segment)), get(e.sustain)));
         }
         return points;
-    });
+    };
+    const int shaping[] = {e.attack, e.hold, e.decay, e.sustain, e.release, e.curve(0), e.curve(1), e.curve(2)};
+    const bool moved =
+        std::any_of(std::begin(shaping), std::end(shaping), [&](int index) { return now(index) != value(index); });
+    std::vector<Point> points;
+    if (moved) { // a new curve every paint, kept out of the cache so that it pushes no others out
+        points = curve(s, now);
+    } else {
+        std::vector<double> key = curveKey(Curve::Envelope, r);
+        key.insert(key.end(), {s.scale, value(e.attack), value(e.hold), value(e.decay), sustain, value(e.release),
+                               value(e.curve(0)), value(e.curve(1)), value(e.curve(2))});
+        points = curveCache().get(key, [&] { return curve(s, setAt); });
+    }
 
     std::vector<Point> area = points;
     area.push_back({s.p4.x, s.bottom});
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
+    if (moved) {
+        const std::vector<Point> knobs = curve(envShape(r, e, setAt, scale), setAt);
+        c.polyline(knobs.data(), knobs.size(), color.alpha(0.4f), 1.25f);
+    }
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
     // While notes play, a line across at the newest voice's level: an operator's envelope's, or a mod envelope's.
@@ -3801,9 +3859,8 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
         c.line({r.x + 8.0f, y}, {r.right() - 8.0f, y}, color.alpha(0.35f), 1.0f, true);
         // And a dot on the curve, as far along the stage the envelope is in as it has come: along the attack, decay
         // or release by its bend, across the hold, and at the sustain level's point through the sustain. Where the
-        // envelope follows its knobs, that is where the line meets the curve. Where it doesn't (a note let go during
-        // the decay releases from above the sustain; modulation moves its sustain), the dot keeps to the curve, and
-        // the line shows the level.
+        // envelope follows its curve, that is where the line meets it. Where it doesn't (a note let go during the decay
+        // releases from above the sustain), the dot keeps to the curve, and the line shows the level.
         const float position = env < kOps ? telemetry_.opEnvPos[env] : telemetry_.envPos[env - kOps];
         if (position >= 0.0f) {
             const int stage = std::min(static_cast<int>(position), 4);
@@ -3812,7 +3869,7 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
             if (stage == 1)
                 dot = {s.p1.x + static_cast<float>(along) * (s.ph.x - s.p1.x), s.top};
             else if (stage != 3)
-                dot = envSegmentPoint(s, stage / 2, along, value(e.curve(stage / 2)), sustain);
+                dot = envSegmentPoint(s, stage / 2, along, now(e.curve(stage / 2)), sustain);
             c.fillCircle(dot, 7.0f, color.alpha(0.25f));
             c.fillCircle(dot, 3.5f, kText);
         }
@@ -5451,6 +5508,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(hover_->b % 2 == 1 ? Str::TipUpZone : Str::TipDownZone);
     } else if (hover_->kind == Kind::Knob) {
         text = tr(dynKnobTip(param));
+    } else if (hover_->kind == Kind::MacroHandle && isOpSource(hover_->a)) {
+        text = trf(Str::TipSourceHandle, {mods_.sourceName(hover_->a)});
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
         text = tr(Str::TipWheelHandle);
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
@@ -6008,11 +6067,12 @@ void View::applyDrag(Point p) {
     };
     switch (drag_.kind) {
     case DragKind::Key: {
-        // Sliding across keys moves the note; off the keys, the last one keeps sounding.
+        // Sliding across keys moves the note, struck as hard as where the mouse enters the key says; off the keys,
+        // the last one keeps sounding.
         const auto hit = hitTest(p);
         if (hit && hit->kind == Kind::Key && hit->a != w.a) {
-            controller_.playNote(keyboardBase() + w.a, false);
-            controller_.playNote(keyboardBase() + hit->a, true);
+            controller_.playNote(keyboardBase() + w.a, false, 0);
+            controller_.playNote(keyboardBase() + hit->a, true, keyVelocity(hit->rect, p));
             drag_.widget.a = hit->a;
         }
         break;
@@ -6189,9 +6249,16 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::ModSource: {
-        // Over an operator's tab, a dragged handle opens it, so its knobs can take the drop; over a pill, its list, so
-        // one of its rows can take the handle as that modulation's aux.
+        // Held a moment over a view's tab, or a node's tab, or a node or its name in the graph or the matrix, a dragged
+        // handle shows that
+        // view or node (see dwellStep()); over an operator's tab, it opens it at once, so what it shows can take the
+        // drop; over a pill, its list, so one of its rows can take the handle as that modulation's aux.
         const auto at = hitTest(p);
+        if (const std::optional<Widget> over = dwellTarget(at); !over)
+            dwell_ = {};
+        else if (!dwell_.over || !dwell_.over->same(*over))
+            dwell_ = {over, clock_(), false};
+        dwellStep();
         if (at && at->kind == Kind::OpTab)
             controller_.layout().opTab = static_cast<InspectorTab>(at->a);
         if (at && at->kind == Kind::ModPill && !modListOn(*at))
@@ -6560,7 +6627,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Key:
         drag_.kind = DragKind::Key;
-        controller_.playNote(keyboardBase() + w.a, true);
+        controller_.playNote(keyboardBase() + w.a, true, keyVelocity(w.rect, drag_.start));
         break;
     case Kind::Octave:
         octave_ = std::clamp(octave_ + w.a, -2, 2);
@@ -6858,7 +6925,7 @@ void View::finishDrag() {
             controller_.endEdit(index);
         break;
     case DragKind::Key:
-        controller_.playNote(keyboardBase() + w.a, false);
+        controller_.playNote(keyboardBase() + w.a, false, 0);
         break;
     case DragKind::BendWheel: // springs back to center, in the same gesture
         if (value(paramIndex(GlobalParam::PitchBend)) != 0.0)
@@ -6885,6 +6952,7 @@ void View::finishDrag() {
     if (drag_.step)
         controller_.endStep();
     drag_ = Drag{};
+    dwell_ = {};
 }
 
 void View::mouseLeave() {
@@ -7699,7 +7767,9 @@ void View::undo() {
             panel->undoing();
         listMenu_ = -1;
         peqMenu_ = -1;
-        controller_.undo();
+        if (const UndoStep *step = controller_.undo())
+            for (Panel *panel : panels_)
+                panel->stepApplied(*step, false);
         menuLive_ = false;
     }
 }
@@ -7712,7 +7782,9 @@ void View::redo() {
             panel->undoing();
         listMenu_ = -1;
         peqMenu_ = -1;
-        controller_.redo();
+        if (const UndoStep *step = controller_.redo())
+            for (Panel *panel : panels_)
+                panel->stepApplied(*step, true);
         menuLive_ = false;
     }
 }
@@ -7825,6 +7897,8 @@ void View::typeKey(Key key, bool shift) {
         break;
     case Key::Up:
     case Key::Down:
+    case Key::Tab:
+    case Key::BackTab:
         return;
     }
     t.selected = false;

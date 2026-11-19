@@ -5,6 +5,7 @@
 // routes is RoutingModel's (routingmodel.cpp); the geometry they are drawn with is routing.h's.
 
 #include "routingpanel.h"
+#include "lists.h"
 
 #include "algorithms.h"
 #include "fxgraph.h"
@@ -661,15 +662,7 @@ RoutingPanel::RadarLook RoutingPanel::radarLook() const {
 // --- Widgets.
 
 void RoutingPanel::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     // A wire's or OUT label in the graph: the label, then, while it is a pill (see labelPill()), its mode's part and its
     // x, all three drawn as one.
     auto labelWidgets = [&](Kind kind, int param, int mode, Rect idle, int from, int to) {
@@ -708,7 +701,7 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
         return;
     }
     // The wires between the nodes, under everything else: dragged sideways, they bend. Then the nodes, each with
-    // its edge, then depth labels and arrowheads on top of them.
+    // its edge, then depth labels and arrowheads on top of them (popups() lifts the labels over all of it).
     const int rerouted = rerouting();
     for (int from : on) {
         for (int to : on) {
@@ -760,7 +753,7 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
     for (int node : on)
         if (routing_.goesOut(node) && outParam(node) != moving)
             labelWidgets(Kind::OutLabel, outParam(node), -1, labelOf(outParam(node)), node, kNodes);
-    // The arrowheads, over the labels: dragged onto another node or the bus, they move their routes there.
+    // The arrowheads: dragged onto another node or the bus, they move their routes there.
     for (int from : on) {
         for (int to : on) {
             const int param = routeParam(from, to);
@@ -815,15 +808,18 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
 }
 
 void RoutingPanel::popups(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    // The graph's labels go over every widget listed so far, an open pill over the labels at rest, and all of them under
+    // the lists that follow: they take the mouse over a node, a wire's end or a depth handle. (The INPUTS tab's depths,
+    // labels too, stay on the inspector's page.)
+    if (graphShown()) {
+        auto isLabel = [](const Widget &w) {
+            return w.kind == Kind::LabelMode || w.kind == Kind::LabelRemove ||
+                   ((w.kind == Kind::WireLabel || w.kind == Kind::OutLabel) && kRouting.contains(w.rect.center()));
+        };
+        const auto labels = std::stable_partition(list.begin(), list.end(), [&](const Widget &w) { return !isLabel(w); });
+        std::stable_partition(labels, list.end(), [](const Widget &w) { return w.group.w <= 0.0f; });
+    }
+    const WidgetAdder add{list};
     // The panel of algorithms, under ALGORITHM: the set of its switch, by how many operators they use.
     if (algorithmMenuOpen_ && shown()) {
         static_assert(std::size(kAlgorithmSets) == kAlgorithmSetCount);
@@ -978,12 +974,29 @@ void RoutingPanel::paintMatrixLabels(Canvas &c) {
         const Rect cell = gridCell(row, 0);
         c.text({cell.x - 32.0f, cell.y, 28.0f, cell.h}, kNodeNames[row], kTextValue, nameColor(row), Align::Center, true);
     }
-    c.text({kLegendX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kLegendX, 22.0f},
-           tr(Str::HintMatrix), kTextLabel, kFaint, Align::Right);
 
-    // Legend beside the grid.
-    const float width = kRouting.right() - 16.0f - kLegendX;
-    float y = kRouting.y + 72.0f;
+    // Legend beside the grid, its lines broken at their spaces to fit the width the cells leave it.
+    const float width = kLegendW;
+    constexpr float kLineH = 15.0f;
+    auto wrapped = [&](float x, float top, float room, std::string_view text, float size, Color color) {
+        int lines = 0;
+        while (!text.empty()) {
+            size_t end = text.size();
+            while (c.textWidth(text.substr(0, end), size) > room) {
+                const size_t space = text.substr(0, end).rfind(' ');
+                if (space == std::string_view::npos || space == 0)
+                    break; // a single word wider than the room stays whole
+                end = space;
+            }
+            c.text({x, top + static_cast<float>(lines) * kLineH, room, 20.0f}, text.substr(0, end), size, color, Align::Left);
+            text.remove_prefix(end);
+            while (!text.empty() && text.front() == ' ')
+                text.remove_prefix(1);
+            ++lines;
+        }
+        return lines;
+    };
+    float y = kRouting.y + 36.0f;
     c.text({kLegendX, y - 22.0f, width, 16.0f}, tr(Str::HeadingHowToRead), kTextLabel, kFaint, Align::Left, true);
     struct Entry {
         Color color;
@@ -1014,13 +1027,15 @@ void RoutingPanel::paintMatrixLabels(Canvas &c) {
             if (strips > 1)
                 c.popClip();
         }
-        c.text({kLegendX + 24.0f, y, width - 24.0f, 20.0f}, e.text, kTextBody, kDim, Align::Left);
-        y += 26.0f;
+        const int lines = wrapped(kLegendX + 24.0f, y, width - 24.0f, e.text, kTextBody, kDim);
+        y += 26.0f + static_cast<float>(lines - 1) * kLineH;
     }
-    y += 10.0f;
-    const Str notes[] = {Str::MatrixClick, Str::MatrixClickThen};
-    for (size_t i = 0; i < std::size(notes); ++i)
-        c.text({kLegendX, y + static_cast<float>(i) * 20.0f, width, 18.0f}, tr(notes[i]), kTextBody, kFaint, Align::Left);
+    y += 8.0f;
+    for (const Str note : {Str::MatrixClick, Str::MatrixClickThen})
+        y += static_cast<float>(wrapped(kLegendX, y, width, tr(note), kTextBody, kFaint)) * kLineH + 4.0f;
+    y += 8.0f;
+    for (const Str hint : {Str::HintMatrixRows, Str::HintMatrixDrag, Str::HintMatrixToggle})
+        y += static_cast<float>(wrapped(kLegendX, y, width, tr(hint), kTextLabel, kFaint)) * kLineH;
 }
 
 bool RoutingPanel::opHeard(int op) const {
@@ -1480,6 +1495,8 @@ std::string RoutingPanel::tooltip(const Widget &w) const {
         return tr(Str::TipRemoveRoute);
     case Kind::Wire:
         return tr(Str::TipWire);
+    case Kind::NodeGhost:
+        return trf(Str::TipNodeGhost, {nodeTitle(w.a)});
     default:
         return {};
     }

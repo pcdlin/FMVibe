@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -289,8 +290,11 @@ public:
     tresult PLUGIN_API canProcessSampleSize(int32 size) override {
         return size == kSample32 ? kResultTrue : kResultFalse;
     }
-    // As setActive() worked it out (see PluginCore::latency()); an edit that moves it asks for a restart.
-    uint32 PLUGIN_API getLatencySamples() override { return static_cast<uint32>(latency()); }
+    // As setActive() worked it out (see PluginCore::latency()); an edit that moves it asks for a restart. A host may
+    // ask between its setActive(false) and setActive(true): what the next activation will make it, then.
+    uint32 PLUGIN_API getLatencySamples() override {
+        return static_cast<uint32>(active_ ? latency() : latencyAt(sampleRate_));
+    }
     tresult PLUGIN_API setupProcessing(ProcessSetup &setup) override;
     tresult PLUGIN_API setProcessing(TBool state) override;
     tresult PLUGIN_API process(ProcessData &data) override;
@@ -429,6 +433,7 @@ private:
     std::atomic<bool> callbackPending_{false};
     std::atomic<int32> restartFlags_{0};
     double sampleRate_ = 48000.0;
+    bool active_ = false; // main thread: since a setActive(true) that went through
     std::atomic<bool> processing_{false};
     UnitID selectedUnit_ = kRootUnitId; // the host's, for its own use
     std::vector<Change> changes_; // reserved up front: the audio thread never allocates
@@ -633,8 +638,11 @@ tresult PLUGIN_API Plugin::getBusInfo(MediaType type, BusDirection dir, int32 in
 
 tresult PLUGIN_API Plugin::setActive(TBool state) {
     if (state) {
-        activate(sampleRate_); // voices are allocated here, on the main thread
+        active_ = activate(sampleRate_); // voices are allocated here, on the main thread
+        if (!active_)
+            return kOutOfMemory;
     } else {
+        active_ = false;
         processing_.store(false);
         deactivate();
     }
@@ -645,8 +653,12 @@ tresult Plugin::setComponentBytes(IBStream *state) {
     if (!state)
         return kInvalidArgument;
     const clap_istream_t stream = streamIn(state);
-    if (!loadState(&stream))
-        return kResultFalse;
+    try {
+        if (!loadState(&stream))
+            return kResultFalse;
+    } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+        return kOutOfMemory;
+    }
     clearHistory();
     return kResultOk;
 }
@@ -655,7 +667,11 @@ tresult Plugin::getComponentBytes(IBStream *state) {
     if (!state)
         return kInvalidArgument;
     const clap_ostream_t stream = streamOut(state);
-    return saveState(&stream) ? kResultOk : kResultFalse;
+    try {
+        return saveState(&stream) ? kResultOk : kResultFalse;
+    } catch (const std::bad_alloc &) {
+        return kOutOfMemory;
+    }
 }
 
 // A stereo output and nothing else.
@@ -688,6 +704,15 @@ tresult PLUGIN_API Plugin::setProcessing(TBool state) {
 }
 
 tresult PLUGIN_API Plugin::process(ProcessData &data) {
+    if (outOfMemory()) { // a host running it though its setActive() failed
+        if (data.numOutputs > 0 && data.outputs && data.symbolicSampleSize == kSample32 &&
+            data.outputs->channelBuffers32) {
+            for (int32 channel = 0; channel < data.outputs->numChannels; ++channel)
+                std::fill_n(data.outputs->channelBuffers32[channel], std::max(data.numSamples, 0), 0.0f);
+            data.outputs->silenceFlags = (uint64{1} << data.outputs->numChannels) - 1;
+        }
+        return kResultOk;
+    }
     if (data.numSamples > 0) // for hosts that process without setProcessing() first
         processing_.store(true, std::memory_order_relaxed);
     if (data.processContext && (data.processContext->state & ProcessContext::kTempoValid))

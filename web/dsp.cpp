@@ -98,7 +98,7 @@ EMSCRIPTEN_KEEPALIVE void dsp_set(int index, double value) {
 EMSCRIPTEN_KEEPALIVE void dsp_note(int key, int on, int velocity, int audition) {
     const NoteRef note{-1, audition ? kAuditionPort : int16_t{0}, 0, static_cast<int16_t>(std::clamp(key, 0, 127))};
     if (on)
-        synth.noteOn(note, std::clamp(velocity, 1, 127) / 127.0);
+        synth.noteOn(note, std::clamp(velocity, 0, 127) / 127.0);
     else
         synth.noteOff(note);
 }

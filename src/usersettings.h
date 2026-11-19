@@ -33,15 +33,22 @@ struct UserSettings {
     std::string browserPlace;
 };
 constexpr size_t kMaxRecentPresets = 12;
-extern UserSettings userSettings; // as the settings file has them; editors only run on the main thread
+extern UserSettings userSettings; // as the settings file has them. Main thread only
 
 // The folder the settings file is in (UTF-8), where the wavetable library keeps its cache; "" if there is none.
 std::string userSettingsFolder();
 
+// Takes up the file as it is now, keeping what this process has changed and not written yet. A file that can't be read
+// leaves userSettings as they are.
 void readUserSettings();
-// Writes what this process changed since it last read them into the file as it is now, where another process may
-// have changed the others; userSettings then holds what was written.
+// Writes what this process changed since it last read them into the file as it is now, where other processes may have
+// changed the rest, a favorite or a category of theirs among them; userSettings then holds what was written. If the
+// file can't be read or replaced just now, the change stays in userSettings, to go with the next read or write.
 void writeUserSettings();
+
+// The editor size the file says new instances open at (see UserSettings::zoom). Any thread: hosts may create instances
+// on any, and it leaves userSettings alone.
+double savedEditorZoom();
 
 // Puts the file written at part in target's place, waiting out another process that reads target meanwhile (another
 // instance's process, a virus scanner, the search indexer), which keeps it from being replaced for a moment. If it

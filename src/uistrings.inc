@@ -530,6 +530,7 @@ STR(ParamSeqNoteSlide, "Slide")
 STR(ParamSeqNoteMute, "Mute")
 STR(ParamSeqBendCurve, "Bend Curve") // a pattern's pitch bend curve, in its params' names
 STR(ParamSeqWheelCurve, "Mod Wheel Curve")
+STR(ParamSeqMacroCurve, "Macro {1} Curve")
 
 // --- The host's remote control pages, and the plugin's ports
 
@@ -569,6 +570,7 @@ STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")
 STR(SourceNameBend, "Pitch Bend")
+STR(SourceNameOp, "Op {1}") // an operator's output as a modulation source
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 
@@ -625,6 +627,7 @@ STR(SeqLaneVelocity, "VELOCITY")
 STR(SeqLaneChance, "CHANCE")
 STR(SeqLaneBend, "BEND")
 STR(SeqLaneWheel, "MOD WHEEL")
+STR(SeqLaneMacro, "MACRO {1}") // the lane's tab of the macros' curves, {1} the macro it shows
 STR(ModListCount, "{1} modulations") // in a pill's list, after the name of what they modulate
 STR(ModListCountOne, "1 modulation")
 STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
@@ -832,7 +835,9 @@ STR(ButtonOverwrite, "Overwrite")
 // --- The editor: hints and notes along the panels
 
 STR(HintRouting, "drag edges to connect")
-STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
+STR(HintMatrixRows, "rows feed columns")
+STR(HintMatrixDrag, "drag to adjust")
+STR(HintMatrixToggle, "double-click to toggle")
 STR(HintFx, "drag a title to reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
@@ -1114,9 +1119,9 @@ STR(TipSeqFold, "Show scale rows only")
 STR(TipSeqKeys, "Click to audition")
 STR(TipSeqRuler, "Drag to set loop, double-click for whole pattern")
 STR(TipSeqField, "{1}: drag or scroll, double-click resets")
-STR(TipSeqLane, "Drag to set {1}")
 STR(TipSeqLaneBend, "Pattern pitch bend")
 STR(TipSeqLaneWheel, "Pattern mod wheel")
+STR(TipSeqLaneMacro, "Pattern macro curves")
 STR(TipSeqRoot, "Root for Key and Latch")
 STR(TipSeqPower, "Sequencer on/off")
 STR(TipSeqZoomOutX, "Zoom out horizontally (Ctrl+wheel)")

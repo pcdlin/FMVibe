@@ -4,6 +4,7 @@
 #include "plugin.h"
 
 #include <cstring>
+#include <new>
 
 namespace {
 
@@ -22,7 +23,11 @@ const clap_plugin_t *CLAP_ABI factoryCreatePlugin(const clap_plugin_factory_t *,
     if (!clap_version_is_compatible(host->clap_version) ||
         std::strcmp(pluginId, fmvibe::kDescriptor.id) != 0)
         return nullptr;
-    return fmvibe::createPlugin(host);
+    try {
+        return fmvibe::createPlugin(host);
+    } catch (const std::bad_alloc &) { // an exception must not reach the host, which would end with it
+        return nullptr;
+    }
 }
 
 const clap_plugin_factory_t kFactory = {

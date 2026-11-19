@@ -61,11 +61,14 @@ public:
     void telemetry(Telemetry &out) const override { out = live; }
     UiLayout &layout() override { return ui; }
     void layoutChanged() override {}
-    void playNote(int note, bool on) override {
-        if (on)
+    void playNote(int note, bool on, int velocity) override {
+        if (on) {
             lastNote = note;
+            lastVelocity = velocity;
+        }
     }
-    int lastNote = -1; // the last key played
+    int lastNote = -1;     // the last key played
+    int lastVelocity = -1; // and its velocity
     void auditionNote(int note, bool on) override {
         if (on)
             lastAudition = note;
@@ -889,7 +892,7 @@ Point slopeItem(int slope) {
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
-    return {detail::kGridOrigin.x + col * 32.6f + 14.3f, 168.0f + row * 32.6f + 14.3f};
+    return detail::gridCell(row, col).center();
 }
 
 Point nodeCenter(const UiLayout &layout, int node) {
@@ -4249,6 +4252,25 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                   "the graph's main line is grey, each band's wires and half of the split's and join's nodes in its "
                   "color, fading in across a split and out across a join");
         }
+        // A split's controls say what they do, under them (read off the rendered pixels along the tooltip's row).
+        {
+            auto rowUnder = [&](Rect control, const char *name) {
+                renderer.save(view, dir / name);
+                std::vector<uint32_t> row;
+                for (float x = control.center().x - 30.0f; x <= control.center().x + 30.0f; x += 1.0f)
+                    row.push_back(renderer.pixel({x, control.bottom() + 6.0f + 11.0f}));
+                return row;
+            };
+            auto tipped = [&](Rect control, const char *bare, const char *shown) {
+                view.mouseMove({600.0f, 428.0f}, {});
+                const std::vector<uint32_t> away = rowUnder(control, bare);
+                view.mouseMove(centerOf(control), {});
+                return rowUnder(control, shown) != away;
+            };
+            const bool soloTip = tipped(detail::splitSoloButton(card, 2), "40e1a-split-no-tip.png", "40e1b-split-solo-tip.png");
+            const bool bandsTip = tipped(detail::splitBandsButton(card, 3), "40e1c-split-no-tip.png", "40e1d-split-bands-tip.png");
+            check(soloTip && bandsTip, "a split's solo and band count buttons show their tooltips");
+        }
         click(view, centerOf(detail::splitSoloButton(card, 2)));
         const bool soloed = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                             model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
@@ -5456,6 +5478,69 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.bend = model.live.bendSet = 0.0f;
     model.set(paramIndex(GlobalParam::PitchBend), 0.0);
 
+    // The sequencer's curves move the wheels as they play, through the telemetry alone: its bend curve on top of the
+    // Pitch Bend param, its mod wheel curve on top of the Mod Wheel param. Only the keyboard's panel repaints, no param
+    // moves and nothing is edited, and stopped, each wheel is back where its param stands (read off the rendered pixels).
+    {
+        const int pitchBend = paramIndex(GlobalParam::PitchBend), modWheel = paramIndex(GlobalParam::ModWheel);
+        const float keysTop = detail::keyboardTop(model.ui.sourcesCollapsed);
+        const Rect keysPanel = detail::keyboardPanel(keysTop, model.ui.keysCollapsed);
+        const Rect bendRect = detail::bendWheel(keysTop), modRect = detail::modWheel(keysTop);
+        // Where a wheel's level line is: the brightest row down its middle.
+        auto lineY = [&](Rect wheel) {
+            float found = wheel.y;
+            uint32_t brightest = 0;
+            for (float y = wheel.y + 2.0f; y < wheel.bottom() - 2.0f; y += 1.0f) {
+                const uint32_t c = renderer.pixel({wheel.center().x, y + 0.5f});
+                const uint32_t level = (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF);
+                if (level > brightest) {
+                    brightest = level;
+                    found = y;
+                }
+            }
+            return found;
+        };
+        auto bendShows = [&](float bend) {
+            return std::abs(lineY(bendRect) - (bendRect.center().y - bend * (bendRect.h * 0.5f - 4.0f))) <= 1.5f;
+        };
+        auto wheelShows = [&](float level) {
+            return std::abs(lineY(modRect) - (modRect.bottom() - 4.0f - level * (modRect.h - 8.0f))) <= 1.5f;
+        };
+        auto keysAlone = [&](const char *name) { return view.poll() && only(keysPanel) && samePixels(name); };
+        model.set(pitchBend, 0.25);
+        model.set(modWheel, 0.25);
+        model.live.bend = model.live.bendSet = 0.25f;
+        // The output silent, or its meter would repaint the header at every poll; and the key held done easing.
+        const std::array<float, 2> peakWas = model.live.outPeak;
+        const auto scopeWas = model.live.outScope;
+        model.live.outPeak = {0.0f, 0.0f};
+        model.live.outScope.fill(0.0f);
+        for (int i = 0; i < 600 && view.poll(); ++i) {}
+        renderer.save(view, dir / "99e4-wheels-rest.png");
+        const bool rest = bendShows(0.25f) && wheelShows(0.25f);
+        const size_t setsWere = model.sets.size(), begunWere = model.begun.size();
+
+        model.live.bend = 0.75f; // the bend curve adds 0.5
+        const bool bent = keysAlone("99e5-wheels-seq-bend.png") && bendShows(0.75f) && wheelShows(0.25f);
+        model.live.seqWheel = 0.5f;
+        const bool wheeled = keysAlone("99e6-wheels-seq-mod.png") && bendShows(0.75f) && wheelShows(0.75f);
+        model.live.seqWheel = 0.9f; // past the wheel's top: held there
+        const bool held = keysAlone("99e7-wheels-seq-mod-top.png") && wheelShows(1.0f);
+        model.live.bend = 0.25f;
+        model.live.seqWheel = 0.0f;
+        const bool back = keysAlone("99e8-wheels-seq-stopped.png") && bendShows(0.25f) && wheelShows(0.25f);
+        const bool untouched = model.value(pitchBend) == 0.25 && model.value(modWheel) == 0.25 &&
+                               model.sets.size() == setsWere && model.begun.size() == begunWere;
+        check(rest && bent, "the sequencer's bend curve moves the bend wheel, repainting the keyboard's panel alone");
+        check(wheeled && held, "the sequencer's mod wheel curve moves the mod wheel, repainting the keyboard's panel alone");
+        check(back && untouched, "the wheels go back to their params as the curves stop, no param edited");
+        model.live.bend = model.live.bendSet = 0.0f;
+        model.live.outPeak = peakWas;
+        model.live.outScope = scopeWas;
+        model.set(pitchBend, 0.0);
+        model.set(modWheel, 0.0);
+    }
+
     // Operator A's scope shown: its trace moving repaints the inspector (and the header apart, its meter showing).
     model.ui.selectedNode = 0;
     model.ui.opTab = InspectorTab::Scope;
@@ -5906,6 +5991,29 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.poll();
         check(glowShot && glowing != plain, "a note the playhead reaches glows, as the glow setting says");
     }
+    // A slight line parts the roll from the lane under it in every theme: it stands off the ground on either side, and
+    // by far less than text does (read off the rendered pixels, halfway along a step, clear of the grid's lines).
+    {
+        const std::string themeWas = model.themeName;
+        const float x = at(6.5, 48).x, y = detail::kSeqLaneArea.y;
+        auto apart = [](uint32_t a, uint32_t b) {
+            int sum = 0;
+            for (int shift : {16, 8, 0})
+                sum += std::abs(static_cast<int>(a >> shift & 0xFF) - static_cast<int>(b >> shift & 0xFF));
+            return sum;
+        };
+        bool parted = true;
+        for (const detail::Palette &theme : detail::kThemes) {
+            model.themeName = theme.name;
+            parted = renderer.save(view, dir / ("36a-seq-divider-" + std::string(theme.name) + ".png")) && parted;
+            const uint32_t line = renderer.pixel({x, y + 0.5f});
+            const int above = apart(line, renderer.pixel({x, y - 3.0f})), below = apart(line, renderer.pixel({x, y + 3.0f}));
+            std::printf("      %s: the roll's divider %d off the roll, %d off the lane\n", theme.name, above, below);
+            parted = parted && above >= 40 && above <= 240 && below >= 40 && below <= 240;
+        }
+        model.themeName = themeWas;
+        check(parted, "a slight line parts the roll from the lane under it, in every theme");
+    }
 
     // A note dragged onto another's start and pitch takes its place: the one there goes, in the same undo step; and so
     // does one a note lands on by the arrow keys.
@@ -6285,6 +6393,67 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(passedOn && copied && after && pasted && asCopied && picked && undone && cut && back && restored,
               "Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste the notes picked, at the mouse or after them, undoably");
     }
+    // Ctrl+D puts the notes picked again right after the last of them to end, as far apart as they were, and picks the
+    // copies, so that it lays them end to end; what was copied stays. Each an undo step, and none once the pattern has
+    // no room left; with nothing picked, it goes on to the host.
+    {
+        const Modifiers shift{true, false, false};
+        click(view, at(15.5, 66)); // nothing picked
+        const bool passedOn = !view.seqKey(View::Key::Duplicate, false);
+        click(view, at(4.4, 55));
+        view.seqKey(View::Key::Copy, false);
+        click(view, at(8.5, 51)); // the note on step 8, two steps long
+        const bool took = view.seqKey(View::Key::Duplicate, false);
+        const int copy = noteAt(10.0, 51);
+        const bool asItWas = copy >= 0 && field(copy, SeqNoteParam::Length) == 2.0 && noteAt(8.0, 51) == 2;
+        view.seqKey(View::Key::Duplicate, false);
+        view.seqKey(View::Key::Duplicate, false);
+        const bool endToEnd = noteAt(12.0, 51) >= 0 && noteAt(14.0, 51) >= 0;
+        view.seqKey(View::Key::Duplicate, false); // past the pattern's end: nothing to undo
+        view.undo();
+        view.undo();
+        view.undo();
+        const bool undone = noteAt(10.0, 51) < 0 && noteAt(12.0, 51) < 0 && noteAt(14.0, 51) < 0 && noteAt(8.0, 51) == 2;
+        click(view, at(15.5, 66));
+        click(view, at(4.4, 55));
+        view.mouseMove(at(8.5, 51), shift);
+        view.mouseDown(at(8.5, 51), shift);
+        view.mouseUp(at(8.5, 51), shift);
+        view.seqKey(View::Key::Duplicate, false);
+        const bool both = noteAt(10.0, 55) >= 0 && noteAt(14.0, 51) >= 0; // six steps on, from step 4 to the end of 8's
+        // Undone, the notes it was pressed on are picked again, and redone, the copies: Delete shows which.
+        view.undo();
+        view.redo();
+        view.seqKey(View::Key::Delete, false);
+        const bool copiesPicked = noteAt(10.0, 55) < 0 && noteAt(14.0, 51) < 0 && noteAt(4.0, 55) == 1 && noteAt(8.0, 51) == 2;
+        view.undo();
+        view.undo();
+        view.seqKey(View::Key::Delete, false);
+        const bool pickedAgain = noteAt(4.0, 55) < 0 && noteAt(8.0, 51) < 0 && noteAt(0.0, 48) == 0 && noteAt(12.0, 58) == 3;
+        view.undo();
+        // Pressed twice, each undo goes back to what that press was made on.
+        click(view, at(15.5, 66));
+        click(view, at(8.5, 51));
+        view.seqKey(View::Key::Duplicate, false);
+        view.seqKey(View::Key::Duplicate, false);
+        view.undo();
+        view.seqKey(View::Key::Delete, false);
+        const bool firstCopyPicked = noteAt(10.0, 51) < 0 && noteAt(8.0, 51) == 2;
+        view.undo();
+        view.undo();
+        view.seqKey(View::Key::Delete, false);
+        const bool originalPicked = noteAt(8.0, 51) < 0;
+        view.undo();
+        view.mouseMove(at(14.6, 62), {});
+        view.seqKey(View::Key::Paste, false);
+        const bool clipKept = noteAt(14.0, 55) >= 0;
+        view.undo();
+        click(view, at(15.5, 66)); // nothing picked
+        check(passedOn && took && asItWas && endToEnd && undone && both && clipKept && noteAt(10.0, 55) < 0,
+              "Ctrl+D duplicates the notes picked right after the last of them, undoably, leaving what was copied");
+        check(copiesPicked && pickedAgain && firstCopyPicked && originalPicked,
+              "a duplicate undone picks the notes it was made from again, and redone picks its copies");
+    }
     // The roll's right-click menu: on a note not picked, picking it alone; Duplicate putting a copy right after it, Mute
     // muting it (checked then), Quantize putting it on the grid, Paste on an empty place putting what was copied there,
     // Select All picking every note; each an undo step.
@@ -6558,8 +6727,10 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({600.0f, 600.0f}, {});
         renderer.save(view, dir / "36h-seq-bend-empty.png");
         const bool grid = renderer.pixel(bendAt(14.5, 0.5)) != renderer.pixel(bendAt(14.5, 0.75));
-        const Point bareAt = bendAt(14.5, 0.75); // between the grid's lines, in what the curve will fill
+        const Point bareAt = bendAt(14.5, 0.25); // between the grid's lines, in what the curve will fill
         const uint32_t bareInk = renderer.pixel(bareAt);
+        const Point overAt = bendAt(14.5, 0.75); // over it, where the curve falls away toward its first point
+        const uint32_t overInk = renderer.pixel(overAt);
         view.mouseMove(bendAt(2.2, 0.4), {});
         const bool noPen = view.cursor() != CursorKind::Pen;
         click(view, bendAt(2.2, 0.4));
@@ -6598,9 +6769,26 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         const double bent = curveField(SeqCurve::Bend, 0, PointField::Curve);
         view.mouseMove({600.0f, 600.0f}, {});
         const bool bentShot = renderer.save(view, dir / "36h-seq-bend.png");
-        const bool curveDrawn = renderer.pixel(bareAt) != bareInk; // held at 1 past its last point, filled down to 0
+        // Past its last point it falls round the pattern's end toward its first, filled down to 0.
+        const bool curveDrawn = renderer.pixel(bareAt) != bareInk && renderer.pixel(overAt) == overInk;
         doubleClick(view, bendAt(middleStep, -0.5 + 1.5 * shapeBend(0.5, bent)));
         const bool straight = curveField(SeqCurve::Bend, 0, PointField::Curve) == 0.0;
+        // The last segment, round the pattern's end to the first point, has a handle at its middle too, here just past the
+        // pattern's start: dragged 20 px up, it bends by the last point's curve, and double-clicked it straightens.
+        const double lastX = curveField(SeqCurve::Bend, 1, PointField::X);
+        const double roundStep = (lastX + 6.0 + 16.0) * 0.5 - 16.0;
+        const Point roundMiddle = bendAt(roundStep, 1.0 - 1.5 * 0.5);
+        view.mouseMove(roundMiddle, {});
+        const bool roundCursor = view.cursor() == CursorKind::Vertical;
+        drag(view, roundMiddle, {roundMiddle.x, roundMiddle.y - 20.0f});
+        const double roundBent = curveField(SeqCurve::Bend, 1, PointField::Curve);
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "36h-seq-bend-round.png");
+        doubleClick(view, bendAt(roundStep, 1.0 - 1.5 * shapeBend(0.5, roundBent)));
+        const bool roundStraight = curveField(SeqCurve::Bend, 1, PointField::Curve) == 0.0;
+        std::printf("      bend lane round the pattern's end: bent by %.2f\n", roundBent);
+        check(roundCursor && std::abs(roundBent - 0.5) < 0.05 && roundStraight,
+              "the curve's last segment wraps round the pattern's end, bent and straightened by its middle");
         click(view, selectTool);
         doubleClick(view, bendAt(6.0, -0.5));
         const bool gone = count(SeqCurve::Bend) == 1.0 && std::abs(curveField(SeqCurve::Bend, 0, PointField::X) - 10.3) < 0.02;
@@ -6627,6 +6815,93 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         std::printf("      mod wheel lane: %.0f points drawn\n", count(SeqCurve::ModWheel));
         check(wheelShot && level && count(SeqCurve::Bend) == 1.0 && model.ui.seqLane == SeqLane::ModWheel,
               "the MOD WHEEL lane's Shift+drag with Draw draws its curve a point a step");
+        // The MACRO tab: as the tabs beside it, nothing behind it but the panel until it is picked, then the same highlight
+        // as a tab picked, out to its edge, no border of another color (read off the rendered pixels). A click shows the macro last shown and opens the list of macros over it; row 3 picks Macro 3's
+        // curve, and with Draw a click puts a point down on it alone, an undo step. Open again, a macro with a curve shows it
+        // small in its row, unlike one without, and its dot is full where one without a curve has it faint, on the tab and
+        // in its row (read off the rendered pixels); a click around the list and Escape close it; the wheel steps the tab along
+        // the macros. Where the curve holds the macro's knob shows on the knob, no param edited.
+        {
+            const SeqCurve macroCurve = seqMacroCurve(2);
+            auto laneOf = [](int macro) { return static_cast<SeqLane>(static_cast<int>(SeqLane::Macro1) + macro); };
+            const Rect tab = detail::kSeqMacroTab, list = detail::kSeqMacroList;
+            const Point tabCorner{tab.x + 3.0f, tab.y + 3.0f}, tabEdge{tab.center().x, tab.y + 0.5f};
+            const Point listInside{list.x + 60.0f, list.y + 3.0f};
+            auto shotInk = [&](const char *name, Point p) {
+                view.mouseMove({600.0f, 600.0f}, {});
+                renderer.save(view, dir / name);
+                return renderer.pixel(p);
+            };
+            const uint32_t panelInk = renderer.pixel({kSeqGrid.x + 76.0f + 3.0f, detail::kSeqLaneTabs.y + 5.0f}); // CHANCE's corner
+            const uint32_t litTabInk = renderer.pixel({kSeqGrid.x + 3.0f * 76.0f + 3.0f, detail::kSeqLaneTabs.y + 5.0f});
+            const uint32_t restInk = renderer.pixel(tabCorner), noListInk = renderer.pixel(listInside);
+            const bool plainAtRest = restInk == panelInk && renderer.pixel(tabEdge) == panelInk && litTabInk != panelInk;
+
+            click(view, rectCenter(tab));
+            const bool opened = model.ui.seqLane == laneOf(0) &&
+                                shotInk("36h-seq-macro-list.png", listInside) != noListInk;
+            auto brightness = [](uint32_t c) { return (c >> 16 & 0xFF) + (c >> 8 & 0xFF) + (c & 0xFF); };
+            const Point tabDot{tab.x + 10.0f, tab.center().y};
+            const Point rowDot{detail::seqMacroRow(2).x + 11.0f, detail::seqMacroRow(2).center().y};
+            const uint32_t rowDotBare = renderer.pixel(rowDot);
+            click(view, rectCenter(detail::seqMacroRow(2)));
+            const bool picked = model.ui.seqLane == laneOf(2);
+            click(view, {at(4.0, 48).x, middleY});
+            const bool drawn = count(macroCurve) == 1.0 && curveField(macroCurve, 0, PointField::X) == 4.0 &&
+                               std::abs(curveField(macroCurve, 0, PointField::Y) - 0.5) < 0.03 &&
+                               count(SeqCurve::ModWheel) == 5.0 && count(SeqCurve::Bend) == 1.0;
+            view.undo();
+            const bool undoneMacro = count(macroCurve) == 0.0;
+            const uint32_t tabDotBare = shotInk("36h-seq-macro-bare.png", tabDot);
+            view.redo();
+            const bool tabLit = shotInk("36h-seq-macro.png", tabCorner) == litTabInk && renderer.pixel(tabEdge) == litTabInk;
+            const bool tabDotFull = brightness(renderer.pixel(tabDot)) > brightness(tabDotBare) + 60;
+
+            click(view, rectCenter(tab));
+            click(view, rectCenter(detail::seqMacroRow(4)));
+            click(view, rectCenter(tab));
+            auto sparkAt = [&](int macro) {
+                const Rect row = detail::seqMacroRow(macro);
+                return Point{row.right() - 28.0f, row.center().y};
+            };
+            const uint32_t withCurve = shotInk("36h-seq-macro-list-curve.png", sparkAt(2)), without = renderer.pixel(sparkAt(3));
+            const bool sparks = withCurve != without;
+            const bool rowDotFull = brightness(renderer.pixel(rowDot)) > brightness(rowDotBare) + 60;
+            click(view, {600.0f, 600.0f});
+            const bool closedAround = shotInk("36h-seq-macro-closed.png", listInside) == noListInk && model.ui.seqLane == laneOf(4);
+            click(view, rectCenter(tab));
+            view.seqKey(Key::Escape, false);
+            const bool closedByKey = shotInk("36h-seq-macro-escaped.png", listInside) == noListInk;
+            view.wheel(rectCenter(tab), -1.0f, {});
+            const bool stepped = model.ui.seqLane == laneOf(5);
+            view.wheel(rectCenter(tab), 1.0f, {});
+            renderer.save(view, dir / "36h-seq-macro-other.png");
+
+            const float knobY = view.height() - 179.0f;
+            auto knobPixels = [&] {
+                std::vector<uint32_t> pixels;
+                for (float dy = -22.0f; dy <= 22.0f; dy += 1.0f)
+                    for (float dx = -22.0f; dx <= 22.0f; dx += 1.0f)
+                        pixels.push_back(renderer.pixel({188.0f + 96.0f * 2.0f + dx, knobY + dy}));
+                return pixels;
+            };
+            const std::vector<uint32_t> knobRest = knobPixels();
+            const double knobWas = model.value(paramIndex(2, MacroParam::Value));
+            model.live.seqMacro[2] = 0.5f;
+            view.poll();
+            renderer.save(view, dir / "36h-seq-macro-knob.png");
+            const bool knobMoved = knobPixels() != knobRest && model.value(paramIndex(2, MacroParam::Value)) == knobWas;
+            model.live.seqMacro[2] = 0.0f;
+            view.poll();
+            check(plainAtRest && tabLit, "the MACRO tab looks as the lane's other tabs do, lit only while picked, with no border");
+            check(opened && picked && drawn && undoneMacro,
+                  "the MACRO tab's list picks a macro, whose curve the lane shows, drawn alone and undoably");
+            check(tabDotFull && rowDotFull, "a macro's dot is faint without a curve, on the MACRO tab and in its list");
+            check(sparks && closedAround && closedByKey && stepped,
+                  "the list of macros shows which have a curve, closes at a click around it or Escape, and the wheel steps the tab");
+            check(knobMoved, "where a macro's curve holds its knob shows on the knob, no param edited");
+            model.set(seqCurveCountIndex(0, macroCurve), 0.0);
+        }
         // Back as it was: no curves, the select tool, the lane on CHANCE.
         click(view, rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h}));
         for (SeqCurve curve : {SeqCurve::Bend, SeqCurve::ModWheel})
@@ -7297,6 +7572,33 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, firstC);
         check(before == 24 && shifted == 36 && model.lastNote == 24 && upShot,
               "the octave shift's buttons under the keys move them an octave up and back");
+    }
+
+    // A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom, a black key's along its
+    // own height; and a drag across the keys strikes each key it enters as hard as where the mouse enters it.
+    {
+        const float top = detail::keyboardTop(model.ui.sourcesCollapsed) + detail::kKeys.y;
+        const float bottom = top + detail::kKeys.h, blackBottom = top + detail::kBlackH;
+        const float c1 = detail::kKeys.x + 4.0f, cSharp1 = detail::kKeys.x + detail::kWhiteW;
+        const float d1 = detail::kKeys.x + 1.5f * detail::kWhiteW;
+        auto struck = [&](Point p) {
+            click(view, p);
+            return std::pair{model.lastNote, model.lastVelocity};
+        };
+        const auto atTop = struck({c1, top}), atMiddle = struck({c1, (top + bottom) * 0.5f}),
+                   atBottom = struck({c1, bottom - 0.01f}), black = struck({cSharp1, blackBottom - 0.01f}),
+                   blackTop = struck({cSharp1, top + detail::kBlackH * 0.25f});
+        view.mouseDown({c1, top + 1.0f}, {});
+        const int pressed = model.lastVelocity;
+        view.mouseMove({d1, bottom - 1.0f}, {});
+        const auto slid = std::pair{model.lastNote, model.lastVelocity};
+        view.mouseUp({d1, bottom - 1.0f}, {});
+        std::printf("      key velocities: top %d, middle %d, bottom %d, black key's bottom %d and quarter %d, slid %d\n",
+                    atTop.second, atMiddle.second, atBottom.second, black.second, blackTop.second, slid.second);
+        check(atTop == std::pair{24, 1} && atMiddle == std::pair{24, 64} && atBottom == std::pair{24, 127} &&
+                  black == std::pair{25, 127} && blackTop == std::pair{25, 32} && pressed == 1 &&
+                  slid.first == 26 && slid.second == 126,
+              "a key clicked plays at velocity 1 at its top and 127 at its bottom, a key slid onto as hard as where");
     }
 
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px
@@ -8280,7 +8582,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.view = RoutingView::Matrix;
     view.poll();
     const Point cell = gridCellCenter(1, 0);
-    const Point corner{cell.x - 14.3f + 7.0f, cell.y - 14.3f + 7.0f};
+    const Point corner{detail::gridCell(1, 0).x + 7.0f, detail::gridCell(1, 0).y + 7.0f};
     auto cornerPixels = [&] {
         std::vector<uint32_t> pixels;
         for (float y = corner.y - 4.0f; y <= corner.y + 4.0f; y += 1.0f)
@@ -8350,6 +8652,95 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     check(moved && removeShot && removed && back && model.value(paramIndex(0, OpParam::Out)) == 0.0,
           "a route moved onto another operator keeps its mode; a label's x removes its route (back as Phase) and an "
           "OUT label's its node's output");
+}
+
+// A label's open pill takes the mouse over what it opens onto: B -> A's mode part lies over where D -> E leaves D, and
+// its x over the arrowhead of F -> C. Closed again, what lies there takes the mouse as ever.
+void testPillOnTop(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    for (int op = 1; op < kOps; ++op)
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.5);
+    model.set(matrixIndex(3, 4), 0.5);
+    model.set(matrixIndex(5, 2), 0.5);
+    const Rect g = detail::kGraph;
+    auto place = [&](int node, Point p) {
+        model.ui.nodeX[node] = (p.x - g.x) / g.w;
+        model.ui.nodeY[node] = (p.y - g.y) / g.h;
+    };
+    const Point a{g.x + 0.9f * g.w, g.y + 0.45f * g.h}, b{g.x + 0.1f * g.w, a.y};
+    place(0, a);
+    place(1, b);
+    const Point label = detail::wireBetween(1, b, 0, a, kDefaultWireBend).label;
+    // The pill's parts around the label (see testRouteModes()), a node over each, its wire running down past the pill.
+    const Rect modeRect{label.x - 19.0f - 28.0f, label.y - 9.0f, 28.0f, 18.0f};
+    const Rect removeRect{label.x + 19.0f, label.y - 9.0f, 20.0f, 18.0f};
+    const Point d{modeRect.center().x, label.y - 43.0f}, e{d.x, label.y + 120.0f};
+    const Point c{removeRect.center().x, d.y}, f{c.x, e.y};
+    place(3, d);
+    place(4, e);
+    place(2, c);
+    place(5, f);
+    view.poll();
+    const detail::Wire leaving = detail::wireBetween(3, d, 4, e, kDefaultWireBend);
+    const detail::Wire arriving = detail::wireBetween(5, f, 2, c, kDefaultWireBend);
+    const Rect startGrip = detail::wireStartGrip(
+        leaving.start, detail::normalize({leaving.control.x - leaving.start.x, leaving.control.y - leaving.start.y}));
+    const Rect endGrip = detail::wireEndGrip(arriving.end, arriving.tangent);
+    auto overlap = [](Rect p, Rect q) {
+        const float left = std::max(p.x, q.x), top = std::max(p.y, q.y);
+        return Rect{left, top, std::min(p.right(), q.right()) - left, std::min(p.bottom(), q.bottom()) - top};
+    };
+    const Rect modeOver = overlap(modeRect, startGrip), removeOver = overlap(removeRect, endGrip);
+    check(modeOver.w > 2.0f && modeOver.h > 2.0f && removeOver.w > 2.0f && removeOver.h > 2.0f,
+          "the pill's mode part lies over a wire's start and its x over an arrowhead");
+    const Point onMode = modeOver.center(), onRemove = removeOver.center();
+    const int mode = routeModeIndex(1, 0);
+
+    // Its mode part opens its list there, and the wheel steps the modes.
+    view.mouseMove(label, {});
+    view.mouseMove(onMode, {});
+    const bool shot = renderer.save(view, dir / "2n2-route-pill-on-top.png");
+    click(view, onMode);
+    view.mouseMove({modeRect.x + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f}, {});
+    click(view, {modeRect.x + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f});
+    const bool picked = model.value(mode) == static_cast<double>(RouteMode::Ring);
+    view.undo();
+    view.mouseMove(label, {});
+    view.mouseMove(onMode, {});
+    view.wheel(onMode, 1.0f, {});
+    const bool stepped = model.value(mode) == static_cast<double>(RouteMode::LinearFm);
+    view.undo();
+    // Its x removes its route, and not the one under it.
+    view.mouseMove(label, {});
+    view.mouseMove(onRemove, {});
+    click(view, onRemove);
+    const bool removed = model.value(matrixIndex(1, 0)) == 0.0 && model.value(matrixIndex(5, 2)) == 0.5;
+    view.undo();
+    // The pill closed, the wire's start under where it was drags as ever: D -> E comes from B.
+    view.mouseMove({label.x, label.y + 60.0f}, {});
+    view.mouseMove(onMode, {});
+    drag(view, onMode, b);
+    const bool moved = model.value(matrixIndex(3, 4)) == 0.0 && model.value(matrixIndex(1, 4)) == 0.5;
+    view.undo();
+    check(shot && picked && stepped && removed && moved,
+          "a label's open pill takes clicks and the wheel over the wire ends under it, which take them beside the label "
+          "once it closes");
+
+    // Resting too, a label takes the mouse: D moved along, where D -> E leaves it reaches under B -> A's label, and a
+    // drag there sets B -> A's depth.
+    const Point nearer{label.x - 14.0f, d.y};
+    place(3, nearer);
+    view.mouseMove({label.x, label.y + 60.0f}, {});
+    view.poll();
+    const detail::Wire under = detail::wireBetween(3, nearer, 4, e, kDefaultWireBend);
+    const Rect labelOver = overlap(detail::chip(label), detail::wireStartGrip(under.start, detail::normalize({under.control.x - under.start.x, under.control.y - under.start.y})));
+    const Point onLabel = labelOver.center();
+    drag(view, onLabel, {onLabel.x, onLabel.y - 20.0f});
+    check(labelOver.w > 2.0f && labelOver.h > 2.0f && model.value(matrixIndex(1, 0)) > 0.5 &&
+              model.value(matrixIndex(3, 4)) == 0.5 && model.value(matrixIndex(1, 4)) == 0.0,
+          "a resting label takes a drag over the wire's start under it");
 }
 
 // The node the inspector shows is filled with its color and ringed in it in the graph, and picking another node moves
@@ -8527,6 +8918,23 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     const bool ghostShot = renderer.save(view, dir / "1j-selected-ghost.png");
     check(plainShot && ghostShot && layout.selectedNode == 2 && ghost(0) != cPlain && ghost(1) == dPlain,
           "a switched-off node's ghost is filled while the inspector shows it (read off the rendered pixels)");
+    // Under the mouse it says that a click turns it on; its tooltip goes up from the panel's bottom edge over what is
+    // below (read off the rendered pixels along the tooltip's row).
+    {
+        const Point at = ghostOf(model, 3);
+        auto tipRow = [&](const char *name) {
+            renderer.save(view, dir / name);
+            std::vector<uint32_t> row;
+            for (float x = at.x - 40.0f; x <= at.x + 10.0f; x += 1.0f)
+                row.push_back(renderer.pixel({x, detail::kRouting.bottom() - 10.0f + 6.0f + 11.0f}));
+            return row;
+        };
+        const std::vector<uint32_t> away = tipRow("1k-ghost-no-tip.png");
+        view.mouseMove(at, {});
+        const bool tip = tipRow("1k-ghost-tip.png") != away;
+        view.mouseMove({600.0f, 468.0f}, {});
+        check(tip, "a switched-off node's ghost shows its tooltip");
+    }
 }
 
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls
@@ -9363,6 +9771,213 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
           "an empty modulation given a source with rows goes among them");
 }
 
+// An operator's output picked as a source in the MODS view: its menu's last category, Operators, lists Op A to Op F; the
+// empty modulation given Op B and a target becomes Op B's, bipolar to begin with, and its row's switch makes it unipolar,
+// undoably.
+void testModsOpSource(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    view.poll();
+    click(view, {382.0f, 116.0f}); // the MODS tab
+    const float y = 212.0f;
+    click(view, {100.0f, y}); // adds an empty modulation, its source's menu open under it
+    // LFOs, Macros, Keyboard and Operators, whose entries show beside it, Op A level with it.
+    const float operators = 228.0f + 4.0f + 3.0f * 22.0f + 11.0f;
+    view.mouseMove({80.0f, operators}, {});
+    view.mouseMove({230.0f, operators}, {});
+    view.mouseMove({230.0f, operators + 22.0f}, {}); // Op B
+    const bool menuShot = renderer.save(view, dir / "35p-mods-op-source-menu.png");
+    click(view, {230.0f, operators + 22.0f});
+    const int source = kOpSource + 1;
+    check(menuShot && model.ui.emptyMods == std::vector<std::pair<int, int>>{{source, -1}},
+          "the MODS view's source menu offers the operators, and an empty modulation takes one");
+    click(view, {300.0f, y}); // its target's menu: Global, then its first param beside it
+    view.mouseMove({300.0f, 258.0f + 4.0f + 11.0f}, {});
+    int first = -1;
+    for (int g = 0; g < kGlobalCount && first < 0; ++g)
+        if (isModTarget(g) && !isPlayed(g))
+            first = g;
+    click(view, {540.0f, 258.0f + 4.0f + 11.0f});
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool rowShot = renderer.save(view, dir / "35q-mods-op-source.png");
+    check(rowShot && model.ui.emptyMods.empty() && slotTarget(model.value(slotTargetIndex(source, 0))) == first &&
+              model.value(paramIndex(1, OpSourceParam::Bipolar)) == 1.0,
+          "an operator given a target modulates it, bipolar to begin with");
+    click(view, detail::modsCell(detail::modsRow(1.0f), detail::kModsPolarity).center());
+    const bool unipolar = model.value(paramIndex(1, OpSourceParam::Bipolar)) == 0.0;
+    view.undo();
+    check(unipolar && model.value(paramIndex(1, OpSourceParam::Bipolar)) == 1.0,
+          "an operator's row switches it between bipolar and unipolar, undoably");
+}
+
+// An operator's letter on its page is its output's handle, lit under the mouse (read off the rendered pixels); and a
+// source's handle held over a view's tab shows that view, as let go of there it modulates nothing.
+void testOpNameHandle(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    const Point name = detail::kOpNameHandle.center();
+    const Rect handle = detail::kOpNameHandle;
+    const Point beside{handle.x + 2.0f, handle.center().y}; // left of the letter
+    // The letter's ink at rest, then how far the light goes along a row above it, for A and for a wider D.
+    bool lit = true, centered = true;
+    for (const int op : {3, 0}) {
+        model.ui.selectedNode = op;
+        view.poll();
+        view.mouseMove({600.0f, 468.0f}, {});
+        (void)renderer.save(view, dir / "35r-op-name-rest.png");
+        const auto rest = renderer.pixel(beside);
+        float inkLeft = 1e9f, inkRight = -1e9f;
+        for (float x = detail::kTitleRow.x - 1.0f; x < detail::kTitleRow.x + detail::kTitleLetterW; x += 1.0f)
+            for (float y = handle.y; y < handle.bottom(); y += 1.0f)
+                if (renderer.pixel({x, y}) != rest) {
+                    inkLeft = std::min(inkLeft, x);
+                    inkRight = std::max(inkRight, x + 1.0f);
+                }
+        std::vector<bool> restRow;
+        const float row = handle.y + 3.0f;
+        for (float x = handle.x - 4.0f; x < handle.right() + 4.0f; x += 1.0f)
+            restRow.push_back(renderer.pixel({x, row}) == rest);
+        view.mouseMove(name, {});
+        (void)renderer.save(view, dir / (op == 3 ? "35s-op-name-hover-d.png" : "35s-op-name-hover.png"));
+        lit = lit && renderer.pixel(beside) != rest;
+        float lightLeft = 1e9f, lightRight = -1e9f;
+        size_t k = 0;
+        for (float x = handle.x - 4.0f; x < handle.right() + 4.0f; x += 1.0f, ++k)
+            if (restRow[k] && renderer.pixel({x, row}) != rest) {
+                lightLeft = std::min(lightLeft, x);
+                lightRight = std::max(lightRight, x + 1.0f);
+            }
+        const float off = 0.5f * (lightLeft + lightRight) - 0.5f * (inkLeft + inkRight);
+        std::printf("      %c's light runs %.0f to %.0f, its ink %.0f to %.0f: %.1f px off center\n", 'A' + op, lightLeft,
+                    lightRight, inkLeft, inkRight, off);
+        centered = centered && std::abs(off) <= 1.5f;
+    }
+    check(lit, "an operator's letter on its page lights under the mouse");
+    check(centered, "the light under an operator's letter is centered on it");
+
+    drag(view, name, kOpPhaseKnob);
+    check(slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
+          "an operator's letter dragged onto a knob makes its output modulate that knob");
+    view.undo();
+    check(slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0, "undo takes that modulation away");
+
+    // The editor's clock, which the test moves on: a handle shows a view or a node only once held there half a second.
+    static double now = 0.0;
+    view.setClock([] { return now; });
+    auto tab = [](RoutingView shown) { return detail::kViewTabs[static_cast<int>(shown)].center(); };
+    // Over the tab, not yet; moved within it 0.3 s later, not yet; at 0.55 s, a poll shows it.
+    auto dwells = [&](Point at, auto shown) {
+        view.mouseMove(at, {});
+        const bool waits = !shown();
+        now += 0.3;
+        view.mouseMove({at.x + 1.0f, at.y}, {});
+        const bool still = !shown();
+        now += 0.25;
+        view.poll();
+        return waits && still && shown();
+    };
+    auto overTab = [&](RoutingView v) { return dwells(tab(v), [&] { return model.ui.view == v; }); };
+    auto held = [&](Point from) {
+        view.mouseDown(from, {});
+        const bool fx = overTab(RoutingView::Fx);
+        const bool mods = overTab(RoutingView::Mods);
+        const bool matrix = overTab(RoutingView::Matrix);
+        const bool graph = overTab(RoutingView::Graph);
+        view.mouseUp(tab(RoutingView::Graph), {});
+        return fx && mods && matrix && graph;
+    };
+    check(held(name) && slotTarget(model.value(slotTargetIndex(kOpSource, 0))) < 0,
+          "an operator's handle held over a view's tab shows that view after half a second, and let go of there "
+          "modulates nothing");
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    view.poll();
+    const Point lfoHandle = detail::sourceHandleRect(detail::sourceCard(0.0f)).center();
+    check(held(lfoHandle), "an LFO's handle held over a view's tab shows that view after half a second");
+
+    // Passed over the tabs, a moment on each, it shows none of them.
+    view.mouseDown(lfoHandle, {});
+    view.mouseMove(tab(RoutingView::Fx), {});
+    now += 0.3;
+    view.mouseMove(tab(RoutingView::Mods), {});
+    now += 0.3;
+    view.poll();
+    view.mouseMove(tab(RoutingView::Matrix), {});
+    now += 0.3;
+    view.poll();
+    const bool passed = model.ui.view == RoutingView::Graph;
+    view.mouseUp(tab(RoutingView::Matrix), {});
+    check(passed, "a handle passed over the views' tabs, a moment on each, shows none of them");
+
+    // Held over a node in the graph, and over a node's name in the matrix, it shows that node in the inspector, without
+    // switching it on; passed over one, it doesn't.
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.ui.selectedNode = 0;
+    view.poll();
+    const Point bNode = nodeCenter(model.layout(), 1);
+    view.mouseDown(lfoHandle, {});
+    view.mouseMove(bNode, {});
+    now += 0.3;
+    view.mouseMove(nodeCenter(model.layout(), 0), {});
+    now += 0.3;
+    view.poll();
+    const bool nodePassed = model.ui.selectedNode == 0;
+    const bool bShown = dwells(bNode, [&] { return model.ui.selectedNode == 1; });
+    const bool graphShot = renderer.save(view, dir / "35u-handle-held-over-node.png");
+    view.mouseUp(bNode, {});
+    check(nodePassed && bShown && graphShot,
+          "a handle held over a node in the graph shows it in the inspector after half a second, and passed over one "
+          "doesn't");
+    const bool modulatesNothing = slotTarget(model.value(slotTargetIndex(0, 0))) < 0;
+    view.mouseDown(lfoHandle, {});
+    const bool matrixShown = overTab(RoutingView::Matrix);
+    const Rect cRow = detail::gridCell(2, 0), dColumn = detail::gridCell(0, 3);
+    const bool cShown = dwells({cRow.x - 18.0f, cRow.center().y}, [&] { return model.ui.selectedNode == 2; });
+    const bool dShown = dwells({dColumn.center().x, dColumn.y - detail::kMatrixNamesH + 9.0f},
+                               [&] { return model.ui.selectedNode == 3; });
+    const bool filterShown = dwells({detail::gridCell(kOps, 0).x - 18.0f, detail::gridCell(kOps, 0).center().y},
+                                    [&] { return model.ui.selectedNode == kOps; });
+    view.mouseUp({cRow.x - 18.0f, cRow.center().y}, {});
+    check(modulatesNothing && matrixShown && cShown && dShown && filterShown &&
+              model.value(paramIndex(2, OpParam::Enabled)) == 0.0 &&
+              model.value(paramIndex(0, FilterParam::Enabled)) == 0.0,
+          "a handle held over an operator's or a filter's name in the matrix, a row's or a column's, shows it in the "
+          "inspector after half a second, leaving it switched off");
+    view.poll();
+    click(view, tab(RoutingView::Graph));
+    model.ui.selectedNode = 0;
+    view.poll();
+
+    // Held over a node's tab atop the inspector, it shows that node, without switching it on.
+    view.mouseDown(lfoHandle, {});
+    const bool f2Shown = dwells(detail::nodeTabRect(kOps + 1).center(), [&] { return model.ui.selectedNode == kOps + 1; });
+    const bool eShown = dwells(detail::nodeTabRect(4).center(), [&] { return model.ui.selectedNode == 4; });
+    view.mouseUp(detail::nodeTabRect(4).center(), {});
+    check(f2Shown && eShown && model.value(paramIndex(1, FilterParam::Enabled)) == 0.0 &&
+              model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && slotTarget(model.value(slotTargetIndex(0, 0))) < 0,
+          "a handle held over a node's tab shows that node after half a second, leaving it switched off");
+    model.ui.selectedNode = 0;
+    view.poll();
+
+    // Carried over another view's tab and back, it still lands on the operator's knob.
+    view.mouseDown(name, {});
+    view.mouseMove(tab(RoutingView::Matrix), {});
+    now += 0.55;
+    view.poll();
+    const bool matrixShot = renderer.save(view, dir / "35t-op-name-held-over-tab.png");
+    const bool overMatrix = model.ui.view == RoutingView::Matrix;
+    view.mouseMove(tab(RoutingView::Graph), {});
+    now += 0.55;
+    view.poll();
+    view.mouseUp(kOpPhaseKnob, {});
+    check(matrixShot && overMatrix &&
+              slotTarget(model.value(slotTargetIndex(kOpSource, 0))) == paramIndex(0, OpParam::Phase),
+          "a handle carried over the tabs and back still lands on a knob");
+}
+
 // The MODS view's filter and the target menu's search. LFO 1 modulates Op A's Ratio and Detune, Env 1 FM Amount and
 // Macro 1 Filter 1's Resonance: four rows, their middles from y 154, 30 px apart, each one's x at x 1144. The filter's
 // magnifier is at the right end of the columns' names (x 1156, y 126); open, its x is at x 1155.
@@ -9477,7 +10092,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
 // column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
 // and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
 // opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
-// closes again. Six on a matrix cell: two handles and a smaller pill, none in the next cell.
+// closes again. Six on a matrix cell: handles and a smaller pill, none in the next cell.
 void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -9592,7 +10207,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(sourceHandle(2), {});
     check(renderer.save(view, dir / "40h-pill-link.png"), "render a source's line ending at the pill holding its handle");
 
-    // Six on the matrix's B -> C cell: two handles in its corner and a pill, none in the corner of B -> B left of it.
+    // Six on the matrix's B -> C cell: handles along its foot and a pill, none in the corner of B -> B left of it.
     click(view, {160.0f, 116.0f}); // MATRIX
     const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
     auto corner = [&] {
@@ -9613,7 +10228,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     }
     view.poll();
     const bool cellShot = renderer.save(view, dir / "40j-cell-pill.png");
-    check(cellShot && corner() == plain, "six modulations on a matrix cell show two handles and a pill, none in the next cell");
+    check(cellShot && corner() == plain, "six modulations on a matrix cell show handles and a pill, none in the next cell");
 
     // At the larger handle sizes, the cell's handles and pill are drawn bigger, in the same places (read off the
     // rendered pixels round them), and Small draws them as before.
@@ -11274,6 +11889,58 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
               !view.saveShown(),
           "Save As saves the patch as a new preset in its preset's folder, with its info");
     check(model.presetName() == "Opener Two" && !model.patchEdited(), "the preset saved is the patch's preset");
+    {
+        // Tab steps through the Save dialog's text fields, Name, Author and Description, round from the last to the
+        // first, and Shift+Tab back, each field entered all selected to type over and the one left showing no selection
+        // (read off the rendered pixels). Editing a preset's info, it passes over the name, which isn't a field there.
+        FakeController tabbing;
+        tabbing.library = {{"Grain", "", false, {}}};
+        tabbing.loadPresetAt(0);
+        View tabView(tabbing);
+        click(tabView, detail::toolbarButton(3).center());
+        const float saveX =
+            std::clamp(std::round(detail::kPresetName.center().x - 400.0f), 12.0f, View::kWidth - 812.0f);
+        const Point nameText{saveX + 24.0f + 14.0f, detail::kTitleBarH + 6.0f + 88.0f + 6.0f}; // over the letters
+        auto nameFace = [&] {
+            tabView.mouseMove(away, {});
+            renderer.save(tabView, dir / "23k-save-tab.png");
+            return renderer.pixel(nameText);
+        };
+        const uint32_t selected = nameFace();
+        tabView.typeKey(View::Key::Tab);
+        const uint32_t left = nameFace();
+        type(tabView, "Ann"); // the author
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Line"); // the description
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Seed"); // round to the name
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, "Back"); // round back to the description, over its line
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, "Bo"); // the author, over Ann
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, "Tabbed"); // the name, over Seed
+        tabView.typeKey(View::Key::Enter);
+        const int saved = tabbing.presetIndex();
+        check(selected != left && saved >= 0 && tabbing.library[saved].name == "Tabbed" &&
+                  tabbing.library[saved].info.author == "Bo" && tabbing.library[saved].info.description == "Back",
+              "Tab steps through the Save dialog's text fields and Shift+Tab back, round their ends, each entered all "
+              "selected and the one left showing no selection (read off the rendered pixels)");
+        click(tabView, infoButton);
+        click(tabView, {card.right() - 66.0f, card.y + 125.0f}); // Edit Info, on the description
+        const bool infoForm = tabView.saveShown();
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Cy"); // the author
+        tabView.typeKey(View::Key::Tab);
+        type(tabView, "Two"); // the description, the name passed over
+        tabView.typeKey(View::Key::BackTab);
+        tabView.typeKey(View::Key::BackTab);
+        type(tabView, " more"); // the description again, all selected: over Two
+        tabView.typeKey(View::Key::Enter);
+        check(infoForm && tabbing.library[saved].name == "Tabbed" && tabbing.library[saved].info.author == "Cy" &&
+                  tabbing.library[saved].info.description == "more",
+              "Tab and Shift+Tab in Edit Info step between the author and the description alone");
+    }
 
     // The Save dialog's folder tree's right-click menu: Open in Explorer showing the folder clicked, and New Folder
     // making one in it.
@@ -12326,6 +12993,56 @@ void run(const std::filesystem::path &dir, float scale) {
         check(layout.opTab == InspectorTab::Envelope, "the ENVELOPE tab is back after WARP");
     }
 
+    // An envelope's display follows the modulation of its knobs: a longer release ends further right, a shorter one
+    // leaves the faint line of what the knobs set where it was, and a higher sustain holds the curve up for longer.
+    // Read off the rendered pixels: how far right a row of the display has anything drawn on it.
+    {
+        FakeController moved;
+        View movedView(moved);
+        moved.ui.opTab = InspectorTab::Envelope;
+        const int release = paramIndex(0, OpParam::Release), sustain = paramIndex(0, OpParam::Sustain);
+        moved.set(paramIndex(0, OpParam::Decay), normFromTime(0.1));
+        moved.set(sustain, 0.5);
+        moved.set(release, normFromTime(0.1));
+        moved.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        moved.set(slotTargetIndex(0, 0), slotTargetValue(release));
+        moved.set(slotAmountIndex(0, 0), 0.4);
+        const Rect display = detail::kOpEnvRect;
+        const float top = kOpEnvTop + 12.0f, bottom = kOpEnvBottom - 10.0f;
+        auto rowEnd = [&](float level, int param, float offset, const char *name) {
+            moved.live.voices = param >= 0 ? 1 : 0;
+            moved.live.opEnvPos[0] = -1.0f;
+            moved.live.opEnvLevels[0] = 1.0f; // the line at its level, up at the top and out of the rows read
+            if (param >= 0)
+                moved.live.modOffset[param] = offset;
+            movedView.poll();
+            movedView.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(movedView, dir / name);
+            if (param >= 0)
+                moved.live.modOffset[param] = 0.0f;
+            const float y = std::round(bottom - level * (bottom - top));
+            const uint32_t clear = renderer.pixel({display.right() - 11.0f, y});
+            for (float x = display.right() - 12.0f; x > display.x + 10.0f; x -= 1.0f) {
+                const uint32_t color = renderer.pixel({x, y});
+                for (const int shift : {16, 8, 0})
+                    if (std::abs(static_cast<int>(color >> shift & 255) - static_cast<int>(clear >> shift & 255)) > 24)
+                        return x;
+            }
+            return display.x;
+        };
+        // Along the bottom, where the release ends (and the handle stays, at the end the knobs set).
+        const float idle = rowEnd(0.0f, -1, 0.0f, "3g-env-mod-idle.png");
+        const float longer = rowEnd(0.0f, release, 0.1f, "3g-env-mod-longer.png");
+        const float shorter = rowEnd(0.0f, release, -0.1f, "3g-env-mod-shorter.png");
+        const float idleHigh = rowEnd(0.7f, -1, 0.0f, "3g-env-mod-idle-high.png");
+        const float raised = rowEnd(0.7f, sustain, 0.2f, "3g-env-mod-sustain.png");
+        std::printf("      a modulated envelope's row ends: release %.0f, longer %.0f, shorter %.0f; "
+                    "sustain %.0f, raised %.0f\n",
+                    idle, longer, shorter, idleHigh, raised);
+        check(longer > idle + 3.0f && std::abs(shorter - idle) <= 2.5f && raised > idleHigh + 3.0f,
+              "an envelope's display follows the modulation of its knobs, a faint line staying where they are set");
+    }
+
     // While notes play, the ENVELOPE tab draws a line across at the newest voice's envelope level, as a mod
     // envelope's card does. Read off the rendered pixels: across the sustain's stretch, the row at a level of 0.5
     // lights up and the row at 0.25 doesn't.
@@ -12910,6 +13627,20 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.view == RoutingView::Matrix, "the Matrix tab switches the routing panel to the grid");
     view.mouseMove(gridCellCenter(0, kOps), {});
     check(renderer.save(view, dir / "6-matrix.png"), "render the matrix view");
+    {
+        // Its cells are as much wider than tall as kCellAspect says, the mouse finding each across its whole width, and
+        // the cells, then the legend, stay inside the panel: nothing is drawn along the panel's right edge.
+        const Rect first = detail::gridCell(0, 0), last = detail::gridCell(kNodes - 1, detail::kGridCols - 1);
+        const bool ratio = std::abs(first.w / first.h - detail::kCellAspect) < 1e-4f;
+        const std::vector<MenuItem> inCell = view.contextMenu({first.right() - 1.0f, first.center().y});
+        const std::vector<MenuItem> inGap = view.contextMenu({first.right() + 0.5f * detail::kCellGap, first.center().y});
+        const float edge = detail::kRouting.right() - 8.0f;
+        bool clear = true;
+        for (float y = detail::kRouting.y + 12.0f; y < detail::kRouting.bottom() - 12.0f; y += 1.0f)
+            clear = clear && renderer.pixel({edge, y}) == renderer.pixel({edge, detail::kRouting.y + 12.0f});
+        check(ratio && !inCell.empty() && inGap.empty() && last.right() < detail::kLegendX && clear,
+              "the matrix's cells keep their ratio, and they and the legend stay inside the panel");
+    }
     // The tab shown opens the panel's top edge under it, the edge running on under the others; one under the mouse
     // shows a tab's shape.
     // (Read above the inspector's lens, which floats 6 px under the panel's top.)
@@ -14188,11 +14919,14 @@ void run(const std::filesystem::path &dir, float scale) {
     testRouteFrom(dir, renderer);
     testNodeGrid(dir, renderer);
     testRouteModes(dir, renderer);
+    testPillOnTop(dir, renderer);
     testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
     testRadarGlow(dir, renderer);
     testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
+    testModsOpSource(dir, renderer);
+    testOpNameHandle(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
     testSeq(dir, renderer);

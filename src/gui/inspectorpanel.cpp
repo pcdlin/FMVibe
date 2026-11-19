@@ -101,22 +101,7 @@ void InspectorPanel::showNode(int node) {
 // --- Widgets.
 
 void InspectorPanel::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-        if (kind == Kind::ListButton && isSteppableList(param)) // its arrows, over it
-            for (int dir : {-1, 1}) {
-                w.kind = Kind::ListStep;
-                w.rect = listStepButton(rect, dir);
-                w.b = dir;
-                list.push_back(w);
-            }
-    };
+    const WidgetAdder add{list};
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
@@ -131,7 +116,9 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
     for (int i = 0; i < kNodes; ++i) // the operators', the filters' and the shapers', in three groups
         add(Kind::NodeTab, nodeTabRect(i), -1, i);
     add(Kind::Toggle, {kInspector.right() - 16.0f - 26.0f, kInspector.y + 37.0f, 26.0f, 19.0f}, enabledParam(node));
-    auto knobRow = [&](const int (&params)[5], const char *const (&labels)[5]) {
+    if (node < kOps) // its letter, the handle of its output as a modulation source
+        add(Kind::MacroHandle, kOpNameHandle, -1, kOpSource + node);
+    auto knobRow =[&](const int (&params)[5], const char *const (&labels)[5]) {
         for (int i = 0; i < 5; ++i)
             if (params[i] >= 0)
                 knob(params[i], {kInspector.x + 34.0f + i * 58.0f, kInspector.y + 110.0f}, 34.0f, labels[i]);
@@ -363,15 +350,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
 void InspectorPanel::popups(std::vector<Widget> &list) const {
     if (covered())
         return;
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     const int open = host_.openList();
     // A shaper's list of curves or a filter's types or slopes, under its button on its page.
     const int pageNode = controller().layout().selectedNode;
@@ -464,8 +443,11 @@ void InspectorPanel::paintBack(Canvas &c) {
     }
     if (node < kOps) {
         const int op = node;
-        // Its title row holds the source switch (WAVE | TABLE | SAMPLE) in a summary's place: what a summary would say,
-        // the wave, the ratio, the unison, the warp and where it goes, the page and the graph show.
+        // Its title row holds its letter, its output's handle as a modulation source, then the source switch (WAVE |
+        // TABLE | SAMPLE) in a summary's place: what a summary would say, the wave, the ratio, the unison, the warp and
+        // where it goes, the page and the graph show.
+        c.text({kTitleRow.x, kTitleRow.y, kTitleLetterW, kTitleRow.h}, kNodeNames[op], kTextHeading, nodeColor(op),
+               Align::Left, true);
         const PageDim page(c, !routing_.nodeOn(node));
         // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
         // the shown one's accent sits on, and the display under them.
@@ -932,6 +914,20 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         host_.paintButtonFace(c, w, selected, hovered, kAccent, 0.22f, kRadiusControl);
         c.text(w.rect, std::to_string(w.b), kTextLabel, selected ? litInk(kText) : (hovered ? kText : kDim),
                Align::Center, selected);
+        break;
+    }
+    case Kind::MacroHandle: { // an operator's letter (painted with its page), lit under the mouse and while dragged
+        if (!isOpSource(w.a))
+            return false;
+        if (hovered || active) {
+            const int op = w.a - kOpSource;
+            // As far either side of the letter, however wide it is.
+            const float pad = kTitleRow.x - w.rect.x;
+            const float width = c.textWidth(kNodeNames[op], kTextHeading, true);
+            c.fillRect({w.rect.x, w.rect.y, width + 2.0f * pad, w.rect.h}, nodeColor(op).alpha(0.25f), kRadiusControl);
+            c.text({kTitleRow.x, w.rect.y, kTitleLetterW, w.rect.h}, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left,
+                   true);
+        }
         break;
     }
     case Kind::NodeTab: {

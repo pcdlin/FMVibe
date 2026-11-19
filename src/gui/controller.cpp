@@ -363,24 +363,34 @@ void UndoHistory::recordAll() {
         record(index);
 }
 
-void UndoHistory::undo() {
-    if (depth_ > 0 || undo_.empty())
+void UndoHistory::keepSeqPicks(int pattern, std::vector<int> before, std::vector<int> after) {
+    if (applying_ || depth_ == 0)
         return;
+    open_.seqPattern = pattern;
+    open_.seqPickedBefore = std::move(before);
+    open_.seqPickedAfter = std::move(after);
+}
+
+const UndoStep *UndoHistory::undo() {
+    if (depth_ > 0 || undo_.empty())
+        return nullptr;
     UndoStep step = std::move(undo_.back());
     undo_.pop_back();
     apply(step, false);
     redo_.push_back(std::move(step));
     controller_.refreshData(); // once the step is in the history again, which then holds what it names
+    return &redo_.back();
 }
 
-void UndoHistory::redo() {
+const UndoStep *UndoHistory::redo() {
     if (depth_ > 0 || redo_.empty())
-        return;
+        return nullptr;
     UndoStep step = std::move(redo_.back());
     redo_.pop_back();
     apply(step, true);
     undo_.push_back(std::move(step));
     controller_.refreshData();
+    return &undo_.back();
 }
 
 // As one gesture, in the order the step's params were first edited, so an effect's or source's

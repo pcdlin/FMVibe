@@ -6,17 +6,23 @@
 
 #include "params.h"    // param ids only; everything else goes through CLAP
 #include "uistrings.h" // the wordings the plugin names its pages with
+#include "usersettings.h" // built in here too, to share the settings file between processes of this test
 
 #include <windows.h>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <set>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace fmvibe;
@@ -344,17 +350,305 @@ bool paramTextRoundTrips(const clap_plugin_t *plugin, const clap_plugin_params_t
     return ok;
 }
 
+// This test run again as another process sharing the settings file, as an instance in another process does.
+int settingsProcess(int argc, char **argv) {
+    const std::string what = argv[2], a = argc > 3 ? argv[3] : "", b = argc > 4 ? argv[4] : "";
+    if (what == "many") { // categories named from a, one edit after another
+        for (int i = 0; i < std::atoi(b.c_str()); ++i) {
+            readUserSettings();
+            userSettings.categories.push_back({a + std::to_string(i), 8});
+            writeUserSettings();
+        }
+        return 0;
+    }
+    readUserSettings();
+    if (what == "category")
+        userSettings.categories.push_back({a, 11});
+    else if (what == "uncategory")
+        std::erase_if(userSettings.categories, [&](const auto &category) { return category.first == a; });
+    else if (what == "favorite")
+        userSettings.favorites.push_back(a);
+    else if (what == "move")
+        std::replace(userSettings.favorites.begin(), userSettings.favorites.end(), a, b);
+    else if (what == "recent")
+        userSettings.recent.insert(userSettings.recent.begin(), a);
+    writeUserSettings();
+    return 0;
+}
+
+HANDLE startSelf(const std::string &arguments) {
+    char self[MAX_PATH];
+    GetModuleFileNameA(nullptr, self, MAX_PATH);
+    std::string line = "\"" + std::string(self) + "\" " + arguments;
+    STARTUPINFOA startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessA(nullptr, line.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process))
+        return nullptr;
+    CloseHandle(process.hThread);
+    return process.hProcess;
+}
+
+HANDLE startSettingsProcess(const std::string &arguments) {
+    return startSelf("--settings " + arguments);
+}
+
+void runSettingsProcess(const std::string &arguments) {
+    if (const HANDLE process = startSettingsProcess(arguments)) {
+        WaitForSingleObject(process, 30000);
+        CloseHandle(process);
+    }
+}
+
+// What instances in several processes do to the settings file they share.
+void checkSharedSettings(const std::wstring &dir) {
+    const std::wstring file = dir + L"\\settings.txt";
+    auto fileText = [&] {
+        std::ifstream in(file);
+        std::stringstream text;
+        text << in.rdbuf();
+        return text.str();
+    };
+    auto start = [&] { // a file of the user's, this process having read it
+        DeleteFileW(file.c_str());
+        readUserSettings();
+        userSettings.theme = "Midnight";
+        userSettings.categories = {{"Keep", 8}, {"Gone", 9}};
+        userSettings.favorites = {"a", "b"};
+        userSettings.recent = {"r1", "r2"};
+        writeUserSettings();
+    };
+    using Names = std::vector<std::string>;
+    auto categoryNames = [] {
+        Names names;
+        for (const auto &category : userSettings.categories)
+            names.push_back(category.first);
+        return names;
+    };
+
+    // Each process edits while the other, its editor open, knows nothing of it.
+    start();
+    runSettingsProcess("category Theirs");
+    runSettingsProcess("uncategory Gone");
+    runSettingsProcess("favorite theirs");
+    runSettingsProcess("move a moved");
+    runSettingsProcess("recent theirs");
+    userSettings.categories.push_back({"Mine", 12});
+    userSettings.favorites.push_back("mine");
+    userSettings.recent.insert(userSettings.recent.begin(), "mine");
+    writeUserSettings();
+    readUserSettings();
+    check(categoryNames() == Names{"Keep", "Theirs", "Mine"},
+          "settings: categories added and removed in two processes all count");
+    check(userSettings.favorites == Names{"b", "theirs", "moved", "mine"}, // a moved one is added anew, at the end
+          "settings: favorites added and moved in two processes all count");
+    check(userSettings.recent == Names{"mine", "theirs", "r1", "r2"},
+          "settings: presets loaded in two processes are recent, the last first");
+
+    start();
+    runSettingsProcess("category Same");
+    userSettings.categories.push_back({"Same", 12});
+    writeUserSettings();
+    readUserSettings();
+    check(categoryNames() == Names{"Keep", "Gone", "Same"} && userSettings.categories[2].second == 12,
+          "settings: a category two processes add under one name is one category");
+
+    start();
+    runSettingsProcess("favorite theirs");
+    readUserSettings();
+    check(userSettings.favorites == Names{"a", "b", "theirs"}, "settings: reading takes up another process's edits");
+
+    // Something else holds the file, without sharing it, for a moment and then for longer than is waited.
+    start();
+    {
+        const HANDLE held = CreateFileW(file.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        std::thread letGo([held] {
+            Sleep(30);
+            CloseHandle(held);
+        });
+        userSettings.browserPlace = "all";
+        writeUserSettings();
+        letGo.join();
+    }
+    readUserSettings();
+    check(userSettings.theme == "Midnight" && userSettings.favorites.size() == 2 &&
+              userSettings.categories.size() == 2 && userSettings.browserPlace == "all",
+          "settings: a file held for a moment is waited for, and nothing lost");
+
+    start();
+    {
+        const std::string before = fileText();
+        const HANDLE held = CreateFileW(file.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        userSettings.favorites.push_back("late");
+        writeUserSettings();
+        readUserSettings();
+        CloseHandle(held);
+        check(fileText() == before && userSettings.favorites == Names{"a", "b", "late"} &&
+                  userSettings.theme == "Midnight",
+              "settings: a file that can't be read is left as it is, the edit kept");
+        writeUserSettings();
+        check(fileText().find("favorite=late") != std::string::npos && fileText().find("favorite=a") != std::string::npos,
+              "settings: the edit is written once the file can be read");
+    }
+
+    // Processes editing all at once take turns.
+    start();
+    {
+        std::vector<HANDLE> processes;
+        for (int i = 0; i < 4; ++i)
+            processes.push_back(startSettingsProcess("many p" + std::to_string(i) + "_ 40"));
+        WaitForMultipleObjects(static_cast<DWORD>(processes.size()), processes.data(), TRUE, 60000);
+        for (HANDLE process : processes)
+            CloseHandle(process);
+    }
+    readUserSettings();
+    check(userSettings.categories.size() == 2 + 4 * 40, "settings: four processes editing at once lose no edit");
+
+    userSettings.zoom = 1.5;
+    writeUserSettings();
+    check(savedEditorZoom() == 1.5, "settings: a new instance reads the editor's size without taking up the rest");
+}
+
+// A noise operator's first note on an instance of its own: the left channel.
+std::vector<float> noiseNote(const clap_plugin_factory_t *factory, const char *id, int key) {
+    const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, id);
+    instance->init(instance);
+    instance->activate(instance, 48000.0, 256, 256);
+    instance->start_processing(instance);
+    InputEvents in;
+    OutputEvents out;
+    std::vector<float> left(256), right(256), played;
+    float *channels[] = {left.data(), right.data()};
+    clap_audio_buffer_t buffer{};
+    buffer.data32 = channels;
+    buffer.channel_count = 2;
+    clap_process_t process{};
+    process.steady_time = -1;
+    process.frames_count = 256;
+    process.audio_outputs = &buffer;
+    process.audio_outputs_count = 1;
+    process.in_events = &in.list;
+    process.out_events = &out.list;
+    const clap_event_param_value_t wave = paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Noise));
+    in.events = {&wave.header};
+    instance->process(instance, &process);
+    clap_event_note_t note{};
+    note.header = {sizeof(note), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON, 0};
+    note.note_id = -1;
+    note.key = static_cast<int16_t>(key);
+    note.velocity = 1.0;
+    in.events = {&note.header};
+    for (int block = 0; block < 100; ++block) {
+        instance->process(instance, &process);
+        in.events.clear();
+        played.insert(played.end(), left.begin(), left.end());
+    }
+    instance->stop_processing(instance);
+    instance->deactivate(instance);
+    instance->destroy(instance);
+    return played;
+}
+
+double correlation(const std::vector<float> &a, const std::vector<float> &b) {
+    double aa = 0.0, bb = 0.0, ab = 0.0;
+    for (size_t i = 4800; i < std::min(a.size(), b.size()); ++i) { // past the attack
+        aa += a[i] * a[i];
+        bb += b[i] * b[i];
+        ab += a[i] * b[i];
+    }
+    return ab / std::sqrt(aa * bb + 1e-30);
+}
+
+// This test run again as a process with little memory: instances made until one finds no room for its voices.
+int outOfMemoryProcess(const char *path) {
+    const HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit{};
+    limit.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+    limit.ProcessMemoryLimit = 320u * 1024u * 1024u;
+    if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limit, sizeof(limit)) ||
+        !AssignProcessToJobObject(job, GetCurrentProcess()))
+        return 10;
+    const HMODULE lib = LoadLibraryA(path);
+    const auto *entry = lib ? reinterpret_cast<const clap_plugin_entry_t *>(GetProcAddress(lib, "clap_entry")) : nullptr;
+    if (!entry || !entry->init(path))
+        return 11;
+    const auto *factory = static_cast<const clap_plugin_factory_t *>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
+    const char *id = factory->get_plugin_descriptor(factory, 0)->id;
+    std::array<const clap_plugin_t *, 64> made{};
+    size_t count = 0;
+    const clap_plugin_t *refused = nullptr;
+    while (count < made.size() && !refused) {
+        const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, id);
+        if (!instance)
+            return 0; // told the host, too, a step earlier
+        instance->init(instance);
+        if (instance->activate(instance, 48000.0, 256, 256))
+            made[count++] = instance;
+        else
+            refused = instance;
+    }
+    if (!refused)
+        return 12;
+
+    // A host running it all the same hears silence.
+    InputEvents in;
+    OutputEvents out;
+    float left[64], right[64];
+    std::fill(std::begin(left), std::end(left), 1.0f);
+    std::fill(std::begin(right), std::end(right), 1.0f);
+    float *channels[] = {left, right};
+    clap_audio_buffer_t buffer{};
+    buffer.data32 = channels;
+    buffer.channel_count = 2;
+    clap_process_t process{};
+    process.steady_time = -1;
+    process.frames_count = 64;
+    process.audio_outputs = &buffer;
+    process.audio_outputs_count = 1;
+    process.in_events = &in.list;
+    process.out_events = &out.list;
+    refused->reset(refused);
+    refused->process(refused, &process);
+    if (left[0] != 0.0f || left[63] != 0.0f || right[63] != 0.0f)
+        return 13;
+
+    // With room again, it activates and plays.
+    for (size_t i = 0; i < count; ++i) {
+        made[i]->deactivate(made[i]);
+        made[i]->destroy(made[i]);
+    }
+    if (!refused->activate(refused, 48000.0, 256, 256))
+        return 14;
+    refused->start_processing(refused);
+    refused->process(refused, &process);
+    refused->stop_processing(refused);
+    refused->deactivate(refused);
+    refused->destroy(refused);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    // The checks compare what plays sample for sample: every instance's notes draw the same randomness, but where a
+    // check says otherwise.
+    SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1");
+    if (argc >= 3 && std::strcmp(argv[1], "--settings") == 0)
+        return settingsProcess(argc, argv);
+    if (argc == 3 && std::strcmp(argv[1], "--out-of-memory") == 0)
+        return outOfMemoryProcess(argv[2]);
     if (argc != 2) {
         std::fprintf(stderr, "usage: fmvibe-smoke <plugin.clap>\n");
         return 2;
     }
-    // The editor saves its size into the user's settings: keep the test's resizes out of them.
     {
         wchar_t temp[MAX_PATH];
         GetTempPathW(MAX_PATH, temp);
+        const std::wstring shared = std::wstring(temp) + L"fmvibe-smoke-shared-settings";
+        CreateDirectoryW(shared.c_str(), nullptr);
+        SetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", shared.c_str());
+        checkSharedSettings(shared);
+        // The editor saves its size into the user's settings: keep the test's resizes out of them.
         const std::wstring dir = std::wstring(temp) + L"fmvibe-smoke-settings";
         CreateDirectoryW(dir.c_str(), nullptr);
         SetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", dir.c_str());
@@ -380,6 +674,43 @@ int main(int argc, char **argv) {
     }
     const clap_plugin_descriptor_t *desc = factory->get_plugin_descriptor(factory, 0);
     std::printf("      %s %s (%s)\n", desc->name, desc->version, desc->id);
+
+    {
+        std::atomic<int> created{0};
+        auto create = [&] { // CLAP lets a host create instances on any thread
+            for (int i = 0; i < 20; ++i)
+                if (const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, desc->id)) {
+                    instance->destroy(instance);
+                    ++created;
+                }
+        };
+        std::thread first(create), second(create);
+        first.join();
+        second.join();
+        check(created == 40, "instances created on two threads at once");
+    }
+
+    {
+        SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr);
+        const std::vector<float> first = noiseNote(factory, desc->id, 60), second = noiseNote(factory, desc->id, 67);
+        SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1");
+        const std::vector<float> pinned = noiseNote(factory, desc->id, 60), again = noiseNote(factory, desc->id, 67);
+        std::printf("      noise of two instances: correlation %.3f, with the seed fixed %.3f\n",
+                    correlation(first, second), correlation(pinned, again));
+        check(std::abs(correlation(first, second)) < 0.1, "two instances' noise operators play noise of their own");
+        check(correlation(pinned, again) > 0.999, "with the seed fixed, they play the same");
+    }
+
+    {
+        DWORD code = 99;
+        if (const HANDLE process = startSelf("--out-of-memory \"" + std::string(argv[1]) + "\"")) {
+            WaitForSingleObject(process, 60000);
+            GetExitCodeProcess(process, &code);
+            CloseHandle(process);
+        }
+        std::printf("      out of memory: exit code %lu\n", code);
+        check(code == 0, "an instance out of memory tells the host, plays silence, and activates once there is room");
+    }
 
     const clap_plugin_t *plugin = factory->create_plugin(factory, &kHost, desc->id);
     if (!plugin || !plugin->init(plugin)) {
@@ -412,6 +743,7 @@ int main(int argc, char **argv) {
                   !listed(slotTargetIndex(kMaxSources, 0)) && listed(slotAmountIndex(0, 0)) &&
                   listed(slotAmountIndex(kMaxSources, 0)) && listed(slotScaleIndex(0, 0)) &&
                   listed(slotScaleIndex(kVelocitySource, kSlots - 1)) &&
+                  listed(slotAmountIndex(kAllSources - 1, kSlots - 1)) && !listed(slotTargetIndex(kOpSource, 0)) &&
                   listed(paramIndex(0, MacroParam::Value)) &&
                   !listed(paramIndex(GlobalParam::RetiredFxOrder)) && !listed(fxPositionIndex(0)) &&
                   !listed(fxPositionIndex(kFxSlots - 1)) && !listed(paramIndex(kFxSlots - 1, FxParam::Type)) &&
@@ -4591,6 +4923,78 @@ int main(int argc, char **argv) {
         }
         Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
 
+        // A shaper effect dragged along the line leaves it for a moment as its wires change one by one: no restart is
+        // asked for, since the latency ends as it was. One taken out of the line does ask for one, once the edit is
+        // whole, from the main-thread callback. (Coordinates in view units, scaled by 0.75.)
+        if (editor) {
+            auto at = [](float x, float y) { return MAKELPARAM(std::lround(x * 0.75f), std::lround(y * 0.75f)); };
+            auto click = [&](float x, float y) {
+                SendMessageW(editor, WM_MOUSEMOVE, 0, at(x, y));
+                SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(x, y));
+                SendMessageW(editor, WM_LBUTTONUP, 0, at(x, y));
+            };
+            auto from = [&](int node) {
+                double v = 0.0;
+                params->get_value(plugin, idOfIndex(fxInputIndex(node, 0, FxInputField::From)), &v);
+                return v;
+            };
+            MemoryStream fxKept;
+            const bool fxSaved = state->save(plugin, &fxKept.out);
+            const auto typesKept = fxTypes;
+            std::vector<std::pair<int, double>> line;
+            for (int slot = 0; slot < kFxSlots; ++slot)
+                line.push_back({paramIndex(slot, FxParam::Type),
+                                static_cast<double>(slot == 0 ? FxType::Shaper : slot == 1 ? FxType::Delay : FxType::None)});
+            setParams(line);
+            setParams({{fxInputIndex(0, 0, FxInputField::From), fxPortValue(kFxPortIn)},
+                       {fxInputIndex(1, 0, FxInputField::From), fxPortValue(fxSlotPort(0))},
+                       {fxInputIndex(kFxOutNode, 0, FxInputField::From), fxPortValue(fxSlotPort(1))}});
+            plugin->stop_processing(plugin);
+            plugin->deactivate(plugin);
+            plugin->activate(plugin, kSampleRate, 1, kBlock);
+            plugin->start_processing(plugin);
+            plugin->on_main_thread(plugin);
+            restartRequests = 0;
+
+            click(240.0f, 116.0f); // the FX tab
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(86.0f, 197.0f)); // the shaper's title, past the delay
+            SendMessageW(editor, WM_MOUSEMOVE, MK_LBUTTON, at(400.0f, 197.0f));
+            SendMessageW(editor, WM_MOUSEMOVE, MK_LBUTTON, at(900.0f, 197.0f));
+            SendMessageW(editor, WM_LBUTTONUP, 0, at(900.0f, 197.0f));
+            plugin->on_main_thread(plugin);
+            const bool moved = from(1) == fxPortValue(kFxPortIn) && from(0) == fxPortValue(fxSlotPort(1)) &&
+                               from(kFxOutNode) == fxPortValue(fxSlotPort(0));
+            const int askedMoving = restartRequests;
+
+            click(952.0f, 18.0f); // undo: the shaper first again
+            plugin->on_main_thread(plugin);
+            const bool undone = from(0) == fxPortValue(kFxPortIn) && from(kFxOutNode) == fxPortValue(fxSlotPort(1));
+            const int askedUndoing = restartRequests;
+
+            const float cardWidth = (1168.0f - 30.0f - 16.0f - 5.0f * 22.0f) / 6.0f;
+            click(46.0f + cardWidth - 15.0f, 198.0f); // the shaper's x
+            const int askedAtOnce = restartRequests;
+            plugin->on_main_thread(plugin);
+            double typeLeft = -1.0;
+            params->get_value(plugin, idOfIndex(paramIndex(0, FxParam::Type)), &typeLeft);
+            const int askedRemoving = restartRequests;
+
+            click(64.0f, 116.0f); // back to ROUTING
+            std::printf("      restarts asked for: moving a shaper %d, undoing it %d, taking it out %d (at once %d)\n",
+                        askedMoving, askedUndoing, askedRemoving, askedAtOnce);
+            check(fxSaved && moved && undone && askedMoving == 0 && askedUndoing == 0,
+                  "an effect moved along the line asks for no restart while its wires change");
+            check(typeLeft == static_cast<double>(FxType::None) && askedAtOnce == 0 && askedRemoving == 1,
+                  "an effect taken out of the line asks for a restart once the edit is whole");
+            state->load(plugin, &fxKept.in);
+            fxTypes = typesKept;
+            plugin->stop_processing(plugin);
+            plugin->deactivate(plugin);
+            plugin->activate(plugin, kSampleRate, 1, kBlock);
+            plugin->start_processing(plugin);
+            Sleep(600); // the edits' values, told to the host, are taken from it again
+        }
+
         // With nothing sounding, processing sleeps; but not while the editor shows a free LFO running on its own,
         // whose clock and card move on: switched on, the plugin asks the host to process again and keeps it going,
         // and switched back to retrigger, it sleeps. The sources' clocks are put back as they were after.
@@ -4680,6 +5084,64 @@ int main(int argc, char **argv) {
         gui->destroy(plugin);
         DestroyWindow(unaware);
         SetThreadDpiAwarenessContext(before);
+    }
+
+    // --- Two editors in one host window, as a host showing several plugins in one has them: the first asks whether to
+    // load a preset over its edits, and Enter pressed anywhere else leaves the question open.
+    {
+        const HWND window = CreateWindowExW(0, L"STATIC", L"host", WS_OVERLAPPEDWINDOW, 0, 0, 1900, 800, nullptr, nullptr,
+                                            nullptr, nullptr);
+        struct Shown {
+            const clap_plugin_t *instance;
+            const clap_plugin_gui_t *view;
+            HWND hwnd;
+        };
+        auto open = [&](int x) {
+            const HWND holder = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, x, 0, 900, 760, window, nullptr,
+                                                nullptr, nullptr);
+            const clap_plugin_t *instance = factory->create_plugin(factory, &kHost, desc->id);
+            instance->init(instance);
+            const auto *view = static_cast<const clap_plugin_gui_t *>(instance->get_extension(instance, CLAP_EXT_GUI));
+            clap_window_t parent{};
+            parent.api = CLAP_WINDOW_API_WIN32;
+            parent.win32 = holder;
+            view->create(instance, CLAP_WINDOW_API_WIN32, false);
+            view->set_parent(instance, &parent);
+            view->set_size(instance, 900, 752);
+            view->show(instance);
+            const HWND hwnd = GetWindow(holder, GW_CHILD);
+            SendMessageW(hwnd, WM_PAINT, 0, 0);
+            pumpMessages(100);
+            return Shown{instance, view, hwnd};
+        };
+        auto enter = [](HWND to) {
+            PostMessageW(to, WM_KEYDOWN, VK_RETURN, 1);
+            PostMessageW(to, WM_KEYUP, VK_RETURN, static_cast<LPARAM>(0xC0000001));
+            pumpMessages(150);
+        };
+        const Shown a = open(0), b = open(950);
+        SendMessageW(a.hwnd, WM_MOUSEMOVE, 0, MAKELPARAM(151, 48)); // the Volume knob dragged: the patch has changed
+        SendMessageW(a.hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(151, 48));
+        SendMessageW(a.hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(151, 28));
+        SendMessageW(a.hwnd, WM_LBUTTONUP, 0, MAKELPARAM(151, 28));
+        SendMessageW(a.hwnd, WM_PAINT, 0, 0);
+        pumpMessages(100);
+        SendMessageW(a.hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(605, 14)); // the preset bar's next arrow
+        SendMessageW(a.hwnd, WM_LBUTTONUP, 0, MAKELPARAM(605, 14));
+        SendMessageW(a.hwnd, WM_PAINT, 0, 0);
+        pumpMessages(100);
+        valueRescans = 0;
+        enter(b.hwnd);
+        check(valueRescans == 0, "Enter in one editor doesn't answer a question open in another in the same window");
+        enter(window);
+        check(valueRescans == 0, "nor does Enter in the host's window, the mouse elsewhere");
+        enter(a.hwnd);
+        check(valueRescans > 0, "Enter in the editor asking answers it");
+        for (const Shown &shown : {a, b}) {
+            shown.view->destroy(shown.instance);
+            shown.instance->destroy(shown.instance);
+        }
+        DestroyWindow(window);
     }
 
     // --- State: save, change a param through flush(), load, expect the saved value back.

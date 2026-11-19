@@ -7,9 +7,12 @@ place of its wave.
 
 In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMVibe/)
 
+User manual: [https://pcdlin.github.io/FMVibe/manual.html](https://pcdlin.github.io/FMVibe/manual.html)
+
 Implemented using Claude Code.
 
-The full feature reference is in [docs/features.md](docs/features.md).
+The manual's source is [docs/manual.md](docs/manual.md), and the full feature reference is in
+[docs/features.md](docs/features.md).
 Information about working on the code, its tests and the plugin's internals are in [AGENTS.md](AGENTS.md).
 
 #### Main UI
@@ -29,7 +32,7 @@ Information about working on the code, its tests and the plugin's internals are 
 
 Each [release](https://github.com/pcdlin/FMVibe/releases) has two zips for 64-bit Windows, one per format:
 `FMVibe-v<version>-windows-x64-clap.zip` holds `FMVibe.clap`, and `FMVibe-v<version>-windows-x64-vst3.zip` the
-`FMVibe.vst3` folder. Download whichever your DAW takes, or both.
+`FMVibe.vst3` folder, and both hold the user manual, `FMVibe-Manual.html`. Download whichever your DAW takes, or both.
 
 - Put `FMVibe.clap` into either the per-user CLAP folder, `%LOCALAPPDATA%\Programs\Common\CLAP`, or the system-wide
   one, `%COMMONPROGRAMFILES%\CLAP`.

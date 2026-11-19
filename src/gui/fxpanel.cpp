@@ -4,6 +4,7 @@
 // glides and scrolling; a split's controls, which both show; the list of effects, its context menu and its questions.
 
 #include "fxpanel.h"
+#include "lists.h"
 
 #include "fxgraph.h"
 #include "icons.h"
@@ -726,15 +727,7 @@ std::optional<Rect> FxPanel::splitCardOf(int split) const {
 }
 
 void FxPanel::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, bool row) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     // The title row: in the row, it drags the container along the line, and folds it, and the x removes the split (in
     // the graph, its node's x does).
     if (row) {
@@ -1909,15 +1902,7 @@ void FxPanel::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
 // A card's widgets, where it shows: in the row, or in the effects graph's inspector (`graph`), where it neither folds
 // nor moves.
 void FxPanel::cardWidgets(std::vector<Widget> &list, int slot, size_t pos, Rect card, bool graph) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     auto at = [slot](FxParam f) { return paramIndex(slot, f); };
     // The title row, as every card's: the icon at the title's left (which also switches the effect on and
     // off, and drags the card like the title does), then the fold button, the power switch and the cross. In
@@ -1944,15 +1929,7 @@ void FxPanel::cardWidgets(std::vector<Widget> &list, int slot, size_t pos, Rect 
 }
 
 void FxPanel::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     add(Kind::FxMenuButton, fxMenuButton());
     const size_t cardsStart = list.size();
     if (fxGraph()) {
@@ -2031,15 +2008,7 @@ void FxPanel::widgets(std::vector<Widget> &list) const {
 }
 
 void FxPanel::popups(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     if (fxMenuOpen_ && wide()) {
         // Opened for the main line (from a + or a wire of the graph, from the row's arrows, its dashed card or ADD
         // EFFECT), it offers a split (with its join) after the effects; for a band, effects only.
@@ -2235,28 +2204,6 @@ void FxPanel::paintDrag(Canvas &c) {
     // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container. The
     // image is the card painted at its landing place, moved, with the widgets on it (not the row's dashed card, which
     // may glide through there).
-    auto outlined = [&](Rect landing, Rect row, float radius, Color color) {
-        c.pushClip(row);
-        c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
-        c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
-        c.popClip();
-    };
-    auto carried = [&](Rect landing, Rect start, Rect row, float radius, Color color, auto paintCard) {
-        outlined(landing, row, radius, color);
-        const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
-                           start.y + drag_.now.y - drag_.start.y - landing.y};
-        c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
-        c.pushClip(landing);
-        paintCard();
-        std::vector<Widget> list;
-        widgets(list);
-        for (const Widget &w : list)
-            if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x && w.rect.y < landing.bottom() &&
-                w.rect.bottom() > landing.y)
-                host_.paintWidget(c, w);
-        c.popClip();
-        c.popLayer();
-    };
     if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && !fxGraph()) {
         const int node = fxDrag_->item.node;
         const FxRow row = fxRowShown();
@@ -2277,7 +2224,7 @@ void FxPanel::paintDrag(Canvas &c) {
             // An effect card: its outline where it lands, if that shows (not on a band its container hides), and its
             // image painted afresh where it was picked up from, moved under the mouse.
             if (landing)
-                outlined(*landing, fxCardClip(), radius, fxColor(node));
+                host_.paintCardLanding(c, *landing, fxCardClip(), radius, fxColor(node));
             // Its glow and the knobs' labels reach a little past it.
             c.pushLayer({drag_.now.x - drag_.start.x, drag_.now.y - drag_.start.y}, 0.5f, start.inset(-24.0f));
             host_.paintCard(c, kMaxSources + node, start, true);
@@ -2287,8 +2234,10 @@ void FxPanel::paintDrag(Canvas &c) {
         } else if (landing) { // a container, or a folded card: painted at its landing place, moved
             if (node >= kFxSlots && landing->w > start.w) // a container's outline stands out round it
                 start = start.inset(-kFxBoxPad);
-            carried(*landing, start, fxCardClip(), radius, node < kFxSlots ? fxColor(node) : splitLine(),
-                    [&] { paintFx(c, *landing); });
+            std::vector<Widget> list;
+            widgets(list);
+            host_.paintCarriedCard(c, *landing, start, fxCardClip(), radius, node < kFxSlots ? fxColor(node) : splitLine(),
+                                   [&] { paintFx(c, *landing); }, list);
         }
     }
 }
@@ -2732,6 +2681,16 @@ std::string FxPanel::tooltip(const Widget &w) const {
         return tr(Str::TipFxRemove);
     case Kind::FxPower: // the icon on its card
         return tr(value(w.param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
+    case Kind::FxBoxAdd:
+        return tr(Str::TipFxSlotBand);
+    case Kind::FxBoxGrip:
+        return tr(Str::TipSplitGrip);
+    case Kind::SplitBand:
+        return tr(Str::TipSplitBand);
+    case Kind::SplitSolo:
+        return tr(Str::TipSplitSolo);
+    case Kind::SplitBands:
+        return tr(w.b == 3 ? Str::TipSplitThree : Str::TipSplitTwo);
     default:
         return {};
     }

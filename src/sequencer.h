@@ -34,6 +34,7 @@ public:
     static constexpr int kMaxSounding = 256; // notes it holds on at once; past that, the oldest ends
     static constexpr int kMaxEvents = 1024;  // what plan() fills in at most
 
+    Sequencer() { forgetCurves(); }
     void prepare(double sampleRate) { sampleRate_ = sampleRate; }
     // Forgets the notes sounding (the synth ends them itself) and where it was.
     void reset();
@@ -78,7 +79,8 @@ public:
     float position() const { return position_; }
     int pattern() const { return pattern_; }
     // Where the playing pattern's curve stands as the last plan()'s stretch starts, where it plays: the pitch bend
-    // (-1..1) or the mod wheel (0..1). NaN while it doesn't play, or the curve has no points: nothing to add then.
+    // (-1..1), the mod wheel or a macro's knob (0..1). NaN while it doesn't play, or the curve has no points: it does
+    // nothing then.
     double curve(SeqCurve c) const { return curveNow_[static_cast<size_t>(c)]; }
 
 private:
@@ -128,8 +130,8 @@ private:
     int read_ = -1; // the pattern notes_ and curves_ were read from, -1 for none
     std::array<std::array<SeqCurvePoint, kSeqCurvePoints>, kSeqCurves> curves_{}; // the playing pattern's
     std::array<int, kSeqCurves> curveCount_{};
-    std::array<double, kSeqCurves> curveNow_{std::numeric_limits<double>::quiet_NaN(),
-                                             std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, kSeqCurves> curveNow_{};
+    int curvePeriod_ = kSeqStepsPerBar; // the playing pattern's length in steps, which its curves wrap around
 
     // From keys: those held, newest last, and the one transposing; whether it runs, and its own clock (played steps).
     std::array<int, 16> keys_{};

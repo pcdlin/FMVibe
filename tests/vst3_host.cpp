@@ -346,9 +346,67 @@ double frequency(const std::vector<float> &samples) {
     return crossings > 1 ? (crossings - 1) * kRate / static_cast<double>(last - first) : 0.0;
 }
 
+// This test run again as a process with little memory: instances made until one finds no room for its voices.
+int outOfMemoryProcess(const char *path) {
+    const HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit{};
+    limit.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+    limit.ProcessMemoryLimit = 320u * 1024u * 1024u;
+    if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limit, sizeof(limit)) ||
+        !AssignProcessToJobObject(job, GetCurrentProcess()))
+        return 10;
+    const HMODULE lib = LoadLibraryA(path);
+    using GetFactory = IPluginFactory *(PLUGIN_API *)();
+    const auto getFactory = lib ? reinterpret_cast<GetFactory>(GetProcAddress(lib, "GetPluginFactory")) : nullptr;
+    if (!getFactory)
+        return 11;
+    IPluginFactory *factory = getFactory();
+    PClassInfo info;
+    factory->getClassInfo(0, &info);
+    ProcessSetup setup{kRealtime, kSample32, kBlock, kRate};
+    IComponent *made[64] = {};
+    int count = 0;
+    IComponent *refused = nullptr;
+    while (count < 64 && !refused) {
+        IComponent *component = nullptr;
+        const tresult created = factory->createInstance(info.cid, IComponent::iid, reinterpret_cast<void **>(&component));
+        if (created == kOutOfMemory)
+            return 0; // told the host, too, a step earlier
+        if (created != kResultOk)
+            return 12;
+        component->initialize(nullptr);
+        IAudioProcessor *processor = nullptr;
+        component->queryInterface(IAudioProcessor::iid, reinterpret_cast<void **>(&processor));
+        processor->setupProcessing(setup);
+        processor->release();
+        const tresult active = component->setActive(true);
+        if (active == kOutOfMemory)
+            refused = component;
+        else if (active == kResultOk)
+            made[count++] = component;
+        else
+            return 13;
+    }
+    if (!refused)
+        return 14;
+    for (int i = 0; i < count; ++i) {
+        made[i]->setActive(false);
+        made[i]->terminate();
+        made[i]->release();
+    }
+    const bool activated = refused->setActive(true) == kResultOk; // with room again
+    refused->setActive(false);
+    refused->terminate();
+    refused->release();
+    return activated ? 0 : 15;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1"); // what plays is compared sample for sample
+    if (argc == 3 && std::strcmp(argv[1], "--out-of-memory") == 0)
+        return outOfMemoryProcess(argv[2]);
     if (argc != 2) {
         std::fprintf(stderr, "usage: fmvibe-vst3-smoke <FMVibe.vst3>\n");
         return 2;
@@ -808,6 +866,34 @@ int main(int argc, char **argv) {
     const uint32 latency = plugin.processor->getLatencySamples();
     std::printf("      latency: %u samples\n", static_cast<unsigned>(latency));
     check(latency >= 1 && latency <= 4, "the latency reported is the voices' decimator's");
+    // Asked between setActive(false) and setActive(true), as a host may after kLatencyChanged, it is already what the
+    // activation will make it: here with a shaper effect, which runs at twice the rate, put in the line.
+    {
+        const int wires[] = {paramIndex(0, FxParam::Type), fxInputIndex(0, 0, FxInputField::From),
+                             fxInputIndex(kFxOutNode, 0, FxInputField::From)};
+        const double plain[] = {static_cast<double>(FxType::Shaper), fxPortValue(kFxPortIn), fxPortValue(fxSlotPort(0))};
+        double kept[3];
+        plugin.processor->setProcessing(false);
+        plugin.component->setActive(false);
+        for (int i = 0; i < 3; ++i) {
+            kept[i] = plugin.normalized(wires[i]);
+            plugin.controller->setParamNormalized(
+                idOfIndex(wires[i]), plugin.controller->plainParamToNormalized(idOfIndex(wires[i]), plain[i]));
+        }
+        const uint32 inactive = plugin.processor->getLatencySamples();
+        plugin.component->setActive(true);
+        const uint32 active = plugin.processor->getLatencySamples();
+        plugin.component->setActive(false);
+        for (int i = 0; i < 3; ++i)
+            plugin.controller->setParamNormalized(idOfIndex(wires[i]), kept[i]);
+        const uint32 restored = plugin.processor->getLatencySamples();
+        plugin.component->setActive(true);
+        plugin.processor->setProcessing(true);
+        std::printf("      latency with a shaper effect: %u samples while inactive, %u once active\n",
+                    static_cast<unsigned>(inactive), static_cast<unsigned>(active));
+        check(inactive == active && inactive >= latency + 4 && restored == latency,
+              "the latency asked for while inactive is what the next activation makes it");
+    }
 
     // --- State: the same bytes the CLAP plugin saves, through a stream that moves 5 bytes at a time.
     plugin.processor->setProcessing(false);
@@ -999,6 +1085,24 @@ int main(int argc, char **argv) {
     factory3->release();
     check(exitDll(), "ExitDll");
     FreeLibrary(lib);
+
+    {
+        char self[MAX_PATH];
+        GetModuleFileNameA(nullptr, self, MAX_PATH);
+        std::string line = "\"" + std::string(self) + "\" --out-of-memory \"" + argv[1] + "\"";
+        STARTUPINFOA startup{};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process{};
+        DWORD code = 99;
+        if (CreateProcessA(nullptr, line.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+            WaitForSingleObject(process.hProcess, 60000);
+            GetExitCodeProcess(process.hProcess, &code);
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+        }
+        std::printf("      out of memory: exit code %lu\n", code);
+        check(code == 0, "setActive() out of memory says so, and goes through once there is room");
+    }
 
     std::printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

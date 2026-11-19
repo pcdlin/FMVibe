@@ -20,12 +20,20 @@ struct FilterFx {
     // first chunk, so worked out again only when one moves (see run()).
     FilterSettings settings;
     std::array<double, 10> settingsFor{std::numeric_limits<double>::quiet_NaN()};
+    // Filter FM (see Context::cutoffOctaves): how far it can take the filter at twice the rate, and where the last
+    // sample left the cutoff, in octaves.
+    CutoffFmRange fmRange;
+    double fmLast = 0.0;
 
     // Allocates the comb lines. Main thread, while the plugin is inactive.
     void prepare(double sampleRate);
     void start(const Context &ctx);
     // Returns the loudest sample its filters put out, so a resonant comb keeps it running.
     double run(const Context &ctx, float *const *io, uint32_t n);
+
+private:
+    // run() with an operator moving the cutoff: a loop of its own, so the plain one stays as it is.
+    double runModulated(const float *octaves, float *const *io, uint32_t n, double mixStep);
 };
 
 } // namespace fmvibe::fx

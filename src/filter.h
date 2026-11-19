@@ -220,6 +220,84 @@ struct FilterSettings {
     MorphWeights morph{1.0, 0.0, 0.0};
 };
 
+// The diode ladder's stages at rate `gd`. (I - g M) y = s + g u e1 is tridiagonal: below its diagonal -g, above it -g c,
+// along it 1 + g (1 + c) but the last row's 1 + g. Its pivots and the upper diagonal over them are worked out here, and
+// so is the stages' answer to a unit input.
+inline void setDiodeRate(FilterSettings &s, double gd) {
+    const double c = kDiodeCoupling;
+    s.diodeG = gd;
+    double upper = 0.0; // the previous row's upper diagonal over its pivot
+    for (int i = 0; i < 4; ++i) {
+        const double diagonal = 1.0 + gd * (i < 3 ? 1.0 + c : 1.0);
+        const double pivot = diagonal + (i > 0 ? gd * upper : 0.0); // less (-g) times the row above's upper
+        s.diodePivot[i] = 1.0 / pivot;
+        upper = i < 3 ? -gd * c / pivot : 0.0;
+        s.diodeUpper[i] = upper;
+    }
+    double forward[4];
+    for (int i = 0; i < 4; ++i)
+        forward[i] = ((i == 0 ? gd : 0.0) + (i > 0 ? gd * forward[i - 1] : 0.0)) * s.diodePivot[i];
+    for (int i = 3; i >= 0; --i)
+        s.diodeUnit[i] = forward[i] - (i < 3 ? s.diodeUpper[i] * s.diodeUnit[i + 1] : 0.0);
+}
+
+// How far filter FM takes a filter's integrators at `sampleRate`: the rates of the cutoffs filterSettings() holds to.
+struct CutoffFmRange {
+    double low = 0.0, high = 0.0;
+};
+inline CutoffFmRange cutoffFmRange(double sampleRate) {
+    return {std::tan(std::numbers::pi * 10.0 / sampleRate), std::tan(std::numbers::pi * 0.45)};
+}
+
+// Filter FM: `now` as `base` plays with its cutoff times `factor`, for a sample. An analog filter's FM input scales its
+// integrators' gain, and so does this: the block's prewarped rate times the factor, without a tangent per sample. Only
+// the fields that follow the cutoff are written. The Formant type's formants don't follow it here.
+inline void modulateCutoff(FilterSettings &now, const FilterSettings &base, double factor, const CutoffFmRange &range) {
+    auto rate = [&](double g) { return std::clamp(g * factor, range.low, range.high); };
+    auto stage = [&](Svf::Coefs &to, const Svf::Coefs &from) {
+        const double g = rate(from.a2 / from.a1);
+        to.a1 = 1.0 / (1.0 + g * (g + from.k));
+        to.a2 = g * to.a1;
+        to.a3 = g * to.a2;
+    };
+    switch (base.type) {
+    case FilterType::LowPass:
+    case FilterType::HighPass:
+    case FilterType::BandPass:
+    case FilterType::Notch:
+    case FilterType::Morph:
+        stage(now.main, base.main);
+        if (base.slope >= 2)
+            stage(now.second, base.second);
+        break;
+    case FilterType::Comb:
+        now.combDelay = std::max(base.combDelay / factor, 2.0);
+        break;
+    case FilterType::Ladder: {
+        const double g = rate(base.ladderG / (1.0 - base.ladderG));
+        now.ladderG = g / (1.0 + g);
+        const double g2 = now.ladderG * now.ladderG;
+        now.ladderSolve = 1.0 / (1.0 + base.feedback * g2 * g2);
+        break;
+    }
+    case FilterType::Diode:
+        setDiodeRate(now, rate(base.diodeG * kDiodeTurn) / kDiodeTurn);
+        now.diodeSolve = 1.0 / (1.0 + base.feedback * now.diodeUnit[3]);
+        break;
+    case FilterType::SallenKeyLow:
+    case FilterType::SallenKeyHigh: {
+        const double g = rate(base.skG);
+        now.skG = g;
+        now.skA = 1.0 / (1.0 + g);
+        now.skSolve = 1.0 / (1.0 + g - g * base.feedback * now.skA);
+        break;
+    }
+    case FilterType::Formant:
+    case FilterType::Count:
+        break;
+    }
+}
+
 // cutoffHz already includes key tracking. `slope` (0..3, as stored) only matters to the types with a slope, `vowel` to
 // the Formant type and `morph` and `mode` to the Morph type.
 inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz, double resonance, double drive,
@@ -257,31 +335,12 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
         s.ladderSolve = 1.0 / (1.0 + s.feedback * g2 * g2);
         break;
     }
-    case FilterType::Diode: {
-        // (I - g M) y = s + g u e1 is tridiagonal: below its diagonal -g, above it -g c, along it 1 + g (1 + c) but
-        // the last row's 1 + g. Its pivots and the upper diagonal over them are worked out here, once, and so is
-        // the stages' answer to a unit input.
-        const double c = kDiodeCoupling;
-        const double gd = g / kDiodeTurn;
-        s.diodeG = gd;
-        double upper = 0.0; // the previous row's upper diagonal over its pivot
-        for (int i = 0; i < 4; ++i) {
-            const double diagonal = 1.0 + gd * (i < 3 ? 1.0 + c : 1.0);
-            const double pivot = diagonal + (i > 0 ? gd * upper : 0.0); // less (-g) times the row above's upper
-            s.diodePivot[i] = 1.0 / pivot;
-            upper = i < 3 ? -gd * c / pivot : 0.0;
-            s.diodeUpper[i] = upper;
-        }
-        double forward[4];
-        for (int i = 0; i < 4; ++i)
-            forward[i] = ((i == 0 ? gd : 0.0) + (i > 0 ? gd * forward[i - 1] : 0.0)) * s.diodePivot[i];
-        for (int i = 3; i >= 0; --i)
-            s.diodeUnit[i] = forward[i] - (i < 3 ? s.diodeUpper[i] * s.diodeUnit[i + 1] : 0.0);
+    case FilterType::Diode:
+        setDiodeRate(s, g / kDiodeTurn);
         s.feedback = diodeFeedback(resonance);
         s.inputGain = diodeInputGain(s.feedback);
         s.diodeSolve = 1.0 / (1.0 + s.feedback * s.diodeUnit[3]);
         break;
-    }
     case FilterType::SallenKeyLow:
     case FilterType::SallenKeyHigh:
         s.skG = g;

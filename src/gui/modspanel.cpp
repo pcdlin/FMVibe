@@ -1,4 +1,5 @@
 #include "modspanel.h"
+#include "lists.h"
 
 #include "fxgraph.h"
 #include "icons.h"
@@ -306,6 +307,10 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
         for (int source : {kNoteSource, kVelocitySource, kWheelSource, kBendSource})
             keyboard.children.push_back(sourcePick(source));
         keep(std::move(keyboard));
+        MenuNode operators = category(tr(Str::CascadeOperators));
+        for (int op = 0; op < kOps; ++op)
+            operators.children.push_back(sourcePick(kOpSource + op));
+        keep(std::move(operators));
         markHolds(root);
         return root;
     }
@@ -804,15 +809,7 @@ void ModsPanel::paintBack(Canvas &c) {
 // --- What the View hands the panel.
 
 void ModsPanel::widgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     // A row per modulation, cut off at the list's ends while it scrolls, then one that adds an empty modulation.
     // The first of a source's rows names it, with its polarity switch after the name (an empty modulation among
     // them too); an empty modulation's row has only its source, its target and its remove.
@@ -879,15 +876,7 @@ void ModsPanel::widgets(std::vector<Widget> &list) const {
 void ModsPanel::popups(std::vector<Widget> &list) const {
     if (!cascade_ || !wide())
         return;
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
-        Widget w;
-        w.kind = kind;
-        w.rect = rect;
-        w.param = param;
-        w.a = a;
-        w.b = b;
-        list.push_back(w);
-    };
+    const WidgetAdder add{list};
     const std::shared_ptr<const MenuNode> tree = cascadeTree();
     const MenuNode &root = *tree;
     const std::vector<const MenuNode *> levels = cascadeLevels(root);
