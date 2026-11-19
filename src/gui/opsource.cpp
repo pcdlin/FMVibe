@@ -1,4 +1,4 @@
-// A Wavetable or Sample operator's part of the inspector (InspectorPanel, see inspectorpanel.h): the source switch on
+// A Wavetable or Sample operator's part of the inspector (InspectorPanel, see inspectorpanel.h): the source list on
 // its page's title row, its TABLE tab (the table's picker over its frames, Position's control, with its warp) and its
 // SAMPLE tab (the sample's picker over its waveform with Start's and the loop's handles, the ROOT readout, LOOP, MODE and the
 // reverse switch), and a file dragged in from outside dropped on that display. The table browser the pickers open is
@@ -43,17 +43,36 @@ double meterValue(Rect display, float y) {
 // The frame sizes a file that leaves its own open can be cut into, as the table browser's folders offer them.
 constexpr int kFrameSizes[] = {256, 512, 1024, 2048};
 
-// The source switch's names, and its tooltips.
+// The source list's names.
 constexpr Str kSourceNames[] = {Str::SourceWave, Str::SourceTable, Str::SourceSample};
-constexpr Str kSourceTips[] = {Str::TipSourceWave, Str::TipSourceTable, Str::TipSourceSample};
 
 int sourceOfWave(OpWave wave) { return wave == OpWave::Wavetable ? 1 : wave == OpWave::Sample ? 2 : 0; }
+
+// A source's glyph in the source list: the wave's own (`wave`, the one a wave operator plays or goes back to), a
+// table's or a sample's.
+void paintSourceGlyph(Canvas &c, Rect r, OpWave wave, int source, Color color) {
+    if (source == 1)
+        tableGlyph(c, r, color);
+    else if (source == 2)
+        sampleGlyph(c, r, color);
+    else {
+        const std::vector<Point> points = waveIcon(wave, r);
+        c.polyline(points.data(), points.size(), color, 1.5f);
+    }
+}
 
 } // namespace
 
 bool isTableDisplay(const Widget &w) {
     return w.kind == WidgetKind::Knob && w.param >= kOpBase && w.param < kOpBase + kOps * kOpParamCount &&
            (w.param - kOpBase) % kOpParamCount == static_cast<int>(OpParam::TablePos);
+}
+
+OpWave InspectorPanel::plainWaveOf(int op) const {
+    const OpWave wave = opWave(value(paramIndex(op, OpParam::Wave)));
+    if (!isDataWave(wave))
+        return wave;
+    return static_cast<OpWave>(std::clamp(controller().layout().plainWave[op], 0, static_cast<int>(OpWave::Vowel)));
 }
 
 bool InspectorPanel::isTableOp(int op) const {
@@ -148,10 +167,7 @@ void InspectorPanel::sourceWidgets(std::vector<Widget> &list, int op, InspectorT
         list.push_back(w);
         return list.back();
     };
-    const size_t switches = list.size();
-    for (int s = 0; s < 3; ++s)
-        add(Kind::SourceSwitch, opSourceButton(s), -1, op, s);
-    mergeButtons(list, switches);
+    add(Kind::OpSourceList, kOpSourceButton, -1, op);
     const bool table = isTableOp(op), sample = isSampleOp(op);
     if (tab != InspectorTab::Source)
         return;
@@ -217,11 +233,30 @@ void InspectorPanel::sourceWidgets(std::vector<Widget> &list, int op, InspectorT
 bool InspectorPanel::paintSourceWidget(Canvas &c, const Widget &w, bool hovered) {
     const bool active = host_.isActive(w);
     switch (w.kind) {
-    case Kind::SourceSwitch: {
-        const bool lit = sourceOfWave(opWave(value(paramIndex(w.a, OpParam::Wave)))) == w.b;
-        host_.paintButtonFace(c, w, lit, hovered, kAccent, 0.18f, kRadiusControl);
-        c.text(w.rect, tr(kSourceNames[std::clamp(w.b, 0, 2)]), kTextSmall,
-               lit ? litInk(kAccent) : (hovered ? kText : kDim), Align::Center, true);
+    case Kind::OpSourceList: { // as the table's picker: the source's glyph, its name and a chevron
+        const bool open = sourceMenu_ == w.a;
+        host_.paintButtonFace(c, w, open, hovered, kAccent, 0.18f, kRadiusControl);
+        const Color ink = open ? litInk(kAccent) : hovered ? kText : kDim;
+        const int source = sourceOfWave(opWave(value(paramIndex(w.a, OpParam::Wave))));
+        const Rect glyph{w.rect.x + 5.0f, w.rect.y + 4.0f, 14.0f, w.rect.h - 8.0f};
+        paintSourceGlyph(c, glyph, plainWaveOf(w.a), source, ink);
+        c.text({glyph.right() + 5.0f, w.rect.y, w.rect.right() - glyph.right() - 20.0f, w.rect.h},
+               tr(kSourceNames[source]), kTextLabel, open ? litInk(kAccent) : kText, Align::Left);
+        chevron(c, {w.rect.right() - 9.0f, w.rect.center().y}, 0, ink);
+        return true;
+    }
+    case Kind::OpSourceMenu:
+        if (w.a == 1)
+            paintMenuPanel(c, w.rect);
+        return true;
+    case Kind::OpSourceItem: {
+        const bool selected = sourceOfWave(opWave(value(paramIndex(w.a, OpParam::Wave)))) == w.b;
+        paintMenuRow(c, w.rect, hovered, selected);
+        const Rect glyph{w.rect.x + 8.0f, w.rect.y + 5.0f, 16.0f, w.rect.h - 10.0f};
+        paintSourceGlyph(c, glyph, plainWaveOf(w.a), w.b, selected ? kAccent : kDim);
+        c.text({glyph.right() + 8.0f, w.rect.y, w.rect.right() - glyph.right() - 12.0f, w.rect.h},
+               tr(kSourceNames[std::clamp(w.b, 0, 2)]), kTextBody, hovered || selected ? kText : kDim, Align::Left,
+               selected);
         return true;
     }
     case Kind::TableStep:
@@ -418,8 +453,6 @@ void InspectorPanel::paintSampleTab(Canvas &c, Rect r, int op) {
 
 std::string InspectorPanel::sourceTip(const Widget &w) const {
     switch (w.kind) {
-    case Kind::SourceSwitch:
-        return tr(kSourceTips[std::clamp(w.b, 0, 2)]);
     case Kind::TableStep:
         return tr(w.b < 0 ? Str::TipTablePrev : Str::TipTableNext);
     case Kind::TablePicker:
@@ -458,7 +491,10 @@ std::optional<CursorKind> InspectorPanel::sourceCursor(const Widget &w) const {
         return CursorKind::Vertical;
     case Kind::SampleHandle:
         return CursorKind::Horizontal;
-    case Kind::SourceSwitch:
+    case Kind::OpSourceMenu: // the open list's own panel and what is around it, where a click picks nothing
+        return CursorKind::Arrow;
+    case Kind::OpSourceList:
+    case Kind::OpSourceItem:
     case Kind::TableStep:
     case Kind::TablePicker:
     case Kind::SamplePicker:
@@ -549,7 +585,16 @@ void InspectorPanel::stepTable(int op, int dir) {
 
 bool InspectorPanel::sourcePress(const Widget &w, Point p, Modifiers mods) {
     switch (w.kind) {
-    case Kind::SourceSwitch:
+    case Kind::OpSourceList: // opens its list, or closes it
+        sourceMenu_ = sourceMenu_ == w.a ? -1 : w.a;
+        waveMenu_ = -1;
+        return true;
+    case Kind::OpSourceMenu:
+        if (w.a == 0) // a click anywhere else closes the list
+            sourceMenu_ = -1;
+        return true;
+    case Kind::OpSourceItem:
+        sourceMenu_ = -1;
         switchSource(w.a, w.b);
         return true;
     case Kind::TableStep:

@@ -193,7 +193,7 @@ struct UiLayout {
     // What the preset says about itself (see PresetInfo). Part of the patch, but not undone: it changes as a preset is
     // saved, or its info edited.
     PresetInfo presetInfo;
-    // The wave each operator's source switch goes back to on WAVE, from TABLE or SAMPLE: the last plain wave it had
+    // The wave each operator's source list goes back to on Wave, from Wavetable or Sample: the last plain wave it had
     // (Sine to begin with). Part of the patch, like the node places.
     std::array<int, kOps> plainWave{};
 };

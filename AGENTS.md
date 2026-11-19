@@ -897,8 +897,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     only its rows, and a note off it keeping its row, hatched (read off the rendered pixels); the snap's list, and the roll's lines falling at its length and as strong as the GRID setting
     says (read off the rendered pixels); copying the pattern into the next empty one; and the bin clearing the pattern,
     asking first, undoably.
-  - an operator's source switch: on its title row, after its letter and left of the edit button, the knobs, the well and the controls' labels inside
-    the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place); TABLE making the operator a Wavetable and opening its tab, WAVE
+  - an operator's source list: its button on its title row, after its letter and left of the edit button, the knobs, the well and the controls' labels inside
+    the lens and a Wavetable's four tabs fitting (its TABLE tab in WARP's place); the button opening the list under it, the
+    source in force lit, and a click around it closing it without a change (read off the rendered pixels); Wavetable making the operator a Wavetable and opening its tab, Wave
     bringing back the wave it had, each an undo step, nothing drawn past the lens (read off the rendered pixels); the
     picker, at the top of the TABLE tab and on no other, opening the table browser, a row picking a table, Done closing
     it and the steps going through the tables; a table's and a sample's block with no Ratio readout, its knobs along it;
@@ -932,7 +933,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     one undo step; a wavetable that says, or a file taken as a sample, going straight in;
   - a sample's browser: its own folders and no factory tables, in its list or its search, the patch's samples alone
     under In this patch, its + Add folder... asking for a folder of samples, and a table's browser keeping its folders apart;
-  - a Sample operator: its picker and import button at the top of the SAMPLE tab and on no other; SAMPLE with none
+  - a Sample operator: its picker and import button at the top of the SAMPLE tab and on no other; Sample picked with none
     showing the dashed card, which opens the file dialog, as the import button does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
     loop's end dragged, each an undo step, a double-click putting one back; LOOP and
     MODE picking, their icons named in tooltips, and the reverse switch between them turning the waveform round (read
@@ -1230,7 +1231,7 @@ breakpoints in `src/` then hit.
 | `src/gui/routing.h` | The routing graph's geometry: which param joins two nodes, wires and arrowheads, their bows and grips, a node's edge, and where the inspector's lens's leader starts |
 | `src/gui/routingpanel.h`, `src/gui/routingpanel.cpp` | The routing panel, `RoutingPanel`: the routing graph and the matrix, with ALGORITHM and its panel of algorithms: the graph's nodes, wires and labels (clear of each other), its glow (the effects graph's backdrop too), halos and grid's points for Ctrl+drag, the drags that move nodes and routes and bend wires, a label's list of modes and the routing's context menus |
 | `src/gui/inspectorpanel.h`, `src/gui/inspectorpanel.cpp` | The inspector, `InspectorPanel`: the lens over the routing panel's left end and the page of the node it shows (an operator's waves and their list, its tabs, unison copies, scope and INPUTS rows, a filter's response and handle, a shaper's curve), its title and nodes' tabs; what covers it, and a node's tab or name clicked showing that node |
-| `src/gui/opsource.cpp` | The inspector's part for a Wavetable or Sample operator: the source switch on its title row, the table's and sample's pickers, the TABLE tab (its frames, Position's control, with its warp) and the SAMPLE tab (its waveform, handles, ROOT, LOOP, MODE and reverse switch), and a file dropped on that display |
+| `src/gui/opsource.cpp` | The inspector's part for a Wavetable or Sample operator: the source list on its title row, the table's and sample's pickers, the TABLE tab (its frames, Position's control, with its warp) and the SAMPLE tab (its waveform, handles, ROOT, LOOP, MODE and reverse switch), and a file dropped on that display |
 | `src/gui/filterdisplay.h`, `src/gui/filterdisplay.cpp` | A filter's display, shared by the inspector's filter page and the filter effect's card: its response with its modulation's reach, the spectrum behind it and its handle |
 | `src/gui/lists.h` | The lists the editor's list buttons open: which params open one, their entries' values and names, and which have arrows that step along them |
 | `src/gui/fxpanel.h`, `src/gui/fxpanel.cpp` | The FX view, `FxPanel`: the effects' line of effects, splits and joins as it shows it: its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector, their cards' and nodes' moves (and Ctrl-drag copies), glides and scrolling; a split's controls, which both show; the list of effects, the bin and its questions. What an effect's card holds below its title row is still the `View`'s |
@@ -1427,7 +1428,7 @@ itself.
   takes up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
   name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
   the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips, and the wave each operator's
-  source switch goes back to (`UiLayout::plainWave`).
+  source list goes back to (`UiLayout::plainWave`).
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Last, in both, comes the DATA chunk

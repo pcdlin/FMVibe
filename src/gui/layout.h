@@ -85,15 +85,18 @@ inline float nodeTabDivider(int group) {
 }
 // The page below the tabs, title and switch, dimmed while its node is off.
 constexpr Rect kInspectorPage{kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f};
-// The page's title row under the tabs: the node's letter, then its summary (an operator's source switch instead); the
+// The page's title row under the tabs: the node's letter, then its summary (an operator's source list instead); the
 // switches at its right end.
 constexpr Rect kTitleRow{kInspector.x + 16.0f, kInspector.y + 37.0f, kInspector.w - 32.0f, 20.0f};
 constexpr float kTitleLetterW = 16.0f;
 // An operator's letter there is its output's handle as a modulation source: dragged onto what it should modulate.
 constexpr Rect kOpNameHandle{kTitleRow.x - 4.0f, kTitleRow.y, kTitleLetterW + 8.0f, kTitleRow.h};
+// Where the letter is drawn: a pixel higher than the row, so that its capital, which sits low in its text's height,
+// has its middle level with the middles of the source list's button, the keyboard switch and the power switch.
+constexpr Rect kOpLetter{kTitleRow.x, kTitleRow.y - 1.0f, kTitleLetterW, kTitleRow.h};
 // An operator's Fixed switch, a keyboard on the title row left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
-// An operator's sound in one block under the title row, whose place its source switch (WAVE | TABLE | SAMPLE) takes:
+// An operator's sound in one block under the title row, whose place its source list (Wave, Wavetable or Sample) takes:
 // at its left, its pitch (the Ratio readout, Freq and Mult when fixed, or a noise operator's Slope and Spread), as tall
 // as two rows; at its right, the waves, and under them the Pitch, Detune, Phase and Pan knobs. Their labels, and the
 // Ratio readout's, share one line. A table or a sample has no Ratio, and its picker is on its tab: unless fixed, its four
@@ -102,15 +105,11 @@ constexpr float kOpHeroY = kInspector.y + 69.0f; // centered between the title r
 constexpr float kOpPitchW = 88.0f; // the left column
 constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
 constexpr float kOpRightW = kInspector.x + kInspector.w - 16.0f - kOpRightX;
-// The source switch, three equal segments along the title row after the operator's letter, where a filter's or
-// shaper's page has its summary; it stops short of a Custom wave's edit button, left of the keyboard switch.
+// The source's list button on the title row after the operator's letter, where a filter's or shaper's page has its
+// summary: Wave, Wavetable or Sample, picked from the list it opens under it (see opSourceItem()). It stops short of a
+// Custom wave's edit button, left of the keyboard switch.
 constexpr float kOpSourceX = kOpNameHandle.x + kOpNameHandle.w + 4.0f;
-constexpr Rect kOpSourceRow{kOpSourceX, kFixedSwitch.y, kFixedSwitch.x - kFixedSwitch.w - 10.0f - kOpSourceX,
-                            kFixedSwitch.h};
-inline Rect opSourceButton(int source) {
-    const float w = kOpSourceRow.w / 3.0f;
-    return {kOpSourceRow.x + source * w, kOpSourceRow.y, w, kOpSourceRow.h};
-}
+constexpr Rect kOpSourceButton{kOpSourceX, kFixedSwitch.y, 112.0f, kFixedSwitch.h};
 constexpr float kOpRowY = kOpHeroY;
 constexpr float kOpWavesH = 20.0f; // the waves' row, over the knobs
 constexpr float kOpKnobY = kOpHeroY + 38.0f, kOpKnobD = 28.0f;
@@ -302,7 +301,7 @@ constexpr Rect kShaperDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInsp
 constexpr OpWave kCommonWaves[] = {OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Noise};
 constexpr OpWave kMoreWaves[] = {OpWave::Pulse,   OpWave::HalfSine, OpWave::AbsSine, OpWave::AltSine,
                                  OpWave::Organ,   OpWave::Vowel,    OpWave::Custom};
-// Every wave but Wavetable and Sample, which the source switch on the title row picks (see kOpSourceRow).
+// Every wave but Wavetable and Sample, which the source's list on the title row picks (see kOpSourceButton).
 static_assert(std::size(kCommonWaves) + std::size(kMoreWaves) + 2 == static_cast<size_t>(OpWave::Count));
 constexpr int kWaveButtons = static_cast<int>(std::size(kCommonWaves)) + 1;
 // One segmented row along the block's top, in its right column.
@@ -1009,6 +1008,10 @@ inline Rect listMenuItem(Rect button, int count, int item) {
     const Rect menu = listMenu(button, count);
     return {menu.x + 4.0f, menu.y + 4.0f + item * 22.0f, menu.w - 8.0f, 22.0f};
 }
+
+// The operator's source list (see kOpSourceButton), its entries 0 a wave, 1 a wavetable and 2 a sample.
+inline Rect opSourceMenu() { return listMenu(kOpSourceButton, 3); }
+inline Rect opSourceItem(int source) { return listMenuItem(kOpSourceButton, 3, source); }
 
 // The scrollbars under the card rows: thin tracks along the panels' bottom edges.
 inline Rect fxScrollTrack() {

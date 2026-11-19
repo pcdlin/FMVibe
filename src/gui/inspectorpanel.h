@@ -2,7 +2,7 @@
 
 // The inspector (see inspectorpanel.cpp): the lens floating over the routing panel's left end, which shows the node
 // picked (an operator, a filter or a shaper) on a page of its own: the nodes' tabs along its top, its title (the node's
-// letter, what it is and what it is routed to; an operator's source switch, WAVE | TABLE | SAMPLE, in its place)
+// letter, what it is and what it is routed to; an operator's source list, Wave, Wavetable or Sample, in its place)
 // beside its on/off switch, and its page. An operator's: its waves (the common ones as buttons, the rest in a list; a
 // Wavetable's or a Sample's picker in their place, see opsource.cpp), its Ratio readout or, fixed, its Freq and Mult,
 // its knobs, and its tabs: UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over
@@ -51,8 +51,12 @@ public:
     bool covered() const;
     // The operator whose scope shows (its WARP tab, while it shows), whose output the audio thread captures; or -1.
     int scopeShown() const;
-    // The list of more waves closes, as an open list does as something scrolls under the middle button.
-    void closeWaveMenu() { waveMenu_ = -1; }
+    // The list of more waves and the source list close, as an open list does as something scrolls under the middle
+    // button.
+    void closeWaveMenu() {
+        waveMenu_ = -1;
+        sourceMenu_ = -1;
+    }
     // A file dragged over the editor from outside it: the Wavetable or Sample operator whose TABLE or SAMPLE tab's
     // display, shown, takes it at `p`, or -1; what that operator takes it as; and the operator whose display is lit for
     // one held over it (-1 for none), which repaints it.
@@ -67,7 +71,7 @@ public:
     void confirmed(int kind, int button) override;
 
     void widgets(std::vector<Widget> &list) const override;
-    void popups(std::vector<Widget> &list) const override; // the list of more waves, and its pages' lists
+    void popups(std::vector<Widget> &list) const override; // the lists of more waves and of sources, its pages' lists
     void paintBack(Canvas &c) override;                     // the lens and the page shown
     void paintOverWidgets(Canvas &c) override;              // a wave button's name, under it while the mouse is on it
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
@@ -127,8 +131,9 @@ private:
     bool opTabModulated(int op, InspectorTab tab) const;
     OpWarp opWarp(int op) const;
 
-    // --- A Wavetable or Sample operator's (see opsource.cpp): the source switch on the title row and the pickers in
+    // --- A Wavetable or Sample operator's (see opsource.cpp): the source list on the title row and the pickers in
     // the waves' place, its TABLE and SAMPLE tabs.
+    OpWave plainWaveOf(int op) const; // the wave it plays, or goes back to from a table or a sample
     bool isTableOp(int op) const;
     bool isSampleOp(int op) const;
     detail::OpTabs opTabsOf(int op) const; // which tabs it has
@@ -184,6 +189,7 @@ private:
     const ParamTable &table_;
     Drag drag_;
     int waveMenu_ = -1;          // the operator whose list of more waves is open, or -1
+    int sourceMenu_ = -1;        // the operator whose source list is open, or -1
     float inputsScroll_ = 0.0f;  // rows the INPUTS tab is scrolled to, before clamping
     float opScopeLevel_ = 0.0f;  // the operator scope's level, following its spans' peaks, which its dB readout shows
     // The file waiting for its frame size to be picked.

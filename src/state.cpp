@@ -354,7 +354,7 @@ void layoutFields(Io &io, Layout &ui) {
     io.text(ui.presetInfo.author, kMaxInfoAuthor);
     io.text(ui.presetInfo.category, kMaxInfoCategory);
     io.text(ui.presetInfo.description, kMaxInfoDescription);
-    // The wave each operator's source switch goes back to (any but the data waves, which come after Vowel).
+    // The wave each operator's source list goes back to (any but the data waves, which come after Vowel).
     io.numbers(ui.plainWave, 0.0f, static_cast<float>(OpWave::Vowel), rounded<int>);
 }
 

@@ -176,7 +176,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
     } else if (node < kOps) {
         const int op = node;
         // A wave of its own: one segmented row, the list's button last in it. A table or a sample: their pickers (see
-        // sourceWidgets()), under the source switch.
+        // sourceWidgets()), under the source list.
         if (!isTableOp(op) && !isSampleOp(op)) {
             const size_t waves = list.size();
             for (int b = 0; b + 1 < kWaveButtons; ++b)
@@ -379,6 +379,13 @@ void InspectorPanel::popups(std::vector<Widget> &list) const {
         for (size_t i = 0; i < std::size(kMoreWaves); ++i)
             add(Kind::WaveMenuItem, waveMenuItem(static_cast<int>(i)), -1, waveMenu_, static_cast<int>(kMoreWaves[i]));
     }
+    // The open source list, under its button, while its operator shows in the inspector.
+    if (sourceMenu_ >= 0 && sourceMenu_ == controller().layout().selectedNode) {
+        add(Kind::OpSourceMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
+        add(Kind::OpSourceMenu, opSourceMenu(), -1, 1);
+        for (int source = 0; source < 3; ++source)
+            add(Kind::OpSourceItem, opSourceItem(source), -1, sourceMenu_, source);
+    }
 }
 
 // --- Painting.
@@ -443,11 +450,10 @@ void InspectorPanel::paintBack(Canvas &c) {
     }
     if (node < kOps) {
         const int op = node;
-        // Its title row holds its letter, its output's handle as a modulation source, then the source switch (WAVE |
-        // TABLE | SAMPLE) in a summary's place: what a summary would say, the wave, the ratio, the unison, the warp and
-        // where it goes, the page and the graph show.
-        c.text({kTitleRow.x, kTitleRow.y, kTitleLetterW, kTitleRow.h}, kNodeNames[op], kTextHeading, nodeColor(op),
-               Align::Left, true);
+        // Its title row holds its letter, its output's handle as a modulation source, then the source list (Wave,
+        // Wavetable or Sample) in a summary's place: what a summary would say, the wave, the ratio, the unison, the
+        // warp and where it goes, the page and the graph show.
+        c.text(kOpLetter, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left, true);
         const PageDim page(c, !routing_.nodeOn(node));
         // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
         // the shown one's accent sits on, and the display under them.
@@ -925,8 +931,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             const float pad = kTitleRow.x - w.rect.x;
             const float width = c.textWidth(kNodeNames[op], kTextHeading, true);
             c.fillRect({w.rect.x, w.rect.y, width + 2.0f * pad, w.rect.h}, nodeColor(op).alpha(0.25f), kRadiusControl);
-            c.text({kTitleRow.x, w.rect.y, kTitleLetterW, w.rect.h}, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left,
-                   true);
+            c.text(kOpLetter, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left, true);
         }
         break;
     }
@@ -1142,6 +1147,7 @@ bool InspectorPanel::press(const Widget &w, Point p, Modifiers mods) {
         break;
     case Kind::WaveMore:
         waveMenu_ = waveMenu_ == w.a ? -1 : w.a;
+        sourceMenu_ = -1;
         break;
     case Kind::WaveMenu:
         if (w.a == 0) // a click anywhere else closes the list
@@ -1263,9 +1269,10 @@ bool InspectorPanel::wheelBehind(Point p, float steps) {
     return true;
 }
 
-// The list of more waves' entries take no pan; around them, the pan closes it and goes on.
+// The list of more waves' and the source list's entries take no pan; around them, the pan closes them and goes on.
 bool InspectorPanel::blocksPan(const Widget &w) const {
-    return w.kind == Kind::WaveMenuItem || (w.kind == Kind::WaveMenu && w.a != 0);
+    return w.kind == Kind::WaveMenuItem || (w.kind == Kind::WaveMenu && w.a != 0) || w.kind == Kind::OpSourceItem ||
+           (w.kind == Kind::OpSourceMenu && w.a != 0);
 }
 
 std::optional<std::pair<int, float>> InspectorPanel::panAt(Point p) const {

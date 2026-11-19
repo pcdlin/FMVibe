@@ -1621,11 +1621,13 @@ one may have changed since it last did.
   tooltip says which). Under the tabs, the page's title row: for a filter or a shaper, the node's letter, at the
   heading's size in its color, then a summary line that sums the node up in short: its type and slope, or its curve,
   and what feeds it, where it goes and the operators it modulates; the type or curve in full text, the rest dimmed.
-  An operator's title row holds its letter, then its source switch in the summary's place (below). The power switch at the row's right end does the
+  An operator's title row holds its letter, then its source list in the summary's place (below). The power switch at the row's right end does the
   same as clicking the selected tab. While the node is off, its page is dimmed below the title row; its knobs still
   work.
   - Operators: on the title row, after the operator's letter (its output's handle as a modulation source), the
-    source switch, **WAVE | TABLE | SAMPLE** (each an undo step; WAVE brings back
+    source list: a button showing the source's glyph, its name and a chevron, which opens a list under it of
+    **Wave**, **Wavetable** and **Sample**, each with its glyph (a Wave's the wave the operator plays or goes back to),
+    the one in force lit; a pick is an undo step, and a click around the list closes it without one (Wave brings back
     the wave the operator had before, which the project keeps), then a Custom wave's edit button, the keyboard switch
     and the power switch. Under it, the operator's sound in one block. At its left, as tall as two rows, the Ratio
     readout; at its right, along the top, the waves as one segmented row of
@@ -1680,7 +1682,7 @@ one may have changed since it last did.
       the warps as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the NOTE switch
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
-    - **TABLE** (a Wavetable operator's, in WARP's place: it has no WARP tab, and no scope; picking TABLE, or
+    - **TABLE** (a Wavetable operator's, in WARP's place: it has no WARP tab, and no scope; picking Wavetable, or
       importing a table, opens it, and a layout left on WARP shows it): along its top a step back, the table's picker
       (its glyph, its name and a chevron), which opens the table browser, and a step on (through the factory tables, the
       patch's own or the files of the folder the table came from, round). Under them the table's frames as a stack seen

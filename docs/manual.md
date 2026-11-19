@@ -181,8 +181,8 @@ The inspector has a tab for each node: operators A–F, filters F1 and F2, and s
 - A dot in a tab's corner means the node is sent to the output.
 
 Under the tabs, the page title shows the node's letter. On a filter's or shaper's page a **summary line** follows it:
-its type or curve, what feeds it and where it goes. On an operator's page, the **WAVE | TABLE | SAMPLE** switch takes
-the summary's place and picks what the operator plays. The operator's letter is
+its type or curve, what feeds it and where it goes. On an operator's page, the **source list** takes the summary's
+place and picks what the operator plays. The operator's letter is
 also the operator's modulation handle: drag it onto a control to modulate it with the operator's output (see
 [Operators as sources](#operators-as-sources)). While a node is off, its page is dimmed, but its controls still work.
 
@@ -191,10 +191,11 @@ again.
 
 ### Waves
 
-The **WAVE | TABLE | SAMPLE** switch on the title line picks what the operator plays: a wave, a
-[wavetable](#wavetables) or a [sample](#samples). Switching back to WAVE brings back the wave the operator had before.
+The **source list** on the title line picks what the operator plays: **Wave**, **Wavetable** or **Sample** (see
+[Wavetables](#wavetables) and [Samples](#samples)). Click it to open the list, then click an entry. Going back to Wave
+brings back the wave the operator had before.
 
-With WAVE picked, the wave buttons at the top right of the page select the operator's waveform:
+With Wave picked, the wave buttons at the top right of the page select the operator's waveform:
 
 | Wave | Description |
 | --- | --- |
@@ -364,7 +365,7 @@ button on the operator's title line opens the partial editor again.
 
 ### Wavetables
 
-Pick **TABLE** on the title line to play a **wavetable**: a set of single-cycle frames that **Position** (0–100 %)
+Pick **Wavetable** from the source list to play a **wavetable**: a set of single-cycle frames that **Position** (0–100 %)
 moves through, blending smoothly between neighboring frames. A table plays at the note's pitch, tuned by Pitch and
 Detune; it has no Ratio. Unison, the warps, Note Sync and every route mode work as with a wave.
 
@@ -387,7 +388,7 @@ Position is a host parameter, so your DAW can automate it.
 
 ### Samples
 
-Pick **SAMPLE** on the title line to play a **sample**: a recording played at the note's pitch. An imported sample
+Pick **Sample** from the source list to play a **sample**: a recording played at the note's pitch. An imported sample
 plays at its own speed on middle C (C4). It has no Ratio, and Phase, the warps and Note Sync do nothing on it.
 
 The **SAMPLE** tab takes the WARP tab's place:

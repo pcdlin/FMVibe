@@ -343,7 +343,7 @@ enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 // Custom is a wave drawn from partials: see partialLevelIndex(). Alt Sine is a sine at twice the rate for the first
 // half of the cycle and silence for the second, like the classic FM chips'; Organ a stack of drawbar harmonics; Vowel
 // a buzz through two formant peaks, an "ah". Wavetable scans a table of frames (OpParam::Table, at TablePos); Sample
-// plays recorded audio at the note's pitch (OpParam::Sample). The editor picks those two with its source switch rather
+// plays recorded audio at the note's pitch (OpParam::Sample). The editor picks those two with its source list rather
 // than among the waves. An older build loads either as Vowel, the last wave it knows.
 enum class OpWave {
     Sine,

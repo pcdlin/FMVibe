@@ -638,10 +638,10 @@ STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
 STR(TabWarp, "WARP") // its scope, warp and hard sync
 STR(TabTable, "TABLE")   // a Wavetable operator's frames and its Position
 STR(TabSample, "SAMPLE") // a Sample operator's waveform, its start, loop and root
-// An operator's source switch, over its waves: a wave of its own, a wavetable or a sample.
-STR(SourceWave, "WAVE")
-STR(SourceTable, "TABLE")
-STR(SourceSample, "SAMPLE")
+// An operator's source list, on its page's title row: a wave of its own, a wavetable or a sample.
+STR(SourceWave, "Wave")
+STR(SourceTable, "Wavetable")
+STR(SourceSample, "Sample")
 STR(LabelRoot, "ROOT") // the note a sample plays at its own speed
 STR(LabelLoop, "LOOP")
 STR(LabelMode, "MODE")
@@ -1265,9 +1265,6 @@ STR(TipGlideAlways, "Glide between all notes")
 STR(TipMidiCc, "MIDI CC, chosen with the CC knob")
 STR(TipMidiPressure, "Aftertouch, per note or channel")
 STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
-STR(TipSourceWave, "Basic Wave")
-STR(TipSourceTable, "Wavetable")
-STR(TipSourceSample, "Sample")
 STR(TipTablePrev, "Previous table")
 STR(TipTableNext, "Next table")
 STR(TipTablePicker, "Pick a table")

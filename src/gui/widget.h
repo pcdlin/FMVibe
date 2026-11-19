@@ -271,7 +271,9 @@ enum class WidgetKind {
     SeqScroll,    // the bar under the roll while it is zoomed in across: drag the thumb, or click the track there
     SeqScrollY,   // the bar at the roll's right, for its rows: drag the thumb, or click the track there
     // A Wavetable or Sample operator's, on the inspector's page (see inspectorpanel.cpp's source page).
-    SourceSwitch, // a = op, b = 0 WAVE, 1 TABLE, 2 SAMPLE: a segment of the switch on the page's title row
+    OpSourceList, // a = op: the list button on the page's title row that picks its source
+    OpSourceMenu, // the open source list: a = 0 around it (a click closes it), 1 its panel
+    OpSourceItem, // a = op, b = 0 a wave, 1 a wavetable, 2 a sample: an entry of the open source list
     TableStep,    // a = op, b = -1 or 1: steps to the table before or after the one played, in its source
     TablePicker,  // a = op: the table's name; opens the table browser
     SamplePicker, // a = op: the sample's name; opens the table browser, picking a sample

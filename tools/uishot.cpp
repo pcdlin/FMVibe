@@ -10420,7 +10420,14 @@ Rect sampleArea() {
     return {d.x + 8.0f, d.y + 22.0f, d.w - 16.0f, d.h - 30.0f};
 }
 
-// The source switch, the TABLE row and tab, the block's new places, importing and undoing it.
+// Picks operator `source` from the source list on the shown operator's title row: its button opens the list, an entry
+// picks.
+void pickSource(View &view, int source) {
+    click(view, detail::kOpSourceButton.center());
+    click(view, detail::opSourceItem(source).center());
+}
+
+// The source list, the TABLE row and tab, the block's new places, importing and undoing it.
 void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     std::printf("wavetable operators:\n");
     FakeController model;
@@ -10429,12 +10436,13 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Saw));
     view.poll();
     const int wave = paramIndex(0, OpParam::Wave), table = paramIndex(0, OpParam::Table);
-    // The source switch takes the title row, left of the Custom wave's edit button; the block starts under it, and the
-    // display grows into the room it leaves, the controls' row where it was, all inside the lens; four tabs fit.
+    // The source list's button takes the title row, left of the Custom wave's edit button; the block starts under it,
+    // and the display grows into the room it leaves, the controls' row where it was, all inside the lens; four tabs fit.
     const Rect lens = detail::kInspector;
-    check(detail::kOpSourceRow.y == detail::kFixedSwitch.y &&
-              detail::kOpSourceRow.right() + 4.0f <= detail::kPartialEditButton.x &&
-              detail::kOpSourceRow.bottom() <= detail::kInspectorPage.y &&
+    check(detail::kOpSourceButton.y == detail::kFixedSwitch.y &&
+              detail::kOpSourceButton.right() + 4.0f <= detail::kPartialEditButton.x &&
+              detail::kOpSourceButton.bottom() <= detail::kInspectorPage.y &&
+              detail::opSourceMenu().bottom() <= lens.bottom() &&
               detail::opKnobCenter(0).y == lens.y + 107.0f && detail::kOpTabsY == lens.y + 150.0f &&
               detail::kOpDisplay.y == lens.y + 172.0f && detail::kOpControlsY == lens.y + 315.0f &&
               detail::kOpControlsY + 0.5f * detail::kOpKnobD + 18.0f <= lens.bottom() - 10.0f &&
@@ -10442,13 +10450,51 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
               detail::opTab(static_cast<int>(InspectorTab::Inputs), detail::OpTabs::Table).right() <= detail::kOpWell.right() + 0.5f &&
               detail::opTab(static_cast<int>(InspectorTab::Warp), detail::OpTabs::Table).x ==
                   detail::opTab(static_cast<int>(InspectorTab::Source), detail::OpTabs::Table).x,
-          "the operator's source switch takes its title row, its well and controls inside the lens; a Wavetable "
+          "the operator's source list takes its title row, its well and controls inside the lens; a Wavetable "
           "operator's four tabs fit, its TABLE tab in WARP's place");
     renderer.save(view, dir / "wt-0-saw.png");
     const uint32_t below = renderer.pixel({lens.center().x, lens.bottom() + 3.0f});
 
-    // TABLE: the operator a Wavetable, its tab open, one undo step; WAVE: the saw again.
-    click(view, detail::opSourceButton(1).center());
+    // The source list's button opens the list under it, the source in force lit (read off the rendered pixels); a click
+    // around it closes it without a change.
+    const Rect waveRow = detail::opSourceItem(0), tableRow = detail::opSourceItem(1);
+    const Point inTable{tableRow.right() - 6.0f, tableRow.center().y}, inWave{waveRow.right() - 6.0f, waveRow.center().y};
+    const uint32_t closedAt = renderer.pixel(inTable);
+    click(view, detail::kOpSourceButton.center());
+    renderer.save(view, dir / "wt-0b-source-list.png");
+    const bool opened = renderer.pixel(inTable) != closedAt;
+    const bool waveLit = renderer.pixel(inWave) != renderer.pixel(inTable);
+    // The letter's ink, the open list's button and the power switch beside it level on the title row: the middles of
+    // the rows where each differs from the panel just left of it, within a pixel (read off the rendered pixels).
+    auto inkMiddle = [&](Rect r) {
+        float top = 1e9f, bottom = -1e9f;
+        for (float y = detail::kTitleRow.y - 4.0f; y < detail::kTitleRow.bottom() + 4.0f; y += 1.0f) {
+            const uint32_t panel = renderer.pixel({r.x - 3.0f, y});
+            for (float x = r.x; x < r.right(); x += 1.0f)
+                if (renderer.pixel({x, y}) != panel) {
+                    top = std::min(top, y);
+                    bottom = std::max(bottom, y + 1.0f);
+                    break;
+                }
+        }
+        return 0.5f * (top + bottom);
+    };
+    const float letterMid = inkMiddle({detail::kTitleRow.x, 0.0f, 12.0f, 0.0f});
+    const float listMid = inkMiddle(detail::kOpSourceButton);
+    const float powerMid = inkMiddle({lens.right() - 16.0f - 26.0f, 0.0f, 26.0f, 0.0f});
+    std::printf("      title row's middles: letter %.1f, source list %.1f, power %.1f\n", letterMid, listMid, powerMid);
+    check(std::abs(letterMid - powerMid) <= 1.0f && std::abs(listMid - powerMid) <= 0.5f,
+          "the operator's letter, its source list's button and its power switch are level on the title row");
+    click(view, {lens.right() + 200.0f, lens.y + 200.0f});
+    renderer.save(view, dir / "wt-0c-source-list-closed.png");
+    const bool aroundCloses =
+        renderer.pixel(inTable) == closedAt && std::lround(model.value(wave)) == static_cast<long>(OpWave::Saw);
+    check(opened && waveLit && aroundCloses,
+          "the source list's button opens its list, the source in force lit; a click around it closes it without a "
+          "change");
+
+    // Wavetable: the operator a Wavetable, its tab open, one undo step; Wave: the saw again.
+    pickSource(view, 1);
     view.poll();
     const bool tabled = std::lround(model.value(wave)) == static_cast<long>(OpWave::Wavetable) &&
                         model.ui.opTab == InspectorTab::Source && model.ui.plainWave[0] == static_cast<int>(OpWave::Saw);
@@ -10457,14 +10503,14 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool undone = std::lround(model.value(wave)) == static_cast<long>(OpWave::Saw);
     view.redo();
-    click(view, detail::opSourceButton(0).center());
+    pickSource(view, 0);
     const bool waveBack = std::lround(model.value(wave)) == static_cast<long>(OpWave::Saw);
     check(tabled && shot && clear && undone && waveBack,
-          "TABLE makes the operator a Wavetable and opens its tab, WAVE brings back the wave it had, each an undo step, "
+          "Wavetable makes the operator a Wavetable and opens its tab, Wave brings back the wave it had, each an undo step, "
           "nothing past the lens's bottom");
 
     // The picker opens the table browser on the factory tables; a row picks one; Done closes it; the steps go round.
-    click(view, detail::opSourceButton(1).center());
+    pickSource(view, 1);
     click(view, detail::kTablePicker.center());
     view.poll();
     click(view, detail::tbListRow(2.0f).center());
@@ -11171,9 +11217,9 @@ void testTablePreviews(const std::filesystem::path &dir, Renderer &renderer) {
           "a file listed as a sample in a table's folder loads as a sample, one undo step");
     // Switched to another source and back, it stays shut.
     click(view, detail::kTablePicker.center());
-    click(view, detail::opSourceButton(0).center());
+    pickSource(view, 0);
     view.poll();
-    click(view, detail::opSourceButton(1).center());
+    pickSource(view, 1);
     view.poll();
     check(browserShut(), "the table browser, shut by switching the operator's source, stays shut as it switches back");
     // Cut at another frame size, a file previews as it is cut now.
@@ -11275,7 +11321,7 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.selectedNode = 1;
     view.poll();
     // SAMPLE with none: the dashed card, which opens the file dialog; the row's import button too.
-    click(view, detail::opSourceButton(2).center());
+    pickSource(view, 2);
     view.poll();
     const bool sampled = std::lround(model.value(paramIndex(1, OpParam::Wave))) == static_cast<long>(OpWave::Sample);
     renderer.save(view, dir / "wt-12-no-sample.png");
