@@ -8,7 +8,8 @@ In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMV
 
 Implemented using Claude Code.
 
-The full feature reference is in [docs/features.md](docs/features.md).
+How to use the plugin is described in the [user manual](docs/manual.md), and the full feature reference is in
+[docs/features.md](docs/features.md).
 Information about working on the code, its tests and the plugin's internals are in [AGENTS.md](AGENTS.md).
 
 #### Main UI
