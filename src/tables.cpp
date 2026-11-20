@@ -146,6 +146,35 @@ Spectrum frameSpectrum(FactoryTable table, double x) { // x: 0 at the first fram
         }
         break;
     }
+    case FactoryTable::PhaseDistortion: { // a cosine read through a bent phase, its knee from half the cycle to 2 %
+        // The phase runs through the cosine's first half by the knee and its second half after it: a sine first,
+        // rising ever faster to a saw's edge.
+        const double knee = 0.5 + (0.02 - 0.5) * x;
+        s = timeSpectrum([knee](double t) {
+            const double p = t < knee ? 0.5 * t / knee : 0.5 + 0.5 * (t - knee) / (1.0 - knee);
+            return -std::cos(2.0 * kPi * p);
+        });
+        break;
+    }
+    case FactoryTable::CombSweep: { // a saw and a copy of it a little later, its comb's first notch from 64 to 2
+        const double delay = 1.0 / (2.0 * 64.0 * std::pow(2.0 / 64.0, x)); // in cycles
+        for (int n = 1; n <= kHarmonics; ++n)
+            s[n] = std::complex<double>(0.0, -sawLevel(n)) * 0.5 *
+                   (1.0 + std::polar(1.0, -2.0 * kPi * n * delay));
+        break;
+    }
+    case FactoryTable::WindowSync: { // a sine at 1 to 8 times the cycle, faded in and out over it by a Hann window
+        const double ratio = 1.0 + 7.0 * x;
+        s = timeSpectrum([ratio](double t) {
+            return std::sin(2.0 * kPi * ratio * t) * (0.5 - 0.5 * std::cos(2.0 * kPi * t));
+        });
+        break;
+    }
+    case FactoryTable::BitCrush: { // a sine rounded to fewer and fewer steps: 32 a half from the middle, then 1
+        const double steps = 32.0 * std::pow(1.0 / 32.0, x);
+        s = timeSpectrum([steps](double t) { return std::round(std::sin(2.0 * kPi * t) * steps) / steps; });
+        break;
+    }
     case FactoryTable::Count:
         break;
     }

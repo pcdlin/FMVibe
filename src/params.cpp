@@ -78,7 +78,9 @@ constexpr Str kWaveNames[] = {Str::WaveSine,     Str::WaveTriangle, Str::WaveSaw
 static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
 constexpr Str kFactoryTableNames[] = {Str::TableBasicShapes,   Str::TablePwm,    Str::TableHarmonicBuild,
                                       Str::TableFmSweep,       Str::TableSyncSweep, Str::TableResonantSweep,
-                                      Str::TableVowels,        Str::TableFold,   Str::TableOddEven};
+                                      Str::TableVowels,        Str::TableFold,   Str::TableOddEven,
+                                      Str::TablePhaseDistortion, Str::TableCombSweep, Str::TableWindowSync,
+                                      Str::TableBitCrush};
 static_assert(std::size(kFactoryTableNames) == static_cast<size_t>(FactoryTable::Count));
 constexpr Str kSampleLoopNames[] = {Str::LoopOff, Str::LoopForward, Str::LoopPingPong};
 static_assert(std::size(kSampleLoopNames) == static_cast<size_t>(SampleLoop::Count));

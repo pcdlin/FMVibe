@@ -369,8 +369,8 @@ Pick **Wavetable** from the source list to play a **wavetable**: a set of single
 moves through, blending smoothly between neighboring frames. A table plays at the note's pitch, tuned by Pitch and
 Detune; it has no Ratio. Unison, the warps, Note Sync and every route mode work as with a wave.
 
-FMVibe comes with nine **factory tables**: Basic Shapes (the default), PWM, Harmonic Build, FM Sweep, Sync Sweep,
-Resonant Sweep, Vowels, Fold and Odd to Even. You can also load tables from files (see
+FMVibe comes with thirteen **factory tables**: Basic Shapes (the default), PWM, Harmonic Build, FM Sweep, Sync Sweep,
+Resonant Sweep, Vowels, Fold, Odd to Even, Phase Distortion, Comb Sweep, Window Sync and Bit Crush. You can also load tables from files (see
 [Wavetable and sample files](#wavetable-and-sample-files)).
 
 The **TABLE** tab takes the WARP tab's place:

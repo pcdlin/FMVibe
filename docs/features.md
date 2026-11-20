@@ -25,7 +25,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     control block's value over the block's length. It modulates and is modulated as any wave is, through every route
     mode, and takes unison, the warps and Note Sync. The **factory tables**, made by FMVibe and not read from files,
     are Basic Shapes (sine, triangle, saw, square and a 25 % pulse, crossfading from one to the next), PWM, Harmonic Build, FM Sweep, Sync Sweep,
-    Resonant Sweep, Vowels, Fold and Odd to Even; a new Wavetable operator plays Basic Shapes. A table from a file (see
+    Resonant Sweep, Vowels, Fold, Odd to Even, Phase Distortion (a cosine read through a bent phase, from a sine toward
+    a saw), Comb Sweep (a saw and a copy of it a little later, the comb's notches sweeping down), Window Sync (a sine at
+    1 to 8 times the cycle, faded in and out over it) and Bit Crush (a sine rounded to fewer and fewer steps); a new
+    Wavetable operator plays Basic Shapes. A table from a file (see
     *Wavetables and samples from files* below) is copied into the patch;
   - or a **Sample**: a recording played at the note's pitch, at its own speed on its **Root** note (C4, middle
     C, MIDI note 60, for every sample imported, whatever root its file names, so middle C plays it as it was

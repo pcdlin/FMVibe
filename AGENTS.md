@@ -1437,7 +1437,7 @@ itself.
   a sample at its rate, 16-bit when its file was and as floats otherwise, its name, where it came from and its format,
   up to 16 MB an entry and 64 MB in all (`kMaxDataEntryBytes`, `kMaxDataChunkBytes`), each entry with its size so a
   reader skips a kind it doesn't know. An older build stops reading before it. A Table or Sample param stores a key: a
-  factory table's number (0–8, `FactoryTable`, built when first asked for and never stored), or a hash of the data's
+  factory table's number (0–12, `FactoryTable`, built when first asked for and never stored), or a hash of the data's
   content (`contentKey()`, from `kUserDataBase`, 2^16, up), so the same data imported twice is held once. The
   plugin's state loads the DATA chunk before it sets the params, so no Table or Sample is ever set to a key the synth
   can't find; one a host sets anyway (its project, its automation) leaves the operator silent. Params and layout fields a

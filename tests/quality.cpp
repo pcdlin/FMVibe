@@ -3945,6 +3945,23 @@ void wavetableChecks(const int (&factors)[4]) {
             {"Odd to Even: no even harmonics first, no odd ones but the fundamental last",
              level(t(FactoryTable::OddEven), 0, 2) < 1e-4 && level(t(FactoryTable::OddEven), last, 3) < 1e-4 &&
                  level(t(FactoryTable::OddEven), last, 2) > 0.1},
+            {"Phase Distortion: a sine first, toward a saw last (its 2nd harmonic past a third of the 1st)",
+             pure(t(FactoryTable::PhaseDistortion), 0) &&
+                 level(t(FactoryTable::PhaseDistortion), last, 2) > 0.35 * level(t(FactoryTable::PhaseDistortion), last, 1)},
+            {"Comb Sweep: about a saw first, notches on the 2nd and 6th harmonics last and the 3rd kept",
+             std::abs(level(t(FactoryTable::CombSweep), 0, 2) / level(t(FactoryTable::CombSweep), 0, 1) - 0.5) < 0.01 &&
+                 level(t(FactoryTable::CombSweep), last, 2) < 1e-4 && level(t(FactoryTable::CombSweep), last, 6) < 1e-4 &&
+                 level(t(FactoryTable::CombSweep), last, 3) > 0.1 * level(t(FactoryTable::CombSweep), last, 1)},
+            {"Window Sync: a sine's 1st and 2nd harmonics first, only the 7th to 9th last, the 8th loudest",
+             level(t(FactoryTable::WindowSync), 0, 3) < 1e-3 * level(t(FactoryTable::WindowSync), 0, 1) &&
+                 std::abs(level(t(FactoryTable::WindowSync), 0, 2) / level(t(FactoryTable::WindowSync), 0, 1) - 0.5) < 0.01 &&
+                 level(t(FactoryTable::WindowSync), last, 1) < 1e-3 * level(t(FactoryTable::WindowSync), last, 8) &&
+                 std::abs(level(t(FactoryTable::WindowSync), last, 7) / level(t(FactoryTable::WindowSync), last, 8) - 0.5) < 0.01},
+            {"Bit Crush: no even harmonics, three steps last (no 3rd harmonic, the 5th a fifth of the 1st)",
+             level(t(FactoryTable::BitCrush), 0, 2) < 1e-3 && level(t(FactoryTable::BitCrush), last / 2, 2) < 1e-3 &&
+                 level(t(FactoryTable::BitCrush), last, 2) < 1e-3 &&
+                 level(t(FactoryTable::BitCrush), last, 3) < 1e-2 * level(t(FactoryTable::BitCrush), last, 1) &&
+                 std::abs(level(t(FactoryTable::BitCrush), last, 5) / level(t(FactoryTable::BitCrush), last, 1) - 0.2) < 0.02},
         };
         static_assert(std::size(spectra) == static_cast<size_t>(FactoryTable::Count));
         for (const Spectral &s : spectra)

@@ -366,7 +366,22 @@ enum class OpWave {
 constexpr bool isDataWave(OpWave wave) { return wave == OpWave::Wavetable || wave == OpWave::Sample; }
 // The tables FMVibe generates itself (see tables.h), by number: a Table key below kUserDataBase. Stored by number: only
 // append, and a generator, once released, is never changed.
-enum class FactoryTable { BasicShapes, Pwm, HarmonicBuild, FmSweep, SyncSweep, ResonantSweep, Vowels, Fold, OddEven, Count };
+enum class FactoryTable {
+    BasicShapes,
+    Pwm,
+    HarmonicBuild,
+    FmSweep,
+    SyncSweep,
+    ResonantSweep,
+    Vowels,
+    Fold,
+    OddEven,
+    PhaseDistortion,
+    CombSweep,
+    WindowSync,
+    BitCrush,
+    Count
+};
 constexpr uint32_t kFactoryTables = static_cast<uint32_t>(FactoryTable::Count);
 // Keys of the patch's own data start here: a 31-bit hash of its content (see opdata.h).
 constexpr uint32_t kUserDataBase = 1u << 16;
@@ -1980,7 +1995,9 @@ static_assert(numberedInOrder({OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWa
               "OpWave is stored by number: only append");
 static_assert(numberedInOrder({FactoryTable::BasicShapes, FactoryTable::Pwm, FactoryTable::HarmonicBuild,
                                FactoryTable::FmSweep, FactoryTable::SyncSweep, FactoryTable::ResonantSweep,
-                               FactoryTable::Vowels, FactoryTable::Fold, FactoryTable::OddEven, FactoryTable::Count}),
+                               FactoryTable::Vowels, FactoryTable::Fold, FactoryTable::OddEven,
+                               FactoryTable::PhaseDistortion, FactoryTable::CombSweep, FactoryTable::WindowSync,
+                               FactoryTable::BitCrush, FactoryTable::Count}),
               "FactoryTable is stored by number: only append");
 static_assert(numberedInOrder({SampleLoop::Off, SampleLoop::Forward, SampleLoop::PingPong, SampleLoop::Count}),
               "SampleLoop is stored by number: only append");

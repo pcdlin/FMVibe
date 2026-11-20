@@ -41,6 +41,10 @@ STR(TableResonantSweep, "Resonant Sweep")
 STR(TableVowels, "Vowels")
 STR(TableFold, "Fold")
 STR(TableOddEven, "Odd to Even")
+STR(TablePhaseDistortion, "Phase Distortion")
+STR(TableCombSweep, "Comb Sweep")
+STR(TableWindowSync, "Window Sync")
+STR(TableBitCrush, "Bit Crush")
 
 // How a Sample operator loops, and how it plays a note.
 STR(LoopOff, "Off")
