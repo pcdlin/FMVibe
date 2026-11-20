@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tables/library.h"
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,6 +20,10 @@ struct UserSettings {
     double links = 0.75; // how strongly the dashed lines from a source to its targets are drawn
     double grid = 0.5;   // how strongly the SEQ view's roll draws its grid lines
     double zoom = 0.0; // the editor size new instances open at, relative to the default; 0 if never resized
+    // The folders of wavetables and of samples the user added to the table browser: they belong to the machine, not the
+    // patch.
+    std::vector<TableFolder> tableFolders;
+    std::vector<TableFolder> sampleFolders;
     // The preset library's: the favorite presets' files and the ones loaded last (the last first), in UTF-8 (a factory
     // preset's as its "file", see PresetLibrary::kFactoryPrefix), the user's own categories (each its name and its
     // color) and where the browser opens (see gui::PresetStore::presetBrowserPlace()).
@@ -28,6 +34,9 @@ struct UserSettings {
 };
 constexpr size_t kMaxRecentPresets = 12;
 extern UserSettings userSettings; // as the settings file has them. Main thread only
+
+// The folder the settings file is in (UTF-8), where the wavetable library keeps its cache; "" if there is none.
+std::string userSettingsFolder();
 
 // Takes up the file as it is now, keeping what this process has changed and not written yet. A file that can't be read
 // leaves userSettings as they are.

@@ -24,6 +24,7 @@ set(FMVIBE_ENGINE_SOURCES
     src/effects.cpp
     src/effects.h
     src/envelope.h
+    src/fft.h
     src/filter.h
     src/fx/ampfx.cpp
     src/fx/ampfx.h
@@ -60,6 +61,8 @@ set(FMVIBE_ENGINE_SOURCES
     src/fx/widener.cpp
     src/fx/widener.h
     src/noise.h
+    src/opdata.cpp
+    src/opdata.h
     src/oversampler.h
     src/params.cpp
     src/params.h
@@ -69,6 +72,8 @@ set(FMVIBE_ENGINE_SOURCES
     src/sequencer.cpp
     src/synth.cpp
     src/synth.h
+    src/tables.cpp
+    src/tables.h
     src/zerobuffer.cpp
     src/zerobuffer.h
     src/wavetable.cpp
@@ -161,6 +166,7 @@ add_library(fmvibe-core STATIC
     src/gui/seqpanel.cpp
     src/gui/seqpanel.h
     src/gui/layout.h
+    src/gui/opsource.cpp
     src/gui/patchedits.cpp
     src/gui/patchedits.h
     src/gui/presetbrowser.cpp
@@ -172,6 +178,8 @@ add_library(fmvibe-core STATIC
     src/gui/routingpanel.h
     src/gui/shapeeditor.cpp
     src/gui/shapeeditor.h
+    src/gui/tablebrowser.cpp
+    src/gui/tablebrowser.h
     src/gui/theme.cpp
     src/gui/theme.h
     src/gui/view.cpp
@@ -182,6 +190,12 @@ add_library(fmvibe-core STATIC
     src/sharedtelemetry.h
     src/state.cpp
     src/state.h
+    src/tables/flac.cpp
+    src/tables/library.cpp
+    src/tables/library.h
+    src/tables/readers.cpp
+    src/tables/vital.cpp
+    src/tables/readers.h
 )
 target_include_directories(fmvibe-core PUBLIC src)
 target_link_libraries(fmvibe-core PUBLIC clap d2d1 dwrite)
@@ -200,7 +214,7 @@ add_library(fmvibe-plugin STATIC
     src/gui/editor.cpp
     src/gui/editor.h
 )
-target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core ole32 shell32 uuid) # ole32 and shell32: the file dialogs
+target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core ole32 shell32 uuid) # ole32 and shell32: the file dialogs and dropped files
 fmvibe_options(fmvibe-plugin)
 
 add_library(FMVibe MODULE

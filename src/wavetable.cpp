@@ -51,7 +51,9 @@ Harmonic harmonic(OpWave wave, int n) {
         return {0.0, (0.15 + peak(7.0, 1.2) + 0.7 * peak(11.0, 1.5) + 0.3 * peak(24.0, 2.5)) / n};
     }
     case OpWave::Noise:
-    case OpWave::Custom: // drawn from partials: see CustomWave
+    case OpWave::Custom:    // drawn from partials: see CustomWave
+    case OpWave::Wavetable: // read from the patch's data: see opdata.h
+    case OpWave::Sample:
     case OpWave::Count:
         break;
     }
@@ -71,6 +73,8 @@ const std::vector<double> &sineTable() {
 
 } // namespace
 
+bool hasTable(OpWave wave) { return wave != OpWave::Noise && wave != OpWave::Custom && !isDataWave(wave); }
+
 WaveTables::WaveTables() : data_(static_cast<size_t>(kWaves) * kLevels * (kSize + 1), 0.0f) {
     const std::vector<double> &sine = sineTable();
 
@@ -78,7 +82,7 @@ WaveTables::WaveTables() : data_(static_cast<size_t>(kWaves) * kLevels * (kSize 
     std::vector<double> sum(kSize);
     for (int w = 0; w < kWaves; ++w) {
         const auto wave = static_cast<OpWave>(w);
-        if (wave == OpWave::Noise || wave == OpWave::Custom)
+        if (!hasTable(wave))
             continue;
         std::fill(sum.begin(), sum.end(), 0.0);
         int done = 0;
@@ -224,8 +228,14 @@ void CustomWave::build() {
     }
 }
 
+void waveHarmonic(OpWave wave, int n, double &cosine, double &sine) {
+    const Harmonic h = harmonic(wave, n);
+    cosine = h.cosine;
+    sine = h.sine;
+}
+
 bool wavePartials(OpWave wave, std::array<double, 2 * kPartials> &out) {
-    if (wave == OpWave::Noise || wave == OpWave::Custom || wave == OpWave::Count)
+    if (!hasTable(wave) || wave == OpWave::Count)
         return false;
     // A partial's a sin(n t) + b cos(n t) is its level times sin(n t + 2 pi phase).
     double loudest = 0.0;

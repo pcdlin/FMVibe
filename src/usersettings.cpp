@@ -86,6 +86,20 @@ UserSettings parsed(const std::string &text) {
             settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("zoom="))
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
+        else if (line.starts_with("tableFolder=") || line.starts_with("sampleFolder=")) {
+            // its frame size, its name, then its path, "|" between them
+            const bool samples = line.starts_with("sampleFolder=");
+            const std::string rest = line.substr(samples ? 13 : 12);
+            const size_t a = rest.find('|'), b = a == std::string::npos ? a : rest.find('|', a + 1);
+            if (b != std::string::npos && b + 1 < rest.size()) {
+                TableFolder folder;
+                const int size = std::atoi(rest.c_str());
+                folder.frameSize = size == 256 || size == 512 || size == 1024 || size == 2048 ? size : 0;
+                folder.name = rest.substr(a + 1, b - a - 1);
+                folder.path = rest.substr(b + 1);
+                (samples ? settings.sampleFolders : settings.tableFolders).push_back(std::move(folder));
+            }
+        }
         else if (line.starts_with("favorite=") && line.size() > 9)
             settings.favorites.push_back(line.substr(9));
         else if (line.starts_with("recent=") && line.size() > 7 && settings.recent.size() < kMaxRecentPresets)
@@ -150,6 +164,15 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
             out << "hue=" << settings.hue << '\n';
         if (settings.zoom > 0.0)
             out << "zoom=" << settings.zoom << '\n';
+        auto writeFolders = [&out](const char *key, const std::vector<TableFolder> &folders) {
+            for (const TableFolder &folder : folders) {
+                std::string name = folder.name; // a "|" in the name would end it early
+                std::replace(name.begin(), name.end(), '|', '/');
+                out << key << folder.frameSize << '|' << name << '|' << folder.path << '\n';
+            }
+        };
+        writeFolders("tableFolder=", settings.tableFolders);
+        writeFolders("sampleFolder=", settings.sampleFolders);
         if (!settings.browserPlace.empty())
             out << "browser=" << settings.browserPlace << '\n';
         for (const auto &[name, color] : settings.categories)
@@ -213,6 +236,12 @@ std::vector<std::string> mergedRecent(const std::vector<std::string> &base, cons
     return merged;
 }
 
+bool sameFolders(const std::vector<TableFolder> &a, const std::vector<TableFolder> &b) {
+    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](const TableFolder &x, const TableFolder &y) {
+        return x.name == y.name && x.path == y.path && x.frameSize == y.frameSize;
+    });
+}
+
 // `theirs`, the file as it is now, with what this process changed from `base` to `mine`. Another process's changes to
 // the same file stay, down to each entry of the lists.
 UserSettings merged(const UserSettings &base, const UserSettings &mine, const UserSettings &theirs) {
@@ -233,6 +262,10 @@ UserSettings merged(const UserSettings &base, const UserSettings &mine, const Us
         out.zoom = mine.zoom;
     if (mine.browserPlace != base.browserPlace)
         out.browserPlace = mine.browserPlace;
+    if (!sameFolders(mine.tableFolders, base.tableFolders))
+        out.tableFolders = mine.tableFolders;
+    if (!sameFolders(mine.sampleFolders, base.sampleFolders))
+        out.sampleFolders = mine.sampleFolders;
     out.favorites = mergedList(base.favorites, mine.favorites, theirs.favorites, [](const std::string &e) { return e; });
     out.categories = mergedList(base.categories, mine.categories, theirs.categories,
                                 [](const std::pair<std::string, int> &e) { return e.first; });
@@ -248,6 +281,14 @@ UserSettings asRead;
 } // namespace
 
 UserSettings userSettings;
+
+std::string userSettingsFolder() {
+    const std::filesystem::path file = userSettingsFile();
+    if (file.empty())
+        return {};
+    const std::u8string folder = file.parent_path().u8string();
+    return std::string(reinterpret_cast<const char *>(folder.data()), folder.size());
+}
 
 void readUserSettings() {
     const std::filesystem::path file = userSettingsFile();

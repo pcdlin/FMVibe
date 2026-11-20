@@ -252,7 +252,7 @@ std::vector<View::Widget> View::confirmWidgets() const {
     add(Kind::ConfirmBackdrop, panel, 1);
     if (bands)
         for (int choice = 2; choice < 2 + static_cast<int>(words->choices.size()); ++choice)
-            add(Kind::ConfirmButton, confirmBandButton(panel, choice), choice);
+            add(Kind::ConfirmButton, confirmBandButton(panel, choice, static_cast<int>(words->choices.size())), choice);
     if (words && !words->third.empty()) // a third way (a split with its bands' effects)
         add(Kind::ConfirmButton, confirmThirdButton(panel), 4);
     add(Kind::ConfirmButton, confirmButton(panel, 0), 0);

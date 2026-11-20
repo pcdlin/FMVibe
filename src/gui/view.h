@@ -14,6 +14,7 @@
 #include "routingpanel.h"
 #include "seqpanel.h"
 #include "shapeeditor.h"
+#include "tablebrowser.h"
 #include "widget.h"
 
 #include <array>
@@ -61,6 +62,27 @@ public:
     // Takes the latest telemetry, so a frame painted between polls animates from
     // where the audio is now rather than from the last poll.
     void refreshTelemetry() { controller_.telemetry(telemetry_); }
+    // The table browser shows the library's source `source` (a folder just added).
+    void showTableSource(int source);
+    // A file dragged over the editor from outside it (the system's file browser, a host's): where one can land, an
+    // operator and what it takes the file as. A Wavetable operator's TABLE tab and a Sample operator's SAMPLE tab take
+    // one on their displays.
+    struct FileDropTarget {
+        int op = -1;
+        DataKind kind = DataKind::Sample;
+        bool operator==(const FileDropTarget &) const = default;
+    };
+    std::optional<FileDropTarget> fileDropTarget(Point p) const;
+    // The file is held at `p` (nullopt once it leaves the editor or the drag ends): its target, which is lit, if
+    // there is one there. True if what is lit changed, so a repaint is due.
+    bool fileDragOver(std::optional<Point> p);
+    // The file dropped at `p`, its bytes and its name: imported as its target takes it (see
+    // Controller::importOperatorData()), the drag's light going out. Nullopt where nothing takes one; else "" if it went
+    // in, or what to tell the user.
+    std::optional<std::string> fileDrop(Point p, const std::vector<uint8_t> &bytes, const std::string &name);
+    // A file the user picked, imported as operator `op`'s table or sample: one that leaves its frame size open asks for
+    // it first, and goes in once answered. "" if it went in or waits for that answer, else what to tell the user.
+    std::string importOperatorFile(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name);
 
     // True if what the editor shows changed: what is under the mouse, or what a drag moves. A move that changes
     // neither needs no paint.
@@ -373,6 +395,8 @@ private:
     int shapeEditing() const { return shapes_.shapeEditing(); }
     int wideLfo() const { return shapes_.wideLfo(); }
     int partialEditing() const { return shapes_.partialEditing(); }
+    // The operator whose table or sample the table browser picks (see TableBrowser, tables_), or -1.
+    int tableBrowsing() const { return tables_.browsing(); }
     // The FX view, the shaper's curve editor that opens from it, or an LFO's shape editor takes the inspector's
     // place (see InspectorPanel::covered()).
     bool inspectorCovered() const;
@@ -643,6 +667,7 @@ private:
     const std::optional<Widget> &hovered() const override { return hover_; }
     bool shapeEditorOpen() const override { return shapeEditing() >= 0; }
     bool partialEditorOpen() const override { return partialEditing() >= 0; }
+    bool tableBrowserOpen() const override { return tableBrowsing() >= 0; }
     void clearShapePick() override { shapes_.clearShapePick(); }
     Rect shapeHome(int shape) const override;
     void revealCard(int card) override { revealSource(card); }
@@ -659,11 +684,12 @@ private:
     ModulationModel mods_;
     RoutingModel routing_;
     FxGraphModel fx_;
-    // The panels: the shape editors, the preset browser, the SEQ view, the MODS view, the FX view, the routing panel,
-    // the inspector, and all of them, in the order they are handed what goes on (the shape editors first, for the keys
-    // they take before the others).
+    // The panels: the shape editors, the preset browser, the table browser, the SEQ view, the MODS view, the FX view,
+    // the routing panel, the inspector, and all of them, in the order they are handed what goes on (the shape editors
+    // first, for the keys they take before the others).
     ShapeEditor shapes_;
     PresetBrowser presets_;
+    TableBrowser tables_;
     SeqPanel seq_;
     ModsPanel modsPanel_;
     FxPanel fxPanel_;
@@ -724,6 +750,7 @@ private:
     std::optional<Widget> menuValue_;        // what the open context menu's "Edit value" types into
     std::optional<ModListOpen> modList_;     // a pill's open list
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
+    std::optional<FileDropTarget> fileDrag_; // where a file dragged in from outside would land, lit (fileDragOver())
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
@@ -812,7 +839,8 @@ private:
     bool ctrlHeld_ = false; // see setCtrl()
     // The PresetAction the confirm dialog asks about, a panel's kind, or -1. The panels' kinds are numbered apart from
     // the View's: the preset browser's 1, 8 and 9 (PresetBrowser::kConfirmLoad and on), the FX view's 4 to 6
-    // (FxPanel::kConfirmFxClear and on), the SEQ view's 7 (SeqPanel::kConfirmClear).
+    // (FxPanel::kConfirmFxClear and on), the SEQ view's 7 (SeqPanel::kConfirmClear), the inspector's 10
+    // (InspectorPanel::kConfirmFrameSize).
     int confirm_ = -1;
     Panel *confirmFrom_ = nullptr; // the panel that asked (see askConfirm()), or none for the View's own questions
     static_assert(FxPanel::kConfirmFxClear > static_cast<int>(PresetAction::SaveAs) &&

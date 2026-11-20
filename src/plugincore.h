@@ -201,8 +201,17 @@ public:
     bool saveState(const clap_ostream_t *stream, bool settings = true) const;
     bool loadState(const clap_istream_t *stream, bool settings = true);
 
-    // Main thread: what hostRequestCallback() asks for.
+    // Main thread: what hostRequestCallback() asks for. The data the audio thread found missing is built and
+    // registered here (see DataRegistry::noteMissing()).
     void onMainThread();
+
+    // The Wavetable and Sample operators' file and folder dialogs, through the editor window, and the library.
+    void chooseOperatorFile(int op, DataKind kind) override;
+    TableLibrary *tableLibrary(DataKind kind) override;
+    void chooseTableFolder(DataKind kind) override;
+    void tableFoldersChanged(DataKind kind) override;
+    void refreshTableFolders(DataKind kind) override;
+    void showTableFolder(DataKind kind, int source) override;
 
     // The editor window, while the host shows it. Main thread.
     gui::Editor *editor() const { return editor_.get(); }
@@ -238,6 +247,8 @@ protected:
         writeUserSettings();
     }
     void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }
+    uint64_t dataBlocks() const override { return synth_.registry().blocks(); }
+    bool dataIdle() const override { return !inBlock_.load(); }
 
     // How each format tells its host. Main thread, unless they say otherwise.
     // An edit in the editor (or a preset load) of param `index`, one hosts are given (see hostListed()): a gesture's
@@ -375,6 +386,14 @@ private:
     // The preset library as last scanned, with each entry's file (the patch's own is the Controller's).
     // Main thread.
     PresetLibrary presets_;
+    // Whether a block is being processed (between beginBlock() and endBlock()): data taken from the audio thread
+    // while none is can be freed at once. And whether the audio thread asked the main thread for missing data.
+    std::atomic<bool> inBlock_{false};
+    std::atomic<bool> dataAsked_{false};
+    // The wavetable library the table browser lists, made when first asked for.
+    std::unique_ptr<TableLibrary> library_, sampleLibrary_;
+    // The folders each library last agreed on with the settings file, which tell what it changed itself since.
+    std::vector<TableFolder> tableFoldersSeen_, sampleFoldersSeen_;
 };
 
 } // namespace fmvibe

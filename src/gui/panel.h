@@ -7,7 +7,8 @@
 // over the editor (modal), and the SEQ view (seqpanel.h), the MODS view (modspanel.h), the FX view (fxpanel.h), the
 // routing panel (routingpanel.h) and the inspector (inspectorpanel.h), which show in their places among the editor's
 // areas; and so are the drawn shapes' editors (shapeeditor.h), whose full-size editors show over the panels' row and
-// whose widgets show wherever a shape is edited in place.
+// whose widgets show wherever a shape is edited in place; and so is the table browser (tablebrowser.h), which shows over
+// the routing panel.
 
 #include "widget.h"
 
@@ -117,6 +118,9 @@ public:
     // shape's, and an operator's Custom wave's partials.
     virtual bool shapeEditorOpen() const = 0;
     virtual bool partialEditorOpen() const = 0;
+    // The table browser, which shows over the routing panel while an operator's TABLE or SAMPLE picker has it open
+    // (see TableBrowser), hiding the routing graph and the matrix under it but not the inspector.
+    virtual bool tableBrowserOpen() const = 0;
     // Lets go of the points picked in a shape editor, as what the panel picks takes over from them.
     virtual void clearShapePick() = 0;
     // Where a drawn shape (see shapeeditor.h) is edited in place, while no full-size editor has it: a Curve source's in
@@ -354,9 +358,9 @@ public:
     // and whether it says to save the patch first (it replaces the patch; else what goes is no part of it, or undo
     // brings it back); whether it is a line shorter (it says one line), whether its way ahead is lit in the accent
     // (which Enter presses; else none is more likely than the others, and Enter leaves it open), a third button
-    // beside them, if any, and choices of their own over them on a taller dialog, each in its color; and the button
-    // pressed (0 cancels, 1 goes ahead, 2 and on the choices, 4 the third). Its kinds are numbered apart from the
-    // others' (see View::confirm_).
+    // beside them, if any, and choices of their own over them on a taller dialog, each in its color (or all plain); and
+    // the button pressed (0 cancels, 1 goes ahead, 2 and on the choices, 4 the third where there is one). Its kinds are
+    // numbered apart from the others' (see View::confirm_).
     struct ConfirmWords {
         std::string title, what;
         std::string ok;
@@ -365,6 +369,7 @@ public:
         bool lit = true;
         std::string third;
         std::vector<std::pair<std::string, Color>> choices;
+        bool plainChoices = false;
     };
     virtual ConfirmWords confirmWords(int /*kind*/) const { return {}; }
     virtual void confirmed(int /*kind*/, int /*button*/) {}

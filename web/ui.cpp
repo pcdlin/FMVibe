@@ -49,6 +49,16 @@ EM_JS(int, js_setting, (const char *key, char *out, int capacity), {
 });
 EM_JS(void, js_set_setting, (const char *key, const char *value),
       { Module.fmvHost.setSetting(UTF8ToString(key), UTF8ToString(value)); });
+// A Wavetable or Sample operator's data, as the patch stores it, for the audio side to build (see dsp_data()); and
+// what it can let go of.
+EM_JS(void, js_data, (unsigned key, int kind, unsigned rate, int frames, double root, const float *pcm, int count), {
+    Module.fmvHost.data(key >>> 0, kind, rate >>> 0, frames, root, new Float32Array(HEAPU8.slice(pcm, pcm + count * 4).buffer));
+});
+EM_JS(void, js_data_release, (unsigned key), { Module.fmvHost.dataRelease(key >>> 0); });
+// The page's file picker, for a table or a sample to import into an operator; and its folder picker, for the table
+// browser (see ui_import() and ui_folder_file()).
+EM_JS(void, js_choose_file, (int op, int kind), { Module.fmvHost.chooseFile(op, kind); });
+EM_JS(void, js_choose_folder, (), { Module.fmvHost.chooseFolder(); });
 
 constexpr int kDefaultOversampling = 2;
 constexpr char kFirstPreset[] = "Future Plucks"; // a sequenced patch: a held key plays its riff
@@ -96,7 +106,34 @@ public:
             grid.empty() ? EditorSettings::kDefaultGridIntensity : std::clamp(std::atof(grid.c_str()), 0.0, 1.0);
         const std::string tempo = setting("tempo");
         tempo_ = tempo.empty() ? kDefaultTempo : clampTempo(std::atof(tempo.c_str()));
+        // The tables and samples the patch plays go over to the audio side, which builds them (the factory tables it
+        // makes itself, as it finds them missing).
+        data().setSink([](uint32_t key, const std::shared_ptr<const OpData> &d) {
+            if (key < kFactoryTables)
+                return;
+            if (!d) {
+                js_data_release(key);
+                return;
+            }
+            js_data(key, static_cast<int>(d->kind), d->rate, d->frames, d->root, d->pcm.data(),
+                    static_cast<int>(d->pcm.size()));
+        });
     }
+
+    void chooseOperatorFile(int op, DataKind kind) override { js_choose_file(op, static_cast<int>(kind)); }
+    // Folders picked on the page, listed for the session only: the demo keeps no paths.
+    TableLibrary *tableLibrary(DataKind kind) override {
+        const bool samples = kind == DataKind::Sample;
+        std::unique_ptr<TableLibrary> &library = samples ? samples_ : tables_;
+        if (!library)
+            library = std::make_unique<TableLibrary>(std::string(), samples);
+        return library.get();
+    }
+    void chooseTableFolder(DataKind kind) override {
+        folderKind = kind;
+        js_choose_folder();
+    }
+    DataKind folderKind = DataKind::Table; // the library the folder being picked goes into
 
     const ParamValues &values() const { return values_; }
     Telemetry &received() { return received_; }
@@ -269,6 +306,7 @@ private:
     int mpeBendRange_ = 48;
     EditorSettings settings_;
     double tempo_ = kDefaultTempo;
+    std::unique_ptr<TableLibrary> tables_, samples_;
 };
 
 std::unique_ptr<WebController> controller;
@@ -489,6 +527,42 @@ EMSCRIPTEN_KEEPALIVE int ui_telemetry_size() {
 
 EMSCRIPTEN_KEEPALIVE void ui_telemetry_stamp(double nowMs) {
     controller->stamp(nowMs);
+}
+
+// A file the page read for the editor: its bytes go here first, and its name (UTF-8) in the name's buffer.
+std::vector<uint8_t> incoming;
+std::vector<char> incomingName;
+std::vector<std::pair<std::string, std::vector<uint8_t>>> picked; // a folder's files, as they come
+
+EMSCRIPTEN_KEEPALIVE uint8_t *ui_file_buffer(int size) {
+    incoming.assign(static_cast<size_t>(std::max(size, 0)), 0);
+    return incoming.data();
+}
+
+EMSCRIPTEN_KEEPALIVE char *ui_name_buffer(int size) {
+    incomingName.assign(static_cast<size_t>(std::max(size, 0)) + 1, '\0');
+    return incomingName.data();
+}
+
+// The file in the buffers, imported as operator `op`'s table or sample (DataKind, by number); what went wrong flashes.
+EMSCRIPTEN_KEEPALIVE void ui_import(int op, int kind) {
+    const std::string said = view->importOperatorFile(op, static_cast<DataKind>(kind), incoming,
+                                                      std::string(incomingName.data()));
+    if (!said.empty())
+        js_toast(said.c_str());
+}
+
+// A folder picked on the page: its files one at a time (each its path within the folder), then the folder's name.
+EMSCRIPTEN_KEEPALIVE void ui_folder_file() {
+    picked.push_back({std::string(incomingName.data()), incoming});
+}
+
+EMSCRIPTEN_KEEPALIVE void ui_folder_end() {
+    if (TableLibrary *library = controller->tableLibrary(controller->folderKind)) {
+        const int source = library->addFiles(std::string(incomingName.data()), std::move(picked));
+        view->showTableSource(source);
+    }
+    picked.clear();
 }
 
 } // extern "C"

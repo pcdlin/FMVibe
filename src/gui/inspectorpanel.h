@@ -2,10 +2,12 @@
 
 // The inspector (see inspectorpanel.cpp): the lens floating over the routing panel's left end, which shows the node
 // picked (an operator, a filter or a shaper) on a page of its own: the nodes' tabs along its top, its title (the node's
-// letter, what it is and what it is routed to) beside its on/off switch, and its page. An operator's: its waves (the
-// common ones as buttons, the rest in a list), its Ratio readout or, fixed, its Freq and Mult, its knobs, and its tabs:
-// UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over its scope) and INPUTS (a
-// row per route into it). A filter's: its type's and slope's lists, its response with its handle, and its knobs. A
+// letter, what it is and what it is routed to; an operator's source list, Wave, Wavetable or Sample, in its place)
+// beside its on/off switch, and its page. An operator's: its waves (the common ones as buttons, the rest in a list; a
+// Wavetable's or a Sample's picker in their place, see opsource.cpp), its Ratio readout or, fixed, its Freq and Mult,
+// its knobs, and its tabs: UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over
+// its scope; a Wavetable's TABLE tab, its frames with its warp, or a Sample's SAMPLE tab, its waveform with its handles,
+// loop and mode, in its place) and INPUTS (a row per route into it). A filter's: its type's and slope's lists, its response with its handle, and its knobs. A
 // shaper's: its curve's list and switches, its curve (drawn in place, see ShapeEditor), and its knobs. A filter's and a
 // shaper's page end with knobs for what feeds them. The View lists its widgets in the panels' row while it shows (see
 // covered()), and its popups (the list of more waves, its pages' lists) with the others'.
@@ -28,11 +30,20 @@
 namespace fmvibe::gui {
 
 class ShapeEditor;
+class TableBrowser;
+namespace detail {
+enum class OpTabs; // which tabs an operator has (see layout.h)
+}
+
+// A Wavetable operator's Position, a knob drawn as its TABLE tab's display (see InspectorPanel::paintTableTab()):
+// dragged up and down, a source dropped anywhere on it, its depth handles centered along its bottom edge.
+bool isTableDisplay(const Widget &w);
 
 class InspectorPanel : public Panel {
 public:
-    // A voice shaper's drawn curve shows on its page through `shapes`, which also says what covers the panels' row.
-    InspectorPanel(PanelHost &host, ShapeEditor &shapes);
+    // A voice shaper's drawn curve shows on its page through `shapes`, which also says what covers the panels' row; a
+    // Wavetable's or a Sample's picker opens `tables`.
+    InspectorPanel(PanelHost &host, ShapeEditor &shapes, TableBrowser &tables);
 
     // Whether something else takes its place: the FX, MODS and SEQ views, or a full-size shape editor (but the note
     // source's, velocity's and a voice shaper's, which leave it beside them). The View lists, paints and hands it
@@ -40,11 +51,27 @@ public:
     bool covered() const;
     // The operator whose scope shows (its WARP tab, while it shows), whose output the audio thread captures; or -1.
     int scopeShown() const;
-    // The list of more waves closes, as an open list does as something scrolls under the middle button.
-    void closeWaveMenu() { waveMenu_ = -1; }
+    // The list of more waves and the source list close, as an open list does as something scrolls under the middle
+    // button.
+    void closeWaveMenu() {
+        waveMenu_ = -1;
+        sourceMenu_ = -1;
+    }
+    // A file dragged over the editor from outside it: the Wavetable or Sample operator whose TABLE or SAMPLE tab's
+    // display, shown, takes it at `p`, or -1; what that operator takes it as; and the operator whose display is lit for
+    // one held over it (-1 for none), which repaints it.
+    int fileDropOp(Point p) const;
+    DataKind fileDropKind(int op) const;
+    void lightFileDrop(int op) { fileDrop_ = op; }
+    // A file imported as operator `op`'s table or sample. Read as a table, one that leaves its frame size open waits
+    // here while the user is asked for it. "" if it went in or waits, else what to tell the user.
+    std::string importFile(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name);
+    static constexpr int kConfirmFrameSize = 10; // its question, numbered apart from the others' (see View::confirm_)
+    ConfirmWords confirmWords(int kind) const override;
+    void confirmed(int kind, int button) override;
 
     void widgets(std::vector<Widget> &list) const override;
-    void popups(std::vector<Widget> &list) const override; // the list of more waves, and its pages' lists
+    void popups(std::vector<Widget> &list) const override; // the lists of more waves and of sources, its pages' lists
     void paintBack(Canvas &c) override;                     // the lens and the page shown
     void paintOverWidgets(Canvas &c) override;              // a wave button's name, under it while the mouse is on it
     bool paintWidget(Canvas &c, const Widget &w, bool hovered) override;
@@ -53,6 +80,8 @@ public:
     void forgetScoped() override;
     void poll(const Telemetry &now, std::vector<Rect> &repaint) override;
     bool press(const Widget &w, Point p, Modifiers mods) override;
+    bool doubleClick(const Widget &w, Point p, Modifiers mods) override;
+    bool doublePress(const Widget &w) const override;
     void drag(const DragState &d) override;
     void release() override;
     bool dragsOnTouch(const Widget &w) const override;
@@ -69,13 +98,17 @@ private:
     double value(int index) const { return mods_.value(index); }
     void edit(int index, double v) { mods_.edit(index, v); }
 
-    // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), and the INPUTS tab's
-    // scrollbar's thumb. What each holds and where the thumb's rows were when it was grabbed.
-    enum class DragKind { None, FilterPoint, InputsScroll };
+    // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), the INPUTS tab's
+    // scrollbar's thumb, a handle on a Sample operator's display (across; with Alt, a loop's onto zero crossings) and a
+    // Wavetable operator's Position, set where the mouse is on its TABLE tab's display. What each holds and where the
+    // thumb's rows were (or the handle's value) when it was grabbed.
+    enum class DragKind { None, FilterPoint, InputsScroll, SampleHandle, TablePosition };
     struct Drag {
         DragKind kind = DragKind::None;
         Widget widget;
         float startValue = 0.0f;
+        bool fine = false; // with Shift, a sample's handle or Position moving a tenth as far as the mouse
+        float startY = 0.0f; // where the mouse was as Position last started from startValue
     };
 
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
@@ -97,6 +130,29 @@ private:
     // hidden.
     bool opTabModulated(int op, InspectorTab tab) const;
     OpWarp opWarp(int op) const;
+
+    // --- A Wavetable or Sample operator's (see opsource.cpp): the source list on the title row and the pickers in
+    // the waves' place, its TABLE and SAMPLE tabs.
+    OpWave plainWaveOf(int op) const; // the wave it plays, or goes back to from a table or a sample
+    bool isTableOp(int op) const;
+    bool isSampleOp(int op) const;
+    detail::OpTabs opTabsOf(int op) const; // which tabs it has
+    std::string dataName(int op) const; // the table's or sample's name, as its picker shows it
+    // What the operator's page adds for its source and its TABLE or SAMPLE tab, into `list`.
+    void sourceWidgets(std::vector<Widget> &list, int op, InspectorTab tab) const;
+    // Their faces, tooltips and cursors; false, empty or nothing for another's.
+    bool paintSourceWidget(Canvas &c, const Widget &w, bool hovered);
+    std::string sourceTip(const Widget &w) const;
+    std::optional<CursorKind> sourceCursor(const Widget &w) const;
+    void paintTableTab(Canvas &c, Rect r, int op);
+    void paintSampleTab(Canvas &c, Rect r, int op);
+    // A press on one of their widgets, and a double-click: false for another's.
+    bool sourcePress(const Widget &w, Point p, Modifiers mods);
+    bool sourceDoubleClick(const Widget &w);
+    void sampleDrag(const DragState &d); // a handle on the SAMPLE tab's display follows the mouse across
+    void tablePosDrag(const DragState &d); // Position followed up and down the TABLE tab's display, finely with Shift
+    void stepTable(int op, int dir);
+    void switchSource(int op, int source);
     bool opSynced(int op) const;
     std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;
     // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order. Its rows (the feedback's
@@ -125,6 +181,7 @@ private:
 
     PanelHost &host_;
     ShapeEditor &shapes_;
+    TableBrowser &tables_;
     // The patch's modulation and routing, their models telling the editor why they refused an edit (see
     // PanelHost::flash()).
     ModulationModel &mods_;
@@ -132,8 +189,16 @@ private:
     const ParamTable &table_;
     Drag drag_;
     int waveMenu_ = -1;          // the operator whose list of more waves is open, or -1
+    int sourceMenu_ = -1;        // the operator whose source list is open, or -1
     float inputsScroll_ = 0.0f;  // rows the INPUTS tab is scrolled to, before clamping
     float opScopeLevel_ = 0.0f;  // the operator scope's level, following its spans' peaks, which its dB readout shows
+    // The file waiting for its frame size to be picked.
+    struct PendingImport {
+        int op = -1;
+        std::vector<uint8_t> bytes;
+        std::string name;
+    } pendingImport_;
+    int fileDrop_ = -1;          // the operator whose TABLE or SAMPLE display a file dragged in from outside is held over, lit
     ScopeCache<std::vector<Assignment>> assignments_;
 };
 

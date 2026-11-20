@@ -30,6 +30,10 @@ add_executable(fmvibe-ui
     ${factory_presets}
     ${PROJECT_SOURCE_DIR}/src/factory.cpp
     ${PROJECT_SOURCE_DIR}/src/state.cpp
+    ${PROJECT_SOURCE_DIR}/src/tables/flac.cpp
+    ${PROJECT_SOURCE_DIR}/src/tables/library.cpp
+    ${PROJECT_SOURCE_DIR}/src/tables/readers.cpp
+    ${PROJECT_SOURCE_DIR}/src/tables/vital.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/canvas_web.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/controller.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/dialogs.cpp
@@ -40,12 +44,14 @@ add_executable(fmvibe-ui
     ${PROJECT_SOURCE_DIR}/src/gui/inspectorpanel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/modulationmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/modspanel.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/opsource.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/patchedits.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/presetbrowser.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/seqpanel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/routingmodel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/routingpanel.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/shapeeditor.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/tablebrowser.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/theme.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/view.cpp
 )

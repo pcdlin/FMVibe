@@ -119,5 +119,10 @@ private:
 // loudest at 1, phases 0..1 of a cycle, so the Custom wave starts out as that wave. False for a wave without
 // any (Noise, or Custom itself), leaving `out` alone.
 bool wavePartials(OpWave wave, std::array<double, 2 * kPartials> &out);
+// Harmonic `n` (from 1) of a wave with a table of its own, in sine phase: `sine` sin(n t) + `cosine` cos(n t), before
+// the wave is scaled to peak at 1. Both 0 for a wave without a series (Noise, Custom, Wavetable, Sample).
+void waveHarmonic(OpWave wave, int n, double &cosine, double &sine);
+// Whether a wave has a table in WaveTables: all but Noise, Custom and the data waves.
+bool hasTable(OpWave wave);
 
 } // namespace fmvibe

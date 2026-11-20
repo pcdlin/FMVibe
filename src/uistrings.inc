@@ -28,6 +28,31 @@ STR(WaveCustom, "Custom")
 STR(WaveAltSine, "Alt Sine")
 STR(WaveOrgan, "Organ")
 STR(WaveVowel, "Vowel")
+STR(WaveWavetable, "Wavetable")
+STR(WaveSample, "Sample")
+
+// FMVibe's own wavetables, generated: in the table browser's Factory source and as a Table param's value.
+STR(TableBasicShapes, "Basic Shapes")
+STR(TablePwm, "PWM")
+STR(TableHarmonicBuild, "Harmonic Build")
+STR(TableFmSweep, "FM Sweep")
+STR(TableSyncSweep, "Sync Sweep")
+STR(TableResonantSweep, "Resonant Sweep")
+STR(TableVowels, "Vowels")
+STR(TableFold, "Fold")
+STR(TableOddEven, "Odd to Even")
+STR(TablePhaseDistortion, "Phase Distortion")
+STR(TableCombSweep, "Comb Sweep")
+STR(TableWindowSync, "Window Sync")
+STR(TableBitCrush, "Bit Crush")
+
+// How a Sample operator loops, and how it plays a note.
+STR(LoopOff, "Off")
+STR(LoopForward, "Forward")
+STR(LoopPingPong, "Ping-Pong")
+STR(ModeGate, "Gate")
+STR(ModeSustain, "Sustain")
+STR(ModeOneShot, "One-Shot")
 
 // How an operator reads its wave's cycle (its Warp), in its buttons' tooltips and the host.
 STR(WarpOff, "Off")
@@ -279,6 +304,17 @@ STR(ParamFixedMult, "Fixed Mult")
 STR(ParamNoteSync, "Note Sync") // hard sync: the operator's wave restarts with each cycle of the note
 STR(ParamWarp, "Warp")
 STR(ParamWarpAmount, "Warp Amount")
+STR(ParamTablePos, "Position") // where along its wavetable's frames a Wavetable operator plays
+STR(ParamTable, "Table")       // which wavetable it plays
+STR(ParamSample, "Sample")     // which sample a Sample operator plays
+STR(ParamSampleStart, "Start") // where a note starts the sample, a share of its length
+STR(ParamSampleRoot, "Root")   // the note the sample plays at its own speed
+STR(ParamLoopMode, "Loop")
+STR(ParamLoopStart, "Loop Start")
+STR(ParamLoopEnd, "Loop End")
+STR(ParamLoopFade, "Loop Fade")
+STR(ParamSampleMode, "Sample Mode")
+STR(ParamSampleReverse, "Reverse")
 STR(ParamPartials, "Partials") // how many the Custom wave plays
 STR(ParamPartial, "Partial {1}")
 STR(ParamLevel, "Level")
@@ -604,6 +640,45 @@ STR(TabEnvelope, "ENVELOPE")
 STR(TabScope, "SCOPE")
 STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
 STR(TabWarp, "WARP") // its scope, warp and hard sync
+STR(TabTable, "TABLE")   // a Wavetable operator's frames and its Position
+STR(TabSample, "SAMPLE") // a Sample operator's waveform, its start, loop and root
+// An operator's source list, on its page's title row: a wave of its own, a wavetable or a sample.
+STR(SourceWave, "Wave")
+STR(SourceTable, "Wavetable")
+STR(SourceSample, "Sample")
+STR(LabelRoot, "ROOT") // the note a sample plays at its own speed
+STR(LabelLoop, "LOOP")
+STR(LabelMode, "MODE")
+STR(SampleNone, "No sample")
+STR(SampleImportCard, "Import a .wav file")
+STR(TableMissing, "Table not found") // a key the patch doesn't hold (a host's value)
+// The table browser.
+STR(TablesTitle, "TABLES")
+STR(TablesFactory, "Factory")
+STR(TablesInPatch, "In this patch")
+STR(TablesAddFolder, "+ Add folder\xE2\x80\xA6")
+STR(TablesImport, "Import file\xE2\x80\xA6")
+STR(TablesDone, "Done")
+STR(TablesSearchHint, "Search every source")
+STR(TablesEmpty, "No tables here")
+STR(TablesNoMatch, "Nothing matches \"{1}\"")
+STR(TablesScanning, "Scanning\xE2\x80\xA6")
+STR(TablesScanCount, "{1} of {2} files")
+STR(TablesMissing, "Not found: {1}") // a folder that has gone
+STR(TablesFrames, "{1} frames")
+STR(TablesOneFrame, "1 frame")
+STR(TablesSampleLength, "{1} s") // a sample's length, in its row
+STR(TablesFormat, "Format: {1}")
+STR(TablesFrameSize, "Frame size: {1}")
+STR(TablesFrameSizeGuessed, "Frame size: {1} (guessed)")
+STR(TablesNoPreview, "Point at a table to see it")
+STR(TablesFolderAuto, "Auto")
+STR(SamplesTitle, "SAMPLES")
+STR(SamplesEmpty, "No samples here")
+STR(SamplesNoPreview, "Point at a sample to see it")
+STR(FrameSizeTitle, "Frame size")
+STR(FrameSizeWhat, "The file does not specify a frame length.")
+STR(TablesSampleRow, "sample")
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -999,12 +1074,10 @@ STR(TipUniCurveRandom, "Random detune")
 STR(TipUniPanRamp, "Left to right as the pitch rises")
 STR(TipUniPanAlternate, "Copies next in pitch on opposite sides")
 STR(TipUniPanRandom, "Random places")
-STR(SummarySync, "note sync") // on an operator's summary line, while it is synced to the note
 STR(TipFixedOn, "Fixed pitch on. Click to track keys")
 
-// The inspector's summary line, after the node's letter and its wave, filter type or curve; an operator's ratio
-// goes in as a bare number. Keep it short: the line has room for about 38 characters.
-STR(SummaryUnison, "×{1}") // the operator's unison copies
+// A filter's or shaper's summary line, after the node's letter and its filter type or curve. Keep it short: the line
+// has room for about 38 characters.
 STR(SummaryTo, "to {1}")
 STR(SummaryOut, "out")
 STR(SummaryNoInput, "no input yet")
@@ -1196,6 +1269,19 @@ STR(TipGlideAlways, "Glide between all notes")
 STR(TipMidiCc, "MIDI CC, chosen with the CC knob")
 STR(TipMidiPressure, "Aftertouch, per note or channel")
 STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
+STR(TipTablePrev, "Previous table")
+STR(TipTableNext, "Next table")
+STR(TipTablePicker, "Pick a table")
+STR(TipSamplePicker, "Pick a sample")
+STR(TipImportTable, "Import a wavetable file")
+STR(TipImportSample, "Import a sample file")
+STR(TipTableDisplay, "Click or drag up and down: Position. Shift+drag: fine")
+STR(TipSampleStart, "Start · Double-click: reset")
+STR(TipLoopStart, "Loop start · Alt+drag: zero crossings")
+STR(TipLoopEnd, "Loop end · Alt+drag: zero crossings")
+STR(TipLoopFade, "Loop crossfade")
+STR(TipSampleReverse, "Reverse: play the sample back to front")
+STR(TipSampleRoot, "Root: the note it plays at its own speed")
 
 // --- The editor: right-click menus
 
@@ -1241,6 +1327,11 @@ STR(MenuSeqSelectAll, "Select All")
 STR(MenuSeqSlide, "Slide") // checked while every note picked glides into the next
 STR(MenuSeqMute, "Mute") // checked while every note picked is muted
 STR(MenuSeqQuantize, "Quantize") // the notes picked moved onto the snap's grid
+// A folder of wavetables, in the table browser.
+STR(MenuRename, "Rename")
+STR(MenuFrameSize, "Frame size for files without one: {1}") // {1} Auto, 256, 512, 1024 or 2048, the one in force checked
+STR(MenuRescan, "Rescan")
+STR(MenuShowFolder, "Show in Explorer")
 
 // --- The editor: undo and redo, on their buttons' tooltips
 
@@ -1280,6 +1371,20 @@ STR(MsgPresetUnreadable, "Preset could not be read")
 STR(MsgNoPresets, "Preset folder is empty")
 STR(MsgPresetNotSaved, "Could not save preset")
 STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
+STR(MsgImported, "{1} imported")
+STR(MsgImportFailed, "Can't import {1}: {2}") // the file's name, then why (one of the Read... below)
+STR(MsgImportTooBig, "file is too large (max. 16 MB per table or sample, 64 MB total)")
+
+// Why a wavetable or sample file can't be read, after MsgImportFailed and in the table browser's tooltips.
+STR(ReadNotAudio, "not a wavetable or audio file FMVibe can read")
+STR(ReadBroken, "the file is damaged or cut short")
+STR(ReadUnsupported, "sample format is not supported")
+STR(ReadEncrypted, "this format is encrypted; export the table from its synth as a WAV")
+STR(ReadPresetOnly, "a preset, its table inside it; export the table from its synth as a WAV")
+STR(ReadLineSource, "This Vital table can't be read")
+STR(ReadEmpty, "the file holds no sound")
+STR(ReadTooLong, "longer than a sample can be (87 s at 48 kHz)")
+STR(ReadNotTable, "no frame size found in file")
 
 // --- The plugin's file dialogs
 
@@ -1289,6 +1394,10 @@ STR(DialogPresetFiles, "FMVibe preset (*.fmv)")
 STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
+STR(DialogImportTable, "Import a wavetable")
+STR(DialogImportSample, "Import a sample")
+STR(DialogTableFiles, "Wavetables and samples (*.wav;*.flac;*.wt;*.vitaltable)")
+STR(DialogAddFolder, "Add a folder")
 
 // --- The browser demo, which has no files
 

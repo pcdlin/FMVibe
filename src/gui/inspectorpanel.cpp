@@ -13,6 +13,7 @@
 #include "lists.h"
 #include "routing.h"
 #include "shapeeditor.h"
+#include "tablebrowser.h"
 #include "theme.h"
 #include "../uistrings.h"
 #include "../unison.h"
@@ -41,8 +42,8 @@ std::string number(const char *format, double value) {
 
 } // namespace
 
-InspectorPanel::InspectorPanel(PanelHost &host, ShapeEditor &shapes)
-    : host_(host), shapes_(shapes), mods_(host.modulationModel()), routing_(host.routingModel()),
+InspectorPanel::InspectorPanel(PanelHost &host, ShapeEditor &shapes, TableBrowser &tables)
+    : host_(host), shapes_(shapes), tables_(tables), mods_(host.modulationModel()), routing_(host.routingModel()),
       table_(paramTable()) {}
 
 bool InspectorPanel::covered() const {
@@ -92,7 +93,9 @@ void InspectorPanel::showNode(int node) {
     else if (!routing_.nodeOn(node))
         edit(enabledParam(node), 1.0);
     layout.selectedNode = node;
-    shapes_.closePartialsBut(node); // another node shown closes the partial editor
+    shapes_.closePartialsBut(node); // another node shown closes the partial editor, and the table browser
+    if (tables_.browsing() != node)
+        tables_.close();
 }
 
 // --- Widgets.
@@ -172,18 +175,25 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
         inputKnobs(node);
     } else if (node < kOps) {
         const int op = node;
-        // One segmented row, the list's button last in it.
-        const size_t waves = list.size();
-        for (int b = 0; b + 1 < kWaveButtons; ++b)
-            add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
-        add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
-        merge(waves);
-        // The tabs, a noise operator's without the scope, then what the shown one holds.
+        // A wave of its own: one segmented row, the list's button last in it. A table or a sample: their pickers (see
+        // sourceWidgets()), under the source list.
+        if (!isTableOp(op) && !isSampleOp(op)) {
+            const size_t waves = list.size();
+            for (int b = 0; b + 1 < kWaveButtons; ++b)
+                add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
+            add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
+            merge(waves);
+        }
+        // The tabs, a noise operator's without the scope, a table's and a sample's with their own in WARP's place (a
+        // table's holding its warp), then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
+        const OpTabs tabs = opTabsOf(op);
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
             if (const auto shown = static_cast<InspectorTab>(t);
-                shown != InspectorTab::Scope && (!isNoise(op) || shown != InspectorTab::Warp))
-                add(Kind::OpTab, opTab(t, isNoise(op)), -1, t);
+                shown != InspectorTab::Scope && !(shown == InspectorTab::Warp && tabs != OpTabs::Plain) &&
+                !(shown == InspectorTab::Source && tabs != OpTabs::Table && tabs != OpTabs::Sample))
+                add(Kind::OpTab, opTab(t, tabs), -1, t);
+        sourceWidgets(list, op, tab);
         if (tab == InspectorTab::Warp)
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
@@ -197,8 +207,8 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             opKnobRow(params, labels);
         } else {
             // The Ratio readout takes the first two places; fixed, Freq and Mult take its place, and Pitch and Detune,
-            // which it ignores, are dimmed.
-            const bool fixed = isFixed(op);
+            // which it ignores, are dimmed. A table or a sample plays at the note's pitch, with no Ratio.
+            const bool fixed = isFixed(op), data = isTableOp(op) || isSampleOp(op);
             const int params[] = {fixed ? paramIndex(op, OpParam::FixedFreq) : -1,
                                   fixed ? paramIndex(op, OpParam::FixedMult) : -1,
                                   paramIndex(op, OpParam::Transpose), paramIndex(op, OpParam::Detune),
@@ -210,10 +220,17 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                                           tr(Str::LabelPhase),
                                           tr(Str::LabelPan)};
             const size_t row = list.size();
-            opKnobRow(params, labels);
+            const float knobY = data ? kOpDataKnobY : kOpKnobY;
+            for (int i = 0; i < 6; ++i)
+                if (params[i] >= 0)
+                    knob(params[i], data && !fixed ? opWideKnobCenter(i - 2, knobY) : Point{opKnobCenter(i - 2).x, knobY},
+                         kOpKnobD, labels[i]);
+            // A sample has no cycle to start at Phase: Start takes its place, and its knob is dimmed, as Fixed dims
+            // Pitch and Detune.
             for (size_t i = row; i < list.size(); ++i)
-                list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
-            if (!fixed) {
+                list[i].disabled = (fixed && (list[i].param == params[2] || list[i].param == params[3])) ||
+                                   (isSampleOp(op) && list[i].param == params[4]);
+            if (!fixed && !data) {
                 add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kRatioLabelY + 17.0f - kRatioBox.y},
                     paramIndex(op, OpParam::Ratio));
                 list.back().label = tr(Str::LabelRatio);
@@ -362,6 +379,13 @@ void InspectorPanel::popups(std::vector<Widget> &list) const {
         for (size_t i = 0; i < std::size(kMoreWaves); ++i)
             add(Kind::WaveMenuItem, waveMenuItem(static_cast<int>(i)), -1, waveMenu_, static_cast<int>(kMoreWaves[i]));
     }
+    // The open source list, under its button, while its operator shows in the inspector.
+    if (sourceMenu_ >= 0 && sourceMenu_ == controller().layout().selectedNode) {
+        add(Kind::OpSourceMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
+        add(Kind::OpSourceMenu, opSourceMenu(), -1, 1);
+        for (int source = 0; source < 3; ++source)
+            add(Kind::OpSourceItem, opSourceItem(source), -1, sourceMenu_, source);
+    }
 }
 
 // --- Painting.
@@ -377,7 +401,7 @@ void InspectorPanel::paintBack(Canvas &c) {
     c.fillRect(kInspector, face, kRadiusPanel); // outlined over the tabs' band, below
     // The routing graph shows the node, while it shows (as RoutingPanel::graphShown() has it).
     const bool graph = controller().layout().view == RoutingView::Graph && !host_.shapeEditorOpen() &&
-                       !host_.partialEditorOpen();
+                       !host_.partialEditorOpen() && !host_.tableBrowserOpen();
     if (const std::optional<Point> leader = lensLeaderStart(routing_, node, graph)) {
         const float x = kInspector.right(), y = leader->y;
         const Point notch[] = {{x - 1.0f, y - 6.0f}, {x + 6.0f, y}, {x - 1.0f, y + 6.0f}};
@@ -404,7 +428,6 @@ void InspectorPanel::paintBack(Canvas &c) {
     }
     // The title row leaves room for the on/off switch at the right.
     Rect summaryRect{kTitleRow.x, kTitleRow.y, kInspector.w - 84.0f, kTitleRow.h};
-    const char *dot = "  \xC2\xB7  ";
     // While the node is off, the page under its title is drawn dimmed (its widgets are too, see dimmedAreas()).
     struct PageDim {
         Canvas &c;
@@ -436,37 +459,10 @@ void InspectorPanel::paintBack(Canvas &c) {
     }
     if (node < kOps) {
         const int op = node;
-        const double ratio = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
-        std::string head, summary;
-        summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
-        if (isCustomWave(op))
-            summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's edit button, left of that
-        if (isNoise(op)) {
-            char slope[32];
-            const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
-            formatParam(slopeParam, value(slopeParam), slope, sizeof(slope));
-            head = waveName(OpWave::Noise);
-            summary = dot + std::string(slope);
-        } else {
-            head = waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))));
-            summary = dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio));
-        }
-        const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
-        if (copies > 1 && !isNoise(op))
-            summary += dot + trf(Str::SummaryUnison, {std::to_string(copies)});
-        if (!isNoise(op) && value(paramIndex(op, OpParam::Sync)) >= 0.5)
-            summary += dot + std::string(tr(Str::SummarySync));
-        if (const OpWarp warp = opWarp(op); !isNoise(op) && warp != OpWarp::Off)
-            summary += dot + std::string(warpName(warp));
-        std::string feeds;
-        if (value(paramIndex(op, OpParam::Out)) > 0.0)
-            feeds = tr(Str::SummaryOut);
-        for (int to = 0; to < kNodes; ++to)
-            if (to != op && routing_.nodeOn(to) && value(routeParam(op, to)) > 0.0)
-                feeds += (feeds.empty() ? "" : ", ") + std::string(kNodeNames[to]);
-        if (!feeds.empty())
-            summary += dot + trf(Str::SummaryTo, {feeds});
-        paintPageTitle(c, node, summaryRect, head, summary);
+        // Its title row holds its letter, its output's handle as a modulation source, then the source list (Wave,
+        // Wavetable or Sample) in a summary's place: what a summary would say, the wave, the ratio, the unison, the
+        // warp and where it goes, the page and the graph show.
+        c.text(kOpLetter, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left, true);
         const PageDim page(c, !routing_.nodeOn(node));
         // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
         // the shown one's accent sits on, and the display under them.
@@ -488,6 +484,16 @@ void InspectorPanel::paintBack(Canvas &c) {
         case InspectorTab::Scope:
         case InspectorTab::Warp:
             paintScope(c, kScopeRect, op);
+            break;
+        case InspectorTab::Source:
+            if (isTableOp(op))
+                paintTableTab(c, kTableDisplay, op);
+            else
+                paintSampleTab(c, kSampleDisplay, op);
+            if (fileDrop_ == op) { // a file held over the display: it lands here
+                c.fillRect(kSampleDisplay, kAccent.alpha(0.10f), kRadiusCard);
+                c.strokeRect(kSampleDisplay.inset(-3.0f), kAccent, 2.0f, kRadiusCard + 3.0f);
+            }
             break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
@@ -610,13 +616,14 @@ std::string InspectorPanel::fixedHzText(int op, bool compact) const {
                                compact);
 }
 
-// Switched to fixed, the operator plays where its ratio put it at A4: its Freq and Mult are set to that, with the
-// smallest Mult that keeps the Freq in its range, in the same undo step.
+// Switched to fixed, the operator plays where its ratio put it at A4 (a table or a sample, which has none, at the A4
+// itself): its Freq and Mult are set to that, with the smallest Mult that keeps the Freq in its range, in the same undo
+// step.
 void InspectorPanel::switchFixed(int op) {
     const int fixed = paramIndex(op, OpParam::Fixed);
     std::vector<std::pair<int, double>> changes;
     if (!isFixed(op)) {
-        const double hz = 440.0 * ratioFromNorm(value(paramIndex(op, OpParam::Ratio)));
+        const double hz = isTableOp(op) || isSampleOp(op) ? 440.0 : 440.0 * ratioFromNorm(value(paramIndex(op, OpParam::Ratio)));
         int mult = 0;
         while (mult + 1 < kFixedMultCount && hz / kFixedMults[mult] > kMaxFixedFreq)
             ++mult;
@@ -695,8 +702,13 @@ void InspectorPanel::paintInputs(Canvas &c, int op) {
 
 InspectorTab InspectorPanel::opTabShown(int op) const {
     const InspectorTab tab = controller().layout().opTab;
+    const bool data = isTableOp(op) || isSampleOp(op);
+    // A table or a sample has no WARP: its TABLE or SAMPLE tab is in WARP's place (a table's with its warp). An
+    // operator without a table or a sample, its envelope in the TABLE or SAMPLE tab's.
     if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WARP tab
-        return isNoise(op) ? InspectorTab::Envelope : InspectorTab::Warp;
+        return isNoise(op) ? InspectorTab::Envelope : data ? InspectorTab::Source : InspectorTab::Warp;
+    if (tab == InspectorTab::Source && !data)
+        return InspectorTab::Envelope;
     return tab;
 }
 
@@ -712,6 +724,8 @@ bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
                   paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)};
     if (tab == InspectorTab::Warp && !isNoise(op))
         params = {paramIndex(op, OpParam::WarpAmount)};
+    if (tab == InspectorTab::Source && isTableOp(op)) // Position, and the warp's amount beside it
+        params = {paramIndex(op, OpParam::TablePos), paramIndex(op, OpParam::WarpAmount)};
     for (const Assignment &m : assignments())
         if (std::find(params.begin(), params.end(), m.target) != params.end())
             return true;
@@ -890,6 +904,8 @@ void InspectorPanel::paintNoiseSlope(Canvas &c, Rect r, int op) {
 }
 
 bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
+    if (paintSourceWidget(c, w, hovered)) // a Wavetable or Sample operator's (see opsource.cpp)
+        return true;
     const bool active = host_.isActive(w);
     switch (w.kind) {
     case Kind::OpTab: {
@@ -898,7 +914,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
-                             Str::TabInputs, Str::TabWarp};
+                             Str::TabInputs, Str::TabWarp, isSampleOp(op) ? Str::TabSample : Str::TabTable};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
         c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
@@ -915,7 +931,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                Align::Center, selected);
         break;
     }
-    case Kind::MacroHandle: { // an operator's letter (see paintPageTitle()), lit under the mouse and while dragged
+    case Kind::MacroHandle: { // an operator's letter (painted with its page), lit under the mouse and while dragged
         if (!isOpSource(w.a))
             return false;
         if (hovered || active) {
@@ -924,8 +940,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             const float pad = kTitleRow.x - w.rect.x;
             const float width = c.textWidth(kNodeNames[op], kTextHeading, true);
             c.fillRect({w.rect.x, w.rect.y, width + 2.0f * pad, w.rect.h}, nodeColor(op).alpha(0.25f), kRadiusControl);
-            c.text({kTitleRow.x, w.rect.y, kTitleLetterW, w.rect.h}, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left,
-                   true);
+            c.text(kOpLetter, kNodeNames[op], kTextHeading, nodeColor(op), Align::Left, true);
         }
         break;
     }
@@ -1025,6 +1040,8 @@ void InspectorPanel::paintOverWidgets(Canvas &c) {
 }
 
 std::string InspectorPanel::tooltip(const Widget &w) const {
+    if (std::string tip = sourceTip(w); !tip.empty()) // a Wavetable or Sample operator's (see opsource.cpp)
+        return tip;
     const int param = w.param;
     if (w.kind == Kind::NodeTab || w.kind == Kind::MatrixLabel) {
         const bool on = routing_.nodeOn(w.a);
@@ -1067,6 +1084,8 @@ std::string InspectorPanel::tooltip(const Widget &w) const {
 }
 
 std::optional<CursorKind> InspectorPanel::cursor(const Widget &w) const {
+    if (const std::optional<CursorKind> cursor = sourceCursor(w))
+        return cursor;
     if (w.kind == Kind::WaveMenu) // the open list's own panel and what is around it, where a click picks nothing
         return CursorKind::Arrow;
     return std::nullopt;
@@ -1080,7 +1099,8 @@ std::optional<CursorKind> InspectorPanel::cursor(const Widget &w) const {
 void InspectorPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
     const Telemetry &was = host_.telemetry();
     if (t.voices > 0 || was.voices > 0) {
-        if (t.opLevels != was.opLevels || t.opEnvLevels != was.opEnvLevels || t.opEnvPos != was.opEnvPos)
+        if (t.opLevels != was.opLevels || t.opEnvLevels != was.opEnvLevels || t.opEnvPos != was.opEnvPos ||
+            t.opTablePos != was.opTablePos || t.opSamplePos != was.opSamplePos)
             repaint.push_back(kInspector);
         if (t.scope != was.scope || t.scopeBins != was.scopeBins || t.scopeCursor != was.scopeCursor)
             repaint.push_back(kInspector);
@@ -1106,7 +1126,9 @@ void InspectorPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
 
 // --- Input.
 
-bool InspectorPanel::press(const Widget &w, Point p, Modifiers) {
+bool InspectorPanel::press(const Widget &w, Point p, Modifiers mods) {
+    if (sourcePress(w, p, mods)) // a Wavetable or Sample operator's (see opsource.cpp)
+        return true;
     UiLayout &layout = controller().layout();
     switch (w.kind) {
     case Kind::InputsScroll: { // as the MODS view's
@@ -1134,6 +1156,7 @@ bool InspectorPanel::press(const Widget &w, Point p, Modifiers) {
         break;
     case Kind::WaveMore:
         waveMenu_ = waveMenu_ == w.a ? -1 : w.a;
+        sourceMenu_ = -1;
         break;
     case Kind::WaveMenu:
         if (w.a == 0) // a click anywhere else closes the list
@@ -1202,6 +1225,12 @@ void InspectorPanel::drag(const DragState &d) {
                 std::clamp(drag_.startValue + (p.y - d.start.y) / room * inputsEnd(op), 0.0f, inputsEnd(op));
         break;
     }
+    case DragKind::SampleHandle:
+        sampleDrag(d);
+        break;
+    case DragKind::TablePosition:
+        tablePosDrag(d);
+        break;
     case DragKind::None:
         break;
     }
@@ -1213,7 +1242,17 @@ void InspectorPanel::release() {
         for (int index : {f.cutoff, f.resonance})
             controller().endEdit(index);
     }
+    if (drag_.kind == DragKind::SampleHandle || drag_.kind == DragKind::TablePosition)
+        controller().endEdit(drag_.widget.param);
     drag_ = Drag{};
+}
+
+bool InspectorPanel::doubleClick(const Widget &w, Point, Modifiers) {
+    return sourceDoubleClick(w);
+}
+
+bool InspectorPanel::doublePress(const Widget &w) const {
+    return w.kind == Kind::TableStep; // quick clicks step on through the tables
 }
 
 bool InspectorPanel::dragsOnTouch(const Widget &w) const {
@@ -1239,9 +1278,10 @@ bool InspectorPanel::wheelBehind(Point p, float steps) {
     return true;
 }
 
-// The list of more waves' entries take no pan; around them, the pan closes it and goes on.
+// The list of more waves' and the source list's entries take no pan; around them, the pan closes them and goes on.
 bool InspectorPanel::blocksPan(const Widget &w) const {
-    return w.kind == Kind::WaveMenuItem || (w.kind == Kind::WaveMenu && w.a != 0);
+    return w.kind == Kind::WaveMenuItem || (w.kind == Kind::WaveMenu && w.a != 0) || w.kind == Kind::OpSourceItem ||
+           (w.kind == Kind::OpSourceMenu && w.a != 0);
 }
 
 std::optional<std::pair<int, float>> InspectorPanel::panAt(Point p) const {

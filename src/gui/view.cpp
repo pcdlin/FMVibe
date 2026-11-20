@@ -292,9 +292,10 @@ float View::heightFor(const UiLayout &layout) {
 View::View(Controller &controller)
     : controller_(controller), mods_(controller, [this](std::string m) { flash(std::move(m)); }),
       routing_(controller, [this](std::string m) { flash(std::move(m)); }),
-      fx_(controller, [this](std::string m) { flash(std::move(m)); }), shapes_(*this), presets_(*this), seq_(*this),
-      modsPanel_(*this), fxPanel_(*this), routingPanel_(*this), inspector_(*this, shapes_),
-      panels_{&shapes_, &presets_, &seq_, &modsPanel_, &fxPanel_, &routingPanel_, &inspector_},
+      fx_(controller, [this](std::string m) { flash(std::move(m)); }), shapes_(*this), presets_(*this),
+      tables_(*this, shapes_), seq_(*this), modsPanel_(*this), fxPanel_(*this), routingPanel_(*this),
+      inspector_(*this, shapes_, tables_),
+      panels_{&shapes_, &presets_, &tables_, &seq_, &modsPanel_, &fxPanel_, &routingPanel_, &inspector_},
       table_(paramTable()) {
     poll();
 }
@@ -1269,6 +1270,42 @@ bool View::isRatioTarget(int param) {
     return param >= 0 && paramTable()[param].kind == ParamKind::OpRatio;
 }
 
+void View::showTableSource(int source) {
+    tables_.showSource(source);
+}
+
+// A file dragged in from outside lands where the inspector takes one (the display of a Wavetable operator's TABLE tab
+// or a Sample operator's SAMPLE tab), while no dialog is open over it.
+std::optional<View::FileDropTarget> View::fileDropTarget(Point p) const {
+    if (dialogOpen() || inspectorCovered())
+        return std::nullopt;
+    const int op = inspector_.fileDropOp(p);
+    return op >= 0 ? std::optional(FileDropTarget{op, inspector_.fileDropKind(op)}) : std::nullopt;
+}
+
+bool View::fileDragOver(std::optional<Point> p) {
+    const std::optional<FileDropTarget> target = p ? fileDropTarget(*p) : std::nullopt;
+    if (target == fileDrag_)
+        return false;
+    fileDrag_ = target;
+    inspector_.lightFileDrop(target ? target->op : -1);
+    return true;
+}
+
+std::optional<std::string> View::fileDrop(Point p, const std::vector<uint8_t> &bytes, const std::string &name) {
+    fileDrag_.reset();
+    inspector_.lightFileDrop(-1);
+    const std::optional<FileDropTarget> target = fileDropTarget(p);
+    if (!target)
+        return std::nullopt;
+    return importOperatorFile(target->op, target->kind, bytes, name);
+}
+
+std::string View::importOperatorFile(int op, DataKind kind, const std::vector<uint8_t> &bytes, const std::string &name) {
+    endTyping(true);
+    return inspector_.importFile(op, kind, bytes, name);
+}
+
 bool View::isStepperParam(int param) {
     // The voice limit, an operator's unison count and fixed Mult, and a MIDI source's controller number; every other
     // stepped value stays a knob.
@@ -1297,6 +1334,8 @@ int View::stepperButton(const Widget &w, Point p) {
 Point View::knobCenter(const Widget &w) {
     if (isRatioDisplay(w))
         return kRatioBox.center();
+    if (isTableDisplay(w))
+        return w.rect.center();
     if (isStepper(w))
         return w.well.center();
     if (!w.compact)
@@ -1307,6 +1346,8 @@ Point View::knobCenter(const Widget &w) {
 float View::knobRadius(const Widget &w) {
     if (isRatioDisplay(w))
         return kRatioBox.h * 0.5f;
+    if (isTableDisplay(w))
+        return w.rect.h * 0.5f;
     if (!w.compact)
         return w.rect.w * 0.5f;
     return w.shrunk ? 14.0f : 17.0f;
@@ -1321,7 +1362,7 @@ float View::compactTextX(const Widget &w) {
 bool View::onValue(const Widget &w, Point p) {
     if (w.kind == Kind::ValueText)
         return true;
-    if (w.kind != Kind::Knob || isRatioDisplay(w)) // the Ratio readout's digits are its number
+    if (w.kind != Kind::Knob || isRatioDisplay(w) || isTableDisplay(w)) // the Ratio readout's digits are its number
         return false;
     if (isStepper(w)) // its label, as a knob's (the field resets, as a knob does)
         return w.compact ? p.y < w.well.y : p.y >= w.rect.y + w.rect.w;
@@ -1470,7 +1511,11 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ViewTab, kViewTabs[v], -1, v);
     const RoutingView view = controller_.layout().view;
     const int partials = partialEditing();
-    if (editing >= 0 || partials >= 0) {
+    if (editing >= 0) {
+        shapes_.widgets(list);
+    } else if (tableBrowsing() >= 0) { // over the routing panel, as the partial editor is
+        tables_.widgets(list);
+    } else if (partials >= 0) {
         shapes_.widgets(list);
     } else if (view == RoutingView::Mods) {
         modsPanel_.widgets(list);
@@ -1745,17 +1790,22 @@ std::vector<View::Widget> View::widgets() const {
             continue;
         }
         // Under a knob, 10 px apart and centered; a header knob's go under its knob, at its left.
-        // The Ratio readout's go along its box's bottom edge.
-        // A stepper's go under its field, across it.
+        // The Ratio readout's go along its box's bottom edge; the TABLE tab's display's along its bottom edge too,
+        // centered on it, as many as fit clear of its meter at the right (and as far in from the left). A stepper's go
+        // under its field, across it.
+        const bool tableDisplay = isTableDisplay(list[i]);
+        const float tableHandlesW = r.w - 2.0f * 30.0f;
         const bool stepper = isStepper(list[i]);
         const Rect well = list[i].well;
         const Point base = isRatioDisplay(list[i])         ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
+                           : tableDisplay               ? Point{r.center().x, r.bottom() - 8.0f}
                            : stepper && list[i].compact ? Point{well.center().x, well.bottom() + 4.5f}
                            : list[i].compact            ? Point{r.x + 18.0f, r.y + 37.0f}
                                                         : Point{r.center().x, r.y + r.w - 1.0f};
         // The Ratio readout keeps its handles clear of its box's rounded corners.
         constexpr float kStep = 10.0f;
         const float width = isRatioDisplay(list[i]) ? r.w - 9.0f
+                            : tableDisplay          ? tableHandlesW
                             : stepper               ? well.w - 6.0f
                             : list[i].compact       ? 34.0f
                                                     : r.w;
@@ -2353,7 +2403,11 @@ void View::paint(Canvas &c, Rect area) {
     paintPanels(c);
     if (headerShown)
         paintHeader(c);
-    if (shapeEditing() >= 0 || partialEditing() >= 0)
+    if (shapeEditing() >= 0)
+        shapes_.paintBack(c);
+    else if (tableBrowsing() >= 0 && panelsShown) // over the routing panel, as the partial editor is
+        tables_.paintBack(c);
+    else if (partialEditing() >= 0)
         shapes_.paintBack(c);
     else if (panelsShown) switch (controller_.layout().view) {
     case RoutingView::Graph:
@@ -2491,7 +2545,7 @@ void View::paintPanels(Canvas &c) {
         // The panel under the tabs, while its first tab is the one shown, has that corner square (see Kind::ViewTab),
         // so its shadow is too there: round elsewhere, square beside the corner, and above it only the tab's.
         const bool firstShown = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
-                                partialEditing() < 0;
+                                partialEditing() < 0 && tableBrowsing() < 0;
         for (const Rect &p : panels) {
             if (!firstShown || p.x != kFxPanel.x || p.y != kFxPanel.y) {
                 shadow(p, kPanelRadius);
@@ -2516,7 +2570,8 @@ void View::paintPanels(Canvas &c) {
     }
     // The panel's corner the first tab's side runs down, while it is the one shown, squared here (see Kind::ViewTab),
     // under the inspector's lens, which floats over it.
-    const bool firstTab = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0;
+    const bool firstTab = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
+                          partialEditing() < 0 && tableBrowsing() < 0;
     if (firstTab)
         c.fillRect({kFxPanel.x, kFxPanel.y, kPanelRadius, kPanelRadius}, kPanel);
 }
@@ -4146,6 +4201,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                        on ? litInk(color) : (hovered ? kText : kDim));
         else if (modeChoice)
             routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::LoopMode) >= 0) // a Sample operator's loop and how it plays, as icons
+            sampleLoopIcon(c, w.rect.center(), sampleLoop(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::SampleMode) >= 0)
+            sampleModeIcon(c, w.rect.center(), sampleMode(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::SampleReverse) >= 0)
+            sampleReverseIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
             warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
                      on ? litInk(color) : (hovered ? kText : kDim));
@@ -4184,7 +4245,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // are their names, with a tab's shape faintly under the mouse. While an editor has the panels (shape, shaper
         // curve or partials), none of them is the one shown.
         const bool selected = controller_.layout().view == static_cast<RoutingView>(w.a) && shapeEditing() < 0 &&
-                              partialEditing() < 0;
+                              partialEditing() < 0 && tableBrowsing() < 0;
         if (selected) {
             if (look.panelShadow > 0.0f) { // its panel's soft shadow, round its top and sides, above the panel only
                 c.pushClip({w.rect.x - 12.0f, w.rect.y - 12.0f, w.rect.w + 24.0f, w.rect.h + 12.0f});
@@ -4875,14 +4936,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // split's middle band's effects onto its low band or its high one), each in its color.
         const std::optional<Panel::ConfirmWords> words =
             confirmFrom_ ? std::optional(confirmFrom_->confirmWords(confirm_)) : std::nullopt;
-        if (w.a == 4 && words) {
+        if (w.a == 4 && words && !words->third.empty()) {
             c.text(w.rect, words->third, kTextBody, face(false, kAccent), Align::Center);
             break;
         }
         if (w.a >= 2 && words && w.a - 2 < static_cast<int>(words->choices.size())) {
             const auto &[label, color] = words->choices[static_cast<size_t>(w.a - 2)];
-            const Color ink = face(true, color);
-            c.text(w.rect, label, kTextBody, ink, Align::Center, true);
+            const Color ink = face(!words->plainChoices, color);
+            c.text(w.rect, label, kTextBody, ink, Align::Center, !words->plainChoices);
             break;
         }
         const bool ok = w.a == 1;
@@ -5765,11 +5826,11 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, kRadiusControl);
             continue;
         }
-        if (w.popup || covered(isRatioDisplay(w)      ? kRatioBox.inset(-4.0f)
-                               : isStepper(w)         ? w.well.inset(-4.0f)
-                               : w.kind == Kind::Knob ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f,
-                                                             w.rect.w + 14.0f}
-                                                      : w.rect.inset(-4.0f)))
+        const bool round = w.kind == Kind::Knob && !isTableDisplay(w); // Position's display is a box
+        if (w.popup || covered(isRatioDisplay(w) ? kRatioBox.inset(-4.0f)
+                               : isStepper(w)    ? w.well.inset(-4.0f)
+                               : round           ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f, w.rect.w + 14.0f}
+                                                 : w.rect.inset(-4.0f)))
             continue;
         if (w.kind == Kind::ModDot && w.a != source) { // a depth handle takes it as the modulation's aux
             if (w.clip.w > 0.0f && !w.clip.contains(w.rect.center()))
@@ -5800,6 +5861,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
         if (isRatioDisplay(w)) {
             c.strokeRect(kRatioBox.inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusCard);
+        } else if (isTableDisplay(w)) {
+            c.strokeRect(w.rect.inset(-3.0f), ring, over ? 2.5f : 1.5f, kRadiusCard + 3.0f);
         } else if (isStepper(w)) {
             c.strokeRect(w.well.inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusControl + 4.0f);
         } else if (w.kind == Kind::Knob) {
@@ -5871,6 +5934,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             c.strokeRect(pill->rect.inset(-2.0f), color, 1.5f, pill->rect.h * 0.5f + 2.0f);
         if (isRatioDisplay(w))
             c.strokeRect(kRatioBox.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusCard);
+        else if (isTableDisplay(w))
+            c.strokeRect(w.rect.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusCard + 3.0f);
         else if (isStepper(w))
             c.strokeRect(w.well.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusControl + 3.0f);
         else if (w.kind == Kind::Knob)
@@ -5910,6 +5975,8 @@ Rect View::typingField() const {
     const Widget &w = typing_->widget;
     if (isRatioDisplay(w)) // over its digits
         return {kRatioBox.x, kRatioBox.y + 10.0f, kRatioBox.w, 22.0f};
+    if (isTableDisplay(w)) // over its % in the top left corner
+        return {w.rect.x + 4.0f, w.rect.y + 2.0f, 80.0f, 18.0f};
     if (isStepper(w)) { // over its field, at least as wide as a knob's
         const float width = std::max(w.well.w, 60.0f);
         return {w.well.center().x - width * 0.5f, w.well.center().y - 10.0f, width, 20.0f};
@@ -6495,6 +6562,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.layoutChanged();
         break;
     case Kind::ViewTab:
+        tables_.close();
         showView(static_cast<RoutingView>(w.a));
         break;
     case Kind::SourceGrip:
@@ -7249,8 +7317,8 @@ void View::doubleClick(Point p, Modifiers mods) {
         edit(hit->param, ratioNorm(ratioHundredths(value(hit->param)) / span * span + 100 % span));
         return;
     }
-    if (hit && (hit->kind == Kind::MacroName || hit->kind == Kind::TempoBox)) {
-        startTyping(*hit);
+    if (hit && (hit->kind == Kind::MacroName || hit->kind == Kind::TempoBox || hit->kind == Kind::SampleRoot)) {
+        startTyping(*hit); // a sample's ROOT readout typed as its value
         return;
     }
     // The settings' sliders back to where they start: the theme's own color, the glow at half and the lines at 75 %.

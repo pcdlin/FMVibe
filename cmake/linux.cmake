@@ -44,6 +44,7 @@ add_library(fmvibe-core STATIC
     src/gui/seqpanel.cpp
     src/gui/seqpanel.h
     src/gui/layout.h
+    src/gui/opsource.cpp
     src/gui/patchedits.cpp
     src/gui/patchedits.h
     src/gui/presetbrowser.cpp
@@ -55,6 +56,8 @@ add_library(fmvibe-core STATIC
     src/gui/routingpanel.h
     src/gui/shapeeditor.cpp
     src/gui/shapeeditor.h
+    src/gui/tablebrowser.cpp
+    src/gui/tablebrowser.h
     src/gui/theme.cpp
     src/gui/theme.h
     src/gui/view.cpp
@@ -65,10 +68,17 @@ add_library(fmvibe-core STATIC
     src/sharedtelemetry.h
     src/state.cpp
     src/state.h
+    src/tables/flac.cpp
+    src/tables/library.cpp
+    src/tables/library.h
+    src/tables/readers.cpp
+    src/tables/vital.cpp
+    src/tables/readers.h
 )
 target_include_directories(fmvibe-core PUBLIC src)
 target_compile_definitions(fmvibe-core PUBLIC FMVIBE_CAIRO)
-target_link_libraries(fmvibe-core PUBLIC clap PkgConfig::CAIRO)
+find_package(Threads REQUIRED)
+target_link_libraries(fmvibe-core PUBLIC clap PkgConfig::CAIRO Threads::Threads)
 fmvibe_options(fmvibe-core)
 
 enable_testing()
@@ -76,7 +86,9 @@ enable_testing()
 add_executable(fmvibe-quality tests/quality.cpp)
 target_link_libraries(fmvibe-quality PRIVATE fmvibe-core)
 fmvibe_options(fmvibe-quality)
-add_test(NAME quality COMMAND fmvibe-quality)
+# The stack the Windows build links it with (/STACK in CMakeLists.txt): it keeps whole engines on the stack, more
+# at once than a shell's usual 8 MB holds. A main thread's stack on Linux is the shell's limit, so the test raises it.
+add_test(NAME quality COMMAND sh -c "ulimit -s 65536 && exec \"$1\"" sh $<TARGET_FILE:fmvibe-quality>)
 
 add_executable(fmvibe-uishot tools/uishot.cpp)
 target_link_libraries(fmvibe-uishot PRIVATE fmvibe-core)

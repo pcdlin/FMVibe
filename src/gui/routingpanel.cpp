@@ -294,13 +294,14 @@ RoutingPanel::RoutingPanel(PanelHost &host)
     : host_(host), routing_(host.routingModel()), table_(paramTable()) {}
 
 bool RoutingPanel::graphShown() const {
-    return controller().layout().view == RoutingView::Graph && !host_.shapeEditorOpen() && !host_.partialEditorOpen();
+    return controller().layout().view == RoutingView::Graph && !host_.shapeEditorOpen() && !host_.partialEditorOpen() &&
+           !host_.tableBrowserOpen();
 }
 
 bool RoutingPanel::shown() const {
     const RoutingView view = controller().layout().view;
     return (view == RoutingView::Graph || view == RoutingView::Matrix) && !host_.shapeEditorOpen() &&
-           !host_.partialEditorOpen();
+           !host_.partialEditorOpen() && !host_.tableBrowserOpen();
 }
 
 // --- Geometry.
@@ -1131,6 +1132,8 @@ void RoutingPanel::paintNode(Canvas &c, const Widget &w, bool hover) {
                       fixedHzText(value(paramIndex(op, OpParam::FixedFreq)), value(paramIndex(op, OpParam::FixedMult)),
                                   true)
                           .c_str());
+    else if (isDataWave(wave))
+        ratio[0] = '\0'; // a table or a sample plays at the note's pitch
     if (isNoise(op)) {
         // No ratio: its color, or its slope between the named ones.
         const double db = std::round(value(paramIndex(op, OpParam::NoiseSlope)) * 60.0) / 10.0;

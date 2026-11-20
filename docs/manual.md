@@ -32,7 +32,7 @@ oscillators, envelopes, LFOs and filters.
 FMVibe works in the spirit of classic and modern FM synthesizers. Its main features:
 
 - **Six operators** (A–F) with a wide choice of waveforms, including custom drawn waves of up to 64 partials,
-  unison of up to 16 copies, phase warps, and fixed-frequency mode.
+  wavetables and samples, unison of up to 16 copies, phase warps, and fixed-frequency mode.
 - **Free routing**: any operator can modulate any other, itself included, in four route modes (Phase, Linear FM,
   Exp FM and Ring). Routes can be edited as a graph or a matrix, or set from one of the classic FM algorithms.
 - **Two filters and two shapers per voice**, which can be placed anywhere in the routing, fed back into themselves
@@ -180,8 +180,9 @@ The inspector has a tab for each node: operators A–F, filters F1 and F2, and s
   same.
 - A dot in a tab's corner means the node is sent to the output.
 
-Under the tabs, the page title shows the node's letter and a **summary line**, for example
-`A Saw · 1.20 · ×4 · to F1`: the wave, ratio, unison copies and destinations. On an operator's page, the letter is
+Under the tabs, the page title shows the node's letter. On a filter's or shaper's page a **summary line** follows it:
+its type or curve, what feeds it and where it goes. On an operator's page, the **source list** takes the summary's
+place and picks what the operator plays. The operator's letter is
 also the operator's modulation handle: drag it onto a control to modulate it with the operator's output (see
 [Operators as sources](#operators-as-sources)). While a node is off, its page is dimmed, but its controls still work.
 
@@ -190,7 +191,11 @@ again.
 
 ### Waves
 
-The wave buttons at the top right of the page select the operator's waveform:
+The **source list** on the title line picks what the operator plays: **Wave**, **Wavetable** or **Sample** (see
+[Wavetables](#wavetables) and [Samples](#samples)). Click it to open the list, then click an entry. Going back to Wave
+brings back the wave the operator had before.
+
+With Wave picked, the wave buttons at the top right of the page select the operator's waveform:
 
 | Wave | Description |
 | --- | --- |
@@ -221,7 +226,7 @@ to 128.
 
 ### Fixed pitch
 
-The small **keyboard icon** on the summary line switches the operator to a **fixed frequency** that ignores the
+The small **keyboard icon** on the title line switches the operator to a **fixed frequency** that ignores the
 note. **Freq** (1 Hz–2 kHz) and **Mult** (×0.001, ×0.01, ×0.1, ×1 or ×10) then replace the Ratio readout.
 
 When you switch it on, Freq and Mult are set to the frequency the operator was playing for an A4. A fixed operator
@@ -289,7 +294,8 @@ In the routing graph, an operator with unison is drawn as a stack of rings.
 
 ### Warp tab
 
-**WARP** shows a scope of the operator and provides phase warp and hard sync functions.
+**WARP** shows a scope of the operator and provides phase warp and hard sync functions. A Wavetable operator has its
+warp on the [TABLE tab](#wavetables) instead.
 
 The **scope** shows the operator's output in the most recent voice, with its FM, envelope and modulation. The trace
 stands still even under heavy FM. The **1 / 2 / 4** buttons choose how many cycles are shown. With no note
@@ -355,7 +361,88 @@ editor** over the routing panel. It shows one cycle of the resulting wave and tw
 - The **check mark**, or any view tab, closes the editor.
 
 If you pick Custom after another wave, the partials start out matching that wave. While the wave is Custom, a **pencil**
-button on the operator's summary line opens the partial editor again.
+button on the operator's title line opens the partial editor again.
+
+### Wavetables
+
+Pick **Wavetable** from the source list to play a **wavetable**: a set of single-cycle frames that **Position** (0–100 %)
+moves through, blending smoothly between neighboring frames. A table plays at the note's pitch, tuned by Pitch and
+Detune; it has no Ratio. Unison, the warps, Note Sync and every route mode work as with a wave.
+
+FMVibe comes with thirteen **factory tables**: Basic Shapes (the default), PWM, Harmonic Build, FM Sweep, Sync Sweep,
+Resonant Sweep, Vowels, Fold, Odd to Even, Phase Distortion, Comb Sweep, Window Sync and Bit Crush. You can also load tables from files (see
+[Wavetable and sample files](#wavetable-and-sample-files)).
+
+The **TABLE** tab takes the WARP tab's place:
+
+- Along the top, the table's name opens the [table browser](#the-table-browser). The arrows either side step to the
+  previous or next table.
+- The display shows the frames as a stack, with the frame Position plays lit.
+- The display is Position's control. Click or drag on it to set Position to the height of the mouse. Shift+drag for
+  fine moves, double-click for 0 %. Ctrl+click the % in the display's corner to type a value.
+- Drop a modulation handle anywhere on the display to modulate Position. The meter on the right shows each
+  modulation's reach in its source's color, and the frame the newest voice plays as a diamond.
+- Under the display, the warp buttons, **Amount** and **NOTE** work as on the [Warp tab](#warp-tab).
+
+Position is a host parameter, so your DAW can automate it.
+
+### Samples
+
+Pick **Sample** from the source list to play a **sample**: a recording played at the note's pitch. An imported sample
+plays at its own speed on middle C (C4). It has no Ratio, and Phase, the warps and Note Sync do nothing on it.
+
+The **SAMPLE** tab takes the WARP tab's place:
+
+- Along the top, the sample's name opens the [table browser](#the-table-browser) on samples, and the import button
+  opens a file dialog.
+- The display shows the waveform. **ROOT** at its top right sets the note that plays the sample at its own speed:
+  drag it up or down, or double-click to type a note name or number.
+- Drag the handles on the display to set **Start** (the tab along the foot), **Loop Start** and **Loop End** (the
+  brackets) and **Loop Fade** (the ramp before the loop's end). Alt+drag a loop handle to snap it to a zero crossing.
+  Double-click a handle to reset it. A line shows where the newest voice is playing.
+- **LOOP**: **Off**, **Forward** or **Ping-Pong** between Loop Start and Loop End.
+- **MODE** says what happens when you let go of the key:
+
+  | Mode | Effect |
+  | --- | --- |
+  | Gate | The sample keeps looping through the envelope's release. |
+  | Sustain | The sample leaves its loop and plays on to its end. |
+  | One-Shot | The sample plays to its end whatever the key does; the envelope never releases. |
+
+- The **mirror** button between LOOP and MODE plays the sample backward.
+
+A sample that has played to its end goes silent, and the note ends once all its sounding operators have. Rnd Phase on
+the UNISON tab starts the copies up to 50 ms apart. Start is a host parameter, so your DAW can automate it.
+
+### The table browser
+
+Click a table's or sample's name to open the **table browser** in place of the routing panel. Click the name again,
+or **Done**, to close it. Tables and samples each have their own browser and folders.
+
+- **Sources**, on the left: **Factory** (tables only), **In this patch**, and your folders. **+ Add folder…** adds
+  a folder. A folder lists the files directly in it; add a subfolder separately if you want its files.
+- A folder's right-click menu renames it, sets the frame size for its files that don't state one, scans it again,
+  shows it in Explorer or removes it. Your folders are shared by every FMVibe window on your computer.
+- **Files**, in the middle: click one to play it at once (each pick can be undone). Then play notes to hear it.
+- **Search**: click it to type. It finds tables in every source. Up and Down pick a row, Enter plays it, Escape
+  empties the search.
+- **Preview**, on the right: the table or waveform under the mouse, with its details.
+- **Import file…** loads a file from anywhere.
+
+Folders are scanned in the background. A large folder shows **Scanning…** with its progress the first time; after
+that it opens at once.
+
+### Wavetable and sample files
+
+FMVibe reads WAV, FLAC, `.wt` and Vital's `.vitaltable` files. A Vital preset can't be read: export its
+table from Vital as a WAV.
+
+- Load a file from the table browser, with the import button, or by dragging it from Explorer (or your DAW) onto the
+  TABLE or SAMPLE display.
+- If a file doesn't say how long its frames are, FMVibe asks: **256**, **512**, **1024**, **2048** or **Auto**, which
+  guesses from the file's length.
+- Every table or sample you pick is **copied into the patch**. Projects and presets play the same on another computer,
+  without the files. The limit is 16 MB per file and 64 MB per patch.
 
 ## 7. Routing
 
@@ -1506,7 +1593,7 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 | Section | Pages |
 | --- | --- |
 | Mix | Macros (shown first), Global, Play, Outputs |
-| Operators | Op A … Op F: wave, ratio, pitch (Freq and Mult when fixed), detune and envelope |
+| Operators | Op A … Op F: wave, ratio (a wavetable's Position, a sample's Start), pitch (Freq and Mult when fixed), detune and envelope |
 | Filters | Filter 1 and 2; the filter links |
 | Shapers | Shaper 1 and 2 |
 | Matrix | What each operator, filter and shaper modulates or feeds |
@@ -1529,9 +1616,9 @@ automatically and almost instantly.
 
 | Saved in | Contents |
 | --- | --- |
-| Presets and projects | The whole patch: parameters, routing and its layout, modulation, effects, sequencer patterns, macro names, preset info. |
+| Presets and projects | The whole patch: parameters, routing and its layout, modulation, effects, sequencer patterns, macro names, preset info, and the wavetables and samples it plays. |
 | Projects only | Oversampling, MPE settings, the preset the patch came from and whether it changed. |
-| Personal settings file | Theme, hue, glow, lines, grid, handle size, window size, favorites, recent presets, your categories, where the browser opens. |
+| Personal settings file | Theme, hue, glow, lines, grid, handle size, window size, favorites, recent presets, your categories, where the browser opens, the table browser's folders. |
 
 ### CPU
 
@@ -1581,6 +1668,16 @@ the main CPU costs.
 | Hold a dragged handle over a view tab for half a second | Show that view |
 | Hold a dragged handle over a node, its tab or its name in the matrix for half a second | Show that node in the inspector |
 | Drag an operator's letter (its page's title) | Assign the operator's output as modulation |
+
+### Wavetables and samples
+
+| Action | Result |
+| --- | --- |
+| Click or drag the TABLE display | Set Position |
+| Shift+drag the TABLE display | Fine adjustment |
+| Drag a handle on the SAMPLE display | Set Start, the loop or its fade |
+| Alt+drag a loop handle | Snap it to a zero crossing |
+| Drop a file on the TABLE or SAMPLE display | Import it |
 
 ### Shape editors
 

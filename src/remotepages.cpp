@@ -48,10 +48,16 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
     add(mix, tr(Str::PageOutputs), outputs);
 
     for (int op = 0; op < kOps; ++op) {
-        // Fixed, Freq and Mult take the places of Ratio and Pitch, which it ignores.
+        // Fixed, Freq and Mult take the places of Ratio and Pitch, which it ignores. A table or a sample has no Ratio:
+        // Position or Start takes its place.
         const bool fixed = values[paramIndex(op, OpParam::Fixed)] >= 0.5;
+        const OpWave wave = opWave(values[paramIndex(op, OpParam::Wave)]);
+        const OpParam pitch = fixed                       ? OpParam::FixedFreq
+                              : wave == OpWave::Wavetable ? OpParam::TablePos
+                              : wave == OpWave::Sample    ? OpParam::SampleStart
+                                                          : OpParam::Ratio;
         add(tr(Str::ModuleOperators), trf(Str::ParamOp, {letter(op)}),
-            {paramIndex(op, OpParam::Wave), paramIndex(op, fixed ? OpParam::FixedFreq : OpParam::Ratio),
+            {paramIndex(op, OpParam::Wave), paramIndex(op, pitch),
              paramIndex(op, fixed ? OpParam::FixedMult : OpParam::Transpose),
              paramIndex(op, OpParam::Detune), paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Decay),
              paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)});

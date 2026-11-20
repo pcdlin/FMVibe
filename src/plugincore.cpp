@@ -42,9 +42,83 @@ PluginCore::PluginCore() {
     // compare what plays sample for sample, ask for the same every time.
     if (GetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", nullptr, 0) == 0)
         synth_.seedNotes(std::random_device{}());
+    // The Wavetable and Sample operators' data reaches the audio thread through the synth's registry.
+    data().attach(&synth_.registry());
+    refreshData(); // operator A's table (Basic Shapes), should it be switched to Wavetable
 }
 
-PluginCore::~PluginCore() = default;
+PluginCore::~PluginCore() {
+    // The registry's pointers go with the data: nothing renders any more.
+    data().attach(nullptr);
+}
+
+void PluginCore::onMainThread() {
+    sectionsChanged();
+    if (latencyEdited_) {
+        latencyEdited_ = false;
+        askRestart();
+    }
+    dataAsked_.store(false);
+    for (const uint32_t key : synth_.registry().takeMissing())
+        if (!data().ensure(key))
+            synth_.registry().ignore(key); // a key the patch doesn't hold: its operator stays silent
+    refreshData();
+}
+
+void PluginCore::chooseOperatorFile(int op, DataKind kind) {
+    if (editor_)
+        editor_->chooseOperatorFile(op, kind);
+}
+
+TableLibrary *PluginCore::tableLibrary(DataKind kind) {
+    const bool samples = kind == DataKind::Sample;
+    std::unique_ptr<TableLibrary> &library = samples ? sampleLibrary_ : library_;
+    if (!library) {
+        const std::string folder = userSettingsFolder();
+        library = std::make_unique<TableLibrary>(
+            folder.empty() ? std::string() : folder + (samples ? "/samples-cache.bin" : "/tables-cache.bin"), samples);
+        readUserSettings();
+        library->setFolders(samples ? userSettings.sampleFolders : userSettings.tableFolders);
+        (samples ? sampleFoldersSeen_ : tableFoldersSeen_) = library->folders();
+    }
+    return library.get();
+}
+
+void PluginCore::refreshTableFolders(DataKind kind) {
+    const bool samples = kind == DataKind::Sample;
+    TableLibrary *const library = (samples ? sampleLibrary_ : library_).get();
+    if (!library)
+        return;
+    readUserSettings();
+    library->syncFolders(samples ? userSettings.sampleFolders : userSettings.tableFolders);
+    (samples ? sampleFoldersSeen_ : tableFoldersSeen_) = library->folders();
+}
+
+void PluginCore::chooseTableFolder(DataKind kind) {
+    if (editor_)
+        editor_->chooseTableFolder(kind);
+}
+
+void PluginCore::tableFoldersChanged(DataKind kind) {
+    const bool samples = kind == DataKind::Sample;
+    const TableLibrary *const library = (samples ? sampleLibrary_ : library_).get();
+    if (!library)
+        return;
+    // Only what changed here goes into the file, which another instance may have added folders to meanwhile.
+    readUserSettings();
+    std::vector<TableFolder> &saved = samples ? userSettings.sampleFolders : userSettings.tableFolders;
+    std::vector<TableFolder> &seen = samples ? sampleFoldersSeen_ : tableFoldersSeen_;
+    const std::vector<TableFolder> now = library->folders();
+    saved = mergedFolders(saved, seen, now);
+    seen = now;
+    writeUserSettings();
+}
+
+void PluginCore::showTableFolder(DataKind kind, int source) {
+    const TableLibrary *const library = (kind == DataKind::Sample ? sampleLibrary_ : library_).get();
+    if (library && source >= 0 && source < static_cast<int>(library->sources().size()))
+        gui::showFolder(library->sources()[source].folder.path);
+}
 
 void PluginCore::layoutChanged() {
     sectionsChanged(); // the sources' order
@@ -89,14 +163,6 @@ bool PluginCore::activate(double sampleRate) {
     latency_.store(latencyNow());
     restartAskedFor_.store(0);
     return true;
-}
-
-void PluginCore::onMainThread() {
-    sectionsChanged();
-    if (latencyEdited_) {
-        latencyEdited_ = false;
-        askRestart();
-    }
 }
 
 int PluginCore::latencyAt(double sampleRate) const {
@@ -180,6 +246,7 @@ void PluginCore::setMpeBendRange(int semitones) {
 }
 
 void PluginCore::beginBlock() {
+    inBlock_.store(true);
     // Filter and delay tails decay into denormals, which are slow; flush them to zero.
     csr_ = _mm_getcsr();
     _mm_setcsr(csr_ | 0x8040); // flush-to-zero and denormals-are-zero
@@ -230,6 +297,11 @@ void PluginCore::endBlock() {
     telemetryOpen_ = open;
     playedTempo_.store(synth_.tempo(), std::memory_order_relaxed);
     _mm_setcsr(csr_);
+    // A Wavetable or Sample operator's data wasn't there (a factory table not built yet, a host's value): the main
+    // thread builds and registers it, if it can.
+    if (synth_.registry().anyMissing() && !dataAsked_.exchange(true))
+        hostRequestCallback();
+    inBlock_.store(false);
 }
 
 // Main thread: the virtual keyboard. The host may be asleep, so ask it to run us.
@@ -321,8 +393,11 @@ void PluginCore::valuesInto(ParamValues &values) const {
 
 void PluginCore::sectionsChanged() {
     std::array<int64_t, kOps + 2 * kMaxSources> now{};
-    for (int op = 0; op < kOps; ++op)
-        now[op] = values_[paramIndex(op, OpParam::Fixed)].load() >= 0.5;
+    for (int op = 0; op < kOps; ++op) { // what its page shows in Ratio's place
+        const OpWave wave = opWave(values_[paramIndex(op, OpParam::Wave)].load());
+        now[op] = (values_[paramIndex(op, OpParam::Fixed)].load() >= 0.5 ? 1 : 0) +
+                  (wave == OpWave::Wavetable ? 2 : wave == OpWave::Sample ? 4 : 0);
+    }
     for (int source = 0; source < kMaxSources; ++source) {
         now[kOps + source] = std::lround(values_[paramIndex(source, SourceParam::Type)].load());
         now[kOps + kMaxSources + source] = layout_.sourceOrder[source];
@@ -365,17 +440,35 @@ void PluginCore::setIdleLfosShown(bool shown) {
         hostRequestProcess();
 }
 
+namespace {
+
+// The data keys the params name, an operator's table and sample each.
+std::vector<uint32_t> namedKeys(const ParamValues &values) {
+    std::vector<uint32_t> keys;
+    for (int op = 0; op < kOps; ++op)
+        for (const OpParam p : {OpParam::Table, OpParam::Sample})
+            keys.push_back(dataKey(values[paramIndex(op, p)]));
+    return keys;
+}
+
+} // namespace
+
 bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
     const auto values = std::make_unique<ParamValues>();
     valuesInto(*values);
     if (!writePatch(stream, *values, layout_))
         return false;
-    if (!settings)
-        return true;
-    if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load()}))
-        return false;
-    // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
-    return writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile())));
+    if (settings) {
+        if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load()}))
+            return false;
+        // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
+        if (!writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile()))))
+            return false;
+    }
+    // Last, the tables and samples the params name that the patch holds itself (not the factory tables); a patch with
+    // none has no DATA chunk, its bytes as they were before there was one.
+    const std::vector<const OpData *> named = data().named(namedKeys(*values));
+    return named.empty() || writeDataChunk(stream, named);
 }
 
 bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
@@ -383,6 +476,32 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     ParamValues &loaded = *read;
     if (!readParams(stream, loaded))
         return false;
+    // The editor layout is optional; whatever is missing keeps its default.
+    const gui::UiLayout layout = readLayout(stream);
+    // The settings and the preset are optional too: a project saved before them gets the defaults.
+    Settings stored;
+    std::string preset;
+    bool edited = false, hasPreset = false;
+    if (settings) {
+        stored = readSettings(stream);
+        hasPreset = readPresetChunk(stream, preset, edited);
+    }
+    // The tables and samples, built and registered before the params naming them are stored, so the audio thread's
+    // first block with them finds them.
+    std::vector<std::shared_ptr<OpData>> entries;
+    readDataChunk(stream, entries);
+    for (std::shared_ptr<OpData> &entry : entries) {
+        buildOpData(*entry);
+        data().put(std::move(entry));
+    }
+    for (int op = 0; op < kOps; ++op) {
+        const OpWave wave = opWave(loaded[paramIndex(op, OpParam::Wave)]);
+        if (wave == OpWave::Wavetable)
+            data().ensure(dataKey(loaded[paramIndex(op, OpParam::Table)]));
+        else if (wave == OpWave::Sample && dataKey(loaded[paramIndex(op, OpParam::Sample)]) != 0)
+            data().ensure(dataKey(loaded[paramIndex(op, OpParam::Sample)]));
+    }
+
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(loaded[i]);
     valuesChanged();
@@ -395,8 +514,6 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     voiceLimitChanged();
     hostVoicesChanged();
 
-    // The editor layout is optional; whatever is missing keeps its default.
-    const gui::UiLayout layout = readLayout(stream);
     // A preset leaves the editor as it is (its size, the modulation panel, the shape grid) from the start,
     // so its window isn't resized to the preset's and back.
     const gui::UiLayout before = layout_;
@@ -404,18 +521,14 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     if (!settings)
         keepEditorLayout(before);
 
-    // The settings are optional too: a project saved before them gets the defaults.
     if (settings) {
-        const Settings stored = readSettings(stream);
         oversampling_.store(stored.oversampling);
         mpe_.store(stored.mpe);
         mpeBendRange_.store(stored.mpeBendRange);
         restartIfNeeded();
 
         // Which preset it was. Without that, it shows Init, changed unless it is Init.
-        std::string preset;
-        bool edited = false;
-        if (readPresetChunk(stream, preset, edited)) {
+        if (hasPreset) {
             // Save writes the patch over the preset named here, so a project names only a preset file or a factory
             // preset: any other path (a project made by hand, say) shows as an edited patch with no preset. A copy
             // of a factory preset the plugin once wrote into the preset folder is that factory preset.
@@ -650,8 +763,8 @@ bool PluginCore::presetExists(const std::string &folder, const std::string &name
     return !path.empty() && std::filesystem::exists(path, ignored);
 }
 
-// The file read whole (its params and its layout), its info replaced, and written back as a preset saved is: beside
-// it first, then in its place, so a write that fails leaves it as it was.
+// The file read whole (its params, its layout and the tables and samples it holds), its info replaced, and written back
+// as a preset saved is: beside it first, then in its place, so a write that fails leaves it as it was.
 bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
     namespace fs = std::filesystem;
     if (index < 0 || index >= static_cast<int>(presets_.files().size()) || presets_.entries()[index].factory)
@@ -659,14 +772,17 @@ bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
     const std::wstring path = presets_.files()[index];
     const auto values = std::make_unique<ParamValues>();
     gui::UiLayout layout;
+    std::vector<std::shared_ptr<OpData>> held;
     {
         FILE *file = nullptr;
         if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
             return false;
         const clap_istream_t stream = fileIn(file);
         const bool read = readParams(&stream, *values);
-        if (read)
+        if (read) {
             layout = readLayout(&stream);
+            readDataChunk(&stream, held); // its own tables and samples, as stored, which go back with it
+        }
         std::fclose(file);
         if (!read)
             return false;
@@ -677,7 +793,10 @@ bool PluginCore::setPresetInfo(int index, const gui::PresetInfo &info) {
     if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
         return false;
     const clap_ostream_t stream = fileOut(file);
-    const bool written = writePatch(&stream, *values, layout);
+    std::vector<const OpData *> data;
+    for (const std::shared_ptr<OpData> &entry : held)
+        data.push_back(entry.get());
+    const bool written = writePatch(&stream, *values, layout) && (data.empty() || writeDataChunk(&stream, data));
     const bool closed = std::fclose(file) == 0;
     if (!written || !closed) {
         std::error_code ignored;

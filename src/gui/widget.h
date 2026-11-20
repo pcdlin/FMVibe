@@ -270,6 +270,25 @@ enum class WidgetKind {
     SeqZoom,      // b = 0 zooms out across, 1 in across, 2 out up and down, 3 in up and down
     SeqScroll,    // the bar under the roll while it is zoomed in across: drag the thumb, or click the track there
     SeqScrollY,   // the bar at the roll's right, for its rows: drag the thumb, or click the track there
+    // A Wavetable or Sample operator's, on the inspector's page (see inspectorpanel.cpp's source page).
+    OpSourceList, // a = op: the list button on the page's title row that picks its source
+    OpSourceMenu, // the open source list: a = 0 around it (a click closes it), 1 its panel
+    OpSourceItem, // a = op, b = 0 a wave, 1 a wavetable, 2 a sample: an entry of the open source list
+    TableStep,    // a = op, b = -1 or 1: steps to the table before or after the one played, in its source
+    TablePicker,  // a = op: the table's name; opens the table browser
+    SamplePicker, // a = op: the sample's name; opens the table browser, picking a sample
+    DataImport,   // a = op, b = DataKind: the import button, and the dashed card of a Sample operator with none
+    SampleHandle, // param, a = op, b = which (0 Start, 1 Loop Start, 2 Loop End, 3 Loop Fade): dragged across
+    SampleRoot,   // param = its Root, a = op: the ROOT readout, dragged up and down or typed
+    // The table browser (see tablebrowser.cpp), over the routing panel.
+    TbSource,     // a = source (-2 Factory, -1 In this patch, else the library's): picks it; right-click its menu
+    TbAddFolder,  // + Add folder...
+    TbGroup,      // a = its row: a subfolder's header, which folds it
+    TbRow,        // a = its row in the list: loads it into the operator
+    TbScroll,     // the list's area, which the wheel scrolls
+    TbScrollBar,  // the list's scrollbar along its right: its thumb dragged, or the track clicked to jump there
+    TbDone,       // closes the browser, keeping what was picked
+    TbImport,     // Import file...: the file dialog
 };
 
 struct Widget {
@@ -353,7 +372,8 @@ struct TextField {
     static bool holds(std::string_view text, const std::vector<std::string> &words);
 };
 // The text fields, each by its owner: the preset browser's search, the MODS view's filter, the search atop a MODS
-// row's target menu, the Save dialog's name, author and description, and the New Category or New Folder form's name.
-enum class Field { Browser, ModsFilter, CascadeSearch, SaveName, SaveAuthor, SaveDescription, NewName };
+// row's target menu, the Save dialog's name, author and description, the New Category or New Folder form's name, and
+// the table browser's search and a folder's name as it is renamed there.
+enum class Field { Browser, ModsFilter, CascadeSearch, SaveName, SaveAuthor, SaveDescription, NewName, Tables, TableRename };
 
 } // namespace fmvibe::gui
