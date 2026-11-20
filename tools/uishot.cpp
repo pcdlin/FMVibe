@@ -10443,7 +10443,7 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
               detail::kOpSourceButton.right() + 4.0f <= detail::kPartialEditButton.x &&
               detail::kOpSourceButton.bottom() <= detail::kInspectorPage.y &&
               detail::opSourceMenu().bottom() <= lens.bottom() &&
-              detail::opKnobCenter(0).y == lens.y + 107.0f && detail::kOpTabsY == lens.y + 150.0f &&
+              detail::opKnobCenter(0).y == lens.y + 108.0f && detail::kOpTabsY == lens.y + 150.0f &&
               detail::kOpDisplay.y == lens.y + 172.0f && detail::kOpControlsY == lens.y + 315.0f &&
               detail::kOpControlsY + 0.5f * detail::kOpKnobD + 18.0f <= lens.bottom() - 10.0f &&
               detail::kOpWellTall.bottom() <= lens.bottom() &&

@@ -231,7 +231,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                 list[i].disabled = (fixed && (list[i].param == params[2] || list[i].param == params[3])) ||
                                    (isSampleOp(op) && list[i].param == params[4]);
             if (!fixed && !data) {
-                add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kOpLabelY + 17.0f - kRatioBox.y},
+                add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kRatioLabelY + 17.0f - kRatioBox.y},
                     paramIndex(op, OpParam::Ratio));
                 list.back().label = tr(Str::LabelRatio);
             }
@@ -398,9 +398,7 @@ void InspectorPanel::paintBack(Canvas &c) {
     const Color face = kRaised.alpha(0.92f);
     // In a flat theme, as its cards, on its shadow alone without an outline.
     softShadow(c, kInspector, kRadiusPanel, 4, 1.25f, 4.0f, lightTheme() ? 0.05f : 0.16f); // clear of the panel's top
-    c.fillRect(kInspector, face, kRadiusPanel);
-    if (outlined())
-        c.strokeRect(kInspector, edge, 1.0f, kRadiusPanel);
+    c.fillRect(kInspector, face, kRadiusPanel); // outlined over the tabs' band, below
     // The routing graph shows the node, while it shows (as RoutingPanel::graphShown() has it).
     const bool graph = controller().layout().view == RoutingView::Graph && !host_.shapeEditorOpen() &&
                        !host_.partialEditorOpen() && !host_.tableBrowserOpen();
@@ -412,10 +410,21 @@ void InspectorPanel::paintBack(Canvas &c) {
         if (outlined())
             c.polyline(side, 3, edge, 1.0f);
     }
+    // The tabs on a band of their own, a shade darker than the face, its top corners the lens's, and a hairline under
+    // it parting them from the page.
+    const Rect band{kInspector.x, kInspector.y, kInspector.w, kNodeTabBandH};
+    c.pushClip(band);
+    c.fillRect(kInspector, Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.035f : 0.2f}, kRadiusPanel);
+    c.popClip();
+    if (outlined())
+        c.strokeRect(kInspector, edge, 1.0f, kRadiusPanel);
+    c.line({kInspector.x + 1.0f, band.bottom() + 0.5f}, {kInspector.right() - 1.0f, band.bottom() + 0.5f}, kBorder,
+           1.0f);
     // The tabs' groups, a hairline between two.
+    const float tabsMid = kInspector.y + 0.5f * kNodeTabBandH;
     for (int group = 1; group <= 2; ++group) {
         const float x = nodeTabDivider(group);
-        c.line({x, kInspector.y + 13.0f}, {x, kInspector.y + 27.0f}, kBorder, 1.0f);
+        c.line({x, tabsMid - 7.0f}, {x, tabsMid + 7.0f}, kBorder, 1.0f);
     }
     // The title row leaves room for the on/off switch at the right.
     Rect summaryRect{kTitleRow.x, kTitleRow.y, kInspector.w - 84.0f, kTitleRow.h};

@@ -71,12 +71,15 @@ constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStepX - kCellGap + 2
 constexpr float kLegendW = kRouting.x + kRouting.w - 16.0f - kLegendX;
 static_assert(kLegendW >= 150.0f, "the matrix's legend needs this much of the panel beside the cells");
 // The inspector's tabs, one per node along its top: the operators', the filters' and the shapers' in three groups, a
-// hairline between two groups (kNodeTabDivider()).
+// hairline between two groups (kNodeTabDivider()), on a band of their own across the lens's top, parted from the page
+// under it by a hairline.
 constexpr float kNodeTabStep = 24.0f, kNodeTabGroupGap = 13.0f;
+// The band's height, the tabs in its middle; the title row's switches (kTitleRow) stand clear of its hairline.
+constexpr float kNodeTabBandH = 32.0f;
 inline Rect nodeTabRect(int node) {
     const int group = node < kOps ? 0 : node < kOps + kFilters ? 1 : 2;
-    return {kInspector.x + 16.0f + node * kNodeTabStep + group * kNodeTabGroupGap, kInspector.y + 9.0f,
-            kNodeTabStep - 1.0f, 22.0f};
+    return {kInspector.x + 16.0f + node * kNodeTabStep + group * kNodeTabGroupGap,
+            kInspector.y + 0.5f * (kNodeTabBandH - 22.0f), kNodeTabStep - 1.0f, 22.0f};
 }
 // The hairline before group 1 (the filters) or 2 (the shapers), in the middle of the gap.
 inline float nodeTabDivider(int group) {
@@ -98,10 +101,10 @@ constexpr Rect kOpLetter{kTitleRow.x, kTitleRow.y - 1.0f, kTitleLetterW, kTitleR
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
 // An operator's sound in one block under the title row, whose place its source list (Wave, Wavetable or Sample) takes:
 // at its left, its pitch (the Ratio readout, Freq and Mult when fixed, or a noise operator's Slope and Spread), as tall
-// as two rows; at its right, the waves, and under them the Pitch, Detune, Phase and Pan knobs. Their labels, and the
-// Ratio readout's, share one line. A table or a sample has no Ratio, and its picker is on its tab: unless fixed, its four
-// knobs spread along the whole block, a little higher in it.
-constexpr float kOpHeroY = kInspector.y + 69.0f; // centered between the title row and the tabs
+// as two rows; at its right, the waves, and under them the Pitch, Detune, Phase and Pan knobs, their labels on one line
+// (the Ratio readout's under its box, kRatioLabelY). A table or a sample has no Ratio, and its picker is on its tab:
+// unless fixed, its four knobs spread along the whole block, a little higher in it.
+constexpr float kOpHeroY = kInspector.y + 66.0f; // between the title row and the tabs
 constexpr float kOpPitchW = 88.0f; // the left column
 constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
 constexpr float kOpRightW = kInspector.x + kInspector.w - 16.0f - kOpRightX;
@@ -112,8 +115,11 @@ constexpr float kOpSourceX = kOpNameHandle.x + kOpNameHandle.w + 4.0f;
 constexpr Rect kOpSourceButton{kOpSourceX, kFixedSwitch.y, 112.0f, kFixedSwitch.h};
 constexpr float kOpRowY = kOpHeroY;
 constexpr float kOpWavesH = 20.0f; // the waves' row, over the knobs
-constexpr float kOpKnobY = kOpHeroY + 38.0f, kOpKnobD = 28.0f;
-constexpr float kOpDataKnobY = kOpHeroY + 25.0f;
+// The knobs under the waves, their modulation rings (out to 5 px past a knob's edge while one's depth handle is under
+// the mouse, see View::paintKnob()) 3 px clear of the row.
+constexpr float kOpKnobD = 28.0f;
+constexpr float kOpKnobY = kOpHeroY + kOpWavesH + 3.0f + 5.0f + 0.5f * kOpKnobD;
+constexpr float kOpDataKnobY = kOpHeroY + 28.0f; // a table's or a sample's, with no waves' row over them
 // Place 0-3 along the right column (Pitch, Detune, Phase, Pan); the left column's two (Freq and Mult, or Slope and
 // Spread) are places -2 and -1.
 inline Point opKnobCenter(int place) {
@@ -128,9 +134,10 @@ inline Point opWideKnobCenter(int place, float y) {
 // An operator's Ratio: a 7-segment readout, 0.50 to 64.00, the left column of its block, each digit dragged on its
 // own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along its
 // top, clear of the depth handles along its bottom edge.
-// Its top level with the waves' row, and its label on the knobs' labels' line (kOpLabelY), as a knob's is under it.
-constexpr Rect kRatioBox{kInspector.x + 16.0f, kOpRowY, kOpPitchW, 44.0f};
-constexpr float kOpLabelY = kOpKnobY + 0.5f * kOpKnobD + 2.0f; // the top of the block's labels' line
+// Its top a little under the waves' row's, and its label as far under it as a knob's is under the knob.
+constexpr Rect kRatioBox{kInspector.x + 16.0f, kOpRowY + 4.0f, kOpPitchW, 46.0f};
+constexpr float kOpLabelY = kOpKnobY + 0.5f * kOpKnobD + 2.0f; // the top of the knobs' labels' line
+constexpr float kRatioLabelY = kRatioBox.y + kRatioBox.h + 2.0f; // the top of the Ratio readout's label
 constexpr int kRatioDigits = 4; // tens, ones, tenths, hundredths
 constexpr long kRatioPlaces[kRatioDigits] = {1000, 100, 10, 1}; // in hundredths
 constexpr float kRatioDigitW = 15.0f, kRatioDigitH = 21.0f, kRatioDigitGap = 2.5f, kRatioPointW = 6.5f;
@@ -139,7 +146,7 @@ inline Rect ratioDigitRect(int k) {
     const float total = kRatioDigits * kRatioDigitW + (kRatioDigits - 1) * kRatioDigitGap + kRatioPointW;
     const float left = kRatioBox.x + (kRatioBox.w - total) * 0.5f;
     const float x = left + k * (kRatioDigitW + kRatioDigitGap) + (k >= 2 ? kRatioPointW : 0.0f);
-    return {x, kRatioBox.y + 11.0f, kRatioDigitW, kRatioDigitH};
+    return {x, kRatioBox.y + 12.0f, kRatioDigitW, kRatioDigitH};
 }
 // The digit nearest along the box to x.
 inline int ratioDigit(float x) {

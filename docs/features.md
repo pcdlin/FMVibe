@@ -1615,7 +1615,8 @@ one may have changed since it last did.
   and Porcelain, as their cards, on its shadow alone, without an outline; a filter's response and a shaper's curve on
   it a shade darker than the displays elsewhere in Porcelain, whose displays are nearly the lens's own face); while
   the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
-  and S2, in three groups with a hairline between two, pick what it shows; tabs of switched-off nodes are
+  and S2, in three groups with a hairline between two, on a band a shade darker across the card's top with a
+  hairline under it parting them from the page, pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
   of their node's color. A dot in a tab's top right corner says the
   node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes

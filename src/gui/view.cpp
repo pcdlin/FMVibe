@@ -5301,7 +5301,7 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     if (offset != 0.0f)
         c.fillCircle({along(n + offset / (def.max - def.min)), kRatioTrack.center().y}, 2.5f, kText);
 
-    c.text({w.rect.x, kOpLabelY, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
+    c.text({w.rect.x, kRatioLabelY, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
            focused ? kText : kDim);
 }
 
@@ -5974,7 +5974,7 @@ void View::paintAuxLinks(Canvas &c, const std::vector<Widget> &list, int aux, in
 Rect View::typingField() const {
     const Widget &w = typing_->widget;
     if (isRatioDisplay(w)) // over its digits
-        return {kRatioBox.x, kRatioBox.y + 9.0f, kRatioBox.w, 22.0f};
+        return {kRatioBox.x, kRatioBox.y + 10.0f, kRatioBox.w, 22.0f};
     if (isTableDisplay(w)) // over its % in the top left corner
         return {w.rect.x + 4.0f, w.rect.y + 2.0f, 80.0f, 18.0f};
     if (isStepper(w)) { // over its field, at least as wide as a knob's

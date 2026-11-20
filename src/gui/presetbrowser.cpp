@@ -177,7 +177,9 @@ void paintFolderIcon(Canvas &c, Point at, Color color, bool filled, bool factory
 }
 
 // A button's face, as the dialogs' are: the way ahead in the accent, the others plain. Gives the ink for its label.
-Color buttonFace(Canvas &c, Rect r, bool primary, bool hovered, bool enabled = true) {
+// `raised` for a button on a ground near the editor's background (the browser's footer), where a dark flat theme's
+// wells, the background's color, would melt into it: there they are lifted off it instead.
+Color buttonFace(Canvas &c, Rect r, bool primary, bool hovered, bool enabled = true, bool raised = false) {
     if (primary && enabled) {
         if (look.flat) {
             c.fillRect(r, hovered ? mix(kAccent, kText, 0.15f) : kAccent, kRadiusControl);
@@ -187,7 +189,9 @@ Color buttonFace(Canvas &c, Rect r, bool primary, bool hovered, bool enabled = t
         c.strokeRect(r, kAccent, 1.0f, kRadiusControl);
         return kText;
     }
-    if (look.flat)
+    if (look.flat && raised && !lightTheme())
+        c.fillRect(r, hovered && enabled ? kTrack : kRaised, kRadiusControl);
+    else if (look.flat)
         c.fillRect(r, hovered && enabled ? wellHover() : wellColor(), kRadiusControl);
     else {
         c.fillRect(r, hovered && enabled ? kTrack : kRaised, kRadiusControl);
@@ -1682,19 +1686,19 @@ bool PresetBrowser::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         return true;
     }
     case Kind::BrowserClose: {
-        const Color ink = buttonFace(c, w.rect, false, hovered);
+        const Color ink = buttonFace(c, w.rect, false, hovered, true, true);
         c.text(w.rect, tr(Str::PresetsClose), kTextBody, ink, Align::Center);
         return true;
     }
     case Kind::BrowserSaveHere: {
         const bool on = saveHereOn();
-        const Color ink = buttonFace(c, w.rect, true, hovered && on, on);
+        const Color ink = buttonFace(c, w.rect, true, hovered && on, on, true);
         c.text(w.rect, tr(Str::PresetsSaveHere), kTextBody, ink, Align::Center, on);
         return true;
     }
     case Kind::BrowserShowFile: {
         const bool on = picked && !presets[browserPick_].factory;
-        const Color ink = buttonFace(c, w.rect, false, hovered && on, on);
+        const Color ink = buttonFace(c, w.rect, false, hovered && on, on, true);
         // A page with an arrow out of it.
         const Point m = w.rect.center();
         const Point page[] = {{m.x - 4.5f, m.y - 6.0f}, {m.x + 1.5f, m.y - 6.0f}, {m.x + 4.5f, m.y - 3.0f},
