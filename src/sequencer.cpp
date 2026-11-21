@@ -262,6 +262,11 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     if (running_ && std::abs(from - next_) > 1e-3) { // the transport jumped, or the rate changed: start over there
         count += stopAll(out.subspan(static_cast<size_t>(count)));
         running_ = false;
+    } else if (running_) {
+        // A hair off where the last stretch ended, as a host's position rounds (one handed in seconds and turned into
+        // beats, say): it carries on from there, so a note starting on the seam starts once, neither falling between
+        // the two stretches nor in both.
+        from = next_;
     }
     // Another pattern picked: it takes over where the loop comes round (at once, if it wasn't running), planning stopping
     // there so the next call plans the new one.

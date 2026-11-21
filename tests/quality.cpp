@@ -4728,16 +4728,19 @@ void sequencerChecks() {
         bool on;
         int key;
     };
-    // Plans `frames` from the song's start with the transport playing at 120 bpm, in stretches of `piece`.
-    auto plan = [](const ParamValues &p, double frames, uint32_t piece = 512) {
+    // Plans `frames` from the song's start with the transport playing at 120 bpm, in stretches of `piece`; the host's
+    // position off by `jitter` beats each stretch, early and late in turn, as rounding leaves it.
+    auto plan = [](const ParamValues &p, double frames, uint32_t piece = 512, double jitter = 0.0) {
         Sequencer seq;
         seq.prepare(kSampleRate);
         seq.configure(p);
         std::vector<Event> events;
         std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        int stretch = 0;
         for (double done = 0.0; done < frames;) {
             uint32_t covered = 0;
-            const int n = seq.plan(piece, 120.0, true, done / kSampleRate * 2.0, out, covered);
+            const double off = stretch++ % 2 == 0 ? -jitter : jitter;
+            const int n = seq.plan(piece, 120.0, true, done / kSampleRate * 2.0 + off, out, covered);
             for (int i = 0; i < n; ++i)
                 events.push_back({done + out[i].frame, out[i].on, out[i].key});
             done += covered;
@@ -4764,6 +4767,18 @@ void sequencerChecks() {
         for (size_t i = 0; same && i < e.size(); ++i)
             same = odd[i].on == e[i].on && odd[i].key == e[i].key && near(odd[i].frame, e[i].frame);
         check(same, "the sequencer plans alike whatever the stretches");
+        // Stretches a step long, each starting where a step does, the host's position a hair early or late there (as
+        // a position handed in seconds and turned into beats comes): each note on once, as without, neither missed
+        // where the stretch before ended short of its step nor played twice where it ended past it.
+        const std::vector<Event> exact = plan(p, 16.5 * kStep, static_cast<uint32_t>(kStep));
+        const std::vector<Event> jittered = plan(p, 16.5 * kStep, static_cast<uint32_t>(kStep), 1e-9);
+        bool once = jittered.size() == exact.size() && exact.size() == 5;
+        for (size_t i = 0; once && i < exact.size(); ++i)
+            once = jittered[i].on == exact[i].on && jittered[i].key == exact[i].key &&
+                   near(jittered[i].frame, exact[i].frame);
+        std::printf("      stretches a step long, the host's position a hair off at each: %zu events (%zu as it is)\n",
+                    jittered.size(), exact.size());
+        check(once, "a position a hair off where a stretch starts on a step neither misses its notes nor plays them twice");
     }
     // Swing at 75 % puts the step after the beat three quarters of the way to the next; Gate at 50 % halves a note.
     {

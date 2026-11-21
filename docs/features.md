@@ -848,7 +848,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   before its end leaves it ending there, as written) and **Mute** (kept,
   silent). A pattern's **loop**, from step to step within its length (all of it to begin with), is what plays.
   - **Play**: **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
-    play the synth on top). **Key** plays while a key is held, from the pattern's start, transposed by the newest key
+    play the synth on top). Each block it plays on from where the last one ended while the host's position is within
+    a thousandth of a step of it (a position rounds, one handed in seconds most of all, as `fmvibe-uihost`'s is), so a
+    note starting where a block does starts once, neither missed nor played twice; further off, the transport has
+    jumped, and the notes playing end and it starts over there. **Key** plays while a key is held, from the pattern's start, transposed by the newest key
     from **Root**, and stops when the keys are let go; **Latch** starts with a key and plays on once they are let go, a
     new key transposing it, until All Notes Off or All Sound Off (MIDI CC 123 or 120, as a host sends as it stops). In Key and Latch the keys play no notes of their own: the host is told each one has ended
     as it is let go.
