@@ -6778,22 +6778,30 @@ int main() {
         check(synced, "synced, the phaser's and flanger's sweeps follow the host tempo");
     }
 
-    // --- The chorus's Voices and Spread changed under a sine, all wet: a voice coming or going fades, the voices'
-    // sweeps glide to their new places apart and a voice moving between the sides moves there over 10 ms, so no sample
-    // steps further than a sine as loud as the loudest the voices play does (its pitch wavering a little with the
-    // sweep): voices in phase can play louder than what went in.
-    std::printf("chorus voices and spread changed under a sine (steepest step against a sine's at its peak):\n");
+    // --- The chorus's Voices, Spread, Delay and Depth and the flanger's Delay and Depth changed under a sine, all wet: a
+    // chorus voice coming or going fades, the voices' sweeps glide to their new places apart, a voice moving between the
+    // sides moves there over 10 ms, and a Delay or Depth that jumps (as one a note's own random value sets does as the
+    // effects take up the new note) crossfades to where it reads over 10 ms, also in single frames and through zero, so
+    // no sample steps further than a sine as loud as the loudest the voices play does (its pitch wavering a little with
+    // the sweep): voices in phase can play louder than what went in.
+    std::printf("chorus and flanger changed under a sine (steepest step against a sine's at its peak):\n");
     {
-        auto steepest = [](FxParam param, std::initializer_list<double> values) {
+        auto steepest = [](FxType type, FxParam param, std::initializer_list<double> values, uint32_t piece = kBlock,
+                           bool throughZero = false) {
             const auto fxHeap = std::make_unique<Effects>();
             Effects &fx = *fxHeap;
             fx.prepare(kSampleRate);
             ParamValues p;
             for (int i = 0; i < kParamCount; ++i)
                 p[i] = paramTable()[i].def;
-            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Chorus);
-            p[paramIndex(0, FxParam::ChorusMix)] = 1.0;
-            p[paramIndex(0, FxParam::ChorusSpread)] = 0.0;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+            if (type == FxType::Chorus) {
+                p[paramIndex(0, FxParam::ChorusMix)] = 1.0;
+                p[paramIndex(0, FxParam::ChorusSpread)] = 0.0;
+            } else {
+                p[paramIndex(0, FxParam::FlangerMix)] = 1.0;
+                p[paramIndex(0, FxParam::FlangerThroughZero)] = throughZero ? 1.0 : 0.0;
+            }
             chain(p, {0});
             constexpr double kHz = 440.0;
             const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
@@ -6806,7 +6814,8 @@ int main() {
                     for (uint32_t s = 0; s < kBlock; ++s)
                         left[s] = right[s] = static_cast<float>(
                             0.5 * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
-                    fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kBlock; s += piece)
+                        fx.process(left.data() + s, right.data() + s, std::min(piece, kBlock - s), p, 120.0, 60.0);
                     for (uint32_t s = 0; s < kBlock; ++s) {
                         if (t + s > kSampleRate / 10) { // past its first voices' delays
                             most = std::max(most, static_cast<double>(std::abs(left[s] - last)));
@@ -6818,11 +6827,34 @@ int main() {
             }
             return most / (peak * 2.0 * std::numbers::pi * kHz / kSampleRate);
         };
-        const double voices = steepest(FxParam::ChorusVoices, {2.0, 6.0, 3.0, 2.0});
-        const double spread = steepest(FxParam::ChorusSpread, {0.0, 1.0, 0.0});
-        std::printf("      voices 2, 6, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f\n", voices, spread);
+        const double voices = steepest(FxType::Chorus, FxParam::ChorusVoices, {2.0, 6.0, 3.0, 2.0});
+        const double spread = steepest(FxType::Chorus, FxParam::ChorusSpread, {0.0, 1.0, 0.0});
+        std::printf("      chorus voices 2, 6, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f\n", voices, spread);
         check(voices < 1.15 && spread < 1.15,
               "the chorus's Voices and Spread changed under a sine glide rather than click");
+        // Each jump in whole blocks and in single frames: the steeper of the two.
+        auto jumps = [&](const char *name, FxType type, FxParam param, std::initializer_list<double> values,
+                         bool throughZero = false) {
+            const double blocks = steepest(type, param, values, kBlock, throughZero);
+            const double frames = steepest(type, param, values, 1, throughZero);
+            std::printf("      %-34s x%.3f (x%.3f in single frames)\n", name, blocks, frames);
+            return std::max(blocks, frames);
+        };
+        const double chorusDelay = jumps("chorus delay 3, 25, 8 ms:", FxType::Chorus, FxParam::ChorusDelay,
+                                         {normFromTime(0.003), normFromTime(0.025), normFromTime(0.008)});
+        const double chorusDepth =
+            jumps("chorus depth 0, 100, 20 %:", FxType::Chorus, FxParam::ChorusDepth, {0.0, 1.0, 0.2});
+        check(chorusDelay < 1.15 && chorusDepth < 1.15,
+              "the chorus's Delay and Depth jumping under a sine crossfade rather than click");
+        const std::initializer_list<double> flangerDelays{normFromTime(0.001), normFromTime(0.01), normFromTime(0.003)};
+        const double flangerDelay = jumps("flanger delay 1, 10, 3 ms:", FxType::Flanger, FxParam::FlangerDelay,
+                                          flangerDelays);
+        const double flangerDepth =
+            jumps("flanger depth 0, 100, 30 %:", FxType::Flanger, FxParam::FlangerDepth, {0.0, 1.0, 0.3});
+        const double flangerZero = jumps("flanger delay through zero:", FxType::Flanger, FxParam::FlangerDelay,
+                                         flangerDelays, true);
+        check(flangerDelay < 1.15 && flangerDepth < 1.15 && flangerZero < 1.15,
+              "the flanger's Delay and Depth jumping under a sine crossfade rather than click, through zero too");
     }
 
     // --- The phase disperser's Stages changed under a sine, all wet: the count it played fades out as the new one

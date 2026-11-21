@@ -23,8 +23,15 @@ namespace fx {
 // copy, read as much later less the sweep's middle, passes through it twice a cycle, cancelling every frequency for a
 // moment: the jet-plane sweep of two tapes. Its feedback still goes round the swept delay alone, as without. The output
 // then comes out kThroughZeroWait late whatever the knobs say, which fxlag.h tells the host and the effects graph's
-// other paths. Switched, the sound fades from one to the other over kThroughZeroFadeSeconds.
+// other paths. Switched, the sound fades from one to the other over kThroughZeroFadeSeconds. Delay and Depth moving
+// slowly, its reads follow them; jumping (as one a note's own random value sets does, when the effects take up the new
+// note), they crossfade from where they read to where they now put them.
 constexpr double kThroughZeroFadeSeconds = 0.01;
+// Where Delay and Depth have it read: the sweep's middle in samples and its reach (see FlangerSweep).
+struct FlangerReads {
+    double middle = 0.0, reach = 0.0;
+    bool operator==(const FlangerReads &) const = default;
+};
 struct Flanger {
     std::array<ZeroBuffer, 2> lines;
     std::array<ZeroBuffer, 2> dryLines; // the dry sound, for through zero: as long as it waits
@@ -40,6 +47,12 @@ struct Flanger {
     // swept copy is read through zero: as much later as the dry sound waits, less the sweep's middle.
     std::array<double, 2> delay{}, zeroDelay{};
     bool delayKnown = false;
+    FlangerReads reads; // where it reads
+    // While a jump crossfades: where it read before it and its delays there, and the samples the crossfade has left of
+    // its fadeLength.
+    FlangerReads fadeReads;
+    std::array<double, 2> fadeDelay{}, fadeZeroDelay{};
+    uint32_t fadeLeft = 0, fadeLength = 0;
 
     // Allocates the lines. Main thread, while the plugin is inactive.
     void prepare(double sampleRate);

@@ -275,7 +275,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and back in, its third difference far under an instant switch's, in single frames too; and 64 stages at full
     Pinch and Stretch, tracking a C7, staying finite and ringing out;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
-    clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
+    clicking, and its Delay (3, 25, 8 ms) and Depth (0, 100, 20 %) jumping crossfading rather than clicking, in
+    single frames too, as the flanger's Delay (1, 10, 3 ms, through zero too) and Depth (0, 100, 30 %) do: no sample
+    stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
     440 Hz and 5 kHz about as loud as it went in, with 2, 3, 4 and 6; and its Feedback full up either way staying
     steady as Voices drops from 6 to 2 under a loud sine, then dying away;

@@ -699,7 +699,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     two tapes. Its feedback still goes round the swept delay alone. Its output then comes out 6.5 ms late whatever its
     knobs say (turning Delay or Depth moves only the swept copy), which counts in the effects' latency (see Latency,
     under the effects graph): on or off, so switching the flanger moves nothing, while switching TZF moves the
-    latency, as a shaper's oversampling does. Switched, the sound fades between the two over 10 ms.
+    latency, as a shaper's oversampling does. Switched, the sound fades between the two over 10 ms. Delay and Depth
+    moving where it reads slowly (bending its pitch by up to 1 %), it follows them; moving faster, as they jump, it
+    crossfades over 10 ms from where it reads to where they now put it (the swept copy, and through zero), rather than
+    clicking, as the chorus does.
   - **Chorus**: **Voices** copies of the sound (2, 3, 4 or 6; 3 to begin with), each waiting about a 1–40 ms
     **Delay** (12 ms to begin with): each voice a little shorter or longer than it, up to a fifth either way, so the
     voices don't comb alike (the first the shortest, the second the longest, the others between, interleaved so the
@@ -717,7 +720,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     so it doesn't ring louder. **Mix** takes the dry sound over to the voices alone (50 % to
     begin with). It has no Sync: its Rate is set in Hz alone. Changing Voices, a voice coming or going fades in or
     out over 10 ms and the voices' sweeps and places glide to where they go, rather than jumping; Spread moves a
-    voice between the sides over 10 ms too. A host or modulation can set 5 voices, which the card doesn't offer.
+    voice between the sides over 10 ms too. Delay and Depth moving where the voices read slowly (bending their pitch
+    by up to 1 %), the voices follow them; moving faster, as they jump, they crossfade over 10 ms from where they read
+    to where they now put them, rather than clicking: a Random source of a voice on Delay or Depth jumps that way as
+    each new note takes the effects over (they follow the newest voice). Another jump during a crossfade waits for it
+    to end. A host or modulation can set 5
+    voices, which the card doesn't offer.
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound. A new Stages fades in from the count before over 10 ms

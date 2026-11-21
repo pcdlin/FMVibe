@@ -20,7 +20,15 @@ namespace fx {
 
 // The chorus: a delay line a side, holding the sound above its bass, which each voice reads behind at its own swept
 // delay (between samples on a cubic): the voices' sweeps a share of a cycle apart and their delays' places along them
-// (both gliding there when Voices changes), their gains on each side ramped (so a voice coming or going fades).
+// (both gliding there when Voices changes), their gains on each side ramped (so a voice coming or going fades). Delay
+// and Depth moving slowly, the voices follow them; jumping (as one a note's own random value sets does, when the
+// effects take up the new note), they crossfade from where they read to where they now put them.
+// Where Delay and Depth have the voices read: Delay in samples, and how far the sweep and the drift take each voice off
+// it, as shares of it.
+struct ChorusReads {
+    double delay = 0.0, swing = 0.0, wander = 0.0;
+    bool operator==(const ChorusReads &) const = default;
+};
 struct Chorus {
     std::array<ZeroBuffer, 2> lines;
     int write = 0;
@@ -35,6 +43,12 @@ struct Chorus {
     // Each voice's delay in samples, worked out every kSweepStep samples like the flanger's.
     std::array<double, kMaxChorusVoices> delay{};
     bool delayKnown = false;
+    ChorusReads reads; // where the voices read
+    // While a jump crossfades: where they read before it and each voice's delay there, and the samples the crossfade
+    // has left of its fadeLength.
+    ChorusReads fadeReads;
+    std::array<double, kMaxChorusVoices> fadeDelay{};
+    uint32_t fadeLeft = 0, fadeLength = 0;
 
     // Allocates the lines. Main thread, while the plugin is inactive.
     void prepare(double sampleRate);

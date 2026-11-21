@@ -1070,6 +1070,9 @@ The display sketches the tail's shape.
   tape-style jet sweep. Best with Mix at 100 %. It delays the flanger's sound by 6.5 ms (see
   [Seamless editing and latency](#seamless-editing-and-latency)).
 
+When Delay or Depth jumps, for example from a Random source that gives each note its own value, the flanger crossfades
+to the new sweep instead of clicking.
+
 #### Chorus
 
 - **Voices**: 2, 3 (default), 4 or 6.
@@ -1077,6 +1080,8 @@ The display sketches the tail's shape.
 - **Spread**: pans the voices across the stereo field.
 
 The bass below about 200 Hz bypasses the voices, staying steady and centered. The display shows each voice's sweep.
+When Delay or Depth jumps, for example from a Random source that gives each note its own value, the chorus
+crossfades to the new delays instead of clicking.
 
 #### Phase Disp
 

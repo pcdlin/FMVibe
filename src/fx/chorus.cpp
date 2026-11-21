@@ -20,6 +20,12 @@ constexpr double kChorusGlide = 1.0;
 constexpr double kChorusStaggerGlide = 0.2;
 // How long a chorus voice takes to fade in or out as Voices changes, or to move between the sides as Spread does.
 constexpr double kChorusFadeSeconds = 0.01;
+// The fastest Delay and Depth move where the voices read that they follow, in samples of delay a sample (their pitch
+// bent by as much, 1 % here): moving faster, as they jump, the voices crossfade to where they now read over
+// kChorusDelayFadeSeconds instead, where following them would move where they read faster than the sound goes by, a
+// click.
+constexpr double kChorusDelaySlew = 0.01;
+constexpr double kChorusDelayFadeSeconds = 0.01;
 
 int chorusVoices(const Context &ctx) {
     return static_cast<int>(std::clamp(std::lround(ctx.at(FxParam::ChorusVoices)),
@@ -59,7 +65,7 @@ void Chorus::start(const Context &ctx) {
 void Chorus::idle(double cycles) {
     phase += cycles;
     phase -= std::floor(phase);
-    delayKnown = false; // worked out again where the sweep is now
+    delayKnown = false; // worked out again where the sweep is now, at Delay and Depth as they are then
 }
 
 double Chorus::run(const Context &ctx, float *const *io, uint32_t n) {
@@ -67,9 +73,10 @@ double Chorus::run(const Context &ctx, float *const *io, uint32_t n) {
     const ParamValues &p = ctx.p;
     const double sampleRate = ctx.sampleRate;
     const double step = sweepHz([&p](int i) { return p[i]; }, ctx.slot, FxType::Chorus, ctx.tempo) / sampleRate;
-    const double delaySamples = timeFromNorm(ctx.at(FxParam::ChorusDelay)) * sampleRate; // the same all chunk
     const double depth = std::clamp(ctx.at(FxParam::ChorusDepth), 0.0, 1.0);
-    const double swing = kChorusSweep * depth, wander = kChorusDrift * depth;
+    // Where Delay and Depth have the voices read, the same all chunk.
+    const ChorusReads want{timeFromNorm(ctx.at(FxParam::ChorusDelay)) * sampleRate, kChorusSweep * depth,
+                           kChorusDrift * depth};
     const double feedback = sweepFeedback(ctx.at(FxParam::ChorusFeedback));
     const double gain = sweepGain(ctx.at(FxParam::ChorusFeedback)); // as the flanger's, so feedback doesn't ring louder
     const double mixStep = rampStep(mix, ctx.at(FxParam::ChorusMix), n, ctx.rampShortest);
@@ -96,20 +103,42 @@ double Chorus::run(const Context &ctx, float *const *io, uint32_t n) {
         heard[k] = k < voices || gainL[k] != 0.0 || gainR[k] != 0.0;
         driftStep[k] = kChorusDriftHz[k] / sampleRate;
     }
-    // Each voice's delay in samples with the sweep at `at` and its drift at `drifted`: worked out every kSweepStep
-    // samples, as the flanger's is (see Flanger::run()). 3 samples at the least, for its cubic.
-    auto delayAt = [&](double at, double drifted, int k) {
+    // Each voice's delay in samples as `r` has it read with the sweep at `at` and its drift at `drifted`: worked out
+    // every kSweepStep samples, as the flanger's is (see Flanger::run()). 3 samples at the least, for its cubic.
+    auto delayAt = [&](const ChorusReads &r, double at, double drifted, int k) {
         const double lfo = std::sin(2.0 * std::numbers::pi * (at - offsets[k]));
-        const double share = 1.0 + stagger[k] + swing * lfo + wander * std::sin(2.0 * std::numbers::pi * drifted);
-        return std::clamp(delaySamples * share, 3.0, size - 3.0);
+        const double share = 1.0 + stagger[k] + r.swing * lfo + r.wander * std::sin(2.0 * std::numbers::pi * drifted);
+        return std::clamp(r.delay * share, 3.0, size - 3.0);
     };
+    // Delay and Depth moving where the voices read no faster than kChorusDelaySlew, the voices follow them; jumping,
+    // they crossfade from where they read to where they now put them. Another jump during a crossfade waits for it to
+    // end.
+    bool jumped = false;
     if (!delayKnown) {
+        reads = want;
+        fadeLeft = 0;
+    } else if (want != reads) {
+        double moved = 0.0;
         for (int k = 0; k < kMaxChorusVoices; ++k)
-            delay[k] = delayAt(phase, drift[k], k);
+            if (heard[k])
+                moved = std::max(moved, std::abs(delayAt(want, phase, drift[k], k) - delayAt(reads, phase, drift[k], k)));
+        if (moved <= kChorusDelaySlew * n) {
+            reads = want;
+        } else if (fadeLeft == 0) {
+            fadeReads = reads;
+            fadeDelay = delay;
+            reads = want;
+            fadeLength = fadeLeft = std::max(1u, static_cast<uint32_t>(kChorusDelayFadeSeconds * sampleRate));
+            jumped = true;
+        }
+    }
+    if (!delayKnown || jumped) { // where the voices read at once (fading in, after a jump)
+        for (int k = 0; k < kMaxChorusVoices; ++k)
+            delay[k] = delayAt(reads, phase, drift[k], k);
         delayKnown = true;
     }
     auto wrap = [](double cycles) { return cycles - std::floor(cycles); };
-    std::array<double, kMaxChorusVoices> delayTo{}, delayStep{};
+    std::array<double, kMaxChorusVoices> delayTo{}, delayStep{}, fadeTo{}, fadeStep{};
     uint32_t stepLeft = 0;
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -117,11 +146,23 @@ double Chorus::run(const Context &ctx, float *const *io, uint32_t n) {
             stepLeft = std::min(kSweepStep, n - s);
             const double ahead = wrap(phase + step * stepLeft);
             for (int k = 0; k < kMaxChorusVoices; ++k) {
-                delayTo[k] = delayAt(ahead, wrap(drift[k] + driftStep[k] * stepLeft), k);
+                const double drifted = wrap(drift[k] + driftStep[k] * stepLeft);
+                delayTo[k] = delayAt(reads, ahead, drifted, k);
                 delayStep[k] = (delayTo[k] - delay[k]) / stepLeft;
+                if (fadeLeft > 0) {
+                    fadeTo[k] = delayAt(fadeReads, ahead, drifted, k);
+                    fadeStep[k] = (fadeTo[k] - fadeDelay[k]) / stepLeft;
+                }
             }
         }
         --stepLeft;
+        // How far the crossfade has come, on a raised cosine: what the voices read where they read now.
+        const bool fading = fadeLeft > 0;
+        double now = 1.0;
+        if (fading) {
+            --fadeLeft;
+            now = 0.5 - 0.5 * std::cos(std::numbers::pi * (1.0 - static_cast<double>(fadeLeft) / fadeLength));
+        }
         mix += mixStep;
         phase = wrap(phase + step);
         const double x[2] = {io[0][s], io[1][s]};
@@ -134,12 +175,18 @@ double Chorus::run(const Context &ctx, float *const *io, uint32_t n) {
         for (int k = 0; k < kMaxChorusVoices; ++k) {
             drift[k] = wrap(drift[k] + driftStep[k]);
             delay[k] = stepLeft == 0 ? delayTo[k] : delay[k] + delayStep[k];
+            if (fading)
+                fadeDelay[k] = stepLeft == 0 ? fadeTo[k] : fadeDelay[k] + fadeStep[k];
             if (!heard[k])
                 continue;
             gainL[k] += stepL[k];
             gainR[k] += stepR[k];
-            const double left = readCubic(lines[0], write, delay[k]);
-            const double right = readCubic(lines[1], write, delay[k]);
+            double left = readCubic(lines[0], write, delay[k]);
+            double right = readCubic(lines[1], write, delay[k]);
+            if (fading) {
+                left = now * left + (1.0 - now) * readCubic(lines[0], write, fadeDelay[k]);
+                right = now * right + (1.0 - now) * readCubic(lines[1], write, fadeDelay[k]);
+            }
             wet[0] += gainL[k] * left;
             wet[1] += gainR[k] * right;
             // Its share of what goes round: 1 / voices once its gains are where they go (whose squares add up to
