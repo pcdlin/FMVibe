@@ -1520,7 +1520,7 @@ int main(int argc, char **argv) {
     // 20 ms while its key stays down, each rings on at a tone of its own near its cutoff, steady and finite, where at
     // 80 % (below where it oscillates) it has fallen silent.
     for (FilterType oscillator : {FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
-                                  FilterType::SallenKeyHigh}) {
+                                  FilterType::SallenKeyHigh, FilterType::LadderHigh, FilterType::LadderBand}) {
         auto ringing = [&](double resonance) {
             play({.wave = OpWave::Saw, .throughFilter = true, .type = oscillator, .slope = 3, .cutoffHz = 1500.0,
                   .resonance = resonance}); // the routing; the note it plays is over
@@ -1577,6 +1577,33 @@ int main(int argc, char **argv) {
               "the diode plays 24 dB whatever its slope says");
         check(std::abs(skLow / twoPoles - 1.0) < 0.12 && skHigh > 1.0,
               "the Sallen-Key low-pass is two poles at its cutoff, and its high-pass lifts the 2nd harmonic");
+    }
+    // The ladder's high-pass and band-pass (its loop around four high-pass stages, and around low- and high-pass
+    // stages in turn): without resonance each of the high-pass's slopes taps one more one-pole high-pass, lifting a
+    // saw's 2nd harmonic against its 1st by that many past a 2 kHz cutoff; the band-pass at 880 Hz, at unity at its
+    // center, takes the 1st harmonic an octave under it down as a two-pole band-pass does at 12 dB and as two of them
+    // do at 24, set to 6 or 18 dB playing 12 or 24.
+    {
+        std::array<double, kFilterSlopes> high{}, band{};
+        bool poles = true;
+        const double w1 = 440.0 / 2000.0, w2 = 880.0 / 2000.0;
+        for (int slope = 0; slope < kFilterSlopes; ++slope) {
+            high[slope] = secondHarmonicRatio({.wave = OpWave::Saw, .throughFilter = true,
+                                               .type = FilterType::LadderHigh, .slope = slope, .cutoffHz = 2000.0});
+            band[slope] = secondHarmonicRatio({.wave = OpWave::Saw, .throughFilter = true,
+                                               .type = FilterType::LadderBand, .slope = slope, .cutoffHz = 880.0});
+            const double expected = 0.5 * std::pow(4.0 * (1.0 + w1 * w1) / (1.0 + w2 * w2), 0.5 * (slope + 1));
+            poles = poles && std::abs(high[slope] / expected - 1.0) < 0.12;
+        }
+        // |2s / (1 + s)^2| at half the center is 0.8, and its square for 24 dB: the 2nd harmonic at the center at 1.
+        const double band12 = 0.5 / 0.8, band24 = 0.5 / (0.8 * 0.8);
+        std::printf("      saw 880/440 Hz: ladder HP at 2 kHz, 6 to 24 dB, %.3f %.3f %.3f %.3f; ladder BP at 880 Hz, "
+                    "6 to 24 dB, %.3f %.3f %.3f %.3f (12 dB %.3f, 24 dB %.3f)\n",
+                    high[0], high[1], high[2], high[3], band[0], band[1], band[2], band[3], band12, band24);
+        check(poles, "the ladder high-pass's slopes tap one to four one-pole high-passes");
+        check(band[0] == band[1] && band[2] == band[3] && std::abs(band[1] / band12 - 1.0) < 0.12 &&
+                  std::abs(band[3] / band24 - 1.0) < 0.12,
+              "the ladder band-pass is a two-pole band-pass at 12 dB and two of them at 24, 6 and 18 playing 12 and 24");
     }
     // The Formant type puts noise through a vowel's formants: A's first at 600 Hz, I's at 250 Hz, each louder there
     // than at the other's (with the cutoff at its middle, where the formants aren't moved).

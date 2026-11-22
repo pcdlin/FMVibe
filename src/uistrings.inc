@@ -78,6 +78,19 @@ STR(FilterSallenKeyLow, "Sallen-Key LP")
 STR(FilterSallenKeyHigh, "Sallen-Key HP")
 STR(FilterFormant, "Formant")
 STR(FilterMorph, "Morph")
+STR(FilterLadderHigh, "Ladder HP")
+STR(FilterLadderBand, "Ladder BP")
+// The filter types' models, as the Model list beside a filter's slope names them within the low-, high- and
+// band-passes (the state-variable filter's, the ladder's, the diode's and the Sallen-Key's).
+STR(FilterModelSvf, "SVF")
+STR(FilterModelLadder, "Ladder")
+STR(FilterModelDiode, "Diode")
+STR(FilterModelSallenKey, "Sallen-Key")
+// The same on the filter effect's card, whose Model button is narrow.
+STR(FilterModelShortSvf, "SVF")
+STR(FilterModelShortLadder, "LAD")
+STR(FilterModelShortDiode, "DIO")
+STR(FilterModelShortSallenKey, "SK")
 // On the filter type buttons, and with a slope ("LP 24") on the graph's nodes.
 STR(FilterShortLowPass, "LP")
 STR(FilterShortHighPass, "HP")
@@ -90,6 +103,8 @@ STR(FilterShortSallenKeyLow, "SK LP")
 STR(FilterShortSallenKeyHigh, "SK HP")
 STR(FilterShortFormant, "FMT")
 STR(FilterShortMorph, "MRF")
+STR(FilterShortLadderHigh, "LAD HP")
+STR(FilterShortLadderBand, "LAD BP")
 // What a Morph filter passes through on its way from low-pass to high-pass.
 STR(MorphBand, "LP > BP > HP")
 STR(MorphNotch, "LP > Notch > HP")
@@ -1184,6 +1199,7 @@ STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
 STR(TipSlope, "Filter slope")
 STR(TipSlopeBand, "Filter slope")
+STR(TipFilterModel, "Filter model") // the Model list beside the slope
 STR(TipPrevType, "Previous type") // the arrows on a list's button
 STR(TipNextType, "Next type")
 STR(TipPrevCurve, "Previous curve")

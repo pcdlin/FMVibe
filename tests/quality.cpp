@@ -2379,11 +2379,13 @@ void effectsChainChecks() {
         // and from a morph.
         float newer = 0.0f;
         for (FilterType t : {FilterType::Diode, FilterType::SallenKeyLow, FilterType::SallenKeyHigh, FilterType::Formant,
-                             FilterType::Morph})
+                             FilterType::Morph, FilterType::LadderHigh, FilterType::LadderBand})
             newer = std::max(newer, stale(t, 1, FilterType::LowPass, 1));
         newer = std::max({newer, stale(FilterType::Diode, 3, FilterType::Ladder, 3),
                           stale(FilterType::Morph, 1, FilterType::SallenKeyLow, 1),
-                          stale(FilterType::Ladder, 3, FilterType::Morph, 1)});
+                          stale(FilterType::Ladder, 3, FilterType::Morph, 1),
+                          stale(FilterType::LadderHigh, 3, FilterType::Ladder, 3),
+                          stale(FilterType::Ladder, 3, FilterType::LadderBand, 3)});
         std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g, ladder %.1g, the "
                     "newer types %.1g\n",
                     comb, slope, back, ladder, newer);
@@ -6451,6 +6453,37 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -35.0},
+        // The ladder's high-pass and band-pass saturate in their stages as its low-pass does; the high-pass, cut
+        // off under the note, passes all of its harmonics through them. Neither's peak sits on the note's top
+        // harmonics as the low-pass's does here, and both alias some 8 dB less at 2x.
+        {"saw into driven LAD HP at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LadderHigh);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(800.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -45.0},
+        {"saw into driven LAD BP at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LadderBand);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(3000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -45.0},
         {"saw into driven Sallen-Key at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);

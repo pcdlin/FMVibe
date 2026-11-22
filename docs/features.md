@@ -164,7 +164,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   share of a high-pass, band-pass or notch) gliding sample by sample, so a fast envelope or LFO on the cutoff sweeps
   it rather than stepping it every block (which buzzed faintly at the steps' rate, 1.5 kHz at 48 kHz:
   some 72 dB under an LFO's sweep, 53 dB for a morph's place, now 96 dB and more). Its type, slope and morph mode switch
-  at once. Types:
+  at once. The editor shows the types as seven families (Low-pass, High-pass, Band-pass, Notch, Comb, Formant and
+  Morph), the first three each a family of models: the low-passes SVF (the state-variable filter's), Ladder, Diode and
+  Sallen-Key, the high-passes SVF, Ladder and Sallen-Key, and the band-passes SVF and Ladder (see the filter's page,
+  under Editor). That is the editor's alone: the Type param stores the type, so hosts, presets and states see the
+  types below. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
     **Slope** picks 6, 12 (the default), 18 or 24 dB per octave. At 6 dB the filter is a one-pole, taken from the
     state-variable filter so resonance still adds a peak at the cutoff (as high as at 12 dB) while the slope past it
@@ -184,6 +188,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     thinning the note. From about 93 % of Resonance it self-oscillates, a tone of its own at its cutoff held by its
     stages' saturation, louder toward the top; once a released note's operators have faded, its resonance is held
     at 90 %, so its ringing dies away and the voice ends;
+  - Ladder HP: the ladder's loop around four one-pole high-pass stages, as in Moog's 904B, the low-pass ladder the
+    other way round: **Slope** taps one to four of its stages, it saturates in each as the ladder does, takes Drive the
+    same way, loses its top as its resonance rises as the ladder loses its bass (a quarter of that put back), and
+    self-oscillates near its cutoff from about 93 %, held at 90 % once a released note has faded;
+  - Ladder BP: the ladder's loop around low- and high-pass stages in turn, its feedback added rather than taken off,
+    so that it rings at its center: 12 dB (taken after its second stage, 6 dB per octave either side) or 24 dB (after
+    its fourth, 12 either side), 6 and 18 playing as the slope above, at unity at its center without resonance. Its
+    peak rises with Resonance, its input taken down as it does (by 1 + k/4, as the ladder's is taken up) so that the
+    peak stays about as far over what it passes as the ladder's; it saturates in its stages, takes Drive and
+    self-oscillates as the ladder does, ringing louder than the ladder, since what it passes at its center stays at
+    unity;
   - Diode: a four-pole diode ladder, its stages loading each other (each the one before it half as much as a passive
     RC ladder's would), so its poles spread apart: darker than the ladder without resonance, and its peak climbs
     toward the cutoff as the resonance rises, the cutoff where it lands at the top. 24 dB only. It saturates once, at
@@ -579,10 +594,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     them in the top octaves too, within about a dB up to 15 kHz: their poles and zeros go where the analog band's are
     (the high cut's zeros matching its level at 0 Hz, its corner and the half rate instead), where the usual bilinear
     design squeezed a bell or shelf up there narrower and lower than drawn.
-  - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
-    and HP, formant, morph; a list across its card under its title, as the shaper's curves are, with the list of
-    slopes under the response, a morph's with its notch switch (the notch's icon) beside it, and a formant's Vowel or a morph's Morph
-    between Drive and Mix) and their
+  - **Filter**: the voice filters' types (their families: low-pass, high-pass, band-pass, notch, comb, formant and
+    morph, in a list across its card under its title, as the shaper's curves are; with the list of slopes under the
+    response, a morph's with its notch switch (the notch's icon) beside it, a low-, high- or band-pass's with its
+    Model list before it, its button naming the model short (SVF, LAD, DIO, SK) and without arrows, its list naming
+    them in full; and a formant's Vowel or a morph's Morph between Drive and Mix) and their
     slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
@@ -1853,14 +1869,19 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
     operators it modulates, as a shaper's has), the type's list across the row under it (where a shaper's curve's
-    is), its button and each of its entries a small picture of the type's response before its name, the wheel over
-    it stepping along them, cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph after
+    is), offering the seven families (Low-pass, High-pass, Band-pass, Notch, Comb, Formant and Morph), its button and
+    each of its entries a small picture of the family's response before its name, the wheel over it and its arrows
+    stepping along them (a family picked keeping the model where it has it, Ladder's high-pass for a ladder, say, else
+    taking its first), then, for a low-, high- or band-pass, the **Model** list beside the slope's (SVF, Ladder, Diode
+    and Sallen-Key for a low-pass; SVF, Ladder and Sallen-Key for a high-pass; SVF and Ladder for a band-pass), with
+    arrows that step along the family's models round its ends, the wheel stepping them held at the ends, and each a
+    small picture of the model's response before its name, cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph after
     them, the six knobs a little closer together, and a morph's slope's list and notch switch (the notch's icon) side
     by side where the slope's list is), key tracking, drive and mix (its output level is its line to OUT's
     label), and a live response curve, drawn as its Mix blends what goes in back in (a notch at 50 % dips about 6 dB,
     a low-pass leveling off 6 dB down past its cutoff), whose
-    handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it, as the filter effect's and
-    a split's are: 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
+    handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it (beside the Model list, for
+    a family of models), as the filter effect's and a split's are: 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
     what plays; for a comb it is faint and doesn't open). With its cutoff or resonance modulated, faint curves
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that

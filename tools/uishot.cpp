@@ -7,6 +7,7 @@
 #include "gui/arrange.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
+#include "gui/lists.h"
 #include "gui/routing.h"
 #include "gui/theme.h"
 #include "gui/view.h"
@@ -900,17 +901,31 @@ Point listStep(Rect button, int dir) {
     return detail::listStepButton(button, dir).center();
 }
 
-// The type's list button on a filter's page (where a shaper's curve's is), and its entries, which open under it.
+// The type's list button on a filter's page (where a shaper's curve's is), and its entries, the families of types,
+// which open under it.
 const Point kTypeButton = detail::kFilterTypeButton.center();
-Point typeItem(FilterType type) {
-    return detail::listMenuItem(detail::kFilterTypeButton, static_cast<int>(FilterType::Count), static_cast<int>(type))
-        .center();
+Point typeItem(detail::FilterFamily family) {
+    return detail::listMenuItem(detail::kFilterTypeButton, detail::kFilterFamilies, static_cast<int>(family)).center();
 }
 
-// The slope's list button under the filter's response, and its entries, 6 to 24 dB, which open under it.
-const Point kSlopeButton = detail::kFilterSlopeButton.center();
+// The Model list's button beside the slope's, under the response of a filter whose family has models, and its
+// entries, the family's models, which open under it, wider.
+const Rect kModelRect = detail::filterModelButton(detail::kFilterDisplay, false);
+const Point kModelButton = kModelRect.center();
+Point modelItem(FilterType type) {
+    const detail::FilterFamilyTypes &family = detail::filterFamilyTypes(type);
+    int at = 0;
+    for (int m = 0; m < family.count; ++m)
+        at = family.types[m] == type ? m : at;
+    return detail::listMenuItem(detail::filterModelMenuButton(kModelRect), family.count, at).center();
+}
+
+// The slope's list button under the response of a low-pass or band-pass (beside its Model list), and its entries,
+// 6 to 24 dB, which open under it.
+const Rect kSlopeRect = detail::filterModelSlopeButton(detail::kFilterDisplay, false);
+const Point kSlopeButton = kSlopeRect.center();
 Point slopeItem(int slope) {
-    return detail::listMenuItem(detail::kFilterSlopeButton, kFilterSlopes, slope).center();
+    return detail::listMenuItem(kSlopeRect, kFilterSlopes, slope).center();
 }
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
@@ -1068,10 +1083,15 @@ void addFx(View &view, FxType type) {
     click(view, fxMenuItem(type));
 }
 
-// A filter's type picked from its list on its page.
+// A filter's type picked on its page: its family from the type's list, then, for a family of models, its model from
+// the Model list.
 void pickType(View &view, FilterType type) {
     click(view, kTypeButton);
-    click(view, typeItem(type));
+    click(view, typeItem(detail::filterFamilyOf(type)));
+    if (detail::hasFilterModels(type)) {
+        click(view, kModelButton);
+        click(view, modelItem(type));
+    }
 }
 
 void drag(View &view, Point from, Point to) {
@@ -13373,7 +13393,7 @@ void run(const std::filesystem::path &dir, float scale) {
     const bool refusedArrow = view.cursor() == CursorKind::Arrow;
     view.mouseMove(slopeItem(3), {});
     const bool pickHand = view.cursor() == CursorKind::Hand;
-    const Rect slopeList = detail::listMenu(detail::kFilterSlopeButton, kFilterSlopes);
+    const Rect slopeList = detail::listMenu(kSlopeRect, kFilterSlopes);
     view.mouseMove({slopeList.center().x, slopeList.y + 2.0f}, {});
     const bool edgeArrow = view.cursor() == CursorKind::Arrow;
     view.mouseMove({slopeList.center().x, slopeList.bottom() + 12.0f}, {});
@@ -13388,19 +13408,21 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(slope, kDefaultSlope);
     check(listShot && steep && gentle && bandListShot && refused && bandSteep,
           "the slope's list picks 6 to 24 dB, a band-pass's only 12 and 24");
-    // The type's list: every type with its icon before its name (read off the rendered pixels: a stroke in each row's
-    // icon box, brighter than the row's empty right end), Ladder picked from it and shown on its button, and the
-    // wheel over the button stepping the type, a run of notches one undo step, held at the list's ends.
+    // The type's list: the seven families, each with its icon before its name (read off the rendered pixels: a stroke
+    // in each row's icon box, brighter than the row's empty right end), and the High-pass picked from it; the Model
+    // list beside the slope's, a low-pass's four models, Ladder picked from it; a family picked keeping the model where
+    // it has it (Ladder's high-pass and band-pass), else taking its first; the wheel over the type's button stepping
+    // the family and over the Model button the model, a run of notches one undo step, held at the lists' ends.
     {
         const int type = paramIndex(0, FilterParam::Type);
-        constexpr int kTypes = static_cast<int>(FilterType::Count);
+        auto typeIs = [&](FilterType t) { return std::lround(model.value(type)) == static_cast<long>(t); };
         auto lit = [](uint32_t px) { return ((px >> 16 & 255) + (px >> 8 & 255) + (px & 255)) / 3; };
         click(view, kTypeButton);
         view.mouseMove({detail::kFilterTypeButton.x - 8.0f, detail::kFilterTypeButton.center().y}, {});
         const bool typeListShot = renderer.save(view, dir / "4c-type-list.png");
         bool icons = true;
-        for (int t = 0; t < kTypes; ++t) {
-            const Rect row = detail::listMenuItem(detail::kFilterTypeButton, kTypes, t);
+        for (int f = 0; f < detail::kFilterFamilies; ++f) {
+            const Rect row = detail::listMenuItem(detail::kFilterTypeButton, detail::kFilterFamilies, f);
             const Rect box = detail::filterTypeIconRect(row);
             uint32_t most = 0;
             for (float x = box.x; x <= box.right(); x += 1.0f)
@@ -13408,27 +13430,57 @@ void run(const std::filesystem::path &dir, float scale) {
                     most = std::max(most, lit(renderer.pixel({x, y})));
             const uint32_t empty = lit(renderer.pixel({row.right() - 6.0f, row.center().y}));
             if (most < empty + 40) {
-                std::printf("      type %d's icon: brightest %u, the row's end %u\n", t, most, empty);
+                std::printf("      family %d's icon: brightest %u, the row's end %u\n", f, most, empty);
                 icons = false;
             }
         }
-        click(view, typeItem(FilterType::Ladder));
-        const bool ladder = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
+        click(view, typeItem(detail::FilterFamily::HighPass));
+        const bool high = typeIs(FilterType::HighPass);
+        check(typeListShot && icons && high, "the type's list shows the seven families with their icons and picks one");
+        pickType(view, FilterType::LowPass);
+        click(view, kModelButton);
+        view.mouseMove(modelItem(FilterType::Diode), {});
+        const bool modelListShot = renderer.save(view, dir / "4c-model-list.png");
+        click(view, modelItem(FilterType::Ladder));
+        const bool ladder = typeIs(FilterType::Ladder);
+        view.mouseMove({detail::kFilterTypeButton.x - 8.0f, detail::kFilterTypeButton.center().y}, {});
         const bool ladderShot = renderer.save(view, dir / "4d-type-ladder.png");
-        view.wheel(kTypeButton, -1.0f, {});
-        view.wheel(kTypeButton, -1.0f, {});
-        const bool stepped = std::lround(model.value(type)) == static_cast<long>(FilterType::Notch);
-        view.undo();
-        const bool undone = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
-        pickType(view, FilterType::Morph); // the last in the list
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::HighPass));
+        const bool keptHigh = typeIs(FilterType::LadderHigh);
+        renderer.save(view, dir / "4d-type-ladder-high.png");
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::BandPass));
+        const bool keptBand = typeIs(FilterType::LadderBand);
+        renderer.save(view, dir / "4d-type-ladder-band.png");
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::Notch));
+        const bool notch = typeIs(FilterType::Notch);
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::LowPass));
+        const bool first = typeIs(FilterType::LowPass);
+        check(modelListShot && ladder && ladderShot && keptHigh && keptBand && notch && first,
+              "the Model list picks a low-pass's model, and a family picked keeps the model where it has it");
+        pickType(view, FilterType::Ladder);
         view.wheel(kTypeButton, 1.0f, {});
-        const bool held = std::lround(model.value(type)) == static_cast<long>(FilterType::Morph);
+        view.wheel(kTypeButton, 1.0f, {});
+        const bool stepped = typeIs(FilterType::LadderBand);
+        view.undo();
+        const bool undone = typeIs(FilterType::Ladder);
+        view.wheel(kModelButton, 1.0f, {});
+        const bool diode = typeIs(FilterType::Diode);
+        view.wheel(kModelButton, 1.0f, {});
+        view.wheel(kModelButton, 1.0f, {});
+        const bool modelHeld = typeIs(FilterType::SallenKeyLow);
+        pickType(view, FilterType::Morph); // the last family in the list
+        view.wheel(kTypeButton, 1.0f, {});
+        const bool held = typeIs(FilterType::Morph);
         model.set(type, static_cast<double>(FilterType::LowPass));
-        check(typeListShot && icons && ladder && ladderShot && stepped && undone && held,
-              "the type's list shows each type with its icon and picks Ladder, and the wheel steps it");
-        // Its arrows: back from the first type round to the last, on round to the first again and on to the second,
-        // each click an undo step; the arrow under the mouse lit (read off the rendered pixels, in its corner, clear
-        // of its glyph).
+        check(stepped && undone && diode && modelHeld && held,
+              "the wheel steps the family over the type's button and the model over the Model button");
+        // Its arrows: back from the first family round to the last, on round to the first again and on to the
+        // second, each click an undo step; the arrow under the mouse lit (read off the rendered pixels, in its corner,
+        // clear of its glyph).
         const Rect button = detail::kFilterTypeButton;
         const Rect next = detail::listStepButton(button, 1);
         const Point corner{next.x + 2.5f, next.y + 3.0f};
@@ -13439,27 +13491,33 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool stepsShot = renderer.save(view, dir / "4e-type-steps-hover.png");
         const uint32_t hovered = lit(renderer.pixel(corner));
         click(view, listStep(button, -1));
-        const bool wrapped = std::lround(model.value(type)) == static_cast<long>(kTypes - 1);
+        const bool wrapped = typeIs(FilterType::Morph);
         click(view, listStep(button, 1));
-        const bool round = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        const bool round = typeIs(FilterType::LowPass);
         click(view, listStep(button, 1));
-        const bool on = std::lround(model.value(type)) == static_cast<long>(FilterType::HighPass);
+        const bool on = typeIs(FilterType::HighPass);
         view.undo();
-        const bool stepUndone = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        const bool stepUndone = typeIs(FilterType::LowPass);
         view.undo();
         // Clicked quickly, the second click comes as a double-click (as Windows sends it): a step all the same.
         model.set(type, static_cast<double>(FilterType::LowPass));
         click(view, listStep(button, 1));
         view.doubleClick(listStep(button, 1), {});
         view.mouseUp(listStep(button, 1), {});
-        const bool quick = std::lround(model.value(type)) == static_cast<long>(FilterType::BandPass);
-        model.set(type, static_cast<double>(kTypes - 1));
+        const bool quick = typeIs(FilterType::BandPass);
         if (hovered <= idle + 8)
             std::printf("      the arrow's corner: %u idle, %u under the mouse\n", idle, hovered);
-        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone && quick &&
-                  std::lround(model.value(type)) == static_cast<long>(kTypes - 1),
-              "the arrows in a filter's type list step it round the list's ends, undoably, lit under the mouse, and a "
-              "quick second click steps again");
+        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone && quick,
+              "the arrows in a filter's type list step its family round the list's ends, undoably, lit under the "
+              "mouse, and a quick second click steps again");
+        // The Model button's arrows: on from SVF to Ladder, back round to Sallen-Key.
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        click(view, listStep(kModelRect, 1));
+        const bool nextModel = typeIs(FilterType::Ladder);
+        click(view, listStep(kModelRect, -1));
+        click(view, listStep(kModelRect, -1));
+        check(nextModel && typeIs(FilterType::SallenKeyLow),
+              "the arrows on the Model button step the model round its family's ends");
         model.set(type, static_cast<double>(FilterType::LowPass));
     }
     // A morph's slope's list and notch switch, side by side where the slope's list is: 24 dB picked from the list
@@ -13912,20 +13970,39 @@ void run(const std::filesystem::path &dir, float scale) {
     {
         const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
         click(view, button.center());
-        click(view, detail::listMenuItem(button, static_cast<int>(FilterType::Count), static_cast<int>(FilterType::Comb))
+        click(view, detail::listMenuItem(button, detail::kFilterFamilies, static_cast<int>(detail::FilterFamily::Comb))
                         .center());
     }
     check(std::lround(model.value(paramIndex(3, FxParam::FilterType))) == static_cast<long>(FilterType::Comb),
           "the filter card's type list picks the filter type");
     {
-        // Its arrows step the type, back to the type before Comb and on again.
+        // Its arrows step the family, back to the Notch before Comb and on again.
         const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
         const int type = paramIndex(3, FxParam::FilterType);
         click(view, listStep(button, -1));
-        const bool back = std::lround(model.value(type)) == static_cast<long>(FilterType::Comb) - 1;
+        const bool back = std::lround(model.value(type)) == static_cast<long>(FilterType::Notch);
         click(view, listStep(button, 1));
         check(back && std::lround(model.value(type)) == static_cast<long>(FilterType::Comb),
               "the arrows in the filter card's type list step the type");
+        // A low-pass's Model button beside its slope's, short and without arrows: its list picks Diode, its button
+        // reading DIO (its slope's list then beside it).
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        const Rect card{fxCardX(model, 3), 180.0f, fxCardW(model, 3), 300.0f};
+        const Rect display = detail::fxDisplayIn(card, FxType::Filter);
+        const Rect modelButton = detail::filterModelButton(display, true);
+        click(view, modelButton.center());
+        view.mouseMove(detail::listMenuItem(detail::filterModelMenuButton(modelButton), 4, 2).center(), {});
+        const bool cardModelShot = renderer.save(view, dir / "27-fx-filter-model-list.png");
+        click(view, detail::listMenuItem(detail::filterModelMenuButton(modelButton), 4, 2).center());
+        const bool diode = std::lround(model.value(type)) == static_cast<long>(FilterType::Diode);
+        // Where an arrow would be, a click opens its list and another closes it, the model left as it is.
+        click(view, listStep(modelButton, -1));
+        click(view, listStep(modelButton, -1));
+        const bool noArrows = std::lround(model.value(type)) == static_cast<long>(FilterType::Diode);
+        renderer.save(view, dir / "27-fx-filter-model.png");
+        model.set(type, static_cast<double>(FilterType::Comb));
+        check(cardModelShot && diode && noArrows,
+              "the filter card's Model button, without arrows, picks a low-pass's model from its list");
     }
 
     // The parametric EQ's first band: dragging its handle 30 px up is +10 dB.

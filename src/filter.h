@@ -66,10 +66,21 @@ inline double combFeedback(double resonance) {
     return 0.97 * std::clamp(resonance, 0.0, 1.0);
 }
 
-// The types that self-oscillate at the top of their resonance: the ladder, the diode and the Sallen-Key's.
+// The types that self-oscillate at the top of their resonance: the ladder's, the diode and the Sallen-Key's.
 constexpr bool selfOscillates(FilterType type) {
     return type == FilterType::Ladder || type == FilterType::Diode || type == FilterType::SallenKeyLow ||
-           type == FilterType::SallenKeyHigh;
+           type == FilterType::SallenKeyHigh || type == FilterType::LadderHigh || type == FilterType::LadderBand;
+}
+// The ladder's types: its loop around four one-pole stages, low-passes (Ladder), high-passes (LadderHigh, as in Moog's
+// 904B) or low- and high-passes in turn (LadderBand). Each stage passes a quarter of the loop's gain at the cutoff,
+// where the loop turns half a cycle (the band-pass's with its feedback added rather than taken off), so they share
+// their feedback and saturation.
+constexpr bool isLadder(FilterType type) {
+    return type == FilterType::Ladder || type == FilterType::LadderHigh || type == FilterType::LadderBand;
+}
+// Whether the ladder's stage `i` is a high-pass.
+constexpr bool ladderStageHigh(FilterType type, int i) {
+    return type == FilterType::LadderHigh || (type == FilterType::LadderBand && i % 2 == 1);
 }
 // The highest resonance a voice's self-oscillating filter keeps once its operators have faded (see Voice::tail), below
 // where it oscillates, so its ringing dies away and the voice can end.
@@ -89,9 +100,16 @@ inline double ladderFeedback(double resonance) {
     return 4.0 * resonanceFeedback(resonance);
 }
 // The ladder's level at DC falls to 1 / (1 + k) as its feedback k rises, thinning the note as a transistor ladder
-// does; it takes back a quarter of that by putting its input in at 1 + k/4.
-inline double ladderInputGain(double feedback) {
-    return 1.0 + 0.25 * feedback;
+// does; it takes back a quarter of that by putting its input in at 1 + k/4. The high-pass loses its top the same way,
+// and takes it back the same way. The band-pass loses nothing: its peak rises to 4 / (4 - k) times the input, so it
+// takes its input in at 1 / (1 + k/4), its peak about as loud as the low-pass's above what it passes.
+inline double ladderInputGain(double feedback, FilterType type = FilterType::Ladder) {
+    return type == FilterType::LadderBand ? 1.0 / (1.0 + 0.25 * feedback) : 1.0 + 0.25 * feedback;
+}
+// What the band-pass's tap is scaled by, for its peak at unity without resonance: after two stages (12 dB) a half
+// there, after four (24 dB) a quarter.
+constexpr double ladderBandGain(int slope) {
+    return slope < 2 ? 2.0 : 4.0;
 }
 // The analog types' saturation: a rational curve close to tanh, smooth to its flat ends at 3 times its scale (its
 // slope 0 there) and without a library call. Odd, so silence stays silence.
@@ -199,9 +217,11 @@ struct FilterSettings {
     // The analog types' feedback (the ladder's and diode's k, the Sallen-Key's K) and what their input is scaled by.
     double feedback = 0.0;
     double inputGain = 1.0;
-    // The ladder's: each stage's share of its input, g / (1 + g) (each stage putting out G x + (1 - G) times its
-    // state), and 1 / (1 + k G^4), which solves the loop for the fourth stage's output.
+    // The ladder's: each stage's share of its input, g / (1 + g) (a low-pass stage putting out G x + (1 - G) times
+    // its state, a high-pass (1 - G) (x - its state)), the four stages' gain A for what goes in (G^4 for the
+    // low-pass), and 1 / (1 + k A) (the band-pass's 1 / (1 - k A)), which solves the loop for the fourth's output.
     double ladderG = 0.0;
+    double ladderGain = 0.0;
     double ladderSolve = 1.0;
     // The diode's: its stages' rate g, the factors that solve (I - g M) y = r for them (the inverse of each pivot and
     // the upper diagonal over it, see Filter::process()), its stages' answer to a unit input, and 1 / (1 + k h[3]).
@@ -272,6 +292,22 @@ inline void setDiodeRate(FilterSettings &s, double gd) {
         s.diodeUnit[i] = forward[i] - (i < 3 ? s.diodeUpper[i] * s.diodeUnit[i + 1] : 0.0);
 }
 
+// The ladder's stages at share `G` (see FilterSettings::ladderG), with its feedback set.
+inline void setLadderRate(FilterSettings &s, double G) {
+    s.ladderG = G;
+    if (s.type == FilterType::Ladder) { // worked out in this order, as it always was
+        const double g2 = G * G;
+        s.ladderGain = g2 * g2;
+        s.ladderSolve = 1.0 / (1.0 + s.feedback * g2 * g2);
+        return;
+    }
+    double gain = 1.0;
+    for (int i = 0; i < 4; ++i)
+        gain *= ladderStageHigh(s.type, i) ? 1.0 - G : G;
+    s.ladderGain = gain;
+    s.ladderSolve = 1.0 / (1.0 + (s.type == FilterType::LadderBand ? -s.feedback : s.feedback) * gain);
+}
+
 // How far filter FM takes a filter's integrators at `sampleRate`: the rates of the cutoffs filterSettings() holds to.
 struct CutoffFmRange {
     double low = 0.0, high = 0.0;
@@ -304,11 +340,12 @@ inline void modulateCutoff(FilterSettings &now, const FilterSettings &base, doub
     case FilterType::Comb:
         now.combDelay = std::max(base.combDelay / factor, 2.0);
         break;
-    case FilterType::Ladder: {
+    case FilterType::Ladder:
+    case FilterType::LadderHigh:
+    case FilterType::LadderBand: {
         const double g = rate(base.ladderG / (1.0 - base.ladderG));
-        now.ladderG = g / (1.0 + g);
-        const double g2 = now.ladderG * now.ladderG;
-        now.ladderSolve = 1.0 / (1.0 + base.feedback * g2 * g2);
+        now.feedback = base.feedback;
+        setLadderRate(now, g / (1.0 + g));
         break;
     }
     case FilterType::Diode:
@@ -358,14 +395,13 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
         s.combFeedback = combFeedback(resonance);
         s.combGain = std::sqrt(1.0 - s.combFeedback * s.combFeedback); // keeps broadband level steady
         break;
-    case FilterType::Ladder: {
-        s.ladderG = g / (1.0 + g);
+    case FilterType::Ladder:
+    case FilterType::LadderHigh:
+    case FilterType::LadderBand:
         s.feedback = ladderFeedback(resonance);
-        s.inputGain = ladderInputGain(s.feedback);
-        const double g2 = s.ladderG * s.ladderG;
-        s.ladderSolve = 1.0 / (1.0 + s.feedback * g2 * g2);
+        s.inputGain = ladderInputGain(s.feedback, type);
+        setLadderRate(s, g / (1.0 + g));
         break;
-    }
     case FilterType::Diode:
         setDiodeRate(s, g / kDiodeTurn);
         s.feedback = diodeFeedback(resonance);
@@ -517,9 +553,8 @@ public:
             const double G = s.ladderG, keep = 1.0 - G;
             const double carried =
                 ((state_[0] * keep * G + state_[1] * keep) * G + state_[2] * keep) * G + state_[3] * keep;
-            const double G2 = G * G;
             const double x = in * s.inputGain;
-            const double fourth = (G2 * G2 * x + carried) * s.ladderSolve;
+            const double fourth = (s.ladderGain * x + carried) * s.ladderSolve;
             double y = x - s.feedback * fourth;
             double out = 0.0;
             for (int i = 0; i < 4; ++i) {
@@ -530,6 +565,32 @@ public:
                     out = y;
             }
             return out / s.driveRoot;
+        }
+        case FilterType::LadderHigh:
+        case FilterType::LadderBand: {
+            // The same loop with high-pass stages (all four, or every other one): each puts out what it takes in
+            // less its low-pass's output, (1 - G) (x - its state) as if it were linear. The band-pass adds its
+            // feedback, its loop turning a whole cycle at the cutoff, and is taken from its second stage (12 dB) or
+            // its fourth (24 dB), scaled for its peak.
+            const bool band = s.type == FilterType::LadderBand;
+            const double G = s.ladderG, keep = 1.0 - G;
+            double carried = 0.0;
+            for (int i = 0; i < 4; ++i)
+                carried = ladderStageHigh(s.type, i) ? keep * (carried - state_[i]) : G * carried + keep * state_[i];
+            const double x = in * s.inputGain;
+            const double fourth = (s.ladderGain * x + carried) * s.ladderSolve;
+            double y = band ? x + s.feedback * fourth : x - s.feedback * fourth;
+            double out = 0.0;
+            for (int i = 0; i < 4; ++i) {
+                const double z = analogSaturate(y, kLadderSaturationScale);
+                const double v = (z - state_[i]) * G;
+                const double low = v + state_[i];
+                state_[i] = low + v;
+                y = ladderStageHigh(s.type, i) ? z - low : low;
+                if (i == s.slope)
+                    out = y;
+            }
+            return (band ? ladderBandGain(s.slope) * out : out) / s.driveRoot;
         }
         case FilterType::Diode: {
             // The stages solved for what their states alone put out (the system's pivots worked out once a block),
@@ -617,14 +678,19 @@ private:
     // What the type and slope ran last time (uses_, 0 before the first time): the state-variable stages (the Morph
     // type's too), the comb's line, an analog type's stages (each its own, though they share state_), or the formants.
     static constexpr unsigned kUsesA = 1, kUsesB = 2, kUsesComb = 4, kUsesLadder = 8, kUsesDiode = 16,
-                              kUsesSallenKey = 32, kUsesFormant = 64;
-    static constexpr unsigned kUsesAnalog = kUsesLadder | kUsesDiode | kUsesSallenKey;
+                              kUsesSallenKey = 32, kUsesFormant = 64, kUsesLadderHigh = 128, kUsesLadderBand = 256;
+    static constexpr unsigned kUsesAnalog =
+        kUsesLadder | kUsesDiode | kUsesSallenKey | kUsesLadderHigh | kUsesLadderBand;
     static unsigned usesOf(const FilterSettings &s) {
         switch (s.type) {
         case FilterType::Comb:
             return kUsesComb;
         case FilterType::Ladder:
             return kUsesLadder;
+        case FilterType::LadderHigh:
+            return kUsesLadderHigh;
+        case FilterType::LadderBand:
+            return kUsesLadderBand;
         case FilterType::Diode:
             return kUsesDiode;
         case FilterType::SallenKeyLow:
@@ -701,6 +767,20 @@ inline double filterResponse(FilterType type, int slope, double cutoffHz, double
             taps *= pole;
         const Complex all = pole * pole * pole * pole;
         h = ladderInputGain(k) * taps / (all + k);
+        break;
+    }
+    case FilterType::LadderHigh:
+    case FilterType::LadderBand: { // the stages up to the tap over 1 + k (or 1 - k) times all four, as its input is
+        const double k = ladderFeedback(resonance);
+        Complex taps{1.0}, all{1.0};
+        for (int i = 0; i < 4; ++i) {
+            const Complex stage = ladderStageHigh(type, i) ? s / (1.0 + s) : 1.0 / (1.0 + s);
+            all *= stage;
+            if (i <= slope)
+                taps *= stage;
+        }
+        const bool band = type == FilterType::LadderBand;
+        h = ladderInputGain(k, type) * (band ? ladderBandGain(slope) : 1.0) * taps / (1.0 + (band ? -k : k) * all);
         break;
     }
     case FilterType::Diode: {

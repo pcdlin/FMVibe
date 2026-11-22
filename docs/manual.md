@@ -500,13 +500,28 @@ route something into it, and route it to OUT.
 
 ### Filter types
 
-| Type | Description |
+The type list offers seven types: **Low-pass**, **High-pass**, **Band-pass**, **Notch**, **Comb**, **Formant** and
+**Morph**. Low-pass, high-pass and band-pass each come in several models, which you pick from the **Model** list beside
+the slope list, under the response display. Its **‹** and **›** arrows step through the models, so you can hear each in
+turn. When you pick another type, the filter keeps its model if the new type has it: a ladder low-pass becomes a ladder
+high-pass.
+
+| Type | Models |
 | --- | --- |
-| Low-pass, High-pass, Band-pass, Notch | The classic filter types. Slope 6, 12 (default), 18 or 24 dB/octave; band-pass and notch offer 12 and 24 only. |
+| Low-pass | **SVF**, **Ladder**, **Diode**, **Sallen-Key** |
+| High-pass | **SVF**, **Ladder**, **Sallen-Key** |
+| Band-pass | **SVF**, **Ladder** |
+| Notch, Comb, Formant, Morph | One model each, so no Model list |
+
+| Type or model | Description |
+| --- | --- |
+| SVF (low-pass, high-pass, band-pass), Notch | The clean, classic filters. Slope 6, 12 (default), 18 or 24 dB/octave; band-pass and notch offer 12 and 24 only. |
 | Comb | A tuned feedback delay: Cutoff sets the pitch, Resonance the feedback. |
-| Ladder | A four-pole transistor ladder low-pass with saturating stages. Slope picks 6 to 24 dB (one to four stages). Resonance thins the low end; it self-oscillates at high resonance. |
-| Diode | A four-pole diode ladder: darker than the ladder. 24 dB only. Self-oscillates. |
-| Sallen-Key LP, Sallen-Key HP | Two-pole filters in the style of a classic semi-modular, 12 dB only. Soft without resonance; they scream and break up as resonance rises. |
+| Ladder low-pass | A four-pole transistor ladder with saturating stages. Slope picks 6 to 24 dB (one to four stages). Resonance thins the low end; it self-oscillates at high resonance. |
+| Ladder high-pass | The same ladder built from high-pass stages. Slope picks 6 to 24 dB. Resonance thins the top end; it self-oscillates at high resonance. |
+| Ladder band-pass | A ladder that rings at its center, 12 or 24 dB. It self-oscillates at high resonance, louder than the low-pass ladder. |
+| Diode low-pass | A four-pole diode ladder: darker than the ladder. 24 dB only. Self-oscillates. |
+| Sallen-Key low-pass and high-pass | Two-pole filters in the style of a classic semi-modular, 12 dB only. Soft without resonance; they scream and break up as resonance rises. |
 | Formant | Three band-passes at the formants of a vowel. **Vowel** sweeps A, E, I, O, U; Cutoff shifts the formants; Resonance narrows them. |
 | Morph | Morphs from low-pass to high-pass as **Morph** goes from 0 to 1, through band-pass or (with its notch switch on) notch. 12 or 24 dB. |
 
@@ -518,6 +533,7 @@ route something into it, and route it to OUT.
   note moves (0 by default).
 - **Drive**: saturation before the filter.
 - **Mix**: blends the filter's input with its output (100 % = fully filtered).
+- **Model**: a list under the response display, for a low-pass, high-pass or band-pass.
 - **Slope**: a list under the response display.
 - **Vowel** (Formant) or **Morph** and the notch switch (Morph).
 
@@ -1016,8 +1032,9 @@ knobs below set the selected band.
 
 #### Filter
 
-The voice filters' types on the whole mix: low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
-and HP, formant and morph, with their slopes. Controls: **Cutoff**, **Reso**, **Key Track** (follows the most recent
+The voice filters' types on the whole mix: low-pass, high-pass, band-pass, notch, comb, formant and morph, with their
+models and slopes. The **Model** button under the display shows the model's short name (SVF, LAD, DIO, SK); click it
+to pick another. Controls: **Cutoff**, **Reso**, **Key Track** (follows the most recent
 note), **Drive** and **Mix**, plus **Vowel** or **Morph**. The display shows the response with a draggable handle and
 the output spectrum behind it. See [Filters](#8-filters).
 
