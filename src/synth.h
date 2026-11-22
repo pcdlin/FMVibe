@@ -335,6 +335,11 @@ private:
     void renderSpan(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams);
     void applySeqEvent(const SeqEvent &e);
     void applySeqEvents(int count);
+    // The bent notes' bends over the stretch the sequencer planned last (see Sequencer::bends()), `covered` frames: those
+    // of the voices playing them now, and those of the notes it starts as they start (see applySeqEvent()).
+    void applySeqBends(uint32_t covered);
+    uint32_t seqCovered_ = 0;  // the frames the stretch planned last covers
+    uint32_t seqPlanFrame_ = 0; // and where an event applied now starts in it
     // The host's notes the sequencer took as keys (in Key and Latch), which no voice plays: they end as their keys come
     // up, or a reset, choke or All Sound Off ends them. Whether any matched `match`; `report` reports their ends.
     bool releaseKeys(const NoteRef &match);
@@ -452,6 +457,12 @@ private:
         uint64_t order = 0;     // note-on sequence number, for stealing the oldest
         double peak = 0.0;      // loudest audible envelope, for stealing the quietest
         double tuning = 0.0;    // note expressions
+        // The sequencer's bend of its note, in semitones, going to seqTuneTo by seqTuneStep a frame for seqTuneLeft more
+        // frames (see Sequencer::bends()).
+        double seqTune = 0.0;
+        double seqTuneTo = 0.0;
+        double seqTuneStep = 0.0;
+        uint32_t seqTuneLeft = 0;
         double exprGain = 1.0;
         double exprPan = 0.0;
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
@@ -549,6 +560,8 @@ private:
     Voice *stealable();
     // Sounding and still playing its note: not ended, not fading out.
     static bool live(const Voice &v) { return v.active && !v.fading; }
+    // A voice playing a bent note of the sequencer's taking up its bend `frame` frames into the stretch planned last.
+    void bendVoice(Voice &v, const SeqBend &b, uint32_t frame);
     Voice *newestVoice();
     Voice *voicePlaying(const NoteRef &note);
     bool voiceHas(const NoteRef &note) const;

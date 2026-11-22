@@ -84,6 +84,8 @@ public:
             lastAudition = note;
         auditioning += on ? 1 : -1;
     }
+    void auditionBend(double semitones) override { lastAuditionBend = semitones; }
+    double lastAuditionBend = 0.0; // how far the notes heard alone were bent last
     int lastAudition = -1; // the last note the SEQ view played to be heard alone
     int auditioning = 0;   // and how many of them it holds down
     void setScope(int op, int cycles) override {
@@ -2065,7 +2067,7 @@ void testPopupEscape(const std::filesystem::path &dir, Renderer &renderer) {
     // The SEQ view's snap list.
     click(view, {308.0f, 116.0f});
     const int snap = model.ui.seqSnap;
-    const Rect snapButton{detail::kSeqTools.x + 108.0f, detail::kSeqTools.y, 76.0f, detail::kSeqTools.h};
+    const Rect snapButton = detail::seqSnapButton();
     click(view, rectCenter(snapButton));
     const bool snapList = escaped("14k-escape-seq-snap.png") && model.ui.seqSnap == snap;
     renderer.save(view, dir / "14k-escape-closed.png");
@@ -4124,6 +4126,211 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
 // stopping as a whole at a neighbor not picked; Shift+click adding a point; with Draw, a point picked dragged moving
 // the others too; Ctrl+A over the lane picking every point and Delete removing them, undoably; a click off the lane
 // letting them go, and Ctrl+A over the roll too, Delete then removing the notes.
+// The notes' own bends: the Bend tool after Select and Draw putting a point down on a note by rows (from a point at its
+// start), heard at the pitch it bends to, its line drawn over the rows (read off the rendered pixels); with Alt off the
+// grid; a point dragged stopping at its neighbor; a segment's middle bent and straightened by a double-click, a point
+// double-clicked going; Shift+drag drawing the bend a point a grid line; the field's BEND scaling and clearing the
+// picked notes' bends; copied, pasted, stretched and removed with their notes; folded to a scale, a row up a degree
+// of it; and the NOTE BEND lane after MOD WHEEL showing the picked note's bend about its middle, a point dragged there
+// and one put down by a double-click. Each an undo step.
+void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    using detail::kSeqGrid;
+    view.poll();
+    click(view, {308.0f, 116.0f}); // the SEQ tab
+    const float rh = kSeqGrid.h / std::floor(kSeqGrid.h / detail::kSeqRowH); // rows from C3 (48) up, a bar across
+    auto at = [&](double step, double pitch) {
+        return Point{kSeqGrid.x + static_cast<float>(step) * kSeqGrid.w / 16.0f,
+                     kSeqGrid.y + kSeqGrid.h - (static_cast<float>(pitch - 48.0) + 0.5f) * rh};
+    };
+    auto put = [&](int slot, double start, double length, int pitch) {
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Start), start);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), length);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Pitch), pitch);
+    };
+    auto count = [&](int slot) { return model.value(seqNoteBendCountIndex(0, slot)); };
+    auto px = [&](int slot, int i) { return model.value(seqNoteBendIndex(0, slot, i, PointField::X)); };
+    auto py = [&](int slot, int i) { return model.value(seqNoteBendIndex(0, slot, i, PointField::Y)); };
+    auto pc = [&](int slot, int i) { return model.value(seqNoteBendIndex(0, slot, i, PointField::Curve)); };
+    auto nearly = [](double a, double b, double within = 1e-6) { return std::abs(a - b) < within; };
+    auto lit = [](uint32_t c) { return static_cast<int>(((c >> 16 & 255) + (c >> 8 & 255) + (c & 255)) / 3); };
+    put(0, 4.0, 4.0, 60);
+    view.poll();
+
+    // Bend, the third tool: a press on the note at step 6 dragged up two rows puts a point at its start at 0 and one at
+    // +2 two steps in, heard at C4 bent +2; the line two rows up drawn past the point; one undo step takes it away.
+    click(view, rectCenter(detail::seqToolButton(2)));
+    const bool tool = model.ui.seqBend && !model.ui.seqDraw;
+    const Point lineAt = at(7.5, 62.0);
+    view.mouseMove({600.0f, 40.0f}, {});
+    renderer.save(view, dir / "36v-seq-bend-before.png");
+    const int bare = lit(renderer.pixel(lineAt));
+    view.mouseDown(at(6.0, 60.0), {});
+    view.mouseMove(at(6.0, 61.0), {});
+    view.mouseMove(at(6.0, 62.0), {});
+    const bool heard = model.lastAudition == 60 && nearly(model.lastAuditionBend, 2.0) && model.auditioning == 1;
+    const bool dragShot = renderer.save(view, dir / "36v-seq-bend-drag.png");
+    view.mouseUp(at(6.0, 62.0), {});
+    view.mouseMove({600.0f, 40.0f}, {});
+    const bool shot = renderer.save(view, dir / "36v-seq-bend.png");
+    const int drawn = lit(renderer.pixel(lineAt));
+    const bool put2 = count(0) == 2.0 && nearly(px(0, 0), 0.0) && nearly(py(0, 0), 0.0) && nearly(px(0, 1), 2.0) &&
+                      nearly(py(0, 1), 2.0);
+    std::printf("      a bend: %g points, heard at %d bent %+.2f; the line two rows up %d (bare %d)\n", count(0),
+                model.lastAudition, model.lastAuditionBend, drawn, bare);
+    view.undo();
+    const bool undone = count(0) == 0.0;
+    view.redo();
+    check(tool && heard && dragShot && shot && put2 && drawn > bare + 30 && undone && count(0) == 2.0 &&
+              model.auditioning == 0,
+          "the Bend tool puts a point down on a note by rows, heard as it bends, its line drawn over the rows, undoably");
+
+    // With Alt, the point follows the mouse off the grid; a point dragged right past its neighbor stops at it.
+    view.mouseDown(at(6.0, 62.0), {false, false, true});
+    view.mouseMove(at(6.6, 62.6), {false, false, true});
+    view.mouseUp(at(6.6, 62.6), {false, false, true});
+    const bool free = std::abs(py(0, 1) - 2.6) < 0.1 && std::abs(px(0, 1) - 2.6) < 0.1;
+    view.undo();
+    view.mouseDown(at(7.0, 60.0), {}); // a third point, at 3 steps, back at 0
+    view.mouseUp(at(7.0, 60.0), {});
+    drag(view, at(6.0, 62.0), at(7.5, 62.0));
+    const bool stopped = count(0) == 3.0 && nearly(px(0, 1), 3.0) && nearly(px(0, 2), 3.0);
+    view.undo();
+    check(free && stopped, "a bend's point goes off the grid with Alt, and stops at its neighbor");
+
+    // The first segment's middle dragged up bends it, undoably; a double-click there straightens it; a double-click
+    // on the third point takes it away.
+    const Point handle{at(5.0, 61.0).x, at(5.0, 61.0).y};
+    drag(view, handle, {handle.x, handle.y - 20.0f});
+    const bool bent = pc(0, 0) != 0.0;
+    doubleClick(view, at(5.0, 60.0 + 2.0 * shapeBend(0.5, pc(0, 0)))); // where the bend took the middle
+    const bool straight = pc(0, 0) == 0.0;
+    doubleClick(view, at(7.0, 60.0));
+    const bool gone = count(0) == 2.0;
+    if (!(bent && straight && gone))
+        std::printf("      segment: bent %d straight %d, %g points left\n", bent, straight, count(0));
+    check(bent && straight && gone, "a bend's segment bends and straightens, and a point double-clicked goes");
+
+    // Shift+drag across a note draws its bend, a point on each grid line, in place of the points there.
+    put(1, 10.0, 4.0, 55);
+    view.poll();
+    view.mouseDown(at(10.0, 55.0), {true, false, false});
+    view.mouseMove(at(11.0, 56.0), {true, false, false});
+    view.mouseMove(at(12.0, 57.0), {true, false, false});
+    view.mouseMove(at(13.0, 55.0), {true, false, false});
+    view.mouseUp(at(13.0, 55.0), {true, false, false});
+    const bool drew = count(1) == 4.0 && nearly(py(1, 1), 1.0) && nearly(py(1, 2), 2.0) && nearly(py(1, 3), 0.0);
+    view.undo();
+    check(drew && count(1) == 0.0, "Shift+drag with Bend draws a note's bend, a point on each grid line, undoably");
+
+    // The field's BEND: the note's farthest point, dragged up two semitones scaling the bend (+2 to +4), and a
+    // double-click clearing it.
+    click(view, rectCenter(detail::seqToolButton(0)));
+    click(view, at(4.5, 60.0));
+    const Point bendField{detail::seqFieldRect(5).x + 30.0f, detail::kSeqTools.y + 12.0f};
+    view.mouseDown(bendField, {});
+    view.mouseMove({bendField.x, bendField.y - 12.0f}, {});
+    view.mouseUp({bendField.x, bendField.y - 12.0f}, {});
+    const bool scaled = nearly(py(0, 1), 4.0) && nearly(px(0, 1), 2.0);
+    view.undo();
+    view.mouseMove({600.0f, 40.0f}, {});
+    const bool fieldShot = renderer.save(view, dir / "36v-seq-bend-field.png");
+    doubleClick(view, bendField);
+    const bool cleared = count(0) == 0.0;
+    view.undo();
+    check(scaled && fieldShot && cleared && count(0) == 2.0,
+          "the field's BEND scales the picked notes' bends, and a double-click clears them");
+
+    // Copied and pasted, the copy bends as the note does; stretched twice as long, its bend too; removed, its bend's
+    // params back to their defaults.
+    view.mouseMove(at(4.5, 60.0), {});
+    view.seqKey(View::Key::Copy, false);
+    view.mouseMove(at(12.0, 50.0), {});
+    view.seqKey(View::Key::Paste, false);
+    int copy = -1;
+    for (int slot = 1; slot < kSeqNotes; ++slot)
+        if (model.value(seqNoteIndex(0, slot, SeqNoteParam::Length)) > 0.0 && slot != 1)
+            copy = slot;
+    const bool pasted = copy > 0 && count(copy) == 2.0 && nearly(py(copy, 1), 2.0);
+    view.undo();
+    click(view, at(15.5, 70.0)); // nothing picked: the whole pattern
+    click(view, rectCenter(detail::seqStretchButton(2)));
+    const bool stretched = nearly(px(0, 1), 4.0);
+    view.undo();
+    click(view, at(4.5, 60.0));
+    view.seqKey(View::Key::Delete, false);
+    const bool cleaned = count(0) == 0.0 && py(0, 1) == 0.0 && px(0, 1) == 0.0;
+    view.undo();
+    check(pasted && stretched && cleaned && count(0) == 2.0,
+          "a note's bend is copied, pasted and stretched with it, and goes when it does");
+
+    // Folded to C minor, a D#4's point dragged a row up lands on F4: +2.
+    put(2, 0.0, 2.0, 63);
+    model.set(paramIndex(SeqParam::Scale), static_cast<double>(SeqScale::Minor));
+    model.ui.seqFold = true;
+    view.poll();
+    click(view, rectCenter(detail::seqToolButton(2)));
+    {
+        // The rows: C minor's pitches, from C3 up as far as the list's end lets every row show.
+        std::vector<int> scale;
+        for (int pitch = 0; pitch < 128; ++pitch)
+            if (seqInScale(static_cast<int>(SeqScale::Minor), 60, pitch))
+                scale.push_back(pitch);
+        const int rows = static_cast<int>(std::floor(kSeqGrid.h / detail::kSeqRowH));
+        const int first = std::min(static_cast<int>(std::find(scale.begin(), scale.end(), 48) - scale.begin()),
+                                   static_cast<int>(scale.size()) - rows);
+        const float rowH = kSeqGrid.h / static_cast<float>(rows);
+        auto row = [&](int pitch) {
+            const int index = static_cast<int>(std::find(scale.begin(), scale.end(), pitch) - scale.begin());
+            return kSeqGrid.y + kSeqGrid.h - (static_cast<float>(index - first) + 0.5f) * rowH;
+        };
+        const float x = at(1.0, 60.0).x;
+        drag(view, {x, row(63)}, {x, row(65)});
+        view.mouseMove({600.0f, 40.0f}, {});
+        renderer.save(view, dir / "36v-seq-bend-fold.png");
+    }
+    const bool folded = count(2) == 2.0 && nearly(py(2, 1), 2.0);
+    if (!folded)
+        std::printf("      folded: %g points, %+.2f\n", count(2), py(2, 1));
+    if (count(2) > 0.0)
+        view.undo();
+    model.ui.seqFold = false;
+    model.set(paramIndex(SeqParam::Scale), 0.0);
+    model.set(seqNoteIndex(0, 2, SeqNoteParam::Length), 0.0);
+    view.poll();
+    check(folded, "folded to a scale, a bend's point goes up a degree of it a row");
+
+    // The NOTE BEND lane, after MOD WHEEL: the picked note's bend about its middle, ±2 (its farthest +2 at the lane's
+    // top), its point dragged back down to the middle (off the grid), and a double-click inside the note putting
+    // another down; the macros' tab moved along after it still opening their lane.
+    click(view, rectCenter(detail::seqToolButton(0)));
+    click(view, at(4.5, 60.0));
+    const Rect tab{kSeqGrid.x + 4.0f * detail::kSeqLaneTabStep, detail::kSeqLaneTabs.y + 3.0f, 72.0f,
+                   detail::kSeqLaneTabs.h - 6.0f};
+    click(view, rectCenter(tab));
+    const bool laneShown = model.ui.seqLane == SeqLane::NoteBend;
+    const float laneTop = detail::kSeqLaneArea.y + 6.0f, laneH = detail::kSeqLaneArea.h - 12.0f;
+    auto lanePoint = [&](double step, double semitones) {
+        return Point{at(step, 60.0).x, laneTop + 0.5f * laneH - static_cast<float>(semitones / 2.0) * 0.5f * laneH};
+    };
+    view.mouseMove({600.0f, 40.0f}, {});
+    const bool laneShot = renderer.save(view, dir / "36v-seq-bend-lane.png");
+    drag(view, lanePoint(6.0, 2.0), lanePoint(6.0, 0.0));
+    const bool laneMoved = std::abs(py(0, 1)) < 0.1;
+    view.undo();
+    doubleClick(view, lanePoint(7.0, 1.0));
+    const bool laneAdded = count(0) == 3.0 && std::abs(py(0, 2) - 1.0) < 0.1;
+    view.undo();
+    click(view, rectCenter(detail::seqMacroLabel(detail::kSeqMacroTab)));
+    const bool macroLane = seqLaneMacro(model.ui.seqLane);
+    if (!(laneShown && laneMoved && laneAdded && macroLane))
+        std::printf("      lane: shown %d moved %d (%+.2f) added %d (%g points) macros %d\n", laneShown, laneMoved, py(0, 1),
+                    laneAdded, count(0), macroLane);
+    check(laneShown && laneShot && laneMoved && laneAdded && macroLane,
+          "the NOTE BEND lane shows the picked note's bend, its points dragged and put down there, undoably");
+}
+
 void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -4187,8 +4394,8 @@ void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
     const bool three = nearly(cy(0), -0.25) && nearly(cy(1), 0.25) && nearly(cy(2), -0.75) && nearly(cy(3), 0.0);
     view.undo();
     // With Draw, a point picked dragged moves the others too.
-    const Point selectTool = rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h});
-    click(view, {selectTool.x + 30.0f, selectTool.y}); // Draw
+    const Point selectTool = rectCenter(detail::seqToolButton(0));
+    click(view, rectCenter(detail::seqToolButton(1))); // Draw
     click(view, bendAt(14.5, 0.9) , {}); // a point put down there, picked alone, then taken away again
     view.undo();
     view.mouseMove(bendAt(5.0, 0.0), {});
@@ -6692,8 +6899,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 600.0f}, {});
     const bool boxShot = renderer.save(view, dir / "36b-seq-picked.png");
     const double before0 = field(0, SeqNoteParam::Velocity), before1 = field(1, SeqNoteParam::Velocity);
-    const float velX = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f - 84.0f - 58.0f - 92.0f -
-                       58.0f + 20.0f; // the VEL field (see seqpanel.cpp's seqFieldRect())
+    const float velX = detail::seqFieldRect(1).x + 20.0f; // the VEL field
     const Point velPoint{velX, detail::kSeqTools.y + 12.0f};
     view.mouseDown(velPoint, {});
     view.mouseMove({velPoint.x, velPoint.y - 15.0f}, {});
@@ -6710,9 +6916,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 64.0 / 127.0);
         model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.3);
         view.poll();
-        const float right = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f;
-        doubleClick(view, {right - 84.0f - 58.0f - 92.0f - 58.0f + 20.0f, detail::kSeqTools.y + 12.0f}); // VEL
-        doubleClick(view, {right - 84.0f + 20.0f, detail::kSeqTools.y + 12.0f});                         // OFFSET
+        doubleClick(view, {detail::seqFieldRect(1).x + 20.0f, detail::kSeqTools.y + 12.0f}); // VEL
+        doubleClick(view, {detail::seqFieldRect(4).x + 20.0f, detail::kSeqTools.y + 12.0f}); // OFFSET
         const bool reset = field(0, SeqNoteParam::Velocity) == 100.0 / 127.0 && field(0, SeqNoteParam::Start) == 0.0;
         model.set(seqNoteIndex(0, 0, SeqNoteParam::Velocity), 100.0 / 127.0);
         model.set(seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0);
@@ -7040,11 +7245,10 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, at(0.5, 48)); // a note picked: the field reads
         view.mouseMove({600.0f, 40.0f}, {});
         const bool shot = renderer.save(view, dir / "36n-seq-porcelain.png");
-        const float toolsRight = detail::kSeqTools.x + detail::kSeqTools.w - 26.0f - 8.0f - 104.0f - 8.0f;
         const float y = detail::kSeqTools.y + 3.0f; // above the fields' text
-        const uint32_t note = renderer.pixel({toolsRight - 84.0f - 58.0f - 92.0f - 58.0f - 72.0f + 40.0f, y});
-        const uint32_t chance = renderer.pixel({toolsRight - 84.0f - 58.0f - 92.0f + 40.0f, y});
-        const uint32_t offset = renderer.pixel({toolsRight - 84.0f + 40.0f, y});
+        const uint32_t note = renderer.pixel({detail::seqFieldRect(0).x + 40.0f, y});
+        const uint32_t chance = renderer.pixel({detail::seqFieldRect(2).x + 40.0f, y});
+        const uint32_t offset = renderer.pixel({detail::seqFieldRect(4).x + 40.0f, y});
         // The third zoom button (out, up and down): inside it, left of its −, and just left of it, right of its arrow.
         const float zx = detail::kSeqBox.x + detail::kSeqBox.w - 6.0f - 2.0f * 20.0f;
         const float zy = detail::kSeqLaneTabs.y + detail::kSeqLaneTabs.h * 0.5f;
@@ -7186,7 +7390,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     // Selecting, the cursor over the empty grid is the arrow; drawing, a pen, and over a note what a drag does to it.
     view.mouseMove(at(6.5, 62), {});
     const bool arrow = view.cursor() == CursorKind::Arrow;
-    click(view, {detail::kSeqTools.x + 45.0f, detail::kSeqTools.y + 12.0f});
+    click(view, rectCenter(detail::seqToolButton(1)));
     view.mouseMove(at(6.5, 62), {});
     const bool pen = view.cursor() == CursorKind::Pen;
     view.mouseMove(at(4.4, 55), {});
@@ -7256,8 +7460,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         auto curveField = [&](SeqCurve curve, int i, PointField f) { return model.value(seqCurveIndex(0, curve, i, f)); };
         auto count = [&](SeqCurve curve) { return model.value(seqCurveCountIndex(0, curve)); };
         const Modifiers ctrl{false, true, false}, shift{true, false, false};
-        const Point selectTool = rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h});
-        const Point drawTool = {selectTool.x + 30.0f, selectTool.y};
+        const Point selectTool = rectCenter(detail::seqToolButton(0));
+        const Point drawTool = rectCenter(detail::seqToolButton(1));
         click(view, {kSeqGrid.x + 2.0f * 76.0f + 36.0f, detail::kSeqLaneTabs.y + 11.0f}); // BEND
         view.mouseMove({600.0f, 600.0f}, {});
         renderer.save(view, dir / "36h-seq-bend-empty.png");
@@ -7466,7 +7670,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
             model.set(seqCurveCountIndex(0, macroCurve), 0.0);
         }
         // Back as it was: no curves, the select tool, the lane on CHANCE.
-        click(view, rectCenter(Rect{detail::kSeqTools.x, detail::kSeqTools.y, 30.0f, detail::kSeqTools.h}));
+        click(view, rectCenter(detail::seqToolButton(0)));
         for (SeqCurve curve : {SeqCurve::Bend, SeqCurve::ModWheel})
             model.set(seqCurveCountIndex(0, curve), 0.0);
         click(view, {kSeqGrid.x + 84.0f + 39.0f, detail::kSeqLaneTabs.y + 11.0f});
@@ -7642,7 +7846,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     }
 
     // The snap's list picks 1/8.
-    const Rect snapButton{detail::kSeqTools.x + 108.0f, detail::kSeqTools.y, 76.0f, detail::kSeqTools.h};
+    const Rect snapButton = detail::seqSnapButton();
     click(view, rectCenter(snapButton));
     const bool snapOpen = renderer.save(view, dir / "36e-seq-snap.png");
     click(view, rectCenter(detail::listMenuItem(snapButton, kSeqSnapCount, 2)));
@@ -14979,6 +15183,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapers(dir, renderer);
     testShapePick(dir, renderer);
     testSeqCurvePick(dir, renderer);
+    testSeqNoteBend(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);

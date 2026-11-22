@@ -76,6 +76,12 @@ EMSCRIPTEN_KEEPALIVE void dsp_note(int key, int on, int velocity, int audition) 
         synth.noteOff(note);
 }
 
+// The notes the SEQ view plays to be heard alone, bent `semitones` (a note bend's point dragged in its roll).
+EMSCRIPTEN_KEEPALIVE void dsp_audition_bend(double semitones) {
+    if (std::isfinite(semitones))
+        synth.noteExpression({-1, kAuditionPort, -1, -1}, CLAP_NOTE_EXPRESSION_TUNING, semitones);
+}
+
 // The page's tempo (BPM), standing in for a host's transport: synced LFOs, delays and sweeps follow it.
 EMSCRIPTEN_KEEPALIVE void dsp_tempo(double bpm) {
     synth.setTempo(bpm);

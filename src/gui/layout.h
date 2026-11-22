@@ -368,6 +368,29 @@ constexpr float kSeqKeysW = 44.0f, kSeqRulerH = 20.0f, kSeqLaneH = 52.0f, kSeqLa
 constexpr float kSeqScrollW = 12.0f;     // the rows' scroll bar, at the grid's right
 constexpr float kSeqLaneTabStep = 76.0f; // a lane's tab and the gap after it
 constexpr float kSeqMacroRowH = 22.0f;
+// The tools over the roll, left to right: Select | Draw | Bend, SNAP and its list's button, x2 and /2; then from the
+// right the bin, MUTE and SLIDE, and left of them the field of the notes picked (NOTE, VEL, CHANCE, LEN, OFFSET, BEND).
+constexpr float kSeqToolW = 28.0f;
+constexpr int kSeqToolCount = 3;
+constexpr Rect seqToolButton(int b) { return {kSeqTools.x + static_cast<float>(b) * kSeqToolW, kSeqTools.y, kSeqToolW, kSeqTools.h}; }
+constexpr float kSeqSnapLabelX = kSeqTools.x + kSeqToolCount * kSeqToolW + 6.0f;
+constexpr Rect seqSnapButton() { return {kSeqTools.x + 126.0f, kSeqTools.y, 76.0f, kSeqTools.h}; }
+constexpr Rect seqStretchButton(int b) { return {kSeqTools.x + 208.0f + (b > 0 ? 0.0f : 30.0f), kSeqTools.y, 28.0f, kSeqTools.h}; }
+constexpr Rect seqClearButton() { return {kSeqTools.x + kSeqTools.w - 26.0f, kSeqTools.y, 26.0f, kSeqTools.h}; }
+constexpr Rect seqFlagButton(int flag) { // Slide, then Mute, left of the bin
+    return {seqClearButton().x - 8.0f - (flag == 0 ? 104.0f : 50.0f), kSeqTools.y, flag == 0 ? 52.0f : 50.0f, kSeqTools.h};
+}
+constexpr int kSeqFieldCount = 6;
+constexpr float kSeqFieldWidths[kSeqFieldCount] = {66.0f, 58.0f, 86.0f, 58.0f, 80.0f, 66.0f};
+constexpr Rect seqFieldRect(int field) { // left of Slide, the note first
+    float x = seqFlagButton(0).x - 8.0f;
+    for (int f = kSeqFieldCount - 1; f >= field; --f)
+        x -= kSeqFieldWidths[f];
+    return {x, kSeqTools.y, kSeqFieldWidths[field], kSeqTools.h};
+}
+static_assert(seqFieldRect(0).x >= seqStretchButton(-2).x + seqStretchButton(-2).w + 8.0f, "the field reaches the tools");
+// The lane's tabs: VELOCITY, CHANCE, BEND, MOD WHEEL, NOTE BEND, then the macros' (see SeqRoll::macroTab).
+constexpr int kSeqLaneTabCount = 5;
 // The roll's places, down to the panel's bottom less 10 px (`bottom`): its box, the keys, the grid and the rows' scroll
 // bar, the ruler over them, the lane and its tabs under them, and after the lane's tabs the macros' curves: one more
 // tab, wider for its macro's number and its arrow, and over it the list of macros it opens.
@@ -384,7 +407,7 @@ constexpr SeqRoll seqRollTo(float bottom) {
     r.ruler = {r.grid.x, r.box.y, r.grid.w, kSeqRulerH};
     r.laneArea = {r.grid.x, r.grid.y + r.grid.h, r.grid.w, kSeqLaneH};
     r.laneTabs = {r.box.x, r.laneArea.y + r.laneArea.h, r.box.w, kSeqLaneTabsH};
-    r.macroTab = {r.grid.x + 4.0f * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 92.0f, r.laneTabs.h - 6.0f};
+    r.macroTab = {r.grid.x + kSeqLaneTabCount * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 92.0f, r.laneTabs.h - 6.0f};
     r.macroList = {r.macroTab.x, r.macroTab.y - 4.0f - (8.0f + 8.0f * kSeqMacroRowH), 180.0f, 8.0f + 8.0f * kSeqMacroRowH};
     return r;
 }

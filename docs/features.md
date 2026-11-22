@@ -886,6 +886,18 @@ What the plugin does and how its editor works, in full. Building and installing 
     shorter, is left out until the pattern reaches it again. Played backward, a curve runs back with the playhead. A curve without points does nothing, nor does any while the sequencer doesn't play. The wheels in the
     keyboard strip and the macros' knobs show where the curves take them as they play and go back to their params as they stop; the curves edit no
     param, so nothing of theirs reaches the host or the undo history.
+  - **Note bends**: each note may also bend its own pitch, as an MPE controller bends one finger's note: up to 8
+    points, each at a time in steps from the note's start and a pitch in semitones (±24), each segment straight or
+    bent, as the curves' are. Before its first point the note plays at that point's pitch (so it can start low and
+    scoop up), and after its last at the last's. The bend moves only the voice playing that note, on top of its glide,
+    the bend curve, the bend wheel, the host's bend and Pitch, and isn't scaled by Bend Range; Octave, Transpose and a
+    key move the note and its bend with it. It runs in steps from where the note starts (after Swing and Humanize),
+    smoothly rather than once a stretch, and isn't scaled by Gate: a note Gate shortens holds the pitch it reached at
+    its end through its release. Reverse and Ping-Pong play it forward, as they play the notes. A note chased in its
+    middle starts where its bend is there. A note gliding from a bent one (in mono or poly) starts its glide from the
+    pitch that one was bent to, so a bend up into a slide to the note it reached joins without a jump. The
+    note source and key-tracked filters follow the bent pitch; fixed operators don't move. The SEQ view draws them over
+    the roll and edits them with its **Bend** tool and in its **NOTE BEND** lane (see [Editor](#editor)).
   - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
     (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
     the keys played (by the host, its own keys and the computer's), not the sequencer's notes. A jump of the transport, or a
@@ -899,7 +911,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - While it may start notes (in Host while
     it is on; in Key and Latch while it runs), the plugin doesn't let the host put processing to sleep.
   - Its settings but Root and Scale are given to hosts, for automation (not modulation); a pattern's length, loop,
-    notes and curves are the editor's alone.
+    notes, their bends and curves are the editor's alone.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
   parameters hosts are given accept CLAP modulation globally, the macros' knobs, the mod wheel, the note source's
   range and every modulation's depth and Amount among them (not the effects or the sources' own knobs, which hosts
@@ -1014,12 +1026,14 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     (its length and loop staying). Each is one undo step.
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
-  - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to
+  - **The tools** over the roll: select | draw | bend (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to
     begin with, 1/32, 1/64, 1/8 triplet, 1/16 triplet; the wheel steps it), **×2** and **÷2** (the notes picked, or
     every note, twice or half as long and as far apart; the whole pattern twice as long takes twice the bars), the
     field of the notes picked (its NOTE, VEL, CHANCE, LEN and OFFSET, the offset a note's start off the grid in
-    hundredths of a step; each dragged up and down or scrolled, moving every note picked, one undo step; a
-    double-click puts VEL back to 100, CHANCE to full and OFFSET to 0, on the grid), **SLIDE** and
+    hundredths of a step, and BEND, the farthest the first one bends, in semitones; each dragged up and down or
+    scrolled, moving every note picked, one undo step, BEND scaling each one's bend, its farthest point a semitone a
+    step further or nearer; a double-click puts VEL back to 100, CHANCE to full and OFFSET to 0, on the grid, and
+    takes BEND's bends away), **SLIDE** and
     **MUTE** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, its notes and curves, asking first.
     The roll's settings (the tool, the snap, the lane, the rows scrolled to and FOLD) belong to the editor: a preset
     or Init leaves them as they are.
@@ -1051,8 +1065,25 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     down (the cursor a pen), and held, the mouse up or down sets its velocity, a step a pixel from 100; with Shift, a
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.
+  - **Note bends** (see Sequencer): each bent note's bend is a line from its start along its points to its end, across
+    the rows (a row a semitone; folded to the scale, between the rows it falls between, in proportion), lighter than
+    the notes, a faint ribbon down to the note's own row, dashed for a note muted or at a chance below full, and past
+    the note's end (where a note made shorter leaves a point, which doesn't play) faint and dashed. **Bend** edits
+    them, showing every bent note's points and the handles at the middles of its segments that rise or fall: a note
+    pressed puts a point down where the mouse is and drags it, on the rows (only the scale's while folded) and the
+    snap's lines, within the note (from a point at its start at its pitch, where it had none); with Alt held, or
+    Shift while dragging, off the grid, to the cent; a point dragged moves between its neighbors, and a segment's
+    middle dragged up or down bends it; a double-click on a point takes it away (a lone point at 0 left going with it)
+    and on a segment's middle straightens it, but leaves a point its own first click put down; with Shift, a drag
+    across a note draws its bend, a point on every line of the grid it crosses, in place of the points there. A note
+    bends through 8 points at most (a message says so). While a point is dragged, a readout by it says how far it
+    bends, and the note sounds alone at that pitch (in the browser demo too). The note is picked as it is pressed;
+    empty space takes a box, as with Select, and a double-click there does nothing. The cursor moves over a point,
+    goes up and down over a segment's middle or a note, and is a pen drawing. Each edit is one undo step. A note's
+    bend goes with it: copied, cut, pasted, duplicated and carried as a copy with Ctrl, as the pattern is copied or
+    pasted, stretched by ×2 and ÷2, and removed with it; moved or transposed, it bends from where it lands.
   - **The lane** under the roll, a slight line parting the two: a stem for each note at its start, as high as its velocity or its chance, as the
-    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. After the tabs,
+    **VELOCITY | CHANCE | BEND | MOD WHEEL | NOTE BEND** tabs under it pick, a note picked ringed there too. After the tabs,
     a **MACRO** tab, with a dot in its macro's color (faint while the macro has no curve in this pattern, here and in the
     list) and that macro's number, in two parts lit apart under the mouse: its label, a click on which shows the macro
     it names (the macro last shown), and at its right end its arrow (pointing down, and up while the list is open), a thin line parting the two while either is lit,
@@ -1087,6 +1118,14 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     dragging a picked point moves every one picked as far, one undo step, keeping their spacing: across between the
     nearest points not picked (or the pattern's ends), and up and down within the curve's range. Ctrl+A over the lane
     picks every point, and Delete removes those picked, one undo step. A click off the lane lets them go.
+    On **NOTE BEND**, the lane shows the notes' own bends about its middle, as the roll is zoomed and scrolled, across
+    the range they fit, named at its right end (±2, ±5, ±12 or ±24 semitones: as far as the pattern's notes bend),
+    with a line at each semitone (each second at ±24), stronger at fifths and octaves, as strong as the GRID setting
+    says: the picked notes' over the others', which are faint, with their points and segments' handles. With either
+    tool, a point dragged moves between its neighbors (anywhere, to the cent; with Ctrl on the snap's lines and whole
+    semitones) and a segment's middle bends it; with Draw or Bend, a press over a picked note puts a point down there
+    and drags it, and with Select a double-click does; a double-click on a point takes it away and on a segment's
+    middle straightens it. Each is an undo step. Overlapping notes, a chord's, are easier to edit here than on the roll.
   - **Hearing notes**: a key clicked in the roll's keys (each click, however quick), and a note clicked, drawn or put down by a double-click on
     the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
     pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
@@ -2453,7 +2492,7 @@ switched off and on again, say) allocates the voices again and ends the notes pl
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 2,027 of FMVibe's 38,008 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,027 of FMVibe's 50,808 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

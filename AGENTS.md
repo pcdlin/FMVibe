@@ -449,7 +449,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot, the telemetry telling the
     wheels what both add as they play and nothing once the key is let go or the sequencer is switched off; and a macro's
     curve taking the place of its knob wherever the knob is set, moving what the macro modulates and no other macro, the
-    telemetry saying how far it moves the knob from where it is set and nothing once it stops;
+    telemetry saying how far it moves the knob from where it is set and nothing once it stops; and a note's own bend
+    planned from where the note starts, stretch after stretch, a note chased in its middle starting bent as far as it
+    is there and one Gate shortens holding what it reached, and through the synth an A4 bending along its points, a
+    sweep of two octaves in a step following its line within 0.3 semitones (not in stairs a stretch long), a chord's
+    bent note bending its own voice alone, a mono glide starting where the note before was bent to, and a patch's
+    bends loading back as saved;
   - the effects' latency, on an impulse through effects that run oversampled or wait and leave the sound as it is (a
     filter, an amp and a flanger at Mix 0): the input straight out beside a filter, the filter on and off, a split with
     an amp at 4x on one band and a filter on the other, two filters beside an amp at 8x, and nine filters in a row
@@ -926,6 +931,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undoably, and on Octave's nothing, and on PATTERN's buttons modulating the pattern picked, undoably, its reach and
     depth handle showing under the row, above PLAY (read off the rendered pixels), and the button it picks ringed, with
     nothing playing where the macro takes it and as the telemetry tells while it plays (read off the rendered pixels);
+  - the notes' own bends: the Bend tool after Select and Draw putting a point down on a note by rows (from a point at
+    its start), heard at the pitch it bends to (`Controller::auditionBend()`), its line drawn over the rows (read off
+    the rendered pixels), with Alt off the grid, a point dragged stopping at its neighbor, a segment's middle bent and
+    straightened by a double-click and a point double-clicked going, Shift+drag drawing the bend a point a grid line;
+    the field's BEND scaling and clearing the picked notes' bends; a bend copied, pasted, stretched by x2 and removed
+    with its note; folded to a scale, a row up a degree of it; and the NOTE BEND lane, after MOD WHEEL, showing the
+    picked note's bend about its middle, a point dragged there and one put down by a double-click, the macros' tab
+    moved along after it still opening their lane, each an undo step;
   - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
     pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
     tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the
@@ -1417,7 +1430,8 @@ itself.
   read when loading a state from before version 9. The sequencer's settings are 40000+, each pattern's length and
   loop 40100 + 10·pattern, each pattern's notes 41000 + 10·(128·pattern + note), and each pattern's curves
   47000 + 200·(2·pattern + curve), the bend's then the mod wheel's, and each macro's 50000 + 200·(8·pattern + macro), a
-  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`).
+  point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`), and each note's bend
+  64000 + 32·(128·pattern + note), a point count and 8 (x, y, curve) points (see `SeqNoteBendParam`).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
@@ -1445,12 +1459,12 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,027 of the 38,008 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,027 of the 50,808 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
-  depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes and curves. Nothing hosts
+  depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes, their bends and curves. Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
@@ -1488,7 +1502,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 16: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 17: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1516,7 +1530,9 @@ itself.
   operator's Warp Amount on a Sync warp and the depths on it load scaled by
   `(kRetiredMaxSyncWarp - 1) / (kMaxSyncWarp - 1)`, since it now plays its wave up to 16 times a cycle rather than 8;
   version 16 has 32 source places rather than 16, and loads an earlier state as saved, its sources stored by the numbers
-  they had, the version rising so that an earlier build refuses a state whose later places it would leave out),
+  they had, the version rising so that an earlier build refuses a state whose later places it would leave out; version
+  17's sequencer notes may bend, and it loads an earlier state as saved, the version rising so that an earlier build
+  refuses a state whose bends it would leave out),
   followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
@@ -1529,7 +1545,8 @@ itself.
   saved as a preset at (0 for none), which the synth's own tempo and a host that lets the editor set the tempo
   (`Controller::hasTempo()`) take up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
   name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
-  the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips.
+  the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips, then the
+  source places past the first 16 (their order and folds) and whether the SEQ view's roll bends notes (its Bend tool).
   The host's state goes on with
   the settings chunk (the oversampling, MPE, MPE's bend range, whether the synth follows the host's tempo and its
   own tempo, `Settings` in `src/state.h`) and a preset chunk (whether the patch changed since its preset, then the preset file's path

@@ -16,6 +16,14 @@ struct SeqEvent {
     int key = 0;
     double velocity = 0.0;
     int32_t id = 0;
+    double bend = 0.0; // a note starting: its bend as it starts, in semitones
+};
+// Where a bent note's bend goes over the stretch planned: from `from` at `frame` (its start in the stretch, or 0) to
+// `to` at the stretch's end, in semitones (see Sequencer::bends()).
+struct SeqBend {
+    int32_t id = 0;
+    uint32_t frame = 0;
+    double from = 0.0, to = 0.0;
 };
 constexpr int16_t kSeqPort = -2;
 // The editor's notes heard on their own (a key or a note clicked in the SEQ view's roll): never taken by the
@@ -89,6 +97,9 @@ public:
     // (-1..1), the mod wheel or a macro's knob (0..1). NaN while it doesn't play, or the curve has no points: it does
     // nothing then.
     double curve(SeqCurve c) const { return curveNow_[static_cast<size_t>(c)]; }
+    // The bends of the bent notes it holds on over the last plan()'s stretch, those started in it too: each note's bend
+    // runs in played steps from where it started, holding the value it reached at its end (it doesn't scale with Gate).
+    std::span<const SeqBend> bends() const { return {bends_.data(), static_cast<size_t>(bendCount_)}; }
 
 private:
     struct Note {
@@ -103,10 +114,15 @@ private:
         int32_t id;
         int key;
         int pitch;   // as written in the pattern
+        double begin; // played steps: where it started (before the stretch it was chased in, for a note chased)
         double end;  // played steps
         double off;  // when it ends at the latest: its end, or a slide's end and a step more
         bool slide;
+        int pattern;  // which pattern it is from: one taking over leaves its bend where it was
+        double bent;  // its bend where the last stretch ended
     };
+    // A sounding note's bend at played step `t`, in semitones.
+    double bendOf(const Sounding &s, double t) const;
 
     void readPattern(int pattern);
     int loopStart() const { return loopStart_; }
@@ -143,6 +159,11 @@ private:
     std::array<int, kSeqCurves> curveCount_{};
     std::array<double, kSeqCurves> curveNow_{};
     int curvePeriod_ = kSeqStepsPerBar; // the playing pattern's length in steps, which its curves wrap around
+    // The playing pattern's notes' bends, by their slots (Note::index).
+    std::array<std::array<SeqCurvePoint, kSeqNoteBendPoints>, kSeqNotes> notePoints_{};
+    std::array<uint8_t, kSeqNotes> notePointCount_{};
+    std::array<SeqBend, kMaxSounding> bends_{};
+    int bendCount_ = 0;
 
     // From keys: those held, newest last, and the one transposing; whether it runs, and its own clock (played steps).
     std::array<int, 16> keys_{};

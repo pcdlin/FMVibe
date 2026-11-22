@@ -446,9 +446,9 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     }
     held_.push_back(played);
 
-    // Glide starts wherever the newest voice is right now, or at the last note.
+    // Glide starts wherever the newest voice is right now, bent as the sequencer bends its note, or at the last note.
     Voice *newest = newestVoice();
-    const double from = newest ? newest->glide : lastKey_;
+    const double from = newest ? newest->glide + newest->seqTune : lastKey_;
     const bool glide = from >= 0.0 && (glideAlways_ || overlapping);
     lastKey_ = note.key;
 
@@ -554,10 +554,48 @@ bool Synth::releaseKeys(const NoteRef &match) {
 
 void Synth::applySeqEvent(const SeqEvent &e) {
     const NoteRef note{e.id, kSeqPort, 0, static_cast<int16_t>(e.key)};
-    if (e.on)
-        noteOn(note, e.velocity);
-    else
+    if (!e.on) {
         noteOff(note);
+        return;
+    }
+    noteOn(note, e.velocity);
+    // A bent note starts where its bend does, and goes on along it through the stretch.
+    const SeqBend *bend = nullptr;
+    for (const SeqBend &b : seq_.bends())
+        if (b.id == e.id)
+            bend = &b;
+    if (e.bend == 0.0 && !bend)
+        return;
+    for (Voice *v : active_)
+        if (live(*v) && v->note.port == kSeqPort && v->note.noteId == e.id) {
+            v->seqTune = e.bend;
+            if (bend)
+                bendVoice(*v, *bend, seqPlanFrame_);
+        }
+}
+
+void Synth::bendVoice(Voice &v, const SeqBend &b, uint32_t frame) {
+    // Where the bend is `frame` frames into the stretch, and how far it goes a frame from there to the stretch's end.
+    if (frame >= seqCovered_ || seqCovered_ <= b.frame) {
+        v.seqTune = v.seqTuneTo = b.to;
+        v.seqTuneLeft = 0;
+        return;
+    }
+    if (frame > b.frame)
+        v.seqTune = b.from + (b.to - b.from) * (frame - b.frame) / static_cast<double>(seqCovered_ - b.frame);
+    else
+        v.seqTune = b.from;
+    v.seqTuneTo = b.to;
+    v.seqTuneLeft = seqCovered_ - frame;
+    v.seqTuneStep = (b.to - v.seqTune) / v.seqTuneLeft;
+}
+
+void Synth::applySeqBends(uint32_t covered) {
+    seqCovered_ = covered;
+    for (const SeqBend &b : seq_.bends())
+        for (Voice *v : active_)
+            if (live(*v) && v->note.port == kSeqPort && v->note.noteId == b.id)
+                bendVoice(*v, b, 0);
 }
 
 void Synth::applySeqEvents(int count) {
@@ -692,9 +730,13 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     v.order = noteCounter_++;
     if (!glide)
         v.glide = to.note.key;
-    // The new note brings its own host modulation and expressions.
+    else // from where the sequencer bent the note before
+        v.glide += v.seqTune;
+    // The new note brings its own host modulation and expressions, and its own bend.
     clearVoiceMods(v);
     v.tuning = 0.0;
+    v.seqTune = v.seqTuneTo = v.seqTuneStep = 0.0;
+    v.seqTuneLeft = 0;
     v.exprGain = 1.0;
     v.exprPan = 0.0;
     v.pressure = -1.0;
@@ -924,13 +966,18 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         feedSeqFeel(params);
         const int count =
             seq_.plan(std::min(frames - done, kSeqStretch), tempo_, playing_, beats, seqEvents_, covered);
-        if (seqCurvesMoved()) { // the voices hear the curves where they stood up to here
+        seqCovered_ = std::max(covered, 1u);
+        // The voices hear the curves where they stood up to here, and the bent notes' bends from here.
+        const bool moved = seqCurvesMoved();
+        if (moved || !seq_.bends().empty()) {
             if (done > rendered) {
                 renderSpan(left + rendered, right + rendered, done - rendered, params, sameParams);
                 sameParams = true;
                 rendered = done;
             }
-            followSeqCurves();
+            if (moved)
+                followSeqCurves();
+            applySeqBends(seqCovered_);
         }
         for (int i = 0; i < count; ++i) {
             const uint32_t frame = done + std::min(seqEvents_[i].frame, covered);
@@ -939,6 +986,7 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
                 sameParams = true;
                 rendered = frame;
             }
+            seqPlanFrame_ = frame - done;
             applySeqEvent(seqEvents_[i]);
         }
         done += std::max(covered, 1u);
@@ -2848,7 +2896,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const double memberBend =
         mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] * mpeBendRange_ : 0.0;
     auto pitchNow = [&] {
-        return v.glide + v.tuning + memberBend + bend * p[paramIndex(GlobalParam::BendRange)] +
+        return v.glide + v.tuning + v.seqTune + memberBend + bend * p[paramIndex(GlobalParam::BendRange)] +
                p[paramIndex(GlobalParam::Pitch)];
     };
     // Velocity puts out what the note came with, known before the places run, so the slots it scales as their aux
@@ -3062,6 +3110,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             v.ops[i].carrying = false;
         }
+    }
+
+    // The sequencer's bend of the note moves on along the stretch it planned.
+    if (v.seqTuneLeft > 0) {
+        const uint32_t n = std::min(v.seqTuneLeft, hostFrames);
+        v.seqTuneLeft -= n;
+        v.seqTune = v.seqTuneLeft > 0 ? v.seqTune + v.seqTuneStep * n : v.seqTuneTo;
     }
 
     // Glide: the pitch closes 99 % of the gap to the note in the glide time.

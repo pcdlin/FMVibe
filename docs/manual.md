@@ -1208,11 +1208,12 @@ part of it the piano roll shows, and the one playing shows the playhead.
 
 The **toolbar** above the roll has:
 
-- **Select | Draw**: the editing tool.
+- **Select | Draw | Bend**: the editing tool.
 - **SNAP** and its list (Off, 1/4 to 1/64, triplets; the wheel steps it).
 - **×2** and **÷2**: makes the selected notes (or all notes) twice or half as long and as far apart.
-- The **note field**: NOTE, VEL, CHANCE, LEN and OFFSET of the selected notes. Drag or scroll a value to change every
-  selected note; double-click to reset VEL to 100, CHANCE to full and OFFSET to 0.
+- The **note field**: NOTE, VEL, CHANCE, LEN, OFFSET and BEND of the selected notes. Drag or scroll a value to change
+  every selected note; double-click to reset VEL to 100, CHANCE to full and OFFSET to 0. BEND shows how far the note
+  bends, in semitones: drag it to make the selected notes' bends deeper or shallower, double-click to remove them.
 - **SLIDE** and **MUTE** for the selected notes.
 - The **bin**, which clears the pattern after asking.
 
@@ -1235,6 +1236,20 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
 - Click to add a note; hold and drag up or down to set its velocity.
 - Shift+drag paints a note into each empty grid step you cross.
 - Clicking an existing note moves or stretches it, as in Select.
+
+**Bending notes with Bend**: each note can bend its own pitch, like a finger on an MPE controller. Only that note's
+voice bends; the other notes of a chord stay where they are.
+
+- Press a note and drag up or down to bend it there. The bend starts from the note's pitch at its start. Each row is
+  a semitone (a scale degree with FOLD).
+- Hold Alt, or Shift while dragging, to bend off the grid, to the cent.
+- Drag a point to move it; drag the middle of a rising or falling segment to curve it.
+- Double-click a point to delete it, or a segment's middle to straighten it.
+- Shift+drag across a note to draw its bend, a point on every grid line.
+- A note bends through up to 8 points, up to two octaves either way. You hear the note at the pitch you drag to.
+
+The bend is drawn as a line across the rows. It moves, copies and pastes with its note. A note shortened by Gate
+holds the pitch it reached when it ends.
 
 A note placed on another note's start and pitch replaces it. Notes you click, draw or move sound while the mouse
 button is held.
@@ -1275,6 +1290,10 @@ On a curve:
 
 Curves wrap around the pattern's end, so the loop comes round without a jump. They create no automation or undo
 steps; the wheels and macro knobs show where the curves take them while they play.
+
+**NOTE BEND** shows the selected notes' own bends larger, which helps with chords whose notes overlap. Its range at
+the right end fits the pattern's bends. Drag a point or a segment's middle as on the roll. With Draw or Bend, press
+over a selected note to add a point; with Select, double-click. Hold Ctrl to snap to whole semitones and the grid.
 
 ### Keyboard shortcuts in the roll
 

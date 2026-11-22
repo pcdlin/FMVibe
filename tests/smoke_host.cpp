@@ -5876,6 +5876,7 @@ int main(int argc, char **argv) {
         for (int source = kMaxSources - kFirstSources; source-- > 0;) // the rest of the sources' places
             layout.push_back(static_cast<float>(source));
         layout.push_back(9.0f); // the places past the first kFirstSources folded
+        layout.push_back(1.0f); // the SEQ view's roll bending notes (its Bend tool)
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

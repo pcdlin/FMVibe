@@ -4765,6 +4765,200 @@ void stackChecks() {
 }
 
 // The sequencer: where its notes start and end, against the host's transport and from keys.
+// A note's own bend (see SeqNoteBendParam): in the sequencer's plans, and through the synth.
+void noteBendChecks() {
+    constexpr double kStep = kSampleRate * 60.0 / 120.0 / 4.0; // a 1/16 step at 120 bpm: 6000 samples
+    auto defaults = [] {
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        return p;
+    };
+    auto note = [](ParamValues &p, int slot, double start, double length, int pitch) {
+        p[seqNoteIndex(0, slot, SeqNoteParam::Start)] = start;
+        p[seqNoteIndex(0, slot, SeqNoteParam::Length)] = length;
+        p[seqNoteIndex(0, slot, SeqNoteParam::Pitch)] = pitch;
+    };
+    auto bend = [](ParamValues &p, int slot, std::vector<SeqCurvePoint> points, int pattern = 0) {
+        p[seqNoteBendCountIndex(pattern, slot)] = static_cast<double>(points.size());
+        for (size_t i = 0; i < points.size(); ++i) {
+            const int at = static_cast<int>(i);
+            p[seqNoteBendIndex(pattern, slot, at, PointField::X)] = points[i].x;
+            p[seqNoteBendIndex(pattern, slot, at, PointField::Y)] = points[i].y;
+            p[seqNoteBendIndex(pattern, slot, at, PointField::Curve)] = points[i].curve;
+        }
+    };
+
+    // The plans: a note 8 steps long bending a semitone a step. From the song's start, its event starting it unbent and
+    // each stretch taking it on to where it is at the stretch's end; chased from step 4, starting bent by 4; with Gate
+    // at 50 %, ending at step 4 holding the 4 it reached there.
+    {
+        ParamValues p = defaults();
+        p[paramIndex(SeqParam::Enabled)] = 1.0;
+        note(p, 0, 0.0, 8.0, 60);
+        bend(p, 0, {{0.0, 0.0, 0.0}, {8.0, 8.0, 0.0}});
+        struct Planned {
+            double onBend = std::numeric_limits<double>::quiet_NaN();
+            double worst = 0.0;    // the furthest a stretch's bend ends from where it should
+            double gap = 0.0;      // and starts from where the stretch before took it
+            double highest = -1.0; // the highest it went
+            double lastEnd = 0.0;  // where the last stretch with a bend ended, in steps
+        };
+        auto run = [&](const ParamValues &q, double beats, double steps, double lasts) {
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(q);
+            std::array<SeqEvent, Sequencer::kMaxEvents> out;
+            Planned r;
+            double before = std::numeric_limits<double>::quiet_NaN();
+            for (double done = 0.0; done < steps * kStep;) {
+                uint32_t covered = 0;
+                const int n = seq.plan(512, 120.0, true, beats + done / kSampleRate * 2.0, out, covered);
+                for (int i = 0; i < n; ++i)
+                    if (out[i].on && std::isnan(r.onBend))
+                        r.onBend = out[i].bend;
+                done += covered;
+                const double end = beats * 4.0 + done / kStep;
+                for (const SeqBend &b : seq.bends()) {
+                    r.worst = std::max(r.worst, std::abs(b.to - std::min(end, lasts)));
+                    if (b.frame == 0 && std::isfinite(before))
+                        r.gap = std::max(r.gap, std::abs(b.from - before));
+                    r.highest = std::max(r.highest, b.to);
+                    r.lastEnd = end;
+                    before = b.to;
+                }
+            }
+            return r;
+        };
+        const Planned plain = run(p, 0.0, 12.0, 8.0), chased = run(p, 1.0, 4.0, 8.0);
+        ParamValues gated = p;
+        gated[paramIndex(SeqParam::Gate)] = 0.5;
+        const Planned half = run(gated, 0.0, 12.0, 4.0);
+        std::printf("      a note's bend: starting at %.3f, off by %.2g at most (%.2g between stretches); chased from step "
+                    "4, at %.3f; gated to 4 steps, reaching %.3f, its last stretch ending at step %.2f\n",
+                    plain.onBend, plain.worst, plain.gap, chased.onBend, half.highest, half.lastEnd);
+        check(plain.onBend == 0.0 && plain.worst < 1e-6 && plain.gap < 1e-6 && std::abs(plain.highest - 8.0) < 1e-9,
+              "the sequencer plans a note's bend from where the note starts, stretch after stretch");
+        check(std::abs(chased.onBend - 4.0) < 1e-6, "a note chased in its middle starts where its bend is there");
+        check(half.worst < 1e-6 && std::abs(half.highest - 4.0) < 1e-9 && half.lastEnd < 4.0 + 512.0 / kStep + 1e-9,
+              "a note Gate shortens holds the bend it reached at its end");
+    }
+
+    // Through the synth, in Key. The rising zero crossings of what it plays, and its pitch between two times (samples).
+    auto crossings = [](const std::vector<float> &x) {
+        std::vector<double> at;
+        for (size_t i = 1; i < x.size(); ++i)
+            if (x[i - 1] < 0.0f && x[i] >= 0.0f)
+                at.push_back(static_cast<double>(i - 1) + x[i - 1] / (x[i - 1] - x[i]));
+        return at;
+    };
+    auto hzBetween = [&](const std::vector<float> &x, double from, double to) {
+        std::vector<double> in;
+        for (double t : crossings(x))
+            if (t >= from && t <= to)
+                in.push_back(t);
+        return in.size() < 2 ? 0.0 : (in.size() - 1) * kSampleRate / (in.back() - in.front());
+    };
+    auto power = [](const std::vector<float> &x, size_t from, double hz) {
+        std::complex<double> sum = 0.0;
+        for (size_t i = from; i < from + kFftSize && i < x.size(); ++i)
+            sum += static_cast<double>(x[i]) *
+                   std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / kSampleRate);
+        return std::norm(sum);
+    };
+    // Plays the pattern `setup` writes from a key, the first sample its first; `mono` in mono legato with a glide.
+    auto play = [&](const auto &setup, double steps, bool mono = false) {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        setup(e.p);
+        if (mono) {
+            e.synth().setPlayMode(true, true, false);
+            e.p[paramIndex(GlobalParam::Glide)] = normFromTime(0.3);
+        }
+        e.synth().setTempo(120.0);
+        e.render(256); // the sequencer on, taking keys
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        return e.render(static_cast<size_t>(steps * kStep));
+    };
+    auto semitones = [](double hz, double from) { return 12.0 * std::log2(hz / from); };
+
+    // An A4 held 2 steps, bent up 2 semitones over the next 2 and held there: A4, then a semitone up halfway, then B4.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 16.0, 69);
+            bend(p, 0, {{0.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, {4.0, 2.0, 0.0}});
+        }, 6.0);
+        const double before = hzBetween(x, 0.5 * kStep, 1.5 * kStep), halfway = hzBetween(x, 2.9 * kStep, 3.1 * kStep),
+                     after = hzBetween(x, 4.5 * kStep, 5.5 * kStep);
+        std::printf("      through the synth: %.2f Hz, then %.2f halfway along the bend and %.2f after it\n", before,
+                    halfway, after);
+        check(std::abs(semitones(before, 440.0)) < 0.02 && std::abs(semitones(halfway, 440.0) - 1.0) < 0.05 &&
+                  std::abs(semitones(after, 440.0) - 2.0) < 0.02,
+              "a sequencer note's bend bends it, along its points");
+    }
+    // A sweep of two octaves in a step, which a bend stepped once a stretch would take in stairs of a semitone: the pitch
+    // following it smoothly.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 4.0, 57);
+            bend(p, 0, {{0.0, 0.0, 0.0}, {1.0, 24.0, 0.0}});
+        }, 1.2);
+        const std::vector<double> at = crossings(x);
+        double worst = 0.0;
+        for (size_t i = 1; i < at.size(); ++i) {
+            const double mid = 0.5 * (at[i] + at[i - 1]);
+            if (mid < 300.0 || mid > kStep - 300.0)
+                continue;
+            const double heard = semitones(kSampleRate / (at[i] - at[i - 1]), 220.0);
+            worst = std::max(worst, std::abs(heard - 24.0 * mid / kStep));
+        }
+        std::printf("      a sweep of 24 semitones in a step following its line within %.3f semitones\n", worst);
+        check(worst < 0.3, "a sequencer note's bend moves its pitch smoothly, not stretch by stretch");
+    }
+    // A chord of E4 and A4, the A4 bent up 2: the E4 playing on as it was, the A4 gone up to B4.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 8.0, 64);
+            note(p, 1, 0.0, 8.0, 69);
+            bend(p, 1, {{0.0, 0.0, 0.0}, {1.0, 2.0, 0.0}});
+        }, 6.0);
+        const size_t from = static_cast<size_t>(2.0 * kStep);
+        const double e4 = power(x, from, 329.63), a4 = power(x, from, 440.0), b4 = power(x, from, 493.88);
+        std::printf("      a chord: E4 %.1f dB and A4 %.1f dB from B4\n", 10.0 * std::log10(e4 / b4),
+                    10.0 * std::log10(a4 / b4));
+        check(e4 > 0.25 * b4 && a4 < 0.01 * b4, "a sequencer note's bend bends its own voice alone");
+    }
+    // Mono legato, gliding: an A4 bent up 2 sliding into a B4 starts the glide from where it was bent to, so the pitch
+    // stays at B4 with no dip back toward A4.
+    {
+        const std::vector<float> x = play([&](ParamValues &p) {
+            note(p, 0, 0.0, 4.0, 69);
+            p[seqNoteIndex(0, 0, SeqNoteParam::Slide)] = 1.0;
+            bend(p, 0, {{0.0, 0.0, 0.0}, {1.0, 2.0, 0.0}});
+            note(p, 1, 4.0, 4.0, 71);
+        }, 6.0, true);
+        const double before = hzBetween(x, 3.0 * kStep, 3.9 * kStep), joined = hzBetween(x, 4.05 * kStep, 4.4 * kStep);
+        std::printf("      sliding on from a bend: %.2f Hz, then %.2f into the next note\n", before, joined);
+        check(std::abs(semitones(before, 493.88)) < 0.03 && std::abs(semitones(joined, 493.88)) < 0.05,
+              "a mono glide starts where the sequencer bent the note before");
+    }
+    // A patch with bends, the last note of the last pattern among them, loading back as saved.
+    {
+        ParamValues p = defaults();
+        bend(p, kSeqNotes - 1, {{0.0, -3.0, 0.5}, {1.25, 0.0, 0.0}, {6.0, 24.0, -1.0}}, kSeqPatterns - 1);
+        bend(p, 0, {{2.0, -24.0, 0.0}});
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        MemoryReader reader{bytes.data(), bytes.size(), 0};
+        const clap_istream_t in = memoryIn(reader);
+        ParamValues loaded;
+        readParams(&in, loaded);
+        check(std::equal(loaded.begin(), loaded.end(), p.begin()), "a patch's note bends load back as saved");
+    }
+}
+
 void sequencerChecks() {
     std::printf("sequencer:\n");
     constexpr double kStep = kSampleRate * 60.0 / 120.0 / 4.0; // a 1/16 step at 120 bpm: 6000 samples
@@ -5178,6 +5372,7 @@ void sequencerChecks() {
                   rms(quiet) < 0.01 * rms(plain),
               "the bend curve bends what the sequencer plays, and the mod wheel curve moves the mod wheel");
     }
+    noteBendChecks();
     // The telemetry tells the wheels where the curves take them as they play: the bend curve on top of the Pitch Bend
     // param as set, and what the mod wheel curve adds. Nothing before they play, or once they stop, by the key let go or
     // the sequencer switched off.
@@ -5490,8 +5685,9 @@ void sequencerChecks() {
     }
 }
 
-// The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds.
-constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1;
+// The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds, and
+// whether the SEQ view's roll bends notes.
+constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1 + 1;
 
 // The layout chunk, the patch's last, cut short by its last `floats` floats: as saved before they came.
 void cutLayout(std::vector<unsigned char> &bytes, uint32_t floats) {

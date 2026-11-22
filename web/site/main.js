@@ -156,6 +156,10 @@ const host = {
     flush(); // after the edits made before it
     send({type: 'note', key, on, velocity, audition});
   },
+  // The notes the SEQ view plays to be heard alone, bent (a note bend's point dragged in its roll).
+  auditionBend(semitones) {
+    send({type: 'auditionBend', semitones});
+  },
   scope(op, cycles) {
     scopeAsked = {type: 'scope', op, cycles};
     send(scopeAsked);

@@ -28,9 +28,10 @@ constexpr int kSeqSnapCount = static_cast<int>(std::size(kSeqSnaps));
 constexpr const char *kSeqSnapNames[] = {nullptr, "1/4", "1/8", "1/16", "1/32", "1/64", "1/8T", "1/16T"};
 static_assert(std::size(kSeqSnapNames) == std::size(kSeqSnaps));
 // The values the SEQ view's lane shows for each note: its velocity, or its chance.
-// What the lane under the roll shows: the notes' velocities or chances, or the pattern's pitch bend, mod wheel or a
-// macro's curve (see SeqCurve). Stored by number: only append.
-enum class SeqLane { Velocity, Chance, Bend, ModWheel, Macro1, Count = Macro1 + kMacros };
+// What the lane under the roll shows: the notes' velocities or chances, the pattern's pitch bend, mod wheel or a
+// macro's curve (see SeqCurve), or the notes' own bends (see SeqNoteBendParam). Stored by number: only append.
+enum class SeqLane { Velocity, Chance, Bend, ModWheel, Macro1, NoteBend = Macro1 + kMacros, Count };
+constexpr bool seqLaneMacro(SeqLane lane) { return lane >= SeqLane::Macro1 && lane < SeqLane::NoteBend; }
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
 // the page (Envelope, Unison, Warp, Inputs) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note
@@ -176,13 +177,14 @@ struct UiLayout {
     // The splits' containers in the row folded to a narrow strip, a bit each; saved with the patch, but not undone.
     uint32_t splitsFolded = 0;
     // The SEQ view's roll: whether a click draws (rather than selects), the grid it snaps to (kSeqSnaps), the lane it
-    // shows, the lowest pitch it shows, and whether it shows only the scale's rows. They belong to the editor, like the
-    // shape editor's grid.
+    // shows, the lowest pitch it shows, whether it shows only the scale's rows, and whether a click bends notes (the
+    // Bend tool, over seqDraw). They belong to the editor, like the shape editor's grid.
     bool seqDraw = false;
     int seqSnap = 3; // 1/16
     SeqLane seqLane = SeqLane::Velocity;
     int seqLow = 48;
     bool seqFold = false;
+    bool seqBend = false;
     // The tempo the patch was last saved as a preset at, in BPM (the one it played at, whatever host it was), 0 for
     // none (a preset saved before it was kept, Init). The synth's own tempo (see Controller::ownTempo()) and a host
     // that lets the editor set the tempo (see Controller::hasTempo()) take it up as the preset loads, so a sequencer
@@ -213,6 +215,7 @@ inline void keepEditorLayout(UiLayout &to, const UiLayout &from) {
     to.seqLane = from.seqLane;
     to.seqLow = from.seqLow;
     to.seqFold = from.seqFold;
+    to.seqBend = from.seqBend;
 }
 
 // How many empty modulations the MODS view keeps at most.
@@ -580,6 +583,9 @@ public:
     // A note the SEQ view plays to be heard (a key or a note clicked in its roll): that note alone, never the
     // sequencer's pattern, as the keyboard's would in Key or Latch. At velocity 100.
     virtual void auditionNote(int note, bool on) { playNote(note, on, 100); }
+    // The notes heard so, bent `semitones` from their pitch (a note bend's point dragged in the SEQ view), until the next
+    // is heard. A Controller that can't bend them plays them unbent.
+    virtual void auditionBend(double) {}
     // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
     // over how many of its cycles.
     virtual void setScope(int op, int cycles) = 0;

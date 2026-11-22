@@ -113,6 +113,19 @@ void Sequencer::readPattern(int pattern) {
                                 stepped(p[seqNoteIndex(pattern, n, SeqNoteParam::Pitch)], 127),
                                 p[seqNoteIndex(pattern, n, SeqNoteParam::Slide)] >= 0.5,
                                 n};
+        // Its bend, its points held to their ranges and in order.
+        const int points = seqNoteBendPointCount([&](int index) { return p[index]; }, pattern, n);
+        double last = 0.0;
+        for (int i = 0; i < points; ++i) {
+            auto field = [&](PointField f, double lo, double hi) {
+                const double v = p[seqNoteBendIndex(pattern, n, i, f)];
+                return std::isfinite(v) ? std::clamp(v, lo, hi) : std::clamp(0.0, lo, hi);
+            };
+            last = std::max(last, field(PointField::X, 0.0, kSeqMaxSteps));
+            notePoints_[static_cast<size_t>(n)][static_cast<size_t>(i)] = {
+                last, field(PointField::Y, -kSeqMaxNoteBend, kSeqMaxNoteBend), field(PointField::Curve, -1.0, 1.0)};
+        }
+        notePointCount_[static_cast<size_t>(n)] = static_cast<uint8_t>(points);
     }
     // In order of their starts, so that plan() finds a step's notes at once; and the next plan() chases them, as they
     // may have changed under the playhead.
@@ -142,6 +155,15 @@ void Sequencer::readPattern(int pattern) {
         }
         curveCount_[static_cast<size_t>(c)] = count;
     }
+}
+
+double Sequencer::bendOf(const Sounding &s, double t) const {
+    if (s.pattern != read_) // from a pattern another took over from: it stays where it was
+        return s.bent;
+    const auto &points = notePoints_[static_cast<size_t>(s.index)];
+    return seqNoteBendAt(notePointCount_[static_cast<size_t>(s.index)],
+                         [&](int i) { return points[static_cast<size_t>(i)]; },
+                         std::clamp(t, s.begin, s.end) - s.begin);
 }
 
 double Sequencer::patternPlace(double t) const {
@@ -247,6 +269,7 @@ int Sequencer::stopAll(std::span<SeqEvent> out) {
 int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeats, std::span<SeqEvent> out,
                     uint32_t &covered) {
     covered = frames;
+    bendCount_ = 0;
     if (!enabled_ || frames == 0) {
         running_ = false;
         position_ = -1.0f;
@@ -321,7 +344,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     // The notes starting in this stretch, in order; and where it chases them, first, those it is in the middle of that
     // aren't sounding (not those left out by their chance or their key), from the stretch's start.
     struct Start {
-        double at, end;
+        double at, begin, end; // begin: where it started, before `at` for a note chased
         int64_t step;
         int index, key, pitch;
         double velocity;
@@ -364,7 +387,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
                     continue;
                 double velocity = (1.0 - velocityAmount_) * kPlainVelocity + velocityAmount_ * n.velocity;
                 velocity *= 1.0 + humanize_ * kHumanizeVelocity * (2.0 * unit(k, n.index, 2) - 1.0);
-                starts[startCount++] = {late ? from : at, end, k, n.index, key, n.pitch,
+                starts[startCount++] = {late ? from : at, at, end, k, n.index, key, n.pitch,
                                         std::clamp(velocity, 1.0 / 127.0, 1.0), n.slide};
             }
         }
@@ -375,6 +398,17 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     auto frameAt = [&](double t) {
         const double f = std::floor((t - from) / perFrame);
         return static_cast<uint32_t>(std::clamp(f, 0.0, static_cast<double>(covered - 1)));
+    };
+    // A bent note's bend over the stretch, from where it starts in it (or the stretch's start) to the stretch's end,
+    // and where it was there, from which the next stretch carries on.
+    auto bend = [&](Sounding &s) {
+        // One from a pattern another took over from holds where its last stretch took it.
+        if (bendCount_ == kMaxSounding || s.pattern != read_ || notePointCount_[static_cast<size_t>(s.index)] == 0)
+            return;
+        const double start = std::max(from, s.begin);
+        bends_[static_cast<size_t>(bendCount_++)] = {s.id, start > from ? frameAt(start) : 0u, bendOf(s, start),
+                                                     bendOf(s, to)};
+        s.bent = bendOf(s, to);
     };
     auto remove = [&](int i) {
         std::copy(sounding_.begin() + i + 1, sounding_.begin() + soundingCount_, sounding_.begin() + i);
@@ -391,6 +425,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
                 (ending < 0 || sounding_[i].off < sounding_[ending].off))
                 ending = i;
         if (ending >= 0) {
+            bend(sounding_[ending]);
             count = pushOff(out, count, frameAt(sounding_[ending].off), sounding_[ending]);
             remove(ending);
             continue;
@@ -407,13 +442,15 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
             break;
         const int32_t id = nextId_;
         nextId_ = nextId_ == INT32_MAX ? 1 : nextId_ + 1;
-        out[count++] = {frame, true, s.key, s.velocity, id};
+        SeqEvent &on = out[count++];
+        on = {frame, true, s.key, s.velocity, id};
         // Slides waiting for the next note, which this is: they end as it starts. One it starts within ends at its own
         // end, as written, rather than a step after.
         for (int i = soundingCount_; i-- > 0;) {
             if (!sounding_[i].slide)
                 continue;
             if (sounding_[i].end <= s.at) {
+                bend(sounding_[i]);
                 count = pushOff(out, count, frame, sounding_[i]);
                 remove(i);
             } else {
@@ -421,8 +458,12 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
                 sounding_[i].slide = false;
             }
         }
-        sounding_[soundingCount_++] = {s.step, s.index, id, s.key, s.pitch, s.end, s.slide ? s.end + 1.0 : s.end, s.slide};
+        Sounding &started = sounding_[soundingCount_++];
+        started = {s.step, s.index, id, s.key, s.pitch, s.begin, s.end, s.slide ? s.end + 1.0 : s.end, s.slide, read_, 0.0};
+        on.bend = started.bent = bendOf(started, s.at);
     }
+    for (int i = 0; i < soundingCount_; ++i)
+        bend(sounding_[i]);
 
     next_ = to;
     running_ = true;

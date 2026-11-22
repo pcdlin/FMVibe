@@ -83,9 +83,11 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 16: There are 32 source places rather than 16 (kMaxSources). Sources are stored by the numbers they had, the places
 //    added later after the operators (see storedSource()), so an earlier state loads as it was saved; the version
 //    rises so that an earlier build refuses a state whose later places it would leave out.
+// 17: A sequencer note may bend (see SeqNoteBendParam). An earlier state has no bends and loads as it was saved; the
+//    version rises so that an earlier build refuses a state whose bends it would leave out.
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
-constexpr uint32_t kStateVersion = 16;
+constexpr uint32_t kStateVersion = 17;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -393,6 +395,8 @@ void layoutFields(Io &io, Layout &ui) {
     io.numbers(ui.sourceOrder, kFirstSources, kMaxSources, 0.0f, kMaxSources - 1.0f, rounded<int>);
     io.check(ui.sourceOrder, gui::identitySourceOrder(), everyPlaceOnce);
     io.bits(ui.sourcesFolded, kFirstSources);
+    // Whether the SEQ view's roll bends notes (its Bend tool).
+    io.number(ui.seqBend, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
 }
 
 } // namespace
