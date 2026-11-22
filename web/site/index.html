@@ -58,6 +58,16 @@
         <a href="LICENSE.txt">License</a> ·
         <a href="THIRD-PARTY-NOTICES.txt">Third-party notices</a>
       </p>
+      <!-- Shown by main.js where the browser can put the page in full screen (not an iPhone's Safari). -->
+      <button id="fullscreen" type="button" aria-pressed="false" title="Full screen" hidden>
+        <svg class="enter" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>
+        </svg>
+        <svg class="leave" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"/>
+        </svg>
+        <span class="label">Full screen</span>
+      </button>
     </div>
   </footer>
   <div id="menu" role="menu" hidden></div>

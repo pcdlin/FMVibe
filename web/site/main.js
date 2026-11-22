@@ -237,10 +237,7 @@ try {
 function resize() {
   viewWidth = ui._ui_width();
   viewHeight = ui._ui_height();
-  const room = stage.clientWidth - 32;
-  const below = document.querySelector('footer').offsetHeight + 20; // and its margins (style.css)
-  const roomHeight = window.innerHeight - editorFrame.getBoundingClientRect().top - window.scrollY - below;
-  const width = Math.max(300, Math.min(room, Math.max(roomHeight, 400) * viewWidth / viewHeight, 1800));
+  const width = fullscreen() ? fullscreenWidth() : pageWidth();
   const height = width * viewHeight / viewWidth;
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
@@ -263,6 +260,34 @@ function resize() {
     }
   }
   dirty = true;
+}
+
+function pageWidth() {
+  stage.style.padding = '';
+  const room = stage.clientWidth - 32;
+  const below = document.querySelector('footer').offsetHeight + 20; // and its margins (style.css)
+  const roomHeight = window.innerHeight - editorFrame.getBoundingClientRect().top - window.scrollY - below;
+  return Math.max(300, Math.min(room, Math.max(roomHeight, 400) * viewWidth / viewHeight, 1800));
+}
+
+// In full screen, the whole screen, keeping the editor's shape, but for the top right corner, where the button that
+// leaves it sits: in the bars either side of the editor, or above and below it, or in a strip kept for it where they
+// are too narrow.
+function fullscreenWidth() {
+  const corner = 52; // the button's 36 px and its margins (style.css)
+  const roomWidth = window.innerWidth;
+  const roomHeight = window.innerHeight;
+  const shape = viewWidth / viewHeight;
+  let right = 0;
+  let top = 0;
+  if (roomWidth / roomHeight > shape) { // bars either side
+    if ((roomWidth - roomHeight * shape) / 2 < corner)
+      right = corner;
+  } else if ((roomHeight - roomWidth / shape) / 2 < corner) {
+    top = corner;
+  }
+  stage.style.padding = `${top}px ${right}px 0 0`;
+  return Math.max(300, Math.min(roomWidth - right, (roomHeight - top) * shape));
 }
 
 function paint() {
@@ -405,27 +430,35 @@ canvas.addEventListener('wheel', (e) => {
 
 // One finger works the editor: on something that drags (a knob, a card's title, a handle) it drags it, elsewhere
 // over a panel that scrolls (the effects, the source cards, the MODS view's rows, a list) it pans it, and a tap is a
-// click, two quick ones a double-click (see View::touchDown()). Two fingers pan what scrolls between them, as the
-// middle button drags it. A long press opens the menu a right-click would.
+// click, two quick ones a double-click (see View::touchDown()). A long press opens the menu a right-click would.
+// Two fingers are the page's: they scroll and zoom it as the browser does (the canvas's touch-action lets it), so a
+// phone can always scroll past the editor. A second finger landing ends what the first was doing, dropping nothing,
+// and the editor hears no more of either until every finger is lifted.
 const TOUCH_SLOP = 10;         // CSS pixels a finger may jitter and still tap
 const DOUBLE_TAP_MS = 400;
-let touchMode = null;          // 'one', 'two', or 'done' until the fingers left over are lifted
+let touchMode = null;          // 'one'; 'page' while two fingers are the browser's; 'done' until the fingers left over are lifted
 let touchId = null;            // the one finger's
 let touchStart = [0, 0];       // where it landed, in CSS pixels
 let touchMoved = false;
-let touchPoint = [0, 0];       // where it, or the middle of two, last was, in the editor's units
+let touchPoint = [0, 0];       // where it last was, in the editor's units
 let lastTap = null;            // {time, x, y}: the tap before, for a double one
-
-function touchMiddle(e) {
-  const [a, b] = [e.touches[0], e.touches[1]];
-  return viewPoint({clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2});
-}
 
 function touchOf(list) {
   for (const t of list)
     if (t.identifier === touchId)
       return t;
   return null;
+}
+
+// More than one finger down: the editor lets go of the first, its drag ending where it is, as when the mouse is
+// taken away, and the browser has them.
+function touchToPage() {
+  if (touchMode === 'one') {
+    ui._ui_touch_cancel();
+    afterInput();
+  }
+  touchMode = 'page';
+  lastTap = null;
 }
 
 canvas.addEventListener('touchstart', (e) => {
@@ -436,39 +469,44 @@ canvas.addEventListener('touchstart', (e) => {
     touchStart = [t.clientX, t.clientY];
     touchMoved = false;
     const [x, y] = touchPoint = viewPoint(t);
-    const second = lastTap !== null && performance.now() - lastTap.time < DOUBLE_TAP_MS &&
-                   Math.hypot(x - lastTap.x, y - lastTap.y) < 2 * TOUCH_SLOP * viewWidth / canvas.getBoundingClientRect().width;
     const slop = TOUCH_SLOP * viewWidth / canvas.getBoundingClientRect().width;
+    const second = lastTap !== null && performance.now() - lastTap.time < DOUBLE_TAP_MS &&
+                   Math.hypot(x - lastTap.x, y - lastTap.y) < 2 * slop;
     touchMode = 'one';
     ui._ui_touch_down(x, y, second ? 1 : 0, slop);
     afterInput();
-    return;
   }
-  if (e.touches.length >= 2 && touchMode !== 'two' && touchMode !== 'done') {
-    e.preventDefault(); // no mouse events made up from it
-    touchMode = 'two';
-    lastTap = null;
-    const [x, y] = touchPoint = touchMiddle(e);
-    ui._ui_touch_pan_begin(x, y);
-    afterInput();
-  }
-}, {passive: false});
+  // Never prevented: the browser decides at a touch's start whether it may scroll, and two fingers' must.
+}, {passive: true});
+
+// The second finger may land off the canvas, where the canvas hears no touchstart of its own.
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length > 1 && touchMode !== 'done')
+    touchToPage();
+}, {passive: true});
+// And the last finger may be lifted off it.
+for (const kind of ['touchend', 'touchcancel']) {
+  document.addEventListener(kind, (e) => {
+    if (e.touches.length === 0 && touchMode !== 'one')
+      touchMode = null;
+  }, {passive: true});
+}
 
 canvas.addEventListener('touchmove', (e) => {
-  if (touchMode === null)
+  if (touchMode === 'one' && e.touches.length > 1)
+    touchToPage();
+  if (touchMode === 'page' || touchMode === null)
+    return; // the browser's: it scrolls or zooms the page
+  if (e.cancelable)
+    e.preventDefault(); // one finger is the editor's, never the page's scrolling
+  if (touchMode !== 'one')
     return;
-  e.preventDefault();
-  if (touchMode === 'one') {
-    const t = touchOf(e.touches);
-    if (!t)
-      return;
-    touchMoved ||= Math.hypot(t.clientX - touchStart[0], t.clientY - touchStart[1]) > TOUCH_SLOP;
-    const [x, y] = touchPoint = viewPoint(t);
-    afterInput(ui._ui_touch_move(x, y) !== 0);
-  } else if (touchMode === 'two' && e.touches.length >= 2) {
-    const [x, y] = touchPoint = touchMiddle(e);
-    afterInput(ui._ui_touch_pan_move(x, y) !== 0);
-  }
+  const t = touchOf(e.touches);
+  if (!t)
+    return;
+  touchMoved ||= Math.hypot(t.clientX - touchStart[0], t.clientY - touchStart[1]) > TOUCH_SLOP;
+  const [x, y] = touchPoint = viewPoint(t);
+  afterInput(ui._ui_touch_move(x, y) !== 0);
 }, {passive: false});
 
 canvas.addEventListener('touchend', (e) => {
@@ -480,22 +518,20 @@ canvas.addEventListener('touchend', (e) => {
     lastTap = touchMoved ? null : {time: performance.now(), x: touchPoint[0], y: touchPoint[1]};
     afterInput();
     touchMode = e.touches.length > 0 ? 'done' : null;
-  } else if (touchMode === 'two' && e.touches.length < 2) {
-    ui._ui_touch_pan_end(touchPoint[0], touchPoint[1]);
-    afterInput();
-    touchMode = e.touches.length > 0 ? 'done' : null;
   } else if (e.touches.length === 0) {
     touchMode = null;
   }
 }, {passive: false});
 
 canvas.addEventListener('touchcancel', (e) => {
-  if (touchMode === 'one')
+  if (touchMode === 'one') {
     ui._ui_touch_cancel();
-  else if (touchMode === 'two')
-    ui._ui_touch_pan_end(touchPoint[0], touchPoint[1]);
-  afterInput();
-  touchMode = e.touches.length > 0 ? 'done' : null;
+    afterInput();
+  }
+  if (e.touches.length === 0)
+    touchMode = null;
+  else if (touchMode === 'one')
+    touchMode = 'done';
 });
 
 // --- Context menu -------------------------------------------------------------------------------------------
@@ -722,6 +758,53 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden)
     releaseAll();
 });
+
+// --- Full screen --------------------------------------------------------------------------------------------
+
+// The page, not the canvas alone, so the editor's menu and messages show over it. Safari before 16.4 has only the
+// webkit-prefixed calls, and an iPhone's Safari none for a page: there the button stays hidden.
+const fullscreenButton = document.getElementById('fullscreen');
+
+function fullscreen() {
+  return (document.fullscreenElement ?? document.webkitFullscreenElement ?? null) !== null;
+}
+
+function showFullscreen() {
+  const on = fullscreen();
+  document.documentElement.classList.toggle('fullscreen', on);
+  fullscreenButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+  fullscreenButton.title = on ? 'Leave full screen' : 'Full screen';
+  if (on) {
+    // On a phone the editor is far wider than high: turned sideways, if the browser lets the page say so.
+    screen.orientation?.lock?.('landscape').catch(() => {});
+  } else {
+    try {
+      screen.orientation?.unlock?.();
+    } catch {
+      // not where it was never locked
+    }
+  }
+  resize();
+}
+
+if (document.fullscreenEnabled || document.webkitFullscreenEnabled) {
+  fullscreenButton.hidden = false;
+  fullscreenButton.addEventListener('click', () => {
+    const root = document.documentElement;
+    let asked;
+    try {
+      if (fullscreen())
+        asked = document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen();
+      else
+        asked = root.requestFullscreen ? root.requestFullscreen({navigationUI: 'hide'}) : root.webkitRequestFullscreen();
+    } catch (error) {
+      asked = Promise.reject(error);
+    }
+    Promise.resolve(asked).catch(() => showToast('The browser would not go full screen.'));
+  });
+  document.addEventListener('fullscreenchange', showFullscreen);
+  document.addEventListener('webkitfullscreenchange', showFullscreen);
+}
 
 window.addEventListener('resize', resize);
 // Moved to a screen of another pixel density, the page may keep its size: watch the density itself.

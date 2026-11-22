@@ -1029,7 +1029,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     after the arrows at the lane tabs' right do (across from the whole pattern to two steps, the rows from 0.6 to 3
     times as high). A bar at the roll's right scrolls the rows (dragged, a click on its track jumping there, or the
     wheel). Zoomed in across, a bar after the lane tabs shows and scrolls what the roll shows, as Shift+wheel
-    and the wheel turned sideways do; the middle button (or two fingers) drags the roll across and up and down. The
+    and the wheel turned sideways do; the middle button (or two fingers, outside the browser demo) drags the roll
+    across and up and down. The
     zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder (at full velocity
     at full strength, and a little dimmer while the sequencer is off), dashed with their chance at less than full,
     hollow while muted, a hook off their end with Slide; those picked are ringed, a handle at their end. As the
@@ -2044,8 +2045,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   either end the row stops, and dragged back it follows at once. A middle press on another open list or menu does
   nothing, and one that starts a drag closes it;
   while the left button drags something, the middle one does nothing. Two fingers on a touchscreen pan the same
-  panels as the middle button, along with them (in the browser demo, on a phone too): what the first finger pressed
-  ends as they land, nothing dropped, and over a dialog they pan nothing. A precision touchpad's two-finger
+  panels as the middle button, along with them: what the first finger pressed ends as they land, nothing dropped,
+  and over a dialog they pan nothing. In the browser demo two fingers are the page's instead: they scroll and zoom
+  the page as the browser does, so on a phone the page can always be scrolled past the editor, and what the first
+  finger pressed ends as the second lands, nothing dropped, the editor taking no more of either until both are
+  lifted. A precision touchpad's two-finger
   scrolling comes as the wheel, up and down as above and sideways as a tilted wheel does, which scrolls what scrolls
   sideways under the mouse (the effects' row and graph, the source cards) and turns nothing. In the browser demo on
   a phone (or any touchscreen), one finger works the editor too: where nothing scrolls it is the mouse at once;
@@ -2349,7 +2353,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   **Theme**: Spectrum (deep indigo, the default), Porcelain (Spectrum in light: white panels lifted off a cool gray
   by soft shadows, their cards with a slight one too), Midnight or Light (crisp: white cards and knob caps on a cool
   gray, with deep colors), each button shown in its own colors. The browser demo's page around the editor is in
-  Spectrum's colors. Spectrum and Porcelain share a flat look: each
+  Spectrum's colors. Its Full screen button, beside the links under the editor, puts the page in full screen with
+  the editor alone, as large as the screen takes it in its shape, the button in the screen's top right corner to
+  leave it (and a phone turned to landscape where the browser lets the page say so); where the browser can't put a
+  page in full screen (an iPhone's Safari) the button isn't shown. Spectrum and Porcelain share a flat look: each
   effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it

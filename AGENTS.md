@@ -1137,7 +1137,15 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with). The editor's keyboard plays as hard as where its keys are
   clicked.
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
-  what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
+  what scrolls, and taps), with its own slop and double tap, preventing its moves so the page doesn't scroll. Two
+  fingers are the page's: the canvas's `touch-action: manipulation` lets the browser scroll and pinch-zoom the page
+  with them, so a phone can always scroll past the editor. A second finger landing (on the canvas or off it) ends
+  the first's gesture with `View::touchCancel()`, and the editor takes nothing more until every finger is lifted.
+  `View::touchPanBegin()` and on, the plugin window's two-finger pan, go unused there (uishot still tests them).
+- The page's Full screen button puts the whole page (so the editor's menu and messages show) in full screen through
+  the Fullscreen API, with the `webkit` calls as a fallback, and hides where neither is (an iPhone's Safari). In full
+  screen, `resize()` fits the editor to the screen, keeping the top right corner clear for the button, and asks for
+  landscape (`screen.orientation.lock()`, where the browser takes it).
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which is the synth's
   own (`ownTempo()`; `tempoSync()` is never on there, and the title bar shows no H), for the editor's title bar to
   drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()` hands the synth as

@@ -37,7 +37,9 @@ body {
   display: block;
   outline: none;
   border-radius: 4px;
-  touch-action: none;
+  /* One finger is the editor's (main.js prevents its moves); two scroll and zoom the page. No double-tap zoom: a
+     double tap is the editor's double-click. */
+  touch-action: manipulation;
 }
 
 /* Short, so the editor gets the window's height: the keyboard's hint and the links side by side, wrapping onto two
@@ -135,6 +137,93 @@ footer {
 .piano kbd:nth-child(7) { grid-area: 1 / 8 / 2 / span 2; }  /* T */
 .piano kbd:nth-child(9) { grid-area: 1 / 10 / 2 / span 2; } /* Y */
 .piano kbd:nth-child(11) { grid-area: 1 / 12 / 2 / span 2; } /* U */
+
+/* Full screen: in the footer's row as a link is, and in full screen alone in the screen's top right corner, which
+   main.js keeps clear of the editor. */
+#fullscreen {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.8;
+  cursor: pointer;
+}
+
+#fullscreen[hidden] {
+  display: none;
+}
+
+#fullscreen svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#fullscreen .leave,
+.fullscreen #fullscreen .enter,
+.fullscreen #fullscreen .label {
+  display: none;
+}
+
+.fullscreen #fullscreen .leave {
+  display: block;
+}
+
+#fullscreen:hover .label,
+#fullscreen:focus-visible .label {
+  text-decoration: underline;
+}
+
+.fullscreen #fullscreen {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text);
+}
+
+.fullscreen #fullscreen:hover,
+.fullscreen #fullscreen:focus-visible {
+  color: var(--accent);
+}
+
+/* The editor alone, in the middle of the screen (main.js sizes it). */
+.fullscreen,
+.fullscreen body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.fullscreen #stage {
+  align-items: center;
+  height: 100%;
+  padding: 0;
+}
+
+.fullscreen footer {
+  margin: 0;
+  padding: 0;
+}
+
+.fullscreen #hint,
+.fullscreen #source {
+  display: none;
+}
 
 #source a {
   color: var(--accent);

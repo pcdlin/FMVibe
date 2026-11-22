@@ -1532,7 +1532,11 @@ List buttons (filter types, shaper curves, amp models and cabinets, reverb algor
 - **Middle-button drag** pans any area that scrolls.
 - A touchpad's two-finger scrolling acts as the wheel, sideways too.
 - On a touchscreen, two fingers pan. In the browser demo, one finger works as the mouse: it drags controls, pans
-  scrolling areas, taps to click and long-presses for the right-click menu.
+  scrolling areas, taps to click and long-presses for the right-click menu. Two fingers scroll and zoom the web page
+  there, so you can always scroll past the editor.
+- The browser demo's **Full screen** button, under the editor, shows the editor alone on the whole screen. The
+  button in the top right corner, or the browser's own way out (Esc, or Back on a phone), leaves full screen. An
+  iPhone's Safari can't show a page in full screen, so the button isn't there.
 
 ### Undo and redo
 
