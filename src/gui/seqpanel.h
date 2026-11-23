@@ -189,7 +189,7 @@ private:
     // The points picked, moved together after the one grabbed (seqDrag_.anchor), now where `to` is.
     void moveSeqCurvePoints(SeqCurvePoint to);
     // --- The notes' own bends (see SeqNoteBendParam), drawn over the rows (a row a semitone) and edited with the Bend
-    // tool, and in the NOTE BEND lane.
+    // tool, and in the Note Bend lane.
     bool seqDrawing() const; // Draw picked (not Select or Bend)
     bool seqBendTool() const;
     bool seqNoteBendLane() const;
@@ -204,13 +204,13 @@ private:
     // pitch at `y`.
     float seqPitchY(double pitch) const;
     double seqPitchAtY(float y) const;
-    // Where a note's bend of `semitones` sits up and down: on the roll by its pitch, or in the NOTE BEND lane (`lane`),
+    // Where a note's bend of `semitones` sits up and down: on the roll by its pitch, or in the Note Bend lane (`lane`),
     // across the range it fits (seqBendRange()); and the bend at `y` there.
     float seqBendY(const SeqNote &n, double semitones, bool lane) const;
     double seqBendAtY(const SeqNote &n, float y, bool lane) const;
     double seqBendRange() const; // ±2, 5, 12 or 24 semitones: as far as the pattern's notes bend
     // The notes whose points and segments' handles show and take the mouse: on the roll with the Bend tool every bent
-    // note's, in the NOTE BEND lane those picked.
+    // note's, in the Note Bend lane those picked.
     bool seqBendEditable(int slot, bool lane) const;
     struct BendHit {
         int slot = -1;
@@ -234,7 +234,7 @@ private:
     std::optional<SeqNote> seqNoteOf(int slot) const;
     BendHit seqBendJustAdded_; // the point the last press put down, which a double-click leaves
     bool doubleClickBend(Point p, bool lane, bool adds, Modifiers mods);
-    // The notes' bends on the roll (and the NOTE BEND lane's grid and curves).
+    // The notes' bends on the roll (and the Note Bend lane's grid and curves).
     void paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes, bool lane);
     // Every param of a note (its fields, then its bend's), as it is copied, cleared and pasted.
     static std::vector<int> seqSlotParams(int pattern, int slot);
@@ -340,6 +340,10 @@ private:
         std::vector<SeqNote> origin;     // the notes moved, as they were
         bool free = false;               // Shift or Alt held: off the snap's grid
         bool extend = false;             // Velocity: a note put down by a double-click, which across also sets the length
+        // extend: whether the mouse went across (else up and down) on its last move of a few pixels, which the cursor
+        // shows, and where that move ended.
+        bool across = false;
+        Point turnedAt;
         bool unpick = false;             // Shift-pressed on a note picked: let go unmoved, it is no longer picked
         std::vector<int> painted;        // the notes painted so far (Paint)
         std::vector<int> boxBase;        // the notes picked before the box, which Shift adds to

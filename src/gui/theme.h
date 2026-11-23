@@ -42,7 +42,7 @@ constexpr float kTabRingRadius = 2.25f, kTabRingWidth = 1.0f;
 
 constexpr float kTextSmall = 9.0f;     // axis ticks, units, readouts on displays, graph nodes' names
 constexpr float kTextLabel = 10.5f;    // knob labels, switches, buttons, hints
-constexpr float kTextBody = 11.0f;     // card titles (bold capitals), list and menu rows, fields
+constexpr float kTextBody = 11.0f;     // card titles (bold, title case), list and menu rows, fields
 constexpr float kTextValue = 13.0f;    // the header's values, the matrix's and the routing graph's names, messages
 constexpr float kTextHeading = 15.0f;  // dialog titles, an operator's letter, big numbers
 constexpr float kTextLogo = 22.0f;     // "FMVibe" in the title bar
@@ -72,7 +72,7 @@ struct Palette {
     Color bands[3];
     // How it draws beyond its colors. Left out, a theme draws as Midnight and Light do: outlined cards and controls,
     // the accent for every knob and operator, switches lit with a tint.
-    // `flat` is Spectrum's and Porcelain's look: cards tinted with their own color and outlined only under the mouse,
+    // `flat` is Spectrum's and Porcelain's look: cards in the cards' plain color, outlined only under the mouse,
     // a knob's arc (and its track, faintly) in the color of the card it is on (a modulation ring of a like color told
     // apart from it, see ringColor()) and its pointer a dot; switches filled
     // solid with their color when lit, set in a well; list buttons, menus and the other controls without outlines;
@@ -81,7 +81,7 @@ struct Palette {
     // filled with a tint of their color.
     bool flat = false;
     Color ops[kOps]{};         // A to F: its node, its tab and the routes it sends
-    float cardTint = 0.0f;     // how strongly a card takes its color
+    float cardTint = 0.0f;     // how strongly a split's container shows its band, and a card its color while tinted
     Color nodeTop{}, nodeBottom{};
     float capShadow = 0.0f;    // a shadow under each knob cap, this dark
     float panelShadow = 0.0f;  // a soft shadow under the panels and the tab shown, this dark, which then go unoutlined
@@ -91,10 +91,12 @@ static_assert(static_cast<int>(FxType::Count) == 19, "a color for each effect ty
 
 // The themes the settings pick from, by name; the first is the default.
 inline constexpr Palette kThemes[] = {
+    // Its surfaces four steps of one blue-grey (the window, the panels, the cards and the displays' wells), its text in
+    // three greys, each at 4.5 : 1 or more on all of them.
     {"Spectrum", Str::ThemeSpectrum, // flat on a deep blue indigo, each operator in a color of its own
-     Color::hex(0x0C0E14), Color::hex(0x14151E), Color::hex(0x1C1D28), Color::hex(0x242736), Color::hex(0x282C3E),
+     Color::hex(0x0B0C11), Color::hex(0x12131A), Color::hex(0x1C1D28), Color::hex(0x23252F), Color::hex(0x282C3E),
      Color::hex(0x21232E),
-     Color::hex(0xE9EBF4), Color::hex(0x9297A9), Color::hex(0x575C6E),
+     Color::hex(0xE6E8F0), Color::hex(0x969BAD), Color::hex(0x858AA0),
      Color::hex(0x7C8CFF), Color::hex(0xC9A8FF), Color::hex(0xFFB86B),
      {Color::hex(0x4FC3F7), Color::hex(0xFF7A8A), Color::hex(0xC6E85A), Color::hex(0xB49CFF),
       Color::hex(0xFFC857), Color::hex(0x4FE0A8), Color::hex(0xFF6B6B), Color::hex(0xF08CE8),
@@ -109,7 +111,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xDEE1EE), Color::hex(0xB8C0FF), Color::hex(0xE2B59C), Color::hex(0xC9A8FF),
       Color::hex(0x8A98FF), Color::hex(0xFF9470), Color::hex(0x52DCC9), Color::hex(0xF7CB66),
       Color::hex(0xFF74AA), Color::hex(0xB2E670)},
-     Color::hex(0x191A24), Color::hex(0x0C0E14), Color::hex(0x14151E), Color::hex(0x0E1018),
+     Color::hex(0x1E202D), Color::hex(0x0C0D13), Color::hex(0x12131A), Color::hex(0x0D0E14),
      Color::hex(0xD7D9E6), Color::hex(0xC1C4D6), Color::hex(0x1C1D28), Color::hex(0x323648), Color::hex(0x575C6E),
      {Color::hex(0xFFB86B), Color::hex(0xFF6B6B), Color::hex(0x4FC3F7), Color::hex(0xF5C04A), Color::hex(0xFF8A5C),
       Color::hex(0xC9A8FF), Color::hex(0x4FE0A8), Color::hex(0x3ED6C1), Color::hex(0x7C8CFF), Color::hex(0xFF5C9A),
@@ -258,7 +260,7 @@ inline bool lightTheme() {
     return look.background.r + look.background.g + look.background.b > 1.5f;
 }
 // The well a flat theme's switches and list buttons are set in, and one under the mouse: the displays' color in a dark theme, a
-// faint shade of whatever is under it in a light one (where the displays' color would vanish on a tinted card).
+// faint shade of whatever is under it in a light one (where the displays' color would vanish on a card).
 inline Color wellColor() {
     return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.06f} : look.display;
 }
@@ -276,7 +278,7 @@ inline Color inspectorDisplay() {
     return lightTheme() ? mix(d, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.045f) : mix(d, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.045f);
 }
 // What a meter's or a bar's empty part is filled with: the cards' color, or in a flat theme a shade of whatever it sits
-// on (a tinted card, a display), which keeps that one's tint.
+// on (a card, a display, a split's band), which keeps that one's tint.
 inline Color meterWell() {
     if (!look.flat)
         return look.card;
@@ -292,10 +294,18 @@ inline Color ringColor(Color source, Color arc) {
         return source;
     return lightTheme() ? mix(source, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.45f) : mix(source, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f);
 }
-// A card's face, as the View's paintCardFace() fills it: the cards' color, in a flat theme tinted with `color` (faintly
-// while off).
+// Whether a flat theme's cards are tinted with their own color (EditorSettings::tintedCards), which View::paint() sets
+// from the controller, as it does `glowing`.
+extern bool tintedCards;
+// A card's face, as the View's paintCardFace() fills it: the cards' color, tinted with `color` (faintly while off) in a
+// flat theme while tinted cards are on.
 inline Color cardFace(Color color, bool on) {
-    return look.flat ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
+    return look.flat && tintedCards ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
+}
+// The disc behind a node's x or power symbol in the graphs: the cards' color, under the mouse the raised one's, or in a
+// flat theme the track's (Spectrum's cards are lighter than its raised controls, its track lighter than both).
+inline Color nodeDiscFill(bool hot) {
+    return hot ? (look.flat ? look.track : look.raised) : look.card;
 }
 // Whether controls get their 1 px outline: not in a flat theme.
 inline bool outlined() {
@@ -341,12 +351,15 @@ void paintPill(Canvas &c, Rect r, bool lit);
 // The editor's buttons look as what they do, wherever they are:
 // - An action (undo, Save, the settings' cog, a bin, a shape's tools): an icon alone, named in its tooltip, on a raised
 //   face, outlined where controls are (paintActionFace()). A small one in a card's title row (its fold and its x)
-//   shows that face only under the mouse (paintTitleActionFace()), so the title stays light.
+//   shows that face only under the mouse itself (paintTitleActionFace()), so the title stays light, and the fold shows
+//   at all only while the card is under the mouse.
 // - A switch or a choice of a param: set in a well and lit in its color (View::paintButtonFace()); a row of them all
 //   icons or all words.
 // - A button that opens a list or a menu (+ SOURCE, ALGORITHM, a list's button, the snap's): its name, after an icon
 //   where it has one, then a chevron pointing down (paintChevron()).
 // - A tab: its name, the one shown marked.
+// - A link to what another view shows (a source card's to its modulations in MODS): its words without a face, the
+//   link's in the accent, then a chevron pointing right, lit under the mouse.
 // An action's face: raised, the track's under the mouse (`hot`) while it can act, outlined where controls are. Gives its
 // icon's ink: faint while it can't act, the text's while hot, else dim.
 Color paintActionFace(Canvas &c, Rect r, bool hot, bool can = true, float radius = kRadiusControl);
@@ -371,7 +384,8 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
 // What the graphs show of a level that moves with the sound follows it rather than jumping (see theme.cpp).
 float follow(float shown, float target);
 
-// A name in capitals, as card titles and the dashed cards' words are.
+// A name in capitals, as a folded card's strip has it. Capitals are otherwise for small section headings alone
+// (MODULATION, KEYBOARD, a menu's groups): tabs, switches, buttons and card titles are in title case.
 std::string upperCase(std::string text);
 
 // The plus before the name on + EFFECT and + SOURCE (see theme.cpp).

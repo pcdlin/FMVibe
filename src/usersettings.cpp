@@ -1,10 +1,14 @@
 #include "usersettings.h"
 
 #include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <locale>
 #include <sstream>
 #include <system_error>
 
@@ -132,6 +136,14 @@ private:
 };
 #endif
 
+// A number as the file has it, written in the classic locale (a '.' before its fraction): read the same way whatever
+// locale the host has set, where atof() would stop at the '.' under one that writes a ','. 0 where there is none.
+double number(const char *text) {
+    double value = 0.0;
+    const auto [end, error] = std::from_chars(text, text + std::strlen(text), value);
+    return error == std::errc() && std::isfinite(value) ? value : 0.0;
+}
+
 UserSettings parsed(const std::string &text) {
     UserSettings settings;
     std::istringstream in(text);
@@ -142,19 +154,21 @@ UserSettings parsed(const std::string &text) {
         if (line.starts_with("theme="))
             settings.theme = line.substr(6);
         else if (line.starts_with("glowLevel=")) // a plain "glow=" came before the 50 % default: left alone
-            settings.glow = std::clamp(std::atof(line.c_str() + 10), 0.0, 1.0);
+            settings.glow = std::clamp(number(line.c_str() + 10), 0.0, 1.0);
         else if (line.starts_with("hue="))
-            settings.hue = std::min(std::atof(line.c_str() + 4), 1.0);
+            settings.hue = std::min(number(line.c_str() + 4), 1.0);
         else if (line.starts_with("handleSize="))
             settings.handleSize = std::clamp(std::atoi(line.c_str() + 11), 0, kMaxHandleSize);
         else if (line.starts_with("linkIntensity="))
-            settings.links = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
+            settings.links = std::clamp(number(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("gridIntensity="))
-            settings.grid = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
+            settings.grid = std::clamp(number(line.c_str() + 14), 0.0, 1.0);
+        else if (line.starts_with("tintedCards="))
+            settings.tintedCards = std::atoi(line.c_str() + 12) != 0;
         else if (line.starts_with("seqFull="))
             settings.seqFull = std::atoi(line.c_str() + 8) != 0;
         else if (line.starts_with("zoom="))
-            settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
+            settings.zoom = std::clamp(number(line.c_str() + 5), 0.0, 3.0);
         else if (line.starts_with("keysCollapsed="))
             settings.keysCollapsed = std::atoi(line.c_str() + 14) != 0;
         else if (line.starts_with("favorite=") && line.size() > 9)
@@ -255,9 +269,11 @@ bool writeFile(const std::filesystem::path &file, const UserSettings &settings) 
 #endif
     {
         std::ofstream out(part);
+        out.imbue(std::locale::classic()); // its numbers as number() reads them, whatever locale the host has set
         out << "theme=" << settings.theme << "\nglowLevel=" << settings.glow << "\nhandleSize=" << settings.handleSize
             << "\nlinkIntensity=" << settings.links << "\ngridIntensity=" << settings.grid
-            << "\nseqFull=" << (settings.seqFull ? 1 : 0) << '\n';
+            << "\nseqFull=" << (settings.seqFull ? 1 : 0) << "\ntintedCards=" << (settings.tintedCards ? 1 : 0)
+            << '\n';
         if (settings.hue >= 0.0)
             out << "hue=" << settings.hue << '\n';
         if (settings.zoom > 0.0)
@@ -361,6 +377,8 @@ UserSettings merged(const UserSettings &base, const UserSettings &mine, const Us
         out.grid = mine.grid;
     if (mine.seqFull != base.seqFull)
         out.seqFull = mine.seqFull;
+    if (mine.tintedCards != base.tintedCards)
+        out.tintedCards = mine.tintedCards;
     if (mine.zoom != base.zoom)
         out.zoom = mine.zoom;
     if (mine.keysCollapsed != base.keysCollapsed)

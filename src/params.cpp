@@ -113,12 +113,14 @@ constexpr Str kSeqScaleNames[] = {Str::SeqScaleChromatic,       Str::SeqScaleMaj
 static_assert(std::size(kSeqScaleNames) == static_cast<size_t>(SeqScale::Count));
 constexpr Str kFilterTypeNames[] = {Str::FilterLowPass, Str::FilterHighPass, Str::FilterBandPass, Str::FilterNotch,
                                     Str::FilterComb,    Str::FilterLadder,   Str::FilterDiode,    Str::FilterSallenKeyLow,
-                                    Str::FilterSallenKeyHigh, Str::FilterFormant, Str::FilterMorph};
+                                    Str::FilterSallenKeyHigh, Str::FilterFormant, Str::FilterMorph,
+                                    Str::FilterLadderHigh, Str::FilterLadderBand};
 constexpr Str kFilterTypeShortNames[] = {Str::FilterShortLowPass, Str::FilterShortHighPass, Str::FilterShortBandPass,
                                          Str::FilterShortNotch, Str::FilterShortComb, Str::FilterShortLadder,
                                          Str::FilterShortDiode, Str::FilterShortSallenKeyLow,
                                          Str::FilterShortSallenKeyHigh, Str::FilterShortFormant,
-                                         Str::FilterShortMorph};
+                                         Str::FilterShortMorph, Str::FilterShortLadderHigh,
+                                         Str::FilterShortLadderBand};
 constexpr Str kMorphModeNames[] = {Str::MorphBand, Str::MorphNotch};
 static_assert(std::size(kMorphModeNames) == static_cast<size_t>(MorphMode::Count));
 const char *const kFilterSlopeNames[] = {"6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct"};

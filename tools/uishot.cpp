@@ -7,6 +7,7 @@
 #include "gui/arrange.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
+#include "gui/lists.h"
 #include "gui/routing.h"
 #include "gui/theme.h"
 #include "gui/view.h"
@@ -260,8 +261,9 @@ public:
     void setMpeBendRange(int semitones) override { mpeRange = semitones; }
     EditorSettings editorSettings() const override {
         return {.theme = themeName, .accentHue = hue, .glow = glowLevel, .handleSize = handles, .linkIntensity = links,
-                .gridIntensity = grid, .seqFull = seqFull};
+                .gridIntensity = grid, .seqFull = seqFull, .tintedCards = tinted};
     }
+    bool tinted = false;
     double grid = EditorSettings::kDefaultGridIntensity;
     bool seqFull = true;
     bool hasTempo() const override { return offersTempo; }
@@ -298,6 +300,7 @@ protected:
         links = settings.linkIntensity;
         grid = settings.gridIntensity;
         seqFull = settings.seqFull;
+        tinted = settings.tintedCards;
     }
 
 public:
@@ -640,7 +643,7 @@ Point sourceGrip(float card) {
 }
 
 Point sourceHandle(float card) {
-    return {cardX(card) + 24.0f, 582.0f};
+    return detail::sourceHandleRect(detail::sourceCard(card)).center();
 }
 
 // An LFO's sync switch, a square left of its Rate knob.
@@ -804,8 +807,13 @@ Point fxPower(const FakeController &model, int position) {
     return {fxCardX(model, position) + 19.0f, 197.0f};
 }
 
+// An effect card along the row, as the layout's title row functions take it (cardFold(), cardClose(), cardPower()).
+Rect fxCardRect(const FakeController &model, int position) {
+    return {fxCardX(model, position), 180.0f, fxCardW(model, position), 300.0f};
+}
+
 Point fxRemove(const FakeController &model, int position) {
-    return {fxCardX(model, position) + fxCardW(model, position) - 15.0f, 198.0f};
+    return detail::cardClose(fxCardRect(model, position)).center();
 }
 
 // Knob `index` of `count` across a card, in the row at `y` within it.
@@ -902,17 +910,31 @@ Point listStep(Rect button, int dir) {
     return detail::listStepButton(button, dir).center();
 }
 
-// The type's list button on a filter's page (where a shaper's curve's is), and its entries, which open under it.
+// The type's list button on a filter's page (where a shaper's curve's is), and its entries, the families of types,
+// which open under it.
 const Point kTypeButton = detail::kFilterTypeButton.center();
-Point typeItem(FilterType type) {
-    return detail::listMenuItem(detail::kFilterTypeButton, static_cast<int>(FilterType::Count), static_cast<int>(type))
-        .center();
+Point typeItem(detail::FilterFamily family) {
+    return detail::listMenuItem(detail::kFilterTypeButton, detail::kFilterFamilies, static_cast<int>(family)).center();
 }
 
-// The slope's list button under the filter's response, and its entries, 6 to 24 dB, which open under it.
-const Point kSlopeButton = detail::kFilterSlopeButton.center();
+// The Model list's button beside the slope's, under the response of a filter whose family has models, and its
+// entries, the family's models, which open under it, wider.
+const Rect kModelRect = detail::filterModelButton(detail::kFilterDisplay, false);
+const Point kModelButton = kModelRect.center();
+Point modelItem(FilterType type) {
+    const detail::FilterFamilyTypes &family = detail::filterFamilyTypes(type);
+    int at = 0;
+    for (int m = 0; m < family.count; ++m)
+        at = family.types[m] == type ? m : at;
+    return detail::listMenuItem(detail::filterModelMenuButton(kModelRect), family.count, at).center();
+}
+
+// The slope's list button under the response of a low-pass or band-pass (beside its Model list), and its entries,
+// 6 to 24 dB, which open under it.
+const Rect kSlopeRect = detail::filterModelSlopeButton(detail::kFilterDisplay, false);
+const Point kSlopeButton = kSlopeRect.center();
 Point slopeItem(int slope) {
-    return detail::listMenuItem(detail::kFilterSlopeButton, kFilterSlopes, slope).center();
+    return detail::listMenuItem(kSlopeRect, kFilterSlopes, slope).center();
 }
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
@@ -1070,10 +1092,15 @@ void addFx(View &view, FxType type) {
     click(view, fxMenuItem(type));
 }
 
-// A filter's type picked from its list on its page.
+// A filter's type picked on its page: its family from the type's list, then, for a family of models, its model from
+// the Model list.
 void pickType(View &view, FilterType type) {
     click(view, kTypeButton);
-    click(view, typeItem(type));
+    click(view, typeItem(detail::filterFamilyOf(type)));
+    if (detail::hasFilterModels(type)) {
+        click(view, kModelButton);
+        click(view, modelItem(type));
+    }
 }
 
 void drag(View &view, Point from, Point to) {
@@ -1105,8 +1132,7 @@ Point lfoDisplay(float card) {
     return {cardX(card) + 138.0f, 688.0f};
 }
 Point wideButton(float card, int button) {
-    constexpr float kFromRight[] = {1.0f, 2.0f, 0.0f};
-    return {cardX(card) + 2.0f * kCardW + 12.0f - 106.0f - kFromRight[button] * 34.0f, 582.0f};
+    return detail::lfoCardButton(card, button).center();
 }
 Point lfoTool(float card, int tool) {
     return {cardX(card) + 16.0f + tool * 41.5f + 18.75f, 673.0f};
@@ -2586,6 +2612,148 @@ void testTitleActionFace(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(away, {});
     model.themeName = "Midnight";
     check(shown, "a card title's fold and x show an action's face only under the mouse");
+}
+
+// The preset browser's names stand out from the rows' authors: a name at rest (not picked, the mouse away) further
+// from the row's background than its author is, in every theme (read off the rendered pixels: the inkiest pixel of
+// each, by its channels' distance from the background beside them).
+void testBrowserNamesStandOut(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    for (PresetEntry &e : model.library)
+        e.info.author = "Someone";
+    View view(model);
+    click(view, detail::kPresetName.center()); // the browser, on the factory presets: Bell and Pad
+    const Point away{600.0f, 960.0f};
+    view.mouseMove(away, {});
+    const bool open = view.browserShown() && view.browserListed().size() == 2 && view.browserPicked() < 0;
+    // The first row: its name from the list's left, its author in the last 84 px (as the browser lays them out).
+    const float rowTop = 132.0f, listLeft = 418.0f, listRight = 984.0f;
+    auto inkiest = [&](float from, float to) {
+        const uint32_t back = renderer.pixel({from - 6.0f, rowTop + 3.0f});
+        int most = 0;
+        for (float y = rowTop + 2.0f; y < rowTop + 24.0f; y += 1.0f)
+            for (float x = from; x < to; x += 1.0f) {
+                const uint32_t p = renderer.pixel({x, y});
+                int d = 0;
+                for (int shift : {0, 8, 16})
+                    d += std::abs(static_cast<int>(p >> shift & 255) - static_cast<int>(back >> shift & 255));
+                most = std::max(most, d);
+            }
+        return most;
+    };
+    bool apart = open;
+    for (const char *theme : {"Spectrum", "Midnight", "Porcelain", "Light"}) {
+        model.themeName = theme;
+        view.mouseMove(away, {});
+        const bool shot = renderer.save(view, dir / (std::string("22z-browser-names-") + theme + ".png"));
+        const int name = shot ? inkiest(listLeft + 10.0f, listLeft + 60.0f) : 0;
+        const int author = shot ? inkiest(listRight - 84.0f, listRight - 6.0f) : 0;
+        std::printf("      %s: the name's ink %d from the row's background, the author's %d\n", theme, name, author);
+        apart = apart && name > author + 60;
+    }
+    model.themeName = "Midnight";
+    check(apart, "the preset browser's names stand out from their authors in every theme (read off the rendered pixels)");
+}
+
+// With tinted cards on, a Spectrum or Porcelain card's face takes its own color (an LFO's card nearer the theme's color
+// for its place than the plain face), and Midnight's and Light's stay as they are (read off the rendered pixels, on the card's
+// face below its title row, clear of what is on it).
+void testTintedCards(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    const Rect card = detail::sourceCard(0.0f);
+    const Point face{card.x + 4.0f, card.y + 44.0f};
+    const Point away{600.0f, 328.0f};
+    auto channels = [](uint32_t c) { return std::array<int, 3>{int(c >> 16 & 255), int(c >> 8 & 255), int(c & 255)}; };
+    bool tints = true, leaves = true;
+    for (const char *theme : {"Spectrum", "Porcelain", "Midnight", "Light"}) {
+        model.themeName = theme;
+        view.mouseMove(away, {});
+        model.tinted = false;
+        const uint32_t plain = renderer.save(view, dir / (std::string("17t-cards-plain-") + theme + ".png"))
+                                   ? renderer.pixel(face)
+                                   : 0u;
+        model.tinted = true;
+        const uint32_t tinted = renderer.save(view, dir / (std::string("17t-cards-tinted-") + theme + ".png"))
+                                    ? renderer.pixel(face)
+                                    : 0u;
+        // How far each is from the LFO's own color in the theme, the color the card would take.
+        const Color own = detail::kThemes[detail::themeIndex(theme)].sources[0];
+        auto apart = [&](uint32_t c) {
+            const auto a = channels(c);
+            return std::abs(a[0] - int(own.r * 255.0f)) + std::abs(a[1] - int(own.g * 255.0f)) +
+                   std::abs(a[2] - int(own.b * 255.0f));
+        };
+        std::printf("      %s: the card's face %06X plain, %06X tinted (%d and %d from its color)\n", theme,
+                    plain & 0xFFFFFFu, tinted & 0xFFFFFFu, apart(plain), apart(tinted));
+        const bool flat = std::string(theme) == "Spectrum" || std::string(theme) == "Porcelain";
+        if (flat)
+            tints = tints && plain != 0u && tinted != plain && apart(tinted) < apart(plain);
+        else
+            leaves = leaves && plain != 0u && tinted == plain;
+    }
+    model.tinted = false;
+    model.themeName = "Midnight";
+    check(tints && leaves, "tinted cards tint Spectrum's and Porcelain's cards with their color, and leave Midnight's "
+                           "and Light's (read off the rendered pixels)");
+}
+
+// A card title row's fold shows only while the mouse is over the card, and its x always: nothing drawn in the fold's
+// place with the mouse elsewhere, its chevron with it over the card's display, and gone again once it leaves, while the
+// x's cross shows throughout, in Midnight and in Spectrum; the fold still taking a click while hidden; and shown with
+// no mouse once a finger has touched the editor (read off the rendered pixels, against the card's face beside them).
+void testTitleActionsOnHover(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    const Rect card = detail::sourceCard(0.0f);
+    const Rect fold = detail::cardFold(card), cross = detail::cardClose(card);
+    const Point away{600.0f, 328.0f}, over{card.center().x, card.bottom() - 60.0f}; // over the card's display
+    // How many pixels inside a button (2 px in from its edges) differ from the card's face left of the fold.
+    auto inked = [&](Rect r) {
+        const uint32_t face = renderer.pixel({fold.x - 4.0f, fold.y + 3.0f});
+        int count = 0;
+        for (float y = r.y + 2.0f; y < r.bottom() - 2.0f; y += 1.0f)
+            for (float x = r.x + 2.0f; x < r.right() - 2.0f; x += 1.0f)
+                count += renderer.pixel({x, y}) != face;
+        return count;
+    };
+    bool hidden = true, shown = true, hiddenAgain = true, crossShown = true;
+    for (const char *theme : {"Midnight", "Spectrum"}) {
+        model.themeName = theme;
+        const std::string name = std::string("17s-card-fold-") + theme;
+        view.mouseMove(away, {});
+        const bool restShot = renderer.save(view, dir / (name + "-rest.png"));
+        const int rest = restShot ? inked(fold) : -1, crossRest = restShot ? inked(cross) : -1;
+        view.mouseMove(over, {});
+        const bool hoverShot = renderer.save(view, dir / (name + "-card-hover.png"));
+        const int hover = hoverShot ? inked(fold) : -1, crossHover = hoverShot ? inked(cross) : -1;
+        view.mouseMove(away, {});
+        const int left = renderer.save(view, dir / (name + "-left.png")) ? inked(fold) : -1;
+        std::printf("      %s: the fold's ink with the mouse away %d, over the card %d, away again %d; the x's %d and %d\n",
+                    theme, rest, hover, left, crossRest, crossHover);
+        hidden = hidden && rest == 0;
+        shown = shown && hover > 10;
+        hiddenAgain = hiddenAgain && left == 0;
+        crossShown = crossShown && crossRest > 10 && crossHover > 10;
+    }
+    model.themeName = "Midnight";
+    check(hidden && shown && hiddenAgain && crossShown,
+          "a card's fold shows only while the mouse is over the card, and its x always");
+    // Hidden, the fold still takes a click: the card folds, and unfolds again.
+    view.mouseMove(away, {});
+    click(view, fold.center());
+    const bool folded = model.ui.sourcesFolded == 1u << 0;
+    click(view, {detail::sourceCard(0.0f, detail::kFoldedSource).center().x, card.bottom() - 30.0f}); // the strip
+    check(folded && model.ui.sourcesFolded == 0u, "a hidden fold still folds its card");
+    // A finger on the editor (a phone in the browser demo), with no mouse to hover: it shows from then on.
+    view.touchDown(away, false, 6.0f);
+    view.touchUp(away);
+    view.mouseMove(away, {});
+    const int touched = renderer.save(view, dir / "17s-card-fold-touched.png") ? inked(fold) : -1;
+    std::printf("      after a touch, with the mouse away: %d\n", touched);
+    check(touched > 10, "once a finger has touched the editor, a card's fold shows without a mouse over it");
 }
 
 // A modulation ring whose reach runs past its knob's end, cut off there, ends in a line across it: at the knob's end
@@ -4129,9 +4297,9 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
 // The notes' own bends: the Bend tool after Select and Draw putting a point down on a note by rows (from a point at its
 // start), heard at the pitch it bends to, its line drawn over the rows (read off the rendered pixels); with Alt off the
 // grid; a point dragged stopping at its neighbor; a segment's middle bent and straightened by a double-click, a point
-// double-clicked going; Shift+drag drawing the bend a point a grid line; the field's BEND scaling and clearing the
+// double-clicked going; Shift+drag drawing the bend a point a grid line; the field's Bend scaling and clearing the
 // picked notes' bends; copied, pasted, stretched and removed with their notes; folded to a scale, a row up a degree
-// of it; and the NOTE BEND lane after MOD WHEEL showing the picked note's bend about its middle, a point dragged there
+// of it; and the Note Bend lane after Mod Wheel showing the picked note's bend about its middle, a point dragged there
 // and one put down by a double-click. Each an undo step.
 void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
@@ -4240,7 +4408,7 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     const bool cleared = count(0) == 0.0;
     view.undo();
     check(scaled && fieldShot && cleared && count(0) == 2.0,
-          "the field's BEND scales the picked notes' bends, and a double-click clears them");
+          "the field's Bend scales the picked notes' bends, and a double-click clears them");
 
     // Copied and pasted, the copy bends as the note does; stretched twice as long, its bend too; removed, its bend's
     // params back to their defaults.
@@ -4301,7 +4469,7 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     check(folded, "folded to a scale, a bend's point goes up a degree of it a row");
 
-    // The NOTE BEND lane, after MOD WHEEL: the picked note's bend about its middle, ±2 (its farthest +2 at the lane's
+    // The Note Bend lane, after Mod Wheel: the picked note's bend about its middle, ±2 (its farthest +2 at the lane's
     // top), its point dragged back down to the middle (off the grid), and a double-click inside the note putting
     // another down; the macros' tab moved along after it still opening their lane.
     click(view, rectCenter(detail::seqToolButton(0)));
@@ -4328,7 +4496,158 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
         std::printf("      lane: shown %d moved %d (%+.2f) added %d (%g points) macros %d\n", laneShown, laneMoved, py(0, 1),
                     laneAdded, count(0), macroLane);
     check(laneShown && laneShot && laneMoved && laneAdded && macroLane,
-          "the NOTE BEND lane shows the picked note's bend, its points dragged and put down there, undoably");
+          "the Note Bend lane shows the picked note's bend, its points dragged and put down there, undoably");
+}
+
+// The SEQ view's picks: notes past the pattern's end (its Length shortened, which keeps them) neither picked by Ctrl+A
+// nor moving the others by them, the arrow moving the one shown a step on; two notes quantized onto one place leaving
+// one of them; and a patch loaded letting go of what was picked, whose slots now hold the new patch's notes.
+// An effect taken out takes the MODS view's empty modulations onto its knobs with it (they lose their target, as a
+// removed source's do), so the next effect in its slot isn't modulated by them once they are given a source; undone,
+// they point at it again. The bin likewise.
+// A library scanned again as the plugin's is, as a folder goes or is renamed: its presets listed by folder and name.
+struct ScannedLibrary : FakeController {
+    void sortLibrary() {
+        std::stable_sort(library.begin(), library.end(), [](const PresetEntry &a, const PresetEntry &b) {
+            if (a.factory != b.factory)
+                return a.factory;
+            return std::tie(a.folder, a.name) < std::tie(b.folder, b.name);
+        });
+    }
+    bool renamePresetFolder(const std::string &from, const std::string &to) override {
+        FakeController::renamePresetFolder(from, to);
+        sortLibrary();
+        return true;
+    }
+    bool deletePresetFolder(const std::string &folder) override {
+        FakeController::deletePresetFolder(folder);
+        std::erase_if(library, [&](const PresetEntry &e) { return !e.factory && inFolder(e.folder, folder); });
+        return true;
+    }
+};
+
+// The browser's pick, its folder's presets moving along the list as a folder before them is deleted or renamed:
+// still the preset it was (Enter would load it), not whichever now sits at its place in the list.
+void testBrowserPickRescanned(const std::filesystem::path &, Renderer &) {
+    auto treeRow = [&](int row) { return Point{300.0f, 215.0f + row * 26.0f + 13.0f}; };
+    bool kept = true;
+    for (const bool rename : {false, true}) {
+        ScannedLibrary model;
+        model.library = {{"a1", "A", false, {}}, {"a2", "A", false, {}}, {"a3", "A", false, {}}, {"x", "Z", false, {}}};
+        model.folders = {"A", "Z"};
+        model.loadPresetAt(3); // Z/x
+        View view(model);
+        view.poll();
+        click(view, detail::kPresetName.center()); // the browser, on Factory
+        click(view, {216.0f, treeRow(1).y});       // User opened: A and Z under it
+        click(view, treeRow(3));                   // Z
+        click(view, {620.0f, 132.0f + 13.0f});     // its x picked
+        const bool picked = view.browserShown() && view.browserPicked() == 3;
+        const std::vector<MenuItem> menu = view.contextMenu(treeRow(2)); // A
+        const bool offered = menu.size() == 5;
+        if (rename) {
+            view.menuCommand(offered ? menu[3].command : 0);
+            view.typeKey(View::Key::SelectAll);
+            type(view, "ZZ"); // after Z
+        } else {
+            view.menuCommand(offered ? menu[4].command : 0);
+        }
+        view.typeKey(View::Key::Enter);
+        if (!rename)
+            view.dialogKey(View::Key::Enter);
+        const int now = view.browserPicked();
+        const bool same = now >= 0 && now < static_cast<int>(model.library.size()) && model.library[now].name == "x" &&
+                          model.library[now].folder == "Z";
+        std::printf("      %s A: x picked at 3 before, at %d after\n", rename ? "renamed" : "deleted", now);
+        kept = kept && picked && offered && same;
+    }
+    check(kept, "the browser's pick stays on its preset as a folder before it is deleted or renamed");
+}
+
+void testFxEmptyMods(const std::filesystem::path &, Renderer &) {
+    FakeController model;
+    FxGraphModel graph(model);
+    const int slot = graph.addEffect(FxType::Chorus, -1, {});
+    const int other = graph.addEffect(FxType::Delay, -1, {});
+    const int rate = paramIndex(slot, FxParam::ChorusRate), time = paramIndex(other, FxParam::DelayTimeL);
+    model.ui.emptyMods = {{-1, rate}, {-1, time}};
+    {
+        UndoScope step(model);
+        graph.removeEffect(slot);
+    }
+    const bool lost = model.ui.emptyMods.size() == 2 && model.ui.emptyMods[0].second < 0 &&
+                      model.ui.emptyMods[1].second == time;
+    model.undo();
+    const bool back = model.ui.emptyMods.size() == 2 && model.ui.emptyMods[0].second == rate;
+    graph.clear();
+    const bool binned = model.ui.emptyMods.size() == 2 && model.ui.emptyMods[0].second < 0 &&
+                        model.ui.emptyMods[1].second < 0;
+    check(slot >= 0 && other >= 0 && lost && back && binned,
+          "an effect taken out takes the empty modulations onto its knobs with it, undoably, and the bin every one");
+}
+
+void testSeqPicks(const std::filesystem::path &, Renderer &) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    click(view, {308.0f, 116.0f}); // the SEQ tab
+    auto field = [&](int slot, SeqNoteParam f) { return model.value(seqNoteIndex(0, slot, f)); };
+    auto put = [&](int slot, double start, int pitch) {
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Start), start);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Pitch), static_cast<double>(pitch));
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), 100.0 / 127.0);
+    };
+    auto load = [&] { // as a preset loaded has it: the roll fits its notes
+        model.clearHistory();
+        view.poll();
+    };
+    using detail::kSeqGrid;
+    const Point empty{kSeqGrid.x + kSeqGrid.w - 6.0f, kSeqGrid.y + 6.0f}; // the top row, at the bar's end: no note
+    // Two bars, notes on steps 2 and 20; then one bar, the note on 20 past its end.
+    model.set(paramIndex(0, SeqPatternParam::Length), 2.0);
+    put(0, 2.0, 60);
+    put(1, 20.0, 60);
+    load();
+    model.set(paramIndex(0, SeqPatternParam::Length), 1.0);
+    view.poll();
+    view.mouseMove(empty, {});
+    view.seqKey(View::Key::SelectAll, false);
+    view.seqKey(View::Key::Right, false);
+    const bool stepped = field(0, SeqNoteParam::Start) == 3.0 && field(1, SeqNoteParam::Start) == 20.0;
+    view.undo();
+    check(stepped && field(0, SeqNoteParam::Start) == 2.0,
+          "a note past the pattern's end isn't picked, and the arrow moves the notes shown a step on");
+
+    // Snap at 1/4: notes on 1 and 1.25 on one row both quantize onto 0, one of them left there.
+    model.layout().seqSnap = 1;
+    model.set(seqNoteIndex(0, 1, SeqNoteParam::Length), 0.0);
+    put(0, 1.0, 60);
+    put(1, 1.25, 60);
+    view.poll();
+    view.seqKey(View::Key::SelectAll, false);
+    int command = -1;
+    for (const MenuItem &item : view.contextMenu(empty))
+        if (item.label == tr(Str::MenuSeqQuantize))
+            command = item.command;
+    view.menuCommand(command);
+    int onZero = 0;
+    for (int slot = 0; slot < kSeqNotes; ++slot)
+        onZero += field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Start) == 0.0;
+    view.undo();
+    check(command >= 0 && onZero == 1 && field(0, SeqNoteParam::Start) == 1.0 && field(1, SeqNoteParam::Start) == 1.25,
+          "two notes quantized onto one place leave one of them there, undoably");
+
+    // A note picked, then another patch loaded whose note sits in the same slot: Delete leaves it alone.
+    model.set(seqNoteIndex(0, 1, SeqNoteParam::Length), 0.0);
+    view.poll();
+    view.seqKey(View::Key::SelectAll, false);
+    put(0, 6.0, 64);
+    load();
+    view.mouseMove(empty, {});
+    const bool taken = view.seqKey(View::Key::Delete, false);
+    check(!taken && field(0, SeqNoteParam::Length) == 1.0,
+          "a patch loaded lets go of the notes picked, whose slots now hold its own");
 }
 
 void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
@@ -4455,9 +4774,7 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     auto roughly = [](double a, double b, double within = 0.01) { return std::abs(a - b) < within; };
     const int count = shapeCountIndex(0);
     // The power switch of the card at a place, and whose it is: LFO 2's card one place along while LFO 1's is wide.
-    auto powerAt = [&](float place, float span) {
-        return Point{cardX(place) + span * (kCardW + 12.0f) - 12.0f - 34.0f, 573.0f};
-    };
+    auto powerAt = [&](float place, float span) { return detail::sourcePower(place, span).center(); };
     auto switches = [&](Point at, int lfo) {
         click(view, at);
         const bool off = model.value(sourceEnabledIndex(lfo)) == 0.0;
@@ -4472,11 +4789,11 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool normal = switches(sourcePower(1), 1);
     click(view, lfoDisplay(0));
     const bool again = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
-    // Its normal card's widen button, left of the fold button, widens it too.
+    // Its normal card's widen button, beside its power switch, widens it too.
     click(view, wideButton(0, 0));
-    view.mouseMove({cardX(0) + kCardW - 78.0f, 574.0f}, {});
+    view.mouseMove(detail::lfoWidenButton(0.0f).center(), {});
     const bool button = renderer.save(view, dir / "10d0-lfo-card-widen-button.png") && switches(sourcePower(1), 1);
-    click(view, {cardX(0) + kCardW - 78.0f, 574.0f});
+    click(view, detail::lfoWidenButton(0.0f).center());
     const bool byButton = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
     check(widened && normal && again && button && byButton,
           "a click on a Curve source's display widens its card, and so does its widen button");
@@ -4626,7 +4943,7 @@ void testLaterSlots(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, kFxTab);
     const float cardTop = 179.5f; // an effect card's
-    click(view, {fxCardX(model, 0) + fxCardW(model, 0) - 53.0f, cardTop + 18.5f}); // its fold chevron
+    click(view, detail::cardFold(fxCardRect(model, 0)).center()); // its fold chevron
     const bool folded = model.ui.fxFolded == 0 && model.ui.fxFoldedLater == 1u << (later - kFirstFxSlots);
     const float strip = fxCardX(model, 0) + fxCardW(model, 0) * 0.5f;
     drag(view, {strip, cardTop + 38.0f}, {strip + 200.0f, cardTop + 38.0f}); // its grip, past the next card
@@ -5063,7 +5380,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, cell(2, 0));
         view.mouseMove({600.0f, 428.0f}, {});
         const bool powerShot = renderer.save(view, dir / "40f9-fx-inspector-power.png");
-        click(view, centerOf(detail::cardPowerInGraph(card)));
+        click(view, centerOf(detail::cardPower(card, false))); // in the cross's corner
         const bool off = model.value(paramIndex(1, FxParam::Enabled)) == 0.0 &&
                          model.value(paramIndex(1, FxParam::Type)) == static_cast<double>(FxType::Reverb);
         view.undo();
@@ -5773,6 +6090,33 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
         same = same && model.value(i) == before[i - kFxSplitBase];
     check(graphShot && same, "switching to the graph and back leaves the split as it was");
 
+    // Its fold shows while the mouse is over the container, its controls or a card on its band shown (the reverb), as
+    // a card's does while the mouse is over the card, and not with the mouse away (read off the rendered pixels: how
+    // many pixels inside the fold differ from the container's face left of it).
+    {
+        const Rect boxFold = detail::cardFold(column, false);
+        auto inked = [&] {
+            const uint32_t face = renderer.pixel({boxFold.x - 4.0f, boxFold.y + 3.0f});
+            int count = 0;
+            for (float y = boxFold.y + 2.0f; y < boxFold.bottom() - 2.0f; y += 1.0f)
+                for (float x = boxFold.x + 2.0f; x < boxFold.right() - 2.0f; x += 1.0f)
+                    count += renderer.pixel({x, y}) != face;
+            return count;
+        };
+        view.mouseMove({600.0f, 600.0f}, {});
+        const int away = renderer.save(view, dir / "41f2-fx-row-fold-away.png") ? inked() : -1;
+        view.mouseMove({column.center().x, column.bottom() - 40.0f}, {});
+        const int overControls = renderer.save(view, dir / "41f3-fx-row-fold-controls.png") ? inked() : -1;
+        view.mouseMove({reverbCard.center().x, reverbCard.bottom() - 30.0f}, {});
+        const int overBandCard = renderer.save(view, dir / "41f4-fx-row-fold-band-card.png") ? inked() : -1;
+        view.mouseMove({600.0f, 600.0f}, {});
+        std::printf("      the container's fold's ink: with the mouse away %d, over its controls %d, over its band's "
+                    "reverb %d\n",
+                    away, overControls, overBandCard);
+        check(away == 0 && overControls > 10 && overBandCard > 10,
+              "a container's fold shows while the mouse is over it or a card on its band, and not with the mouse away");
+    }
+
     // Folded to a strip by the chevron left of its x, and unfolded by a click on the strip.
     click(view, centerOf(detail::cardFold(column, false)));
     const bool folded = model.ui.splitsFolded == 1u;
@@ -6264,6 +6608,29 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     const bool idleMoved = view.poll() && only(detail::sourceCard(0.0f));
     check(idleMoved && samePixels("99i-idle-lfo.png"),
           "a free LFO's dot moving with no notes playing repaints its card alone, as a whole paint would");
+    // Its card repainted again and again, as the window polls, notes where the cards are no more times than a whole
+    // paint does: the mouse finds a card among as many as show, however long the editor has been open.
+    {
+        const size_t noted = view.cardsNoted();
+        size_t most = noted;
+        int repaints = 0;
+        for (int i = 1; i <= 300; ++i) {
+            model.live.lfoPhases[0] = std::fmod(0.6f + 0.013f * static_cast<float>(i), 1.0f);
+            if (!view.poll())
+                continue;
+            for (const Rect &area : view.changedAreas())
+                renderer.repaint(view, area);
+            ++repaints;
+            most = std::max(most, view.cardsNoted());
+        }
+        std::printf("      cards noted after a whole paint %zu, at most %zu over %d partial repaints\n", noted, most,
+                    repaints);
+        check(noted > 0 && repaints >= 100 && most == noted,
+              "partial repaints of a free LFO's card don't pile up where the cards are noted");
+        model.live.lfoPhases[0] = 0.6f;
+        view.poll();
+        renderer.save(view, dir / "99i2-idle-lfo-repainted.png");
+    }
     const std::vector<uint32_t> withDot = renderer.image();
     model.set(paramIndex(0, SourceParam::Free), 0.0);
     view.poll();
@@ -7075,7 +7442,16 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         const Point empty = at(14.3, 62);
         click(view, empty);
         view.doubleClick(empty, {});
+        const bool heldLeftRight = view.cursor() == CursorKind::Horizontal; // before it moves
         view.mouseMove(at(16.3, 62), {});
+        const bool leftRight = view.cursor() == CursorKind::Horizontal;
+        // Then up and down: the cursor turns with it, a pixel or two across leaving it as it was.
+        const Point across = at(16.3, 62);
+        view.mouseMove({across.x + 2.0f, across.y}, {});
+        const bool tremble = view.cursor() == CursorKind::Horizontal;
+        view.mouseMove({across.x + 2.0f, across.y - 12.0f}, {});
+        const bool turned = view.cursor() == CursorKind::Vertical;
+        view.mouseMove(across, {});
         view.mouseUp(at(16.3, 62), {});
         const int rightNote = noteAt(14.0, 62);
         const double rightLength = rightNote >= 0 ? field(rightNote, SeqNoteParam::Length) : -1.0;
@@ -7083,6 +7459,7 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, empty);
         view.doubleClick(empty, {});
         view.mouseMove(at(12.3, 62), {});
+        const bool leftwards = view.cursor() == CursorKind::Horizontal;
         view.mouseUp(at(12.3, 62), {});
         const int left = noteAt(12.0, 62);
         const double leftLength = left >= 0 ? field(left, SeqNoteParam::Length) : -1.0;
@@ -7091,6 +7468,9 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
                     rightLength, leftLength);
         check(std::abs(rightLength - 3.0) < 1e-6 && std::abs(leftLength - 3.0) < 1e-6 && noteAt(14.0, 62) < 0,
               "a double-click held and dragged across sets the new note's length, to the right its end and to the left its start");
+        check(heldLeftRight && leftRight && tremble && turned && leftwards,
+              "a double-click held shows the cursor left and right until the mouse moves and while it goes across, and "
+              "up and down while it goes up and down");
     }
     // Ctrl+C keeps the notes picked, and Ctrl+V puts them down as they were but for where: at the step under the mouse
     // on the roll, picked, and with the mouse off it after what was copied or pasted last; Ctrl+X takes them away too,
@@ -8205,9 +8585,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, kFxTab);
     const float cardTop = 179.5f; // an effect card's
-    auto fxFold = [&](int position) {
-        return Point{fxCardX(model, position) + fxCardW(model, position) - 53.0f, cardTop + 18.5f};
-    };
+    auto fxFold = [&](int position) { return detail::cardFold(fxCardRect(model, position)).center(); };
     // The power switch in its title row, as on a source card, switches the effect off and on; so does the icon.
     const Rect reverbCard{fxCardX(model, 1), cardTop, fxCardW(model, 1), 300.0f};
     click(view, detail::cardPower(reverbCard).center());
@@ -8250,15 +8628,16 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "28c-unfolded-handle.png");
     const std::vector<uint32_t> handleOpen = handlePixels();
-    click(view, {cardX(0) + kCardW - 53.0f, sourceTop + 17.5f}); // the LFO's chevron, left of its switch
+    click(view, detail::cardFold(detail::sourceCard(0.0f)).center()); // the LFO's chevron, left of its x and switch
     const bool sourceFolded = model.ui.sourcesFolded == 1u << 0;
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "28d-folded-handle.png");
     const bool handleStays = handlePixels() == handleOpen;
-    const float envX = cardX(0) + 60.0f; // the envelope's card, closed up after the 48 px strip
-    click(view, {envX + kCardW - 34.0f, sourceTop + 17.5f}); // its switch
+    const float stripW = detail::sourceCard(0.0f, detail::kFoldedSource).w;
+    const float envX = cardX(0) + stripW + 12.0f; // the envelope's card, closed up after the strip
+    click(view, {envX + kCardW - 38.0f, sourceTop + 17.5f}); // its switch
     const bool envClosedUp = model.value(sourceEnabledIndex(1)) < 0.5;
-    const float lfoStrip = cardX(0) + 24.0f;
+    const float lfoStrip = cardX(0) + stripW * 0.5f;
     drag(view, {lfoStrip, sourceTop + 38.0f}, {lfoStrip + 300.0f, sourceTop + 38.0f}); // its grip, past the envelope
     const bool moved = shown(model) == std::vector<int>{1, 0} && model.ui.sourcesFolded == 1u << 0;
     view.mouseMove({600.0f, 328.0f}, {});
@@ -8276,7 +8655,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     auto inked = [&](int line) {
         const uint32_t card = renderer.pixel({randomStrip + 4.0f, sourceTop + 150.0f});
         for (float y = sourceTop + 104.0f + line * 13.0f + 1.0f; y < sourceTop + 104.0f + (line + 1) * 13.0f; y += 1.0f)
-            for (float x = randomStrip + 8.0f; x < randomStrip + 40.0f; x += 1.0f)
+            for (float x = randomStrip + 6.0f; x < randomStrip + stripW - 4.0f; x += 1.0f)
                 if (renderer.pixel({x, y}) != card)
                     return true;
         return false;
@@ -8432,9 +8811,20 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool undone = model.ui.macroNames[0].empty();
     view.redo();
+    // A name longer than the 24 bytes the state saves is cut between whole characters: one from a preset, 22 letters
+    // and an é (two bytes in UTF-8, the 23rd and 24th), with a letter typed before it keeps the 23 letters.
+    model.ui.macroNames[1] = "abcdefghijklmnopqrstuv\xC3\xA9";
+    doubleClick(view, {macroKnob(1).x, y + 26.0f});
+    view.typeKey(View::Key::Home);
+    type(view, "x");
+    view.typeKey(View::Key::Enter);
+    const bool wholeCharacters = model.ui.macroNames[1] == "xabcdefghijklmnopqrstuv";
+    view.undo();
+    model.ui.macroNames[1].clear();
     view.mouseMove({macroKnob(0).x - 32.0f, y}, {});
-    check(turned && mapped && renamed && undone && renderer.save(view, dir / "26-macros.png"),
-          "a macro's knob turns, its handle maps it, and a double-click renames it, undoably");
+    check(turned && mapped && renamed && undone && wholeCharacters && renderer.save(view, dir / "26-macros.png"),
+          "a macro's knob turns, its handle maps it, and a double-click renames it, undoably, cut between whole "
+          "characters");
     // A double-click on a macro's knob sets it back to 0, or a bipolar one's to its middle.
     const int macro2 = paramIndex(1, MacroParam::Value);
     model.set(macro2, 0.8);
@@ -9793,10 +10183,21 @@ void testOutBend(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool undone = bendOf() == 0.0f;
     view.redo();
+    // Its right-click menu's Reset Bend straightens it too, and is then no longer offered.
+    auto resetBend = [&] {
+        for (const MenuItem &item : view.contextMenu(along(bent, 0.3f)))
+            if (item.label == tr(Str::MenuResetBend))
+                return item.command;
+        return -1;
+    };
+    const int reset = resetBend();
+    view.menuCommand(reset);
+    const bool resetStraight = reset >= 0 && bendOf() == 0.0f && resetBend() < 0;
+    view.undo();
     doubleClick(view, along(bent, 0.3f));
     std::printf("      A's line to OUT bent to %.3f\n", bent);
-    check(shot && bent != 0.0f && undone && bendOf() == 0.0f && model.value(out) == 1.0,
-          "a node's line to OUT bends when dragged sideways, undoably, and a double-click straightens it");
+    check(shot && bent != 0.0f && undone && bendOf() == 0.0f && model.value(out) == 1.0 && resetStraight,
+          "a node's line to OUT bends when dragged sideways, undoably, and a double-click or Reset Bend straightens it");
 }
 
 // The routing graph's glow: a bloom from OUT, dithered rather than stepped (along a stretch of the panel's bottom, under
@@ -10701,14 +11102,15 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
               "+ SOURCE adds a Curve source, unipolar and widened to draw its shape, its polarity set by its switch");
         // Folded, its name down the strip is CRV and its number, four lines and nothing after them (read off the
         // rendered pixels), as a Random card's RND.
-        click(curveView, detail::cardFold(detail::sourceCard(0, detail::kWideSource)).center());
+        click(curveView, detail::cardFold(detail::sourceCard(0, detail::kWideSource), true, detail::kWideSourceTools).center());
         curveView.mouseMove({600.0f, 328.0f}, {});
         const bool foldShot = renderer.save(curveView, dir / "11m-curve-folded.png");
         const float strip = cardX(0), top = 564.0f;
         auto inked = [&](int line) {
             const uint32_t card = renderer.pixel({strip + 4.0f, top + 150.0f});
             for (float y = top + 104.0f + line * 13.0f + 1.0f; y < top + 104.0f + (line + 1) * 13.0f; y += 1.0f)
-                for (float x = strip + 8.0f; x < strip + 40.0f; x += 1.0f)
+                for (float x = strip + 6.0f; x < strip + detail::sourceCard(0.0f, detail::kFoldedSource).w - 4.0f;
+                     x += 1.0f)
                     if (renderer.pixel({x, y}) != card)
                         return true;
             return false;
@@ -11203,8 +11605,24 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
           "a pill's list shows six rows, scrolls by the wheel and the middle button, bypasses, sets the depth of and "
           "removes its modulations, and closes at a click elsewhere");
 
-    // Macro 2's handle held over the pill opens the list; let go of on LFO 4's row, Macro 2 becomes its aux.
+    // Macro 2's handle held over the pill opens the list; let go of on the list's scrollbar (right of the rows, 6 px
+    // in from the list's right edge, 136.5 px right of the pill's middle), it changes nothing.
     const float strip = view.height() - 179.0f;
+    {
+        const ParamValues before = model.values;
+        view.mouseDown({252.0f, strip}, {});
+        view.mouseMove({600.0f, strip - 100.0f}, {});
+        view.mouseMove(pill, {});
+        const Point scrollbar{pill.x + 136.5f - 8.0f, row(2, 0.0f).y};
+        view.mouseMove(scrollbar, {});
+        view.mouseUp(scrollbar, {});
+        const bool unchanged = model.values == before;
+        view.mouseMove({600.0f, 328.0f}, {});
+        click(view, {600.0f, 328.0f});
+        check(unchanged, "a source's handle let go of on a pill's list's scrollbar edits nothing");
+    }
+
+    // Macro 2's handle held over the pill opens the list; let go of on LFO 4's row, Macro 2 becomes its aux.
     view.mouseDown({252.0f, strip}, {});
     view.mouseMove({600.0f, strip - 100.0f}, {});
     view.mouseMove(pill, {});
@@ -11263,9 +11681,17 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
+    const Point below = gridCellCenter(2, 2);
+    auto belowTop = [&] { // the top half of the cell under it, where its ranges go
+        std::vector<uint32_t> pixels;
+        for (float y = below.y - 14.0f; y < below.y; y += 1.0f)
+            for (float x = below.x - 20.0f; x < below.x + 20.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
     view.mouseMove({600.0f, 468.0f}, {});
     renderer.save(view, dir / "40i-cell-none.png");
-    const std::vector<uint32_t> plain = corner();
+    const std::vector<uint32_t> plain = corner(), plainBelow = belowTop();
     const int route = matrixIndex(1, 2);
     for (int s = 8; s < 14; ++s) {
         model.set(paramIndex(s, SourceParam::Type), static_cast<double>(SourceType::Lfo));
@@ -11297,6 +11723,17 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     check(mediumShot && largeShot && mediumHandles != smallHandles && largeHandles != mediumHandles &&
               handles() == smallHandles,
           "the depth handles and pills are drawn in the size picked, Small as before");
+
+    // Large, each with an aux and the route at 75 %: the handles sit low under the number, their aux rings clear of
+    // the cell below (read off the rendered pixels).
+    model.handles = 2;
+    model.set(route, 0.75);
+    for (int s = 8; s < 14; ++s)
+        model.set(slotAuxIndex(s, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
+    view.poll();
+    const bool auxShot = renderer.save(view, dir / "40n-cell-aux-large.png");
+    check(auxShot && belowTop() == plainBelow, "a matrix cell's large handles with an aux stay clear of the cell below");
+    model.handles = 0;
 }
 
 // A delay's time knobs are named under them whether they set times or, synced, note values (Time L and Time R, Rate L
@@ -13564,7 +14001,7 @@ void run(const std::filesystem::path &dir, float scale) {
     const bool refusedArrow = view.cursor() == CursorKind::Arrow;
     view.mouseMove(slopeItem(3), {});
     const bool pickHand = view.cursor() == CursorKind::Hand;
-    const Rect slopeList = detail::listMenu(detail::kFilterSlopeButton, kFilterSlopes);
+    const Rect slopeList = detail::listMenu(kSlopeRect, kFilterSlopes);
     view.mouseMove({slopeList.center().x, slopeList.y + 2.0f}, {});
     const bool edgeArrow = view.cursor() == CursorKind::Arrow;
     view.mouseMove({slopeList.center().x, slopeList.bottom() + 12.0f}, {});
@@ -13579,19 +14016,21 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(slope, kDefaultSlope);
     check(listShot && steep && gentle && bandListShot && refused && bandSteep,
           "the slope's list picks 6 to 24 dB, a band-pass's only 12 and 24");
-    // The type's list: every type with its icon before its name (read off the rendered pixels: a stroke in each row's
-    // icon box, brighter than the row's empty right end), Ladder picked from it and shown on its button, and the
-    // wheel over the button stepping the type, a run of notches one undo step, held at the list's ends.
+    // The type's list: the seven families, each with its icon before its name (read off the rendered pixels: a stroke
+    // in each row's icon box, brighter than the row's empty right end), and the High-pass picked from it; the Model
+    // list beside the slope's, a low-pass's four models, Ladder picked from it; a family picked keeping the model where
+    // it has it (Ladder's high-pass and band-pass), else taking its first; the wheel over the type's button stepping
+    // the family and over the Model button the model, a run of notches one undo step, held at the lists' ends.
     {
         const int type = paramIndex(0, FilterParam::Type);
-        constexpr int kTypes = static_cast<int>(FilterType::Count);
+        auto typeIs = [&](FilterType t) { return std::lround(model.value(type)) == static_cast<long>(t); };
         auto lit = [](uint32_t px) { return ((px >> 16 & 255) + (px >> 8 & 255) + (px & 255)) / 3; };
         click(view, kTypeButton);
         view.mouseMove({detail::kFilterTypeButton.x - 8.0f, detail::kFilterTypeButton.center().y}, {});
         const bool typeListShot = renderer.save(view, dir / "4c-type-list.png");
         bool icons = true;
-        for (int t = 0; t < kTypes; ++t) {
-            const Rect row = detail::listMenuItem(detail::kFilterTypeButton, kTypes, t);
+        for (int f = 0; f < detail::kFilterFamilies; ++f) {
+            const Rect row = detail::listMenuItem(detail::kFilterTypeButton, detail::kFilterFamilies, f);
             const Rect box = detail::filterTypeIconRect(row);
             uint32_t most = 0;
             for (float x = box.x; x <= box.right(); x += 1.0f)
@@ -13599,27 +14038,57 @@ void run(const std::filesystem::path &dir, float scale) {
                     most = std::max(most, lit(renderer.pixel({x, y})));
             const uint32_t empty = lit(renderer.pixel({row.right() - 6.0f, row.center().y}));
             if (most < empty + 40) {
-                std::printf("      type %d's icon: brightest %u, the row's end %u\n", t, most, empty);
+                std::printf("      family %d's icon: brightest %u, the row's end %u\n", f, most, empty);
                 icons = false;
             }
         }
-        click(view, typeItem(FilterType::Ladder));
-        const bool ladder = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
+        click(view, typeItem(detail::FilterFamily::HighPass));
+        const bool high = typeIs(FilterType::HighPass);
+        check(typeListShot && icons && high, "the type's list shows the seven families with their icons and picks one");
+        pickType(view, FilterType::LowPass);
+        click(view, kModelButton);
+        view.mouseMove(modelItem(FilterType::Diode), {});
+        const bool modelListShot = renderer.save(view, dir / "4c-model-list.png");
+        click(view, modelItem(FilterType::Ladder));
+        const bool ladder = typeIs(FilterType::Ladder);
+        view.mouseMove({detail::kFilterTypeButton.x - 8.0f, detail::kFilterTypeButton.center().y}, {});
         const bool ladderShot = renderer.save(view, dir / "4d-type-ladder.png");
-        view.wheel(kTypeButton, -1.0f, {});
-        view.wheel(kTypeButton, -1.0f, {});
-        const bool stepped = std::lround(model.value(type)) == static_cast<long>(FilterType::Notch);
-        view.undo();
-        const bool undone = std::lround(model.value(type)) == static_cast<long>(FilterType::Ladder);
-        pickType(view, FilterType::Morph); // the last in the list
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::HighPass));
+        const bool keptHigh = typeIs(FilterType::LadderHigh);
+        renderer.save(view, dir / "4d-type-ladder-high.png");
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::BandPass));
+        const bool keptBand = typeIs(FilterType::LadderBand);
+        renderer.save(view, dir / "4d-type-ladder-band.png");
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::Notch));
+        const bool notch = typeIs(FilterType::Notch);
+        click(view, kTypeButton);
+        click(view, typeItem(detail::FilterFamily::LowPass));
+        const bool first = typeIs(FilterType::LowPass);
+        check(modelListShot && ladder && ladderShot && keptHigh && keptBand && notch && first,
+              "the Model list picks a low-pass's model, and a family picked keeps the model where it has it");
+        pickType(view, FilterType::Ladder);
         view.wheel(kTypeButton, 1.0f, {});
-        const bool held = std::lround(model.value(type)) == static_cast<long>(FilterType::Morph);
+        view.wheel(kTypeButton, 1.0f, {});
+        const bool stepped = typeIs(FilterType::LadderBand);
+        view.undo();
+        const bool undone = typeIs(FilterType::Ladder);
+        view.wheel(kModelButton, 1.0f, {});
+        const bool diode = typeIs(FilterType::Diode);
+        view.wheel(kModelButton, 1.0f, {});
+        view.wheel(kModelButton, 1.0f, {});
+        const bool modelHeld = typeIs(FilterType::SallenKeyLow);
+        pickType(view, FilterType::Morph); // the last family in the list
+        view.wheel(kTypeButton, 1.0f, {});
+        const bool held = typeIs(FilterType::Morph);
         model.set(type, static_cast<double>(FilterType::LowPass));
-        check(typeListShot && icons && ladder && ladderShot && stepped && undone && held,
-              "the type's list shows each type with its icon and picks Ladder, and the wheel steps it");
-        // Its arrows: back from the first type round to the last, on round to the first again and on to the second,
-        // each click an undo step; the arrow under the mouse lit (read off the rendered pixels, in its corner, clear
-        // of its glyph).
+        check(stepped && undone && diode && modelHeld && held,
+              "the wheel steps the family over the type's button and the model over the Model button");
+        // Its arrows: back from the first family round to the last, on round to the first again and on to the
+        // second, each click an undo step; the arrow under the mouse lit (read off the rendered pixels, in its corner,
+        // clear of its glyph).
         const Rect button = detail::kFilterTypeButton;
         const Rect next = detail::listStepButton(button, 1);
         const Point corner{next.x + 2.5f, next.y + 3.0f};
@@ -13630,27 +14099,33 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool stepsShot = renderer.save(view, dir / "4e-type-steps-hover.png");
         const uint32_t hovered = lit(renderer.pixel(corner));
         click(view, listStep(button, -1));
-        const bool wrapped = std::lround(model.value(type)) == static_cast<long>(kTypes - 1);
+        const bool wrapped = typeIs(FilterType::Morph);
         click(view, listStep(button, 1));
-        const bool round = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        const bool round = typeIs(FilterType::LowPass);
         click(view, listStep(button, 1));
-        const bool on = std::lround(model.value(type)) == static_cast<long>(FilterType::HighPass);
+        const bool on = typeIs(FilterType::HighPass);
         view.undo();
-        const bool stepUndone = std::lround(model.value(type)) == static_cast<long>(FilterType::LowPass);
+        const bool stepUndone = typeIs(FilterType::LowPass);
         view.undo();
         // Clicked quickly, the second click comes as a double-click (as Windows sends it): a step all the same.
         model.set(type, static_cast<double>(FilterType::LowPass));
         click(view, listStep(button, 1));
         view.doubleClick(listStep(button, 1), {});
         view.mouseUp(listStep(button, 1), {});
-        const bool quick = std::lround(model.value(type)) == static_cast<long>(FilterType::BandPass);
-        model.set(type, static_cast<double>(kTypes - 1));
+        const bool quick = typeIs(FilterType::BandPass);
         if (hovered <= idle + 8)
             std::printf("      the arrow's corner: %u idle, %u under the mouse\n", idle, hovered);
-        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone && quick &&
-                  std::lround(model.value(type)) == static_cast<long>(kTypes - 1),
-              "the arrows in a filter's type list step it round the list's ends, undoably, lit under the mouse, and a "
-              "quick second click steps again");
+        check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone && quick,
+              "the arrows in a filter's type list step its family round the list's ends, undoably, lit under the "
+              "mouse, and a quick second click steps again");
+        // The Model button's arrows: on from SVF to Ladder, back round to Sallen-Key.
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        click(view, listStep(kModelRect, 1));
+        const bool nextModel = typeIs(FilterType::Ladder);
+        click(view, listStep(kModelRect, -1));
+        click(view, listStep(kModelRect, -1));
+        check(nextModel && typeIs(FilterType::SallenKeyLow),
+              "the arrows on the Model button step the model round its family's ends");
         model.set(type, static_cast<double>(FilterType::LowPass));
     }
     // A morph's slope's list and notch switch, side by side where the slope's list is: 24 dB picked from the list
@@ -14103,20 +14578,39 @@ void run(const std::filesystem::path &dir, float scale) {
     {
         const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
         click(view, button.center());
-        click(view, detail::listMenuItem(button, static_cast<int>(FilterType::Count), static_cast<int>(FilterType::Comb))
+        click(view, detail::listMenuItem(button, detail::kFilterFamilies, static_cast<int>(detail::FilterFamily::Comb))
                         .center());
     }
     check(std::lround(model.value(paramIndex(3, FxParam::FilterType))) == static_cast<long>(FilterType::Comb),
           "the filter card's type list picks the filter type");
     {
-        // Its arrows step the type, back to the type before Comb and on again.
+        // Its arrows step the family, back to the Notch before Comb and on again.
         const Rect button{fxCardX(model, 3) + 14.0f, 180.0f + 44.0f, fxCardW(model, 3) - 28.0f, 22.0f};
         const int type = paramIndex(3, FxParam::FilterType);
         click(view, listStep(button, -1));
-        const bool back = std::lround(model.value(type)) == static_cast<long>(FilterType::Comb) - 1;
+        const bool back = std::lround(model.value(type)) == static_cast<long>(FilterType::Notch);
         click(view, listStep(button, 1));
         check(back && std::lround(model.value(type)) == static_cast<long>(FilterType::Comb),
               "the arrows in the filter card's type list step the type");
+        // A low-pass's Model button beside its slope's, short and without arrows: its list picks Diode, its button
+        // reading DIO (its slope's list then beside it).
+        model.set(type, static_cast<double>(FilterType::LowPass));
+        const Rect card{fxCardX(model, 3), 180.0f, fxCardW(model, 3), 300.0f};
+        const Rect display = detail::fxDisplayIn(card, FxType::Filter);
+        const Rect modelButton = detail::filterModelButton(display, true);
+        click(view, modelButton.center());
+        view.mouseMove(detail::listMenuItem(detail::filterModelMenuButton(modelButton), 4, 2).center(), {});
+        const bool cardModelShot = renderer.save(view, dir / "27-fx-filter-model-list.png");
+        click(view, detail::listMenuItem(detail::filterModelMenuButton(modelButton), 4, 2).center());
+        const bool diode = std::lround(model.value(type)) == static_cast<long>(FilterType::Diode);
+        // Where an arrow would be, a click opens its list and another closes it, the model left as it is.
+        click(view, listStep(modelButton, -1));
+        click(view, listStep(modelButton, -1));
+        const bool noArrows = std::lround(model.value(type)) == static_cast<long>(FilterType::Diode);
+        renderer.save(view, dir / "27-fx-filter-model.png");
+        model.set(type, static_cast<double>(FilterType::Comb));
+        check(cardModelShot && diode && noArrows,
+              "the filter card's Model button, without arrows, picks a low-pass's model from its list");
     }
 
     // The parametric EQ's first band: dragging its handle 30 px up is +10 dB.
@@ -15116,6 +15610,46 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, handlesButton(0));
     check(startsSmall && picksLarge && picksMedium && model.handles == 0 && handlesShot && model.values == handlesBefore,
           "the settings dialog's HANDLES picks the depth handles' size");
+    // CARDS: Plain to begin with, Tinted tinting a flat theme's cards (Spectrum's), leaving the patch alone; disabled in
+    // Midnight, where a click on it changes nothing and leaves the dialog open.
+    auto cardsButton = [&](int tinted) { return detail::settingsCards(dialog, tinted).center(); };
+    const std::string themeBefore = model.themeName;
+    click(view, theme(0)); // Spectrum
+    const bool startsPlain = !model.tinted;
+    click(view, cardsButton(1));
+    const bool picksTinted = model.tinted;
+    view.mouseMove(cardsButton(0), {});
+    const bool cardsShot = renderer.save(view, dir / "14h2-settings-cards.png");
+    click(view, cardsButton(0));
+    check(model.themeName == "Spectrum" && startsPlain && picksTinted && !model.tinted && cardsShot &&
+              model.values == handlesBefore,
+          "the settings dialog's CARDS switches tinted cards on and off");
+    click(view, theme(2)); // Midnight
+    view.mouseMove(cardsButton(1), {});
+    const bool disabledShot = renderer.save(view, dir / "14h3-settings-cards-disabled.png");
+    // Dimmed as the editor's disabled widgets are: its buttons' inkiest pixel (by its channels' distance from the
+    // dialog's face beside them) far nearer the face than HANDLES' buttons' above them (read off the rendered pixels).
+    auto inkiest = [&](Rect from, Rect to) {
+        const uint32_t face = renderer.pixel({dialog.x + 10.0f, from.center().y});
+        int most = 0;
+        for (float y = from.y; y < from.bottom(); y += 1.0f)
+            for (float x = from.x; x < to.right(); x += 1.0f) {
+                const uint32_t p = renderer.pixel({x, y});
+                int d = 0;
+                for (int shift : {0, 8, 16})
+                    d += std::abs(static_cast<int>(p >> shift & 255) - static_cast<int>(face >> shift & 255));
+                most = std::max(most, d);
+            }
+        return most;
+    };
+    const int cardsInk = disabledShot ? inkiest(detail::settingsCards(dialog, 0), detail::settingsCards(dialog, 1)) : 0;
+    const int handlesInk = inkiest(detail::settingsHandles(dialog, 0), detail::settingsHandles(dialog, 1));
+    std::printf("      the disabled CARDS' buttons' ink %d, HANDLES' %d\n", cardsInk, handlesInk);
+    click(view, cardsButton(1));
+    check(model.themeName == "Midnight" && disabledShot && !model.tinted && view.settingsShown() &&
+              cardsInk * 2 < handlesInk,
+          "the settings dialog's CARDS is disabled and dimmed in Midnight, a click on it changing nothing");
+    model.themeName = themeBefore;
     click(view, closeDialog);
     view.mouseMove(cog, {});
     check(renderer.save(view, dir / "14b-settings-closed.png"), "render the cog after the dialog closed");
@@ -15184,6 +15718,9 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapePick(dir, renderer);
     testSeqCurvePick(dir, renderer);
     testSeqNoteBend(dir, renderer);
+    testSeqPicks(dir, renderer);
+    testFxEmptyMods(dir, renderer);
+    testBrowserPickRescanned(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
@@ -15209,6 +15746,9 @@ void run(const std::filesystem::path &dir, float scale) {
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
     testTitleActionFace(dir, renderer);
+    testTitleActionsOnHover(dir, renderer);
+    testBrowserNamesStandOut(dir, renderer);
+    testTintedCards(dir, renderer);
     testFlatModulatedKnob(dir, renderer);
     testModEndMarks(dir, renderer);
     testFlatThemes(dir, renderer);

@@ -490,19 +490,24 @@ bool View::listItemFits(int param, int item) const {
     return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
 }
 
-void View::stepList(int param, int dir) {
+bool View::listOpenFor(const Widget &w) const {
+    return listMenu_ == w.param && listModel_ == isModelList(w);
+}
+
+void View::stepList(int param, int dir, bool model) {
     // From the entry shown (from the list's end, for a value it doesn't offer) to the next one it can pick that way,
-    // round its ends, as a pick from the list would: one undo step, the list closed.
-    const int items = listCount(param);
+    // round its ends, as a pick from the list would: one undo step, the list closed. A filter's type steps along its
+    // families, keeping the model where the family has it, and its Model list along the family's models.
     const int shown = listShown(param);
+    const int items = listCount(param, shown, model);
     int at = dir > 0 ? -1 : items;
     for (int item = 0; item < items; ++item)
-        if (listItemValue(param, item) == shown)
+        if (listItemValue(param, item, shown, model) == shown)
             at = item;
     listMenu_ = -1;
     for (int k = 1; k <= items; ++k) {
         const int item = ((at + dir * k) % items + items) % items;
-        const int to = listItemValue(param, item);
+        const int to = listItemValue(param, item, shown, model);
         if (!listItemFits(param, to))
             continue;
         if (to != shown)
@@ -1560,11 +1565,10 @@ std::vector<View::Widget> View::widgets() const {
         const bool lfo = runsLfo(mods_.sourceTypeOf(s)); // an LFO, or Random, a random one
         const bool widened = s == wideLfo();
         const bool widens = lfo && !widened && mods_.lfoShapeOf(s) == LfoShape::Custom;
-        const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f // short of the reset, leftmost
-                              : widens ? lfoWidenButton(card).x - 4.0f
-                                       : cardTitleRight(p);
-        add(Kind::SourceGrip, {p.x, p.y, gripEnd - p.x, 34.0f}, -1, s, position);
-        add(Kind::SourceFold, cardFold(p), -1, s);
+        // Its always-shown buttons beside the switch: a widened card's three, or the one that widens it.
+        const int tools = widened ? kWideSourceTools : widens ? 1 : 0;
+        add(Kind::SourceGrip, {p.x, p.y, cardTitleRight(p, true, tools) - p.x, 34.0f}, -1, s, position);
+        add(Kind::SourceFold, cardFold(p, true, tools), -1, s);
         add(Kind::SourceHandle, sourceHandleRect(p), -1, s);
         add(Kind::Toggle, sourcePower(card, span), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
@@ -1737,10 +1741,12 @@ std::vector<View::Widget> View::widgets() const {
             // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
             // OUT label, in the graph and on the operator page's INPUTS tab, has them centered just under it and its
             // ranges on its outline's top, so its depth stays readable. A matrix cell has them centered along its
-            // foot, its ranges along its top; a depth bar in its top right corner, its ranges along its bottom.
+            // foot, its ranges along its top; a depth bar in its top right corner, its ranges along its bottom. A
+            // cell's sit low enough that a large handle's aux ring clears its number, and no lower than keeps the ring
+            // (5.55 px out, its stroke 1.3) inside the 4 px gap above the next cell.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
             const float margin = std::max(cell ? 4.0f : 3.0f, sizes.dotCompact + 1.0f), step = cell ? 7.0f : 8.0f,
-                        y = kind == Kind::GridCell ? r.bottom() - 4.0f
+                        y = kind == Kind::GridCell ? r.bottom() - 2.5f
                             : cell                 ? r.y + 4.0f
                                                    : r.bottom() + 0.75f + sizes.dotCompact;
             const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;
@@ -1879,21 +1885,27 @@ std::vector<View::Widget> View::widgets() const {
         (fxGraph() || !fxFolded(listSlot))) {
         if (const std::optional<Rect> shown = fxCardOf(listSlot)) {
             const Rect card = *shown;
-            const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
+            const FilterType filterType = filterTypeOf(value(paramIndex(listSlot, FxParam::FilterType)));
+            const Rect display = fxDisplayIn(card, FxType::Filter);
+            const bool model = listModel_ && listField == FxParam::FilterType;
+            const Rect button = model                               ? filterModelMenuButton(filterModelButton(display, true))
+                                : listField == FxParam::ReverbType    ? reverbTypeButton(card)
                                 : listField == FxParam::FilterType  ? filterTypeListButton(card)
                                 : listField == FxParam::FilterSlope
-                                    ? (filterTypeOf(value(paramIndex(listSlot, FxParam::FilterType))) == FilterType::Morph
-                                           ? morphSlopeButton(fxDisplayIn(card, FxType::Filter))
-                                           : slopeButton(fxDisplayIn(card, FxType::Filter)))
+                                    ? (filterType == FilterType::Morph ? morphSlopeButton(display)
+                                       : hasFilterModels(filterType)   ? filterModelSlopeButton(display, true)
+                                                                       : slopeButton(display))
                                 : listField == FxParam::AmpModel    ? ampModelButton(card)
                                 : listField == FxParam::AmpCab      ? ampCabButton(card)
                                                                     : clipModeButton(card, clipMode(value(listMenu_)) ==
                                                                                                     ClipMode::Custom);
-            const int items = listCount(listMenu_);
+            const int picked = listShown(listMenu_);
+            const int items = listCount(listMenu_, picked, model);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
             for (int item = 0; item < items; ++item)
-                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
+                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, model ? kModelList : -1,
+                    listItemValue(listMenu_, item, picked, model));
         }
     }
     // A split's list of slopes, under its button on its card (in the row's container or the graph's inspector).
@@ -2102,6 +2114,10 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         if (filterType == FilterType::Morph) {
             add(Kind::ListButton, morphSlopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
             add(Kind::Toggle, morphNotchButton(fxDisplayIn(card, type)), at(FxParam::FilterMorphMode));
+        } else if (hasFilterModels(filterType)) { // its Model list beside the slope's, short and without arrows
+            add(Kind::ListButton, filterModelButton(fxDisplayIn(card, type), true), at(FxParam::FilterType),
+                kModelListPlain);
+            add(Kind::ListButton, filterModelSlopeButton(fxDisplayIn(card, type), true), at(FxParam::FilterSlope));
         } else {
             add(Kind::ListButton, slopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
         }
@@ -2407,8 +2423,10 @@ void View::paint(Canvas &c, Rect area) {
     hue_ = shownHue();
     look = withAccentHue(kThemes[theme_], hue_); // its main color turned to the hue the settings pick
     glow_ = glowing = shownGlow();
+    tintedCards = controller_.editorSettings().tintedCards;
     links_ = shownLinks();
     handles_ = controller_.editorSettings().handleSize;
+    ++cardPaint_;
     if (partial) {
         c.fillRect(area, kBackground);
     } else {
@@ -2821,7 +2839,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
     paintCardFace(c, card, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
-    const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
+    const float titleRight = fxGraph() ? cardPower(card, false).x - 3.0f : cardTitleRight(card);
     const Rect titleRect{card.x + 33.0f, card.y + kCardTitleY, titleRight - card.x - 33.0f, 20.0f};
     const char *title = fxTitle(type);
     float titleSize = kTextBody; // smaller for a long name, so it fits beside the icon
@@ -4123,8 +4141,8 @@ void View::paintSource(Canvas &c, float card, int s) {
     }
 
     // Title row: the handle (a widget) and the name, grey while the source is off; the row drags the card.
-    // In capitals, as an effect card's title.
-    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, upperCase(mods_.sourceName(s)), kTextBody,
+    // In title case, as an effect card's title.
+    c.text({p.x + kSourceHandleX + kSourceHandleW + 5.0f, p.y + 7.0f, 80.0f, 21.0f}, mods_.sourceName(s), kTextBody,
            mods_.sourceOn(s) ? kText : kDim, Align::Left, true);
 
     if (s == wideLfo()) {
@@ -4429,28 +4447,21 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::SourceMods: {
-        // How many modulations the source has, and MODS with a chevron at the right; with none, an invitation to add
-        // one there.
+        // A link, without a face: how many modulations the source has, dim, and MODS with a chevron at the right in
+        // the accent; with none, No modulations alone. Both light up under the mouse, the whole row taking the click.
         const size_t count = usedSlots(w.a).size();
-        if (look.flat) { // as the list buttons on the card: in a well, without an outline, tinted with its color under the mouse
-            c.fillRect(w.rect, wellColor(), kRadiusControl);
-            if (hovered)
-                c.fillRect(w.rect, kSourceColors[w.a].alpha(0.24f), kRadiusControl);
-        } else {
-            c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-            c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, kRadiusControl);
-        }
-        paintChevron(c, {w.rect.right() - 12.0f, w.rect.center().y}, hovered ? kText : kDim, ChevronWay::Right);
+        const Color ink = hovered ? kText : kDim;
         if (count == 0) {
-            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardNoModulations), kTextBody,
-                   hovered ? kText : kDim, Align::Left);
+            c.text(w.rect, tr(Str::CardNoModulations), kTextLabel, ink, Align::Left);
             break;
         }
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 80.0f, w.rect.h},
-               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), kTextBody, kText,
+        const Color link = hovered ? kText : kAccent;
+        paintChevron(c, {w.rect.right() - 4.0f, w.rect.center().y}, link, ChevronWay::Right);
+        c.text({w.rect.x, w.rect.y, w.rect.w - 80.0f, w.rect.h},
+               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), kTextLabel, ink,
                Align::Left);
-        c.text({w.rect.right() - 80.0f, w.rect.y, 58.0f, w.rect.h}, tr(Str::ViewMods), kTextLabel, hovered ? kText : kDim,
-               Align::Right, true);
+        c.text({w.rect.right() - 80.0f, w.rect.y, 68.0f, w.rect.h}, tr(Str::ViewMods), kTextLabel, link, Align::Right,
+               true);
         break;
     }
     case Kind::ValueText:
@@ -4490,14 +4501,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break; // drawn with their card, editor, matrix or the keyboard strip
     case Kind::FxFold:
     case Kind::SourceFold: {
-        // Unfolded, a chevron in the title row that folds the card; folded, the strip below the cross, lit
-        // while hovered, which unfolds it.
+        // Unfolded, a chevron in the title row that folds the card, shown while the card is under the mouse; folded,
+        // the strip below the cross, lit while hovered, which unfolds it.
         const bool folded = w.kind == Kind::FxFold ? fxFolded(w.a) : sourceFolded(w.a);
         if (folded) {
             if (hovered)
                 c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
         }
+        if (!hovered && !cardFoldShown(w.kind == Kind::FxFold ? kMaxSources + w.a : w.a))
+            break;
         paintTitleActionFace(c, w.rect, hovered);
         paintChevron(c, w.rect.center(), hovered ? kText : kDim, ChevronWay::Left);
         break;
@@ -4554,7 +4567,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxRemove:
     case Kind::FxNodeRemove:
     case Kind::SourceRemove: {
-        paintTitleActionFace(c, w.rect, hovered); // a small action, as the fold beside it
+        paintTitleActionFace(c, w.rect, hovered); // a small action, as the fold
         const Point center = w.rect.center();
         const Color color = hovered ? kText : kFaint;
         c.line({center.x - 4.0f, center.y - 4.0f}, {center.x + 4.0f, center.y + 4.0f}, color, 1.5f);
@@ -4628,7 +4641,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const int shown = listShown(w.param);
         const bool relevant =
             !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
-        const bool lit = relevant && (hovered || listMenu_ == w.param);
+        const bool lit = relevant && (hovered || listOpenFor(w));
         const Color color = listColor(w.param);
         if (look.flat) { // filled dark, without an outline, tinted with its color under the mouse
             c.fillRect(w.rect, wellColor(), kRadiusControl);
@@ -4639,21 +4652,25 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
         }
         const Color text = !relevant ? kFaint : lit ? kText : kDim;
-        // An LFO's shape and a filter's type show their icons before their names.
-        const bool filterType = isFilterTypeList(w.param);
+        // An LFO's shape and a filter's type show their icons before their names: a type's list its family's, a
+        // Model list its model's (but on the filter effect's card, where it shows the model's short name alone).
+        const bool model = isModelList(w), plain = w.a == kModelListPlain;
+        const bool filterType = isFilterTypeList(w.param) && !plain;
         const float indent = isLfoShape(w.param) ? 24.0f : filterType ? 30.0f : 0.0f;
         // A list with arrows has them at its ends (see the ListStep widgets), and no chevron.
-        const bool steps = isSteppableList(w.param);
+        const bool steps = isSteppableList(w.param) && !plain;
         const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
         if (filterType) {
             const Rect icon = filterTypeIconRect(w.rect);
-            filterIcon(c, {icon.x + left - (w.rect.x + 10.0f), icon.y, icon.w, icon.h}, static_cast<FilterType>(shown),
-                       color);
+            const FilterType type = filterTypeAt(shown);
+            filterIcon(c, {icon.x + left - (w.rect.x + 10.0f), icon.y, icon.w, icon.h},
+                       model ? type : filterFamilyTypes(type).types[0], color);
         }
         const float right = w.rect.right() - (steps ? kListStepW + 2.0f : 20.0f);
-        c.text({left + indent, w.rect.y, right - left - indent, w.rect.h}, listItemName(w.param, shown),
+        c.text({left + indent, w.rect.y, right - left - indent, w.rect.h},
+               plain ? std::string(filterModelShortName(filterTypeAt(shown))) : listItemName(w.param, shown, model),
                kTextBody, text, Align::Left, true);
         if (!steps)
             paintChevron(c, {w.rect.right() - 13.0f, w.rect.center().y}, text);
@@ -4741,12 +4758,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(w.b),
                          selected ? listColor(w.param) : kDim);
-        if (filterType)
-            filterIcon(c, filterTypeIconRect(w.rect), static_cast<FilterType>(w.b), selected ? listColor(w.param) : kDim);
+        if (filterType) // a family's icon, or on a Model list the model's
+            filterIcon(c, filterTypeIconRect(w.rect),
+                       isModelList(w) ? filterTypeAt(w.b) : filterFamilyTypes(filterTypeAt(w.b)).types[0],
+                       selected ? listColor(w.param) : kDim);
         if (modeChoice)
             routeModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<RouteMode>(w.b),
                           selected ? listColor(w.param) : kDim);
-        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h}, listItemName(w.param, w.b),
+        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h},
+               listItemName(w.param, w.b, isModelList(w)),
                kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
@@ -4842,9 +4862,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsOption:
     case Kind::SettingsMpe:
     case Kind::SettingsMpeRange:
-    case Kind::SettingsHandles: {
-        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks.
+    case Kind::SettingsHandles:
+    case Kind::SettingsCards: {
+        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks
+        // (CARDS' buttons, disabled in a theme that outlines its cards, are dimmed by paintSettings()).
         const bool on = w.kind == Kind::SettingsOption    ? controller_.oversampling() == w.b
+                        : w.kind == Kind::SettingsCards   ? controller_.editorSettings().tintedCards == (w.b != 0)
                         : w.kind == Kind::SettingsMpe     ? controller_.mpe() == (w.b != 0)
                         : w.kind == Kind::SettingsHandles ? std::clamp(controller_.editorSettings().handleSize, 0,
                                                                        kModHandleSizeCount - 1) == w.b
@@ -4860,6 +4883,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const std::string label = w.kind == Kind::SettingsOption    ? std::string(factor)
                                   : w.kind == Kind::SettingsMpe     ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
                                   : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
+                                  : w.kind == Kind::SettingsCards
+                                      ? std::string(tr(w.b ? Str::SettingsCardsTinted : Str::SettingsCardsPlain))
                                                                     : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
         c.text(w.rect, label, kTextBody, on ? (faint ? litInk(kDim) : litInk(kText)) : kDim, Align::Center, on);
         break;
@@ -5160,8 +5185,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const Color own = macro >= 0 ? kSourceColors[kMaxSources + macro] : plain;
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && mods_.sourceBipolar(kMaxSources + macro));
-    // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
-    // out on a card tinted with it as the plain track doesn't.
+    // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color.
     // Modulated, it keeps them: a modulation ring in a color like its own is told apart from it instead (ringColor()).
     const Color arc = own;
     const Color track = look.flat ? own.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack);
@@ -5518,7 +5542,8 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::DynBand &&
          hover_->kind != Kind::ListStep &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
-         !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param)))))
+         !(hover_->kind == Kind::ListButton &&
+           (isSlopeList(hover_->param) || isMidiInput(hover_->param) || isModelList(*hover_)))))
         return;
     // A source's handle tells how to use it only until it modulates something.
     const bool handle = hover_->kind == Kind::MacroHandle || hover_->kind == Kind::SourceHandle;
@@ -5634,13 +5659,16 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipLfoSync);
     else if (hover_->kind == Kind::ListStep) {
         const bool next = hover_->b > 0;
-        text = tr(isClipMode(param)                 ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
+        text = tr(isModelList(*hover_)              ? (next ? Str::TipNextModel : Str::TipPrevModel)
+                  : isClipMode(param)               ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
                   : isLfoShape(param)               ? (next ? Str::TipNextShape : Str::TipPrevShape)
                   : field == FxParam::ReverbType    ? (next ? Str::TipNextAlgorithm : Str::TipPrevAlgorithm)
                   : field == FxParam::AmpModel      ? (next ? Str::TipNextModel : Str::TipPrevModel)
                   : field == FxParam::AmpCab        ? (next ? Str::TipNextCabinet : Str::TipPrevCabinet)
                                                     : (next ? Str::TipNextType : Str::TipPrevType));
     }
+    else if (hover_->kind == Kind::ListButton && isModelList(*hover_))
+        text = tr(Str::TipFilterModel);
     else if (hover_->kind == Kind::ListButton && isSplitSlope(param))
         text = tr(Str::TipSlope);
     else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
@@ -6371,6 +6399,7 @@ bool View::setCtrl(bool held) {
 bool View::mouseMove(Point p, Modifiers mods) {
     const Point before = hoverPoint_;
     hoverPoint_ = p;
+    mouseOver_ = true;
     const bool ctrlChanged = setCtrl(mods.ctrl);
     if (drag_.kind == DragKind::None) {
         envZoomLeft(p);
@@ -6385,8 +6414,8 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // with it held (see Panel::hoverMoves()).
         const bool gridEdge = std::any_of(panels_.begin(), panels_.end(),
                                           [&](const Panel *panel) { return panel->hoverMoves(before, p); });
-        // The card under the mouse, which a theme without card outlines outlines.
-        const int card = look.flat ? cardAt(p) : -1;
+        // The card under the mouse, which shows its fold and x, and which a theme without card outlines outlines.
+        const int card = cardAt(p);
         const bool cardChanged = card != hoverCard_;
         hoverCard_ = card;
         bool changed = cardChanged || ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() ||
@@ -6658,10 +6687,15 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ListButton:
         if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param))))))
             break; // a comb has no slope: its list stays shut
-        listMenu_ = listMenu_ == w.param ? -1 : w.param;
+        if (listOpenFor(w)) {
+            listMenu_ = -1;
+        } else { // a filter's Model list and its type's are each their own, on the one param
+            listMenu_ = w.param;
+            listModel_ = isModelList(w);
+        }
         break;
     case Kind::ListStep:
-        stepList(w.param, w.b);
+        stepList(w.param, w.b, isModelList(w));
         break;
     case Kind::ListMenu:
         if (w.a == 0) // a click anywhere else closes the list
@@ -6775,6 +6809,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.setEditorSettings(settings);
         break;
     }
+    case Kind::SettingsCards: {
+        EditorSettings settings = controller_.editorSettings();
+        settings.tintedCards = w.b != 0;
+        controller_.setEditorSettings(settings);
+        break;
+    }
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
     case Kind::SettingsLinks:
     case Kind::SettingsGrid:
@@ -6841,7 +6881,8 @@ void View::mouseUp(Point p, Modifiers) {
         const auto target = hitTest(p);
         // On a depth handle or a row of a pill's list: it becomes that modulation's aux; on a panel's own that takes it
         // (a MODS row's aux cell, as the aux too), what that panel makes of it.
-        const bool row = target && target->popup && target->kind != Kind::ModList;
+        // (A row names its modulation: the list's own scrollbar, a popup too, names none.)
+        const bool row = target && target->popup && target->kind != Kind::ModList && target->a >= 0 && target->b >= 0;
         if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
             mods_.setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
@@ -7025,6 +7066,7 @@ void View::finishDrag() {
 }
 
 void View::mouseLeave() {
+    mouseOver_ = false;
     if (drag_.kind == DragKind::None) {
         hover_.reset();
         hoverCard_ = -1;
@@ -7036,15 +7078,39 @@ void View::mouseLeave() {
 void View::noteCard(int id, Rect card, Rect shown) {
     const float x = std::max(card.x, shown.x), y = std::max(card.y, shown.y);
     const float right = std::min(card.right(), shown.right()), bottom = std::min(card.bottom(), shown.bottom());
+    // Where an earlier paint noted it goes (a partial paint notes the cards it repaints again, and a full one starts
+    // over); where this one did stays, as on top of what it was painted under.
+    std::erase_if(cardRects_, [&](const NotedCard &n) { return n.id == id && n.paint != cardPaint_; });
     if (right > x && bottom > y)
-        cardRects_.push_back({id, {x, y, right - x, bottom - y}});
+        cardRects_.push_back({id, {x, y, right - x, bottom - y}, cardPaint_});
 }
 
 int View::cardAt(Point p) const {
     for (auto it = cardRects_.rbegin(); it != cardRects_.rend(); ++it) // the last painted is on top
-        if (it->second.contains(p))
-            return it->first;
+        if (it->rect.contains(p))
+            return it->id;
     return -1;
+}
+
+// Whether the mouse is over the card as it is painted now: the card's widgets are painted after every card's face has
+// noted where it is, so a card just moved, widened or scrolled under a resting mouse counts. A card painted within
+// another counts as over that one too (an effect in a split's band, for its container).
+bool View::cardFoldShown(int card) const {
+    if (touched_)
+        return true;
+    if (!mouseOver_)
+        return false;
+    for (auto it = cardRects_.rbegin(); it != cardRects_.rend(); ++it)
+        if (it->rect.contains(hoverPoint_)) {
+            if (it->id == card)
+                return true;
+            const Rect in = it->rect;
+            return std::any_of(it + 1, cardRects_.rend(), [&](const NotedCard &n) {
+                return n.id == card && in.x >= n.rect.x && in.y >= n.rect.y && in.right() <= n.rect.right() &&
+                       in.bottom() <= n.rect.bottom();
+            });
+        }
+    return false;
 }
 
 // A card's outline: always, but in a theme whose cards go without one, only while it is dragged or under the mouse.
@@ -7052,28 +7118,16 @@ bool View::cardOutlined(int id, bool dragged) const {
     return !look.flat || dragged || (hoverCard_ == id && drag_.kind == DragKind::None);
 }
 
-// An effect's or a source's card under what it holds: its shadow, its fill, tinted with its color in a flat theme
-// (faintly while it is off), and its outline (in its color at `edge` while it is on), and noted as card `id`, as much
-// of it as `shown` shows, for the mouse to find.
+// An effect's or a source's card under what it holds: its shadow, its fill in the cards' plain color in every theme
+// (its own color goes on what is on it: its icon or handle, its knobs' arcs, its curves and its lit switches), or with
+// tinted cards on in a flat theme tinted with its color, faintly while it is off (cardFace()), and its outline (in its color at `edge` while it is on), and noted as card `id`, as much of it as `shown` shows, for the
+// mouse to find.
 void View::paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown) {
     paintCardShadow(c, card);
-    c.fillRect(card, kCardColor, kRadiusCard);
-    if (look.flat)
-        c.fillRect(card, color.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
+    c.fillRect(card, cardFace(color, on), kRadiusCard);
     noteCard(id, card, shown);
     if (cardOutlined(id, dragged))
         c.strokeRect(card, dragged ? color : (on ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
-}
-
-// The face of the card a widget is on: its effect's or its source's card's.
-Color View::cardFaceUnder(const Widget &w) const {
-    if (w.param < 0)
-        return kCardColor;
-    if (const int slot = fxSlotOf(w.param); slot >= 0)
-        return cardFace(fxTypeColor(fx_.slotType(slot)), value(paramIndex(slot, FxParam::Enabled)) >= 0.5);
-    if (const int source = sourceOf(w.param); source >= 0 && source < kMaxSources)
-        return cardFace(kSourceColors[source], mods_.sourceOn(source));
-    return kCardColor;
 }
 
 std::vector<View::DimArea> View::dimmedAreas() const {
@@ -7226,6 +7280,7 @@ bool View::dragsOnTouch(const Widget &w) const {
 
 void View::touchDown(Point p, bool secondTap, float slop) {
     touchPress_.reset();
+    touched_ = true;
     hoverPoint_ = p;
     if (panAt(p)) { // what it does waits until it moves or lifts
         touchPress_ = TouchPress{p, secondTap, slop};
@@ -7583,6 +7638,21 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             at = filterSlope(value(hit->param)) >= slopes[k] ? k : at;
         if (whole != 0)
             edit(hit->param, slopes[std::clamp(at + whole, first, 2)]);
+        return;
+    }
+    if (isFilterTypeList(hit->param)) { // to the next family along its list, or over its Model list the next model,
+        const bool model = isModelList(*hit); // held at the list's ends, a run of notches one undo step
+        const int shown = listShown(hit->param);
+        const int items = listCount(hit->param, shown, model);
+        int at = 0;
+        for (int item = 0; item < items; ++item)
+            if (listItemValue(hit->param, item, shown, model) == shown)
+                at = item;
+        const int to = listItemValue(hit->param, std::clamp(at + whole, 0, items - 1), shown, model);
+        if (whole != 0 && to != shown) {
+            const UndoScope notches(controller_, true);
+            edit(hit->param, to);
+        }
         return;
     }
     if (isClipMode(hit->param)) { // to the next curve along its list, as the wheel turns
@@ -8024,7 +8094,11 @@ void View::endTyping(bool commit) {
         const size_t start = t.text.find_first_not_of(' ');
         std::string name = start == std::string::npos ? std::string()
                                                       : t.text.substr(start, t.text.find_last_not_of(' ') - start + 1);
-        name = name.substr(0, 24);
+        // As many bytes as the state saves, cut between whole characters (never in the middle of one's UTF-8).
+        size_t cut = std::min(name.size(), kMaxMacroName);
+        while (cut > 0 && cut < name.size() && (static_cast<unsigned char>(name[cut]) & 0xC0) == 0x80)
+            --cut;
+        name.resize(cut);
         if (name == trf(Str::MacroDefaultName, {std::to_string(t.widget.a + 1)}))
             name.clear();
         UiLayout &layout = controller_.layout();

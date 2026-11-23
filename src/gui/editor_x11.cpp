@@ -1089,11 +1089,16 @@ void Editor::handleEvent(void *raw) {
     }
     case ButtonRelease: {
         const Point p = toView(event.xbutton.x, event.xbutton.y);
-        if (event.xbutton.button == Button1)
+        const unsigned button = event.xbutton.button;
+        if (button == Button1)
             view_.mouseUp(p, modifiersOf(event.xbutton.state));
-        else if (event.xbutton.button == Button2)
+        else if (button == Button2)
             view_.middleUp(p);
-        if (dragging_) {
+        // The grab goes once the buttons that drag are all up: not as the wheel turns (a press and a release each
+        // notch) or the other of them goes up under a drag, which would leave the drag without its button-up.
+        const unsigned released = button == Button1 ? Button1Mask : button == Button2 ? Button2Mask : 0;
+        const unsigned held = event.xbutton.state & (Button1Mask | Button2Mask); // as they were before this release
+        if (dragging_ && released && (held & ~released) == 0) {
             XUngrabPointer(display_, CurrentTime);
             dragging_ = false;
         }
@@ -1113,6 +1118,14 @@ void Editor::handleEvent(void *raw) {
         break;
     }
     case LeaveNotify:
+        if (dragging_ && event.xcrossing.mode == NotifyGrab) {
+            // Another window took the pointer mid-drag (a host's menu or dialog): the gesture ends where it is, but
+            // nothing is dropped where the mouse happens to be, as a Win32 window's lost capture does.
+            dragging_ = false;
+            view_.cancelDrag();
+            invalidate();
+            break;
+        }
         if (dragging_) // the pointer is grabbed: a drag that left the window goes on
             break;
         view_.mouseLeave();
@@ -1193,21 +1206,25 @@ bool Editor::key(const void *raw) {
     const int length = XLookupString(const_cast<XKeyEvent *>(&event), text, sizeof text - 1, &symbol, nullptr);
     const bool ctrl = (event.state & ControlMask) != 0;
     const bool shift = (event.state & ShiftMask) != 0;
+    // The letter a Ctrl shortcut is on, whatever Shift and Caps Lock make of it (XLookupString hands Ctrl+Shift+Z as Z),
+    // as Windows' key codes and the browser's have it.
+    KeySym letter = symbol, upper = symbol;
+    XConvertCase(symbol, &letter, &upper);
     if (ctrl && (symbol == XK_Control_L || symbol == XK_Control_R)) {
         if (view_.setCtrl(true))
             invalidate();
         return true;
     }
     if (view_.typing()) {
-        if (ctrl && symbol == XK_a) {
+        if (ctrl && letter == XK_a) {
             view_.typeKey(View::Key::SelectAll);
             return true;
         }
-        if (ctrl && (symbol == XK_c || symbol == XK_x)) {
-            setClipboard(view_.copyText(symbol == XK_x));
+        if (ctrl && (letter == XK_c || letter == XK_x)) {
+            setClipboard(view_.copyText(letter == XK_x));
             return true;
         }
-        if (ctrl && symbol == XK_v) {
+        if (ctrl && letter == XK_v) {
             requestClipboard(false);
             return true;
         }
@@ -1225,15 +1242,15 @@ bool Editor::key(const void *raw) {
     // A dialog open over the editor: Enter confirms it, Escape cancels it. An open list or menu: Escape closes it.
     if (dialogKeyFor(symbol))
         return view_.dialogKey((symbol == XK_Return || symbol == XK_KP_Enter) ? View::Key::Enter : View::Key::Escape);
-    if (ctrl && (symbol == XK_y || (symbol == XK_z && shift))) {
+    if (ctrl && (letter == XK_y || (letter == XK_z && shift))) {
         view_.redo();
         return true;
     }
-    if (ctrl && symbol == XK_z) {
+    if (ctrl && letter == XK_z) {
         view_.undo();
         return true;
     }
-    if (const std::optional<View::Key> seq = seqKeyOf(symbol, ctrl))
+    if (const std::optional<View::Key> seq = seqKeyOf(ctrl ? letter : symbol, ctrl))
         return view_.seqKey(*seq, shift);
     return false;
 }
@@ -1399,6 +1416,11 @@ void Editor::updateCursor() {
 }
 
 void Editor::contextMenu(int rootX, int rootY, int x, int y) {
+    if (dragging_) { // a right-click under a drag: the menu takes the pointer, so the drag ends here, as on Windows
+        XUngrabPointer(display_, CurrentTime);
+        dragging_ = false;
+        view_.cancelDrag();
+    }
     const std::vector<MenuItem> items = view_.contextMenu(toView(x, y));
     if (items.empty() || !display_ || !window_)
         return;

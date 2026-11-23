@@ -800,6 +800,40 @@ void effectsChainChecks() {
         }
     }
     {
+        // A Lo-Fi puts silence out as silence, its levels half a step off 0 notwithstanding: at 1 bit after a reverb,
+        // whose tail goes through it, the effects ring out and rest, putting out nothing (no DC to keep them going).
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::LoFi);
+        p[paramIndex(1, FxParam::LoFiBits)] = 1.0;
+        chain(p, {0, 1});
+        std::vector<float> left(kBlock), right(kBlock);
+        auto run = [&](double seconds, double amplitude) {
+            float peak = 0.0f;
+            for (size_t t = 0, end = static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+            }
+            return peak;
+        };
+        const float sounding = run(0.5, 0.5);
+        int waited = 0;
+        while (fx.ringing() && waited++ < 120) // up to a minute for the reverb's tail
+            run(0.5, 0.0);
+        const float rested = run(1.0, 0.0);
+        std::printf("      a 1-bit Lo-Fi after a reverb: %.2f sounding, rung out after %.1f s, %.1e after that\n", sounding,
+                    0.5 * waited, rested);
+        check(sounding > 0.1f && !fx.ringing() && rested == 0.0f,
+              "a Lo-Fi puts silence out as silence, and the effects ring out through it");
+    }
+    {
         // Effects with nothing to do: once every tail has rung out, silence costs a small share of what a sound
         // through them does, and comes out as silence; a sound after it comes through again.
         const auto fxHeap = std::make_unique<Effects>();
@@ -1449,6 +1483,33 @@ void effectsChainChecks() {
                                 toTwo, 69) &&
                      banded;
         }
+        // A flanger through zero at Mix 0 (the note as it is, 6.5 ms late) switched off and on, and put on a split's
+        // high band, the low band's wire then waiting as long: what fades in waits for its wait to fill rather than
+        // fading into a gap. On a D#3, whose period is about as long as the wait, so the note through the low band's
+        // new pad is in step with itself as it was.
+        auto flanger = [&](ParamValues &p, int slot) {
+            p[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Flanger);
+            p[paramIndex(slot, FxParam::FlangerMix)] = 0.0;
+            p[paramIndex(slot, FxParam::FlangerThroughZero)] = 1.0;
+        };
+        auto flanged = [&](ParamValues &p) {
+            line(p);
+            flanger(p, 0);
+        };
+        const bool waitedOff = steadyEdit("a flanger through zero switched off", flanged, [&](ParamValues &p) {
+            p[paramIndex(0, FxParam::Enabled)] = 0.0;
+        });
+        const bool waitedOn = steadyEdit(
+            "a flanger through zero switched on",
+            [&](ParamValues &p) {
+                flanged(p);
+                p[paramIndex(0, FxParam::Enabled)] = 0.0;
+            },
+            [&](ParamValues &p) { p[paramIndex(0, FxParam::Enabled)] = 1.0; });
+        const bool waitedBand = steadyEdit(
+            "a flanger through zero put on a split's high band", split, [&](ParamValues &p) { flanger(p, 0); }, 51);
+        check(waitedOff && waitedOn && waitedBand,
+              "a flanger through zero switched or put on a band fades in only once its wait has filled");
         check(added && removed && unsplit && sloped && banded,
               "editing the effects graph as a note plays neither clicks nor drops out");
 
@@ -2108,6 +2169,48 @@ void effectsChainChecks() {
               "a state before version 10 loads its depths on the three-band dynamics' thresholds as far as they swung");
     }
     {
+        // Up to 0.3 (version 2), the envelopes' times and holds reached 0 to 1; since 0.4 (version 4) their attacks,
+        // decays and releases kMinEnvNorm to kMaxEnvNorm and their holds 0 to kMaxEnvNorm, and a depth is a share of
+        // its target's range: a version 2 state's depths load as deep as swings them as far as they swung, a version 3
+        // state's (its times 0 to kMaxEnvNorm, holds as now) on the times alone, and a version 4 state's as saved.
+        ParamValues p = defaults();
+        p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(paramIndex(0, OpParam::Attack))) + 1.0;
+        p[slotAmountIndex(0, 0)] = 0.5;
+        p[slotTargetIndex(0, 1)] = static_cast<double>(idOfIndex(paramIndex(0, OpParam::Hold))) + 1.0;
+        p[slotAmountIndex(0, 1)] = 0.5;
+        p[slotTargetIndex(0, 2)] = static_cast<double>(idOfIndex(paramIndex(1, SourceParam::Release))) + 1.0;
+        p[slotAmountIndex(0, 2)] = -0.4;
+        p[slotTargetIndex(0, 3)] = static_cast<double>(idOfIndex(paramIndex(GlobalParam::Volume))) + 1.0;
+        p[slotAmountIndex(0, 3)] = 0.3;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues two = load(2), three = load(3), four = load(4);
+        const double times = kMaxEnvNorm - kMinEnvNorm;
+        auto near = [](double a, double b) { return std::abs(a - b) < 1e-12; };
+        const bool fromTwo = near(two[slotAmountIndex(0, 0)], 0.5 / times) &&
+                             near(two[slotAmountIndex(0, 1)], 0.5 / kMaxEnvNorm) &&
+                             near(two[slotAmountIndex(0, 2)], -0.4 / times) && two[slotAmountIndex(0, 3)] == 0.3;
+        const bool fromThree = near(three[slotAmountIndex(0, 0)], 0.5 * kMaxEnvNorm / times) &&
+                               three[slotAmountIndex(0, 1)] == 0.5 && three[slotAmountIndex(0, 3)] == 0.3;
+        const bool fromFour = four[slotAmountIndex(0, 0)] == 0.5 && four[slotAmountIndex(0, 1)] == 0.5 &&
+                              four[slotAmountIndex(0, 2)] == -0.4;
+        std::printf("      envelope depths from version 2: attack %.4f, hold %.4f (0.5 saved); version 3: %.4f, %.4f\n",
+                    two[slotAmountIndex(0, 0)], two[slotAmountIndex(0, 1)], three[slotAmountIndex(0, 0)],
+                    three[slotAmountIndex(0, 1)]);
+        check(fromTwo && fromThree && fromFour,
+              "a state up to 0.3 loads its depths on envelope times and holds as far as they swung");
+    }
+    {
         // Before version 11, a Random source took a value for each note and held it, and an LFO could have the Random
         // shape. The source loads as a random LFO standing still (unsynced at 0 Hz, on its own clock in each voice, the
         // LFO's fields it now uses as they start but for those), its polarity kept; an LFO with the Random shape as a
@@ -2130,6 +2233,10 @@ void effectsChainChecks() {
         }
         set(3, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(3, SourceParam::Shape, static_cast<double>(LfoShape::Saw));
+        // An LFO at Rate 0, its slowest then (0.02 Hz), where 0 now stands still: it loads just above, as it played.
+        set(4, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+        set(4, SourceParam::Sync, 0.0);
+        set(4, SourceParam::Rate, 0.0);
         asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
@@ -2161,8 +2268,11 @@ void effectsChainChecks() {
                    at(place, SourceParam::Unipolar) == 0.0;
         const bool plain = at(3, SourceParam::Type) == static_cast<double>(SourceType::Lfo) &&
                            at(3, SourceParam::Shape) == static_cast<double>(LfoShape::Saw);
+        const bool slowest = std::abs(sweepRateHz(at(4, SourceParam::Rate)) - rateFromNorm(0.0)) < 1e-6 &&
+                             now[paramIndex(4, SourceParam::Rate)] == 0.0;
         check(source, "a state before version 11 loads its Random source as one standing still, taking a value a note");
         check(lfos && plain, "a state before version 11 loads its random LFO as a Random source running as it ran");
+        check(slowest, "a state before version 11 loads an LFO at its slowest Rate playing as slowly, not standing still");
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 11 state loads its sources as saved");
     }
     {
@@ -2292,6 +2402,40 @@ void effectsChainChecks() {
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 15 state loads its warps as saved");
     }
     {
+        // Before version 17, the keys transposed a pattern from Root rather than C4: a version 16 state in Key with
+        // Root on D4 loads 2 semitones down in Transpose, and one on G1 with Transpose at +7 29 semitones up (Transpose at
+        // +24, Octave an octave up), each key playing what it played; one with the host's transport, which Root
+        // never moved, as saved, and a version 17 state as saved.
+        const int play = paramIndex(SeqParam::Play), root = paramIndex(SeqParam::Root);
+        const int octave = paramIndex(SeqParam::Octave), transpose = paramIndex(SeqParam::Transpose);
+        auto load = [](const ParamValues &p, uint32_t version) {
+            std::vector<unsigned char> bytes;
+            const clap_ostream_t out = memoryOut(bytes);
+            writePatch(&out, p, gui::UiLayout{}, true);
+            std::memcpy(bytes.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{bytes.data(), bytes.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        ParamValues p = defaults();
+        p[play] = static_cast<double>(SeqPlay::Key);
+        p[root] = 62.0;
+        const ParamValues d = load(p, 16);
+        p[root] = 31.0;
+        p[transpose] = 7.0;
+        const ParamValues g = load(p, 16), now = load(p, 17);
+        p[play] = static_cast<double>(SeqPlay::Host);
+        const ParamValues host = load(p, 16);
+        p[play] = static_cast<double>(SeqPlay::Key);
+        auto shift = [&](const ParamValues &v) { return 12.0 * v[octave] + v[transpose]; };
+        check(d[transpose] == -2.0 && d[octave] == 0.0 && d[root] == 62.0 && g[transpose] == 24.0 &&
+                  g[octave] == 1.0 && shift(g) == 7.0 + 29.0 && host[transpose] == 7.0 && host[octave] == 0.0,
+              "a state before version 17 playing from a key loads the Root it transposed from into Transpose");
+        check(std::equal(now.begin(), now.end(), p.begin()), "a version 17 state loads its sequencer as saved");
+    }
+    {
         // The places past the first 16: a patch with an LFO in the last place on operator A's level, the 17th place's
         // aux Macro 3 and Macro 3's aux the 17th place, its drawn shape and its slot's curve, loads back as saved, the
         // auxes stored by the numbers sources are stored by (the macros' as before the later places came, the later
@@ -2379,11 +2523,13 @@ void effectsChainChecks() {
         // and from a morph.
         float newer = 0.0f;
         for (FilterType t : {FilterType::Diode, FilterType::SallenKeyLow, FilterType::SallenKeyHigh, FilterType::Formant,
-                             FilterType::Morph})
+                             FilterType::Morph, FilterType::LadderHigh, FilterType::LadderBand})
             newer = std::max(newer, stale(t, 1, FilterType::LowPass, 1));
         newer = std::max({newer, stale(FilterType::Diode, 3, FilterType::Ladder, 3),
                           stale(FilterType::Morph, 1, FilterType::SallenKeyLow, 1),
-                          stale(FilterType::Ladder, 3, FilterType::Morph, 1)});
+                          stale(FilterType::Ladder, 3, FilterType::Morph, 1),
+                          stale(FilterType::LadderHigh, 3, FilterType::Ladder, 3),
+                          stale(FilterType::Ladder, 3, FilterType::LadderBand, 3)});
         std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g, ladder %.1g, the "
                     "newer types %.1g\n",
                     comb, slope, back, ladder, newer);
@@ -3811,6 +3957,119 @@ template <class Span> ScopeMotion lowNoteMotion(Engine &e, Telemetry &t, const S
     return motion;
 }
 
+// Drive into the ladder and the diode: held under kAnalogDriveCeiling going in rather than 1, so a loud, driven sound
+// reaches their own saturation, which takes the input less the feedback, and their resonance comes down as it does in a
+// driven transistor ladder. A full-level saw through 85 % resonance: its peak at full Drive some 20 dB further under
+// its fundamental than undriven, in a voice filter and the filter effect (which hears the voices 12 dB down), where
+// held under 1 it came down 9 to 10 dB in a voice filter and 14 in the effect.
+void driveIntoLadderChecks() {
+    std::printf("drive into the ladder and the diode:\n");
+    // A saw at C2 through it, cut off at 1 kHz at 85 % resonance.
+    auto play = [](bool effect, FilterType type, double drive) {
+        return steadyTone(2, 36, [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+            if (effect) {
+                p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::Filter);
+                p[paramIndex(3, FxParam::FilterType)] = static_cast<double>(type);
+                p[paramIndex(3, FxParam::FilterSlope)] = 3.0;
+                p[paramIndex(3, FxParam::FilterCutoff)] = normFromCutoff(1000.0);
+                p[paramIndex(3, FxParam::FilterResonance)] = 0.85;
+                p[paramIndex(3, FxParam::FilterDrive)] = drive;
+                chain(p, {3});
+                return;
+            }
+            p[paramIndex(0, OpParam::Out)] = 0.0;
+            p[sendIndex(0, 0)] = 1.0;
+            p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(type);
+            p[paramIndex(0, FilterParam::Slope)] = 3.0;
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(1000.0);
+            p[paramIndex(0, FilterParam::Resonance)] = 0.85;
+            p[paramIndex(0, FilterParam::Drive)] = drive;
+            p[paramIndex(0, FilterParam::Out)] = 0.25;
+        });
+    };
+    // The resonance's peak (the harmonics from 850 to 1180 Hz) against the fundamental, in dB.
+    auto peak = [](const std::vector<float> &out) {
+        const std::vector<double> power = powerSpectrum(out);
+        const double binHz = kSampleRate / kFftSize;
+        double band = 1e-30, fundamental = 1e-30;
+        for (size_t b = static_cast<size_t>(850.0 / binHz); b < static_cast<size_t>(1180.0 / binHz); ++b)
+            band += power[b];
+        const long center = std::lround(keyHz(36) / binHz);
+        for (long b = center - 3; b <= center + 3; ++b)
+            fundamental += power[static_cast<size_t>(b)];
+        return 10.0 * std::log10(band / fundamental);
+    };
+    bool pulled = true;
+    for (bool effect : {false, true})
+        for (FilterType type : {FilterType::Ladder, FilterType::Diode}) {
+            const double undriven = peak(play(effect, type, 0.0)), driven = peak(play(effect, type, 1.0));
+            std::printf("      %-7s %-15s its resonance %.1f dB over the fundamental undriven, %.1f at full Drive\n",
+                        type == FilterType::Ladder ? "ladder" : "diode", effect ? "(effect)" : "(voice filter)",
+                        undriven, driven);
+            pulled = pulled && driven < undriven - (effect ? 16.0 : 15.0);
+        }
+    check(pulled, "a loud sound driven into the ladder and the diode pulls their resonance down");
+}
+
+// Drive keeps the level a sound goes in at: its saturator's output is brought back by followers of the power going in
+// and coming out. A saw at C3 through a low-pass and a Sallen-Key low-pass, both open (at 20 kHz, without resonance), at
+// -24, -12, 0 and +6 dB and Drive 50 % and 100 %, comes out within 1 dB of its level undriven, where Drive taking its
+// output down by its square root put a full-level saw 5 dB under and a quiet one 9 dB over. And a note starting at full
+// level, full Drive, peaks no more than 2 dB over where it settles. (One starting with a jump to full level, as an
+// operator whose Phase starts it at its peak does, peaks about 4 dB over for its first cycle: the followers have heard
+// only its loudest part.)
+void driveLevelChecks() {
+    std::printf("drive keeps the level:\n");
+    const double rate = 96000.0; // the voices' at 2x
+    auto run = [&](FilterType type, double drive, double level, std::vector<double> &out) {
+        const FilterSettings s = filterSettings(type, 1, 20000.0, 0.0, drive, rate);
+        Filter filter;
+        std::vector<float> comb(16, 0.0f);
+        out.resize(static_cast<size_t>(rate * 0.4));
+        for (size_t i = 0; i < out.size(); ++i) { // from 0, as an operator's saw starts
+            const double phase = std::fmod(0.5 + i * keyHz(48) / rate, 1.0);
+            out[i] = filter.process(level * (2.0 * phase - 1.0), s, comb.data(), static_cast<int>(comb.size()));
+        }
+    };
+    auto rmsFrom = [](const std::vector<double> &x, size_t from) {
+        double sum = 0.0;
+        for (size_t i = from; i < x.size(); ++i)
+            sum += x[i] * x[i];
+        return std::sqrt(sum / static_cast<double>(x.size() - from));
+    };
+    const size_t settled = static_cast<size_t>(rate * 0.2);
+    bool kept = true;
+    double worst = 0.0;
+    for (FilterType type : {FilterType::LowPass, FilterType::SallenKeyLow})
+        for (double levelDb : {-24.0, -12.0, 0.0, 6.0}) {
+            const double level = std::pow(10.0, levelDb / 20.0);
+            std::vector<double> clean, out;
+            run(type, 0.0, level, clean);
+            const double undriven = rmsFrom(clean, settled);
+            for (double drive : {0.5, 1.0}) {
+                run(type, drive, level, out);
+                const double change = 20.0 * std::log10(rmsFrom(out, settled) / undriven);
+                worst = std::max(worst, std::abs(change));
+                kept = kept && std::abs(change) < 1.0;
+            }
+        }
+    std::vector<double> out;
+    run(FilterType::LowPass, 1.0, 1.0, out);
+    const size_t start = static_cast<size_t>(rate * 0.02);
+    double onset = 0.0, after = 0.0;
+    for (size_t i = 0; i < start; ++i)
+        onset = std::max(onset, std::abs(out[i]));
+    for (size_t i = settled; i < out.size(); ++i)
+        after = std::max(after, std::abs(out[i]));
+    std::printf("      saw at -24 to +6 dB, Drive 50 and 100 %%: level within %.2f dB of undriven; a note's first 20 ms "
+                "peaking %.2f dB over where it settles\n",
+                worst, 20.0 * std::log10(onset / after));
+    check(kept, "a sound driven into a filter keeps its level, quiet or loud");
+    check(onset < after * std::pow(10.0, 2.0 / 20.0), "a driven note starts at about the level it settles at");
+}
+
 // The scope: an operator's output, phase-locked to it, captured only while asked for.
 void scopeChecks() {
     std::printf("scope:\n");
@@ -5186,6 +5445,33 @@ void sequencerChecks() {
                   isModTarget(paramIndex(SeqParam::Humanize)) && !isModTarget(paramIndex(SeqParam::Octave)),
               "a macro, the host and an LFO modulate the sequencer's Gate, Swing and Velocity");
     }
+    // A macro's slot on Gate whose aux runs in each voice (velocity) reaches the sequencer too, from the newest voice's
+    // slots: the macro's full knob a quarter of Gate's range down, scaled by the velocity of the note the sequencer plays.
+    {
+        auto t = std::make_unique<Telemetry>();
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        note(e.p, 0, 0.0, 1.0, 69);
+        const int gate = paramIndex(SeqParam::Gate);
+        e.p[paramIndex(0, MacroParam::Value)] = 1.0;
+        e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(gate);
+        e.p[slotAmountIndex(kMaxSources, 0)] = -0.25;
+        e.p[slotAuxIndex(kMaxSources, 0)] = slotAuxValue(kVelocitySource);
+        e.synth().setTempo(120.0);
+        e.render(256);
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        for (int i = 0; i < 10; ++i)
+            e.render(480);
+        e.synth().telemetry(*t);
+        const double gateRange = paramTable()[gate].max - paramTable()[gate].min;
+        const double played = e.p[seqNoteIndex(0, 0, SeqNoteParam::Velocity)];
+        std::printf("      Gate by a macro scaled by velocity: %+.4f (a quarter of its range down at velocity %.3f is "
+                    "%+.4f)\n",
+                    t->seqFeel[1], played, -0.25 * gateRange * played);
+        check(played > 0.0 && std::abs(t->seqFeel[1] + 0.25 * gateRange * played) < 1e-4,
+              "a macro's slot on the sequencer's Gate, its aux running in each voice, modulates it");
+    }
     // The pattern picked takes modulation in whole steps: a macro's slot on it, a third of its range at the macro's full
     // knob, plays B from a key where A is set; at the knob's middle (half a step) it still plays A; and the telemetry
     // says how far it takes the pattern.
@@ -5528,12 +5814,15 @@ void sequencerChecks() {
                   near(e[2].frame, 16 * kStep) && seq.pattern() == 1,
               "another pattern takes over where the loop comes round");
     }
-    // In Key, a key starts the pattern from its first step, transposed by the key from Root, and letting it go stops
-    // it: through the synth, the key's end is reported, the sequencer's notes' never.
+    // In Key, a key starts the pattern from its first step, transposed by the key from C4 (the scale's Root, on D here,
+    // moving nothing), and letting it go stops it: through the synth, the key's end is reported, the sequencer's
+    // notes' never.
     {
         Engine e(1);
         e.p[paramIndex(SeqParam::Enabled)] = 1.0;
         e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        e.p[paramIndex(SeqParam::Root)] = 62.0;
+        e.p[paramIndex(SeqParam::Scale)] = static_cast<double>(SeqScale::Minor);
         note(e.p, 0, 0.0, 1.0, 60);
         note(e.p, 1, 2.0, 1.0, 67);
         e.synth().setTempo(120.0);
@@ -5579,8 +5868,38 @@ void sequencerChecks() {
                     peak(held), peak(after), position);
         check(peak(before) == 0.0f && peak(held) > 0.1f && peak(after) == 0.0f && at(493.9) > 100.0 * at(392.0) &&
                   keyEnded && !seqEnded && std::abs(position - 4.0f) < 0.1f,
-              "in Key, a key plays the pattern transposed by it and stops it when let go");
+              "in Key, a key plays the pattern transposed by it from C4, whatever the scale, and stops it when let go");
         check(programmedLit, "the telemetry gives the keys of the notes playing as written, not as transposed");
+    }
+    // In Key, two notes on one key (their ids apart, as a host's overlapping notes or MPE have them): the first let go,
+    // the pattern plays on while the other holds the key, and stops once it is let go too.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        for (int step = 0; step < 16; step += 2)
+            note(e.p, step / 2, step, 1.0, 60);
+        e.synth().setTempo(120.0);
+        e.render(480);
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        e.render(static_cast<size_t>(kStep));
+        e.synth().noteOn({2, 0, 0, 60}, 1.0);
+        e.render(static_cast<size_t>(kStep));
+        e.synth().noteOff({1, 0, 0, 60});
+        auto peak = [](const std::vector<float> &x) {
+            float most = 0.0f;
+            for (float s : x)
+                most = std::max(most, std::abs(s));
+            return most;
+        };
+        const float onAfterFirst = peak(e.render(static_cast<size_t>(4 * kStep)));
+        e.synth().noteOff({2, 0, 0, 60});
+        e.render(48000);
+        const float afterBoth = peak(e.render(static_cast<size_t>(4 * kStep)));
+        std::printf("      Key, two notes on one key: %.3f once the first is let go, %.4f once both are\n", onAfterFirst,
+                    afterBoth);
+        check(onAfterFirst > 0.1f && afterBoth == 0.0f,
+              "in Key, a pattern plays on while another note holds its key, and stops once every one is let go");
     }
     // A slide holds on into the next note, which ends it as it starts; one the next note starts within ends at its own
     // end, as written, not a step after.
@@ -6614,9 +6933,10 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -45.0},
-        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level), resonant
-        // here and cut off above the note's 4th harmonic: its stages' harmonics, which are what it sounds of, alias
-        // some 6 dB more than the driven low-pass's at 2x, falling as the oversampling rises.
+        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level, held
+        // under kAnalogDriveCeiling, so its stages take the loudest of it), resonant here and cut off above the note's
+        // 4th harmonic: its stages' harmonics, which are what it sounds of, alias some 8 dB more than the driven
+        // low-pass's at 2x (2 dB more than when Drive held what it fed it under 1), falling as the oversampling rises.
         {"saw into driven ladder at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6633,7 +6953,8 @@ int main() {
          -40.0},
         // The diode, saturating at its input, and the Sallen-Key, clipping in its loop, driven and resonant likewise.
         // The diode's one saturation takes its input less all of its feedback, so it clips harder there than the
-        // ladder's stages do, and aliases some 6 dB more at 2x, falling as the oversampling rises.
+        // ladder's stages do, and aliases some 2 dB more at 2x (Drive's ceiling sharing the clipping out with it, 2 dB
+        // less than when Drive held what it fed it under 1), falling as the oversampling rises.
         {"saw into driven diode at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6647,6 +6968,38 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -35.0},
+        // The ladder's high-pass and band-pass saturate in their stages as its low-pass does, Drive held under the
+        // same ceiling; the high-pass, cut off under the note, passes all of its harmonics through them. Neither's peak
+        // sits on the note's top harmonics as the low-pass's does here: the high-pass aliases some 7 dB less at 2x,
+        // and the band-pass, its input taken down as its resonance rises, some 16 dB less.
+        {"saw into driven LAD HP at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LadderHigh);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(800.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -45.0},
+        {"saw into driven LAD BP at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+             p[paramIndex(0, OpParam::Out)] = 0.0;
+             p[sendIndex(0, 0)] = 1.0;
+             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LadderBand);
+             p[paramIndex(0, FilterParam::Slope)] = 3.0;
+             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(3000.0);
+             p[paramIndex(0, FilterParam::Resonance)] = 0.7;
+             p[paramIndex(0, FilterParam::Drive)] = 1.0;
+             p[paramIndex(0, FilterParam::Out)] = 0.25;
+         },
+         -45.0},
         {"saw into driven Sallen-Key at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6677,6 +7030,8 @@ int main() {
     syncWarpChecks(factors);
     newerEffectChecks();
     unisonModeChecks();
+    driveIntoLadderChecks();
+    driveLevelChecks();
 
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should

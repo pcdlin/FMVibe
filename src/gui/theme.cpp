@@ -84,6 +84,7 @@ Color fxTypeColor(FxType type) {
     return look.fxTypes[std::clamp(static_cast<int>(type), 0, static_cast<int>(FxType::Count) - 1)];
 }
 float glowing = 0.0f;
+bool tintedCards = false;
 
 // A graph's curve. Glowing, it is drawn thinner, over a soft halo of its own color that fades outward; the
 // halo grows stronger and wider with the glow (at half, three strokes 6, 3.5 and 2 times the curve's width). The
@@ -281,7 +282,7 @@ float follow(float shown, float target) {
     return std::abs(target - shown) < 1e-3f ? target : shown;
 }
 
-// A name in capitals, as card titles and the dashed cards' words are.
+// A name in capitals, as a folded card's strip has it.
 std::string upperCase(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
     return text;

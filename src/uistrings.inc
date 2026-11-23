@@ -78,6 +78,19 @@ STR(FilterSallenKeyLow, "Sallen-Key LP")
 STR(FilterSallenKeyHigh, "Sallen-Key HP")
 STR(FilterFormant, "Formant")
 STR(FilterMorph, "Morph")
+STR(FilterLadderHigh, "Ladder HP")
+STR(FilterLadderBand, "Ladder BP")
+// The filter types' models, as the Model list beside a filter's slope names them within the low-, high- and
+// band-passes (the state-variable filter's, the ladder's, the diode's and the Sallen-Key's).
+STR(FilterModelSvf, "SVF")
+STR(FilterModelLadder, "Ladder")
+STR(FilterModelDiode, "Diode")
+STR(FilterModelSallenKey, "Sallen-Key")
+// The same on the filter effect's card, whose Model button is narrow.
+STR(FilterModelShortSvf, "SVF")
+STR(FilterModelShortLadder, "LAD")
+STR(FilterModelShortDiode, "DIO")
+STR(FilterModelShortSallenKey, "SK")
 // On the filter type buttons, and with a slope ("LP 24") on the graph's nodes.
 STR(FilterShortLowPass, "LP")
 STR(FilterShortHighPass, "HP")
@@ -90,6 +103,8 @@ STR(FilterShortSallenKeyLow, "SK LP")
 STR(FilterShortSallenKeyHigh, "SK HP")
 STR(FilterShortFormant, "FMT")
 STR(FilterShortMorph, "MRF")
+STR(FilterShortLadderHigh, "LAD HP")
+STR(FilterShortLadderBand, "LAD BP")
 // What a Morph filter passes through on its way from low-pass to high-pass.
 STR(MorphBand, "LP > BP > HP")
 STR(MorphNotch, "LP > Notch > HP")
@@ -566,17 +581,17 @@ STR(ThemePorcelain, "Porcelain")
 
 // --- The editor: headings, tabs and labels
 
-STR(HeadingPlaying, "PLAYING")
-STR(HeadingBend, "BEND")
-STR(HeadingMod, "MOD")
+STR(HeadingPlaying, "Playing")
+STR(HeadingBend, "Bend")
+STR(HeadingMod, "Mod")
 STR(TempoName, "Tempo")
 STR(TempoSyncLetter, "H") // the title bar's switch that follows the host's tempo
-STR(ViewRouting, "ROUTING")
-STR(ViewMatrix, "MATRIX")
+STR(ViewRouting, "Routing")
+STR(ViewMatrix, "Matrix")
 STR(ViewFx, "FX")
-STR(ViewMods, "MODS") // every modulation, as a table
+STR(ViewMods, "Mods") // every modulation, as a table
 // The button at the right of the view tabs, with ROUTING and MATRIX, and the panel of classic FM algorithms it opens
-STR(ButtonAlgorithm, "ALGORITHM")
+STR(ButtonAlgorithm, "Algorithm")
 STR(AlgorithmBadgeOps, "{1}-OP {2}") // on the button: the algorithm of fewer than six operators the operators form
 STR(AlgorithmOps, "Operators") // before the panel's switch between the sets: 6 | 4 | 3 | 2, how many they use
 STR(AlgorithmHint, "Apply an operator routing layout. Does not affect shapers or filters.")
@@ -586,15 +601,15 @@ STR(AlgorithmCarrierOne, "1 carrier")
 STR(AlgorithmFeedback, "feedback on {1}") // an operator's letter
 STR(AlgorithmFeedbackLoop, "feedback from {1} into {2}")
 STR(AlgorithmEscape, "Esc closes")
-STR(ViewSeq, "SEQ") // the sequencer's settings and piano roll
+STR(ViewSeq, "Seq") // the sequencer's settings and piano roll
 // The SEQ view: its settings card, the tools over its roll, the field of the notes picked and the lane's tabs.
 STR(HeadingSequencer, "SEQUENCER")
-STR(LabelSeqPattern, "PATTERN")
+STR(LabelSeqPattern, "Pattern")
 STR(HeadingSeqPatterns, "PATTERNS") // the overview of the four patterns, under the settings card
-STR(LabelSeqPlay, "PLAY")
-STR(LabelSeqOrder, "ORDER")
-STR(LabelSeqScale, "SCALE")
-STR(LabelSeqSnap, "SNAP")
+STR(LabelSeqPlay, "Play")
+STR(LabelSeqOrder, "Order")
+STR(LabelSeqScale, "Scale")
+STR(LabelSeqSnap, "Snap")
 STR(LabelSwing, "Swing")
 STR(LabelGate, "Gate")
 STR(LabelLength, "Length")
@@ -602,31 +617,31 @@ STR(LabelVelocity, "Velocity")
 STR(LabelHumanize, "Humanize")
 STR(LabelOctave, "Octave")
 STR(LabelTranspose, "Transpose")
-STR(SwitchFold, "FOLD") // the roll shows only the scale's rows
-STR(SwitchSlide, "SLIDE") // a note glides into the next one
-STR(SwitchMute, "MUTE") // a note kept but silent
-STR(SeqFieldNote, "NOTE")
-STR(SeqFieldVelocity, "VEL")
-STR(SeqFieldChance, "CHANCE")
-STR(SeqFieldLength, "LEN")
-STR(SeqFieldOffset, "OFFSET")
-STR(SeqFieldBend, "BEND") // the field's farthest the picked notes bend
+STR(SwitchFold, "Fold") // the roll shows only the scale's rows
+STR(SwitchSlide, "Slide") // a note glides into the next one
+STR(SwitchMute, "Mute") // a note kept but silent
+STR(SeqFieldNote, "Note")
+STR(SeqFieldVelocity, "Vel")
+STR(SeqFieldChance, "Chance")
+STR(SeqFieldLength, "Len")
+STR(SeqFieldOffset, "Offset")
+STR(SeqFieldBend, "Bend") // the field's farthest the picked notes bend
 STR(SeqBendSemitones, "{1} st") // a bend in semitones, {1} signed ("+2", "-0.5")
-STR(SeqLaneVelocity, "VELOCITY")
-STR(SeqLaneChance, "CHANCE")
-STR(SeqLaneBend, "BEND")
-STR(SeqLaneWheel, "MOD WHEEL")
-STR(SeqLaneNoteBend, "NOTE BEND") // the lane's tab of the picked notes' own bends
-STR(SeqLaneBendRange, "±{1} st") // the NOTE BEND lane's range, {1} its semitones each way
-STR(SeqLaneMacro, "MACRO {1}") // the lane's tab of the macros' curves, {1} the macro it shows
+STR(SeqLaneVelocity, "Velocity")
+STR(SeqLaneChance, "Chance")
+STR(SeqLaneBend, "Bend")
+STR(SeqLaneWheel, "Mod Wheel")
+STR(SeqLaneNoteBend, "Note Bend") // the lane's tab of the picked notes' own bends
+STR(SeqLaneBendRange, "±{1} st") // the Note Bend lane's range, {1} its semitones each way
+STR(SeqLaneMacro, "Macro {1}") // the lane's tab of the macros' curves, {1} the macro it shows
 STR(ModListCount, "{1} modulations") // in a pill's list, after the name of what they modulate
 STR(ModListCountOne, "1 modulation")
-STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
-STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
-STR(TabEnvelope, "ENVELOPE")
-STR(TabScope, "SCOPE")
-STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
-STR(TabWarp, "WARP") // its scope, warp and hard sync
+STR(TabUnison, "Unison") // an operator's page: what its lower half shows
+STR(TabSpectrum, "Spectrum") // a noise operator's, in Unison's place
+STR(TabEnvelope, "Envelope")
+STR(TabScope, "Scope")
+STR(TabInputs, "Inputs") // the routes into the operator, each with its mode
+STR(TabWarp, "Warp") // its scope, warp and hard sync
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -638,25 +653,25 @@ STR(HeadingGrid, "GRID")
 STR(LabelNote, "Note") // under the note source's display
 STR(LabelVelocitySource, "Velocity") // under the velocity source's display
 
-// The effect cards' titles.
-STR(FxTitleShaper, "SHAPER")
-STR(FxTitleDelay, "DELAY")
+// The effect cards' titles, in title case (capitals are for small section headings).
+STR(FxTitleShaper, "Shaper")
+STR(FxTitleDelay, "Delay")
 STR(FxTitleDjEq, "DJ EQ")
-STR(FxTitleParamEq, "PARAM EQ")
-STR(FxTitleFilter, "FILTER")
-STR(FxTitleCompressor, "COMPRESSOR")
-STR(FxTitleMultiComp, "3-BAND") // retired, never shown
-STR(FxTitleMultiDyn, "3-BAND DYNAMICS")
-STR(FxTitleReverb, "REVERB")
-STR(FxTitlePhaser, "PHASER")
-STR(FxTitleFlanger, "FLANGER")
-STR(FxTitleFreqShifter, "FREQ SHIFT")
-STR(FxTitleDisperser, "PHASE DISP")
-STR(FxTitleWidener, "WIDENER")
-STR(FxTitleAmp, "AMP")
-STR(FxTitleUtility, "UTILITY")
-STR(FxTitleChorus, "CHORUS")
-STR(FxTitleLoFi, "LO-FI")
+STR(FxTitleParamEq, "Param EQ")
+STR(FxTitleFilter, "Filter")
+STR(FxTitleCompressor, "Compressor")
+STR(FxTitleMultiComp, "3-Band") // retired, never shown
+STR(FxTitleMultiDyn, "3-Band Dynamics")
+STR(FxTitleReverb, "Reverb")
+STR(FxTitlePhaser, "Phaser")
+STR(FxTitleFlanger, "Flanger")
+STR(FxTitleFreqShifter, "Freq Shift")
+STR(FxTitleDisperser, "Phase Disp")
+STR(FxTitleWidener, "Widener")
+STR(FxTitleAmp, "Amp")
+STR(FxTitleUtility, "Utility")
+STR(FxTitleChorus, "Chorus")
+STR(FxTitleLoFi, "Lo-Fi")
 
 // The big editors' titles.
 STR(TitleShape, "{1} SHAPE")
@@ -765,10 +780,10 @@ STR(LabelPosition, "Position")
 STR(LabelDistance, "Distance")
 
 // Switches and buttons.
-STR(SwitchPoly, "POLY")
-STR(SwitchMono, "MONO")
-STR(SwitchLegato, "LEGATO")
-STR(SwitchAlways, "ALWAYS") // the glide's
+STR(SwitchPoly, "Poly")
+STR(SwitchMono, "Mono")
+STR(SwitchLegato, "Legato")
+STR(SwitchAlways, "Always") // the glide's
 STR(CaptionNoteSync, "NOTE SYNC") // on the WARP display, while the operator is synced to the note
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
@@ -784,13 +799,13 @@ STR(SwitchRms, "RMS") // the three-band dynamics' detector: RMS, or peaks while 
 STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's display
 STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
-STR(ButtonAddEffect, "ADD EFFECT")
+STR(ButtonAddEffect, "Add Effect")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
 STR(ButtonClearSeq, "Clear") // the confirm dialog's button that removes every note of a pattern
 STR(ButtonRemoveCategory, "Remove") // the confirm dialog's button that removes one of the user's categories
-STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
-STR(ButtonEffect, "EFFECT") // + EFFECT and + SOURCE, after a drawn plus
-STR(ButtonSource, "SOURCE")
+STR(ButtonAddSource, "Add Source") // the dashed card after the sources: opens the list of source types
+STR(ButtonEffect, "Effect") // + EFFECT and + SOURCE, after a drawn plus
+STR(ButtonSource, "Source")
 STR(ButtonCancel, "Cancel")
 STR(ButtonInit, "Discard")
 STR(ButtonLoad, "Load")
@@ -856,6 +871,9 @@ STR(SettingsHandles, "HANDLES") // the depth handles' size, beside its buttons
 STR(SettingsHandlesSmall, "Small")
 STR(SettingsHandlesMedium, "Medium")
 STR(SettingsHandlesLarge, "Large")
+STR(SettingsCards, "CARDS") // whether a flat theme's cards are tinted with their own color, beside its buttons
+STR(SettingsCardsPlain, "Plain")
+STR(SettingsCardsTinted, "Tinted")
 STR(SettingsLookSaved,"Applies to all instances.")
 STR(SettingsVersion, "FMVibe {1}") // the version number, at the bottom
 STR(SettingsLicense, "Released under the MIT license")
@@ -1092,7 +1110,7 @@ STR(TipSeqLaneWheel, "Pattern mod wheel")
 STR(TipSeqLaneNoteBend, "Picked notes' own bends")
 STR(TipSeqLaneMacro, "Pattern macro curves")
 STR(TipSeqLaneMacroPick, "Choose macro") // the arrow at the macros' tab's right end, which opens their list
-STR(TipSeqRoot, "Root for Key and Latch")
+STR(TipSeqRoot, "The scale's root")
 STR(TipSeqPower, "Sequencer on/off")
 STR(TipSeqFull, "Full size") // the SEQ view's size button, at its half size: over the modulation panel too
 STR(TipSeqHalf, "Half size") // and at its full size: back over the panels' row alone
@@ -1191,6 +1209,7 @@ STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
 STR(TipSlope, "Filter slope")
 STR(TipSlopeBand, "Filter slope")
+STR(TipFilterModel, "Filter model") // the Model list beside the slope
 STR(TipPrevType, "Previous type") // the arrows on a list's button
 STR(TipNextType, "Next type")
 STR(TipPrevCurve, "Previous curve")

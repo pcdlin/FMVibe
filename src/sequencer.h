@@ -31,7 +31,7 @@ constexpr int16_t kSeqPort = -2;
 constexpr int16_t kAuditionPort = -3;
 
 // The sequencer: plays the pattern its params pick, from the host's transport (SeqPlay::Host, locked to its bars) or
-// from a key (Key and Latch, transposed by the key from Root). Time runs in played steps, counted from the song's
+// from a key (Key and Latch, transposed by the key from C4). Time runs in played steps, counted from the song's
 // start (Host) or from the key that started it (Key, Latch); each played step plays a step of the pattern's loop as
 // the Order says (forward, back, to and fro, or at random), the notes starting in that step at the same place in it.
 // Swing delays every other played step, Gate scales the notes' lengths, Humanize delays them and moves their velocity a
@@ -148,7 +148,6 @@ private:
     double swing_ = 0.5, gate_ = 1.0, velocityAmount_ = 1.0, humanize_ = 0.0;
     int shift_ = 0; // Octave and Transpose, in semitones
     SeqOrder order_ = SeqOrder::Forward;
-    int root_ = 60;
     int loopStart_ = 0, loopEnd_ = kSeqStepsPerBar;
     std::array<Note, kSeqNotes> notes_{};
     int noteCount_ = 0;

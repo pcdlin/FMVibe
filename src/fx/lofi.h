@@ -19,6 +19,8 @@ inline double loFiLevel(double x, double step) {
 
 namespace fx {
 
+constexpr double kLoFiQuietSeconds = 0.01; // silence going in for this long comes out as silence (see LoFi::quiet)
+
 // Lo-Fi, as an early digital converter: each side held between samples taken Rate times a second (the steps between
 // fold the top back down, as they did), each sample at Bits of resolution (the nearest of 2^Bits levels across full
 // scale, see loFiLevel()), and Smooth blending in what a 12 dB low-pass just under half Rate makes of it, as a converter's output
@@ -30,6 +32,10 @@ struct LoFi {
     BiquadRamp smoothCoefs{};
     double smoothMix = 0.0; // Smooth, ramped
     double mix = 1.0;       // Mix, ramped
+    // How long both sides have been silent (under -120 dB, where the effects count a sound as rung out), in samples:
+    // past kLoFiQuietSeconds it holds 0, where a level half a step off 0 would put silence out as DC, which nothing
+    // after the effects takes away and which would keep them running for good. A sound crossing 0 isn't silent.
+    int quiet = 0;
 
     void start(const Context &ctx);
     void run(const Context &ctx, float *const *io, uint32_t n);

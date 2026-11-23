@@ -245,6 +245,12 @@ void filterIcon(Canvas &c, Rect r, FilterType type, Color color) {
             case FilterType::Morph: // a notch going into a peak, from one response to the next
                 y = 0.25f - 1.1f * peak(x, 0.32f, 160.0f) + 0.65f * peak(x, 0.68f, 160.0f);
                 break;
+            case FilterType::LadderHigh: // the ladder's the other way round: a steep rise, a tall, sharp peak, lower after
+                y = x >= 0.5f ? 0.1f + 0.85f * peak(x, 0.5f, 200.0f) : 0.95f - 6.0f * (0.5f - x);
+                break;
+            case FilterType::LadderBand: // a narrow, tall peak on steep skirts
+                y = -0.9f + 1.85f * peak(x, 0.5f, 90.0f);
+                break;
             case FilterType::Count:
                 break;
             }

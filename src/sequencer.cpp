@@ -65,7 +65,6 @@ void Sequencer::configure(const ParamValues &params, bool changed) {
     shift_ = 12 * static_cast<int>(std::lround(real(SeqParam::Octave, -3.0, 3.0, 0.0))) +
              static_cast<int>(std::lround(real(SeqParam::Transpose, -24.0, 24.0, 0.0)));
     order_ = static_cast<SeqOrder>(stepped(params[paramIndex(SeqParam::Order)], static_cast<int>(SeqOrder::Count) - 1));
-    root_ = stepped(params[paramIndex(SeqParam::Root)], 127);
     if (!enabled_ || play_ == SeqPlay::Host || (play_ == SeqPlay::Key && keyCount_ == 0))
         keyRunning_ = false;
     if (!running_)
@@ -355,7 +354,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     const bool chase = chase_ && soundingCount_ < kMaxSounding; // full, it would only take a note's place
     chase_ = false;
     if (length > 0 && noteCount_ > 0) {
-        const int shift = shift_ + (play_ != SeqPlay::Host && transposeKey_ >= 0 ? transposeKey_ - root_ : 0);
+        const int shift = shift_ + (play_ != SeqPlay::Host && transposeKey_ >= 0 ? transposeKey_ - kSeqTransposeFrom : 0);
         auto sounding = [&](int64_t k, int index) {
             for (int i = 0; i < soundingCount_; ++i)
                 if (sounding_[i].step == k && sounding_[i].index == index)

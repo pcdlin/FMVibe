@@ -374,7 +374,8 @@ enum class SeqCurveParam { PointCount, Points, Count = Points + 3 * kSeqCurvePoi
 constexpr int kSeqNoteBendPoints = 8;
 constexpr double kSeqMaxNoteBend = 24.0;
 enum class SeqNoteBendParam { PointCount, Points, Count = Points + 3 * kSeqNoteBendPoints };
-// When it plays: with the host's transport, from a key held (transposed by it from Root) or from a key until stopped.
+// When it plays: with the host's transport, from a key held (transposed by it from C4, kSeqTransposeFrom) or from a
+// key until stopped.
 // Stored by number: only append.
 enum class SeqPlay { Host, Key, Latch, Count };
 // How long a step is, slowest first; the editor shows it as a speed, a multiple of a 1/16 step (see
@@ -383,6 +384,8 @@ enum class SeqRate { Quarter, EighthDotted, Eighth, SixteenthDotted, EighthTripl
                      ThirtySecond, Count };
 // Which way the steps run. Stored by number: only append.
 enum class SeqOrder { Forward, Reverse, PingPong, Random, Count };
+// The key that plays a pattern as written in Key and Latch: the keys transpose it from here, whatever the scale's Root.
+constexpr int kSeqTransposeFrom = 60; // C4
 // The scale the roll snaps notes to and shades rows outside of. Stored by number: only append.
 enum class SeqScale { Chromatic, Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, HarmonicMinor, MelodicMinor,
                       PentatonicMajor, PentatonicMinor, Blues, Count };
@@ -409,8 +412,10 @@ inline bool seqInScale(int scale, int root, int pitch) {
 // of its range; Diode a four-pole diode ladder, its stages loading each other; SallenKeyLow and SallenKeyHigh a
 // two-pole Sallen-Key low- and high-pass with a clipper in its resonance's loop, as in Korg's MS-20; Formant three
 // band-passes at a vowel's formants (FilterParam::Vowel); Morph the state-variable filter going from its low-pass to
-// its high-pass through its band-pass or its notch (FilterParam::Morph and MorphMode). Stored in projects by number:
-// only append.
+// its high-pass through its band-pass or its notch (FilterParam::Morph and MorphMode); LadderHigh the ladder's loop
+// around four one-pole high-pass stages, as in Moog's 904B; LadderBand its loop around low- and high-pass stages in
+// turn, a band-pass that rings at its center. The editor shows them as families of models (see gui/lists.h): the
+// low-passes, the high-passes and the band-passes each a list of models. Stored in projects by number: only append.
 enum class FilterType {
     LowPass,
     HighPass,
@@ -423,6 +428,8 @@ enum class FilterType {
     SallenKeyHigh,
     Formant,
     Morph,
+    LadderHigh,
+    LadderBand,
     Count
 };
 // What the Morph type passes through on its way from low-pass to high-pass: the band-pass or the notch. Stored in
@@ -442,14 +449,15 @@ inline RouteMode routeMode(double value) {
 }
 // A filter's slope (FilterParam::Slope, and the filter effect's): 6, 12, 18 or 24 dB per octave, stored by number,
 // 12 to begin with. Each type comes in the slopes kFilterTypeSlopes gives it, a bit each: low- and high-passes and the
-// ladder (its stages tapped) in all four, a band-pass, notch or morph only in 12 and 24, the diode in 24, the
-// Sallen-Key's in 12, and a comb or formant in none. A stored slope a
+// ladder's low- and high-pass (their stages tapped) in all four, a band-pass, notch or morph (the ladder's band-pass
+// too) only in 12 and 24, the diode in 24, the Sallen-Key's in 12, and a comb or formant in none. A stored slope a
 // type doesn't come in plays as the next one up it does (see playedSlope()). Stored in projects by number: only append.
 constexpr int kFilterSlopes = 4;
 constexpr int kDefaultSlope = 1;
 constexpr unsigned kAllSlopes = 0b1111, kEvenSlopes = 0b1010, kSlope12 = 0b0010, kSlope24 = 0b1000;
 constexpr unsigned kFilterTypeSlopes[] = {kAllSlopes, kAllSlopes, kEvenSlopes, kEvenSlopes, 0, kAllSlopes,
-                                          kSlope24,   kSlope12,   kSlope12,    0,           kEvenSlopes};
+                                          kSlope24,   kSlope12,   kSlope12,    0,           kEvenSlopes,
+                                          kAllSlopes, kEvenSlopes};
 static_assert(std::size(kFilterTypeSlopes) == static_cast<size_t>(FilterType::Count), "a slope set for each type");
 inline int filterSlope(double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, kFilterSlopes - 1L)); }
 constexpr int slopeDb(int slope) { return 6 * (slope + 1); }
@@ -2103,7 +2111,8 @@ static_assert(numberedInOrder({SeqScale::Chromatic, SeqScale::Major, SeqScale::M
               "SeqScale is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
                                FilterType::Comb, FilterType::Ladder, FilterType::Diode, FilterType::SallenKeyLow,
-                               FilterType::SallenKeyHigh, FilterType::Formant, FilterType::Morph, FilterType::Count}),
+                               FilterType::SallenKeyHigh, FilterType::Formant, FilterType::Morph,
+                               FilterType::LadderHigh, FilterType::LadderBand, FilterType::Count}),
               "FilterType is stored by number: only append");
 static_assert(numberedInOrder({MorphMode::Band, MorphMode::Notch, MorphMode::Count}),
               "MorphMode is stored by number: only append");

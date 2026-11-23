@@ -4,6 +4,7 @@
 
 #include <clap/clap.h>
 
+#include <pluginterfaces/base/ibstream.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/gui/iplugview.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
@@ -17,10 +18,15 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <clocale>
+#include <cstdlib>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <string>
 #include <thread>
@@ -214,6 +220,80 @@ double play(const clap_plugin_t *plugin, int key = 69, int blocks = 8) {
     return peak;
 }
 
+// The user's settings file has a '.' before a fraction, whatever the locale: read in a host that has set one writing
+// a ',' (as GTK and Qt apps set the desktop's), saved zooms of 0.6 and 0.75 still open the editor as wide as they say
+// (both within the screen, which holds a larger one back), where atof() would have read 0, no zoom saved, for both.
+// Left out where no such locale is installed.
+void testSettingsLocale(const clap_plugin_factory_t *factory, const char *id) {
+    char dir[] = "/tmp/fmvibe-settings-XXXXXX";
+    if (!mkdtemp(dir)) {
+        check(false, "a settings folder is made");
+        return;
+    }
+    const std::string localeWas = std::setlocale(LC_ALL, nullptr);
+    auto commaLocale = []() -> const char * {
+        for (const char *name : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "fr_FR.utf8"})
+            if (std::setlocale(LC_ALL, name) && std::localeconv()->decimal_point[0] == ',')
+                return name;
+        return nullptr;
+    };
+    const char *comma = commaLocale();
+    const char *locpathWas = std::getenv("LOCPATH");
+    const std::string keepLocpath = locpathWas ? locpathWas : "";
+    if (!comma) { // none installed: one compiled into the folder, where glibc's localedef and its sources are
+        const std::string made = std::string("localedef -i de_DE -f UTF-8 ") + dir + "/de_DE.UTF-8 >/dev/null 2>&1";
+        if (std::system(made.c_str()) == 0) {
+            setenv("LOCPATH", dir, 1);
+            comma = commaLocale();
+        }
+    }
+    auto restore = [&] {
+        std::setlocale(LC_ALL, localeWas.c_str());
+        if (locpathWas)
+            setenv("LOCPATH", keepLocpath.c_str(), 1);
+        else
+            unsetenv("LOCPATH");
+    };
+    if (!comma) {
+        restore();
+        std::error_code ignored;
+        std::filesystem::remove_all(dir, ignored);
+        std::printf("       (no locale with a decimal comma to be had: the settings file's numbers aren't checked)\n");
+        return;
+    }
+    const char *dirWas = std::getenv("FMVIBE_SETTINGS_DIR");
+    const std::string keepDir = dirWas ? dirWas : "";
+    setenv("FMVIBE_SETTINGS_DIR", dir, 1);
+    auto width = [&](const char *zoom) {
+        std::ofstream(std::filesystem::path(dir) / "settings.txt") << "zoom=" << zoom << "\n";
+        ClapHost host;
+        const clap_plugin_t *plugin = factory->create_plugin(factory, &host.host, id);
+        uint32_t w = 0, h = 0;
+        if (plugin && plugin->init(plugin)) {
+            host.plugin = plugin;
+            const auto *gui = static_cast<const clap_plugin_gui_t *>(plugin->get_extension(plugin, CLAP_EXT_GUI));
+            if (gui && gui->create(plugin, CLAP_WINDOW_API_X11, false)) {
+                gui->get_size(plugin, &w, &h);
+                gui->destroy(plugin);
+            }
+        }
+        if (plugin)
+            plugin->destroy(plugin);
+        return w;
+    };
+    const uint32_t smaller = width("0.6"), larger = width("0.75");
+    restore();
+    if (dirWas)
+        setenv("FMVIBE_SETTINGS_DIR", keepDir.c_str(), 1);
+    else
+        unsetenv("FMVIBE_SETTINGS_DIR");
+    std::error_code ignored;
+    std::filesystem::remove_all(dir, ignored);
+    std::printf("       in %s, a saved zoom of 0.6 opens %u px wide, of 0.75 %u\n", comma, smaller, larger);
+    check(larger > 0 && std::abs(static_cast<double>(smaller) - 0.8 * larger) <= 2.0,
+          "a host's decimal comma leaves the settings file's numbers as they are written");
+}
+
 void testClap(const char *path) {
     void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!library) {
@@ -370,6 +450,8 @@ void testClap(const char *path) {
     plugin->stop_processing(plugin);
     plugin->deactivate(plugin);
     plugin->destroy(plugin);
+    if (std::getenv("DISPLAY"))
+        testSettingsLocale(factory, descriptor->id);
     entry->deinit();
     check(true, "it closes");
     dlclose(library);
@@ -393,8 +475,9 @@ public:
     uint32 PLUGIN_API addRef() override { return ++refs_; }
     uint32 PLUGIN_API release() override { return --refs_; } // one reference, for the whole test
     tresult PLUGIN_API registerEventHandler(Steinberg::Linux::IEventHandler *handler,
-                                            Steinberg::Linux::FileDescriptor) override {
+                                            Steinberg::Linux::FileDescriptor fd) override {
         event_ = handler;
+        fd_ = fd;
         return kResultOk;
     }
     tresult PLUGIN_API unregisterEventHandler(Steinberg::Linux::IEventHandler *handler) override {
@@ -417,9 +500,18 @@ public:
         timer_->onTimer();
         return true;
     }
+    // The file descriptor it watches has something to read, as the host's run loop finds.
+    bool fire() {
+        if (!event_)
+            return false;
+        event_->onFDIsSet(fd_);
+        return true;
+    }
+    bool watching() const { return event_ != nullptr; }
 
 private:
     std::atomic<uint32> refs_{1};
+    int fd_ = -1;
     Steinberg::Linux::IEventHandler *event_ = nullptr;
     Steinberg::Linux::ITimerHandler *timer_ = nullptr;
 };
@@ -446,6 +538,141 @@ public:
 private:
     std::atomic<uint32> refs_{1};
 };
+
+// A host application that offers its run loop as the context it initializes a plugin with, as some Linux hosts do.
+class TestHostContext final : public FUnknown {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
+        QUERY_INTERFACE(iid, obj, FUnknown::iid, FUnknown)
+        if (FUnknownPrivate::iidEqual(iid, Steinberg::Linux::IRunLoop::iid)) {
+            runLoop.addRef();
+            *obj = &runLoop;
+            return kResultOk;
+        }
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+
+    TestRunLoop runLoop;
+};
+
+// Records the restarts a plugin asks for, and on which thread.
+class TestHandler final : public IComponentHandler {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
+        QUERY_INTERFACE(iid, obj, FUnknown::iid, IComponentHandler)
+        QUERY_INTERFACE(iid, obj, IComponentHandler::iid, IComponentHandler)
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    tresult PLUGIN_API beginEdit(ParamID) override { return kResultOk; }
+    tresult PLUGIN_API performEdit(ParamID, ParamValue) override { return kResultOk; }
+    tresult PLUGIN_API endEdit(ParamID) override { return kResultOk; }
+    tresult PLUGIN_API restartComponent(int32 flags) override {
+        restarts.fetch_or(flags);
+        if (std::this_thread::get_id() != mainThread)
+            offMain.store(true);
+        return kResultOk;
+    }
+
+    std::thread::id mainThread = std::this_thread::get_id();
+    std::atomic<int32> restarts{0};
+    std::atomic<bool> offMain{false};
+};
+
+// A state's bytes in memory.
+class MemoryStream final : public IBStream {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
+        QUERY_INTERFACE(iid, obj, FUnknown::iid, IBStream)
+        QUERY_INTERFACE(iid, obj, IBStream::iid, IBStream)
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    tresult PLUGIN_API read(void *buffer, int32 bytes, int32 *done) override {
+        const int32 n = std::max<int32>(0, std::min<int32>(bytes, static_cast<int32>(data.size() - at)));
+        std::memcpy(buffer, data.data() + at, static_cast<size_t>(n));
+        at += static_cast<size_t>(n);
+        if (done)
+            *done = n;
+        return kResultOk;
+    }
+    tresult PLUGIN_API write(void *buffer, int32 bytes, int32 *done) override {
+        const auto *from = static_cast<const uint8_t *>(buffer);
+        data.insert(data.begin() + static_cast<std::ptrdiff_t>(at), from, from + bytes);
+        at += static_cast<size_t>(bytes);
+        if (done)
+            *done = bytes;
+        return kResultOk;
+    }
+    tresult PLUGIN_API seek(int64 pos, int32 mode, int64 *result) override {
+        const int64 base = mode == kIBSeekSet ? 0 : mode == kIBSeekCur ? static_cast<int64>(at) : static_cast<int64>(data.size());
+        at = static_cast<size_t>(std::clamp<int64>(base + pos, 0, static_cast<int64>(data.size())));
+        if (result)
+            *result = static_cast<int64>(at);
+        return kResultOk;
+    }
+    tresult PLUGIN_API tell(int64 *pos) override {
+        if (pos)
+            *pos = static_cast<int64>(at);
+        return kResultOk;
+    }
+
+    std::vector<uint8_t> data;
+    size_t at = 0;
+};
+
+// A state handed over with no view open asks the host to read the values again (kParamValuesChanged) on its main
+// thread: through the host application's run loop where it offers one, only once that run loop finds the wake; and
+// without one, through the plugin's own thread, after setState() has returned.
+void testVst3Wake(IPluginFactory *factory, const TUID cid) {
+    for (const bool hostLoop : {true, false}) {
+        FUnknown *unknown = nullptr;
+        if (factory->createInstance(cid, IComponent::iid, reinterpret_cast<void **>(&unknown)) != kResultOk) {
+            check(false, "a second component is made");
+            return;
+        }
+        auto *component = static_cast<IComponent *>(unknown);
+        TestHostContext context;
+        component->initialize(hostLoop ? static_cast<FUnknown *>(&context) : nullptr);
+        IEditController *edit = nullptr;
+        component->queryInterface(IEditController::iid, reinterpret_cast<void **>(&edit));
+        TestHandler handler;
+        if (edit)
+            edit->setComponentHandler(&handler);
+        MemoryStream state;
+        component->getState(&state);
+        state.at = 0;
+        const bool loaded = component->setState(&state) == kResultOk;
+        if (hostLoop) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250)); // no thread of its own to do it meanwhile
+            const bool waited = handler.restarts.load() == 0;
+            const bool fired = context.runLoop.fire();
+            check(loaded && context.runLoop.watching() && waited && fired &&
+                      (handler.restarts.load() & kParamValuesChanged) && !handler.offMain.load(),
+                  "with no view open, a state's restart comes through the host application's run loop, on its main "
+                  "thread");
+        } else {
+            for (int k = 0; k < 100 && !(handler.restarts.load() & kParamValuesChanged); ++k)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            check(loaded && (handler.restarts.load() & kParamValuesChanged),
+                  "with no run loop, a state's restart comes through the plugin's own thread");
+        }
+        if (edit) {
+            edit->setComponentHandler(nullptr);
+            edit->release();
+        }
+        component->terminate();
+        check(!context.runLoop.watching(), "terminated, it leaves the host's run loop");
+        component->release();
+    }
+}
 
 void testVst3(const char *path) {
     void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -564,6 +791,7 @@ void testVst3(const char *path) {
             }
             check(painted, "the VST3 editor paints");
             view->removed();
+            view->setFrame(nullptr); // while the frame and its run loop are alive, as a host does
             XDestroyWindow(display, parent);
             XCloseDisplay(display);
         }
@@ -578,6 +806,7 @@ void testVst3(const char *path) {
     }
     check(component->terminate() == kResultOk, "it terminates");
     component->release();
+    testVst3Wake(factory, info.cid);
     dlclose(library);
 }
 

@@ -13,6 +13,10 @@ namespace fmvibe::gui {
 
 using namespace detail;
 
+bool View::cardsTintable() const {
+    return kThemes[themeIndex(controller_.editorSettings().theme)].flat;
+}
+
 std::vector<View::Widget> View::settingsWidgets() const {
     const Rect panel = settingsPanel(height());
     std::vector<Widget> list;
@@ -48,6 +52,12 @@ std::vector<View::Widget> View::settingsWidgets() const {
     row = list.size();
     for (int size = 0; size < kModHandleSizeCount; ++size)
         add(Kind::SettingsHandles, settingsHandles(panel, size), -1, size);
+    mergeButtons(list, row);
+    row = list.size();
+    for (int tinted = 0; tinted < 2; ++tinted) {
+        add(Kind::SettingsCards, settingsCards(panel, tinted), -1, tinted);
+        list.back().disabled = !cardsTintable(); // dimmed, and the mouse passes it by
+    }
     mergeButtons(list, row);
     add(Kind::SettingsManual, settingsManual(panel));
     add(Kind::SettingsClose, settingsClose(panel));
@@ -89,7 +99,7 @@ void View::paintSettings(Canvas &c) {
            Align::Left);
     c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
            Align::Left);
-    // LOOK: the themes, their main color's hue, the glow, the sources' lines and the depth handles' size.
+    // LOOK: the themes, their main color's hue, the glow, the sources' lines, the depth handles' size and the cards.
     const float lookY = panel.y + kSettingsLookY;
     c.line({panel.x + 24.0f, lookY + 0.5f}, {panel.right() - 24.0f, lookY + 0.5f}, kBorder, 1.0f);
     c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), kTextLabel, kFaint, Align::Left, true);
@@ -117,15 +127,26 @@ void View::paintSettings(Canvas &c) {
     const Rect handles = settingsHandles(panel, 0);
     c.text({panel.x + 24.0f, handles.y, kSettingsLabelW, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim,
            Align::Left, true);
-    c.text({panel.x + 24.0f, lookY + 244.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
+    // CARDS, faint in a theme that outlines its cards, where tinting does nothing (its buttons disabled).
+    const Rect cards = settingsCards(panel, 0);
+    c.text({panel.x + 24.0f, cards.y, kSettingsLabelW, cards.h}, tr(Str::SettingsCards), kTextLabel,
+           cardsTintable() ? kDim : kFaint, Align::Left, true);
+    c.text({panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, lookY + 270.5f}, {panel.right() - 24.0f, lookY + 270.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f};
+    c.line({panel.x + 24.0f, lookY + 304.5f}, {panel.right() - 24.0f, lookY + 304.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, lookY + 312.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
-    for (const Widget &w : settingsWidgets())
+    // A disabled one (CARDS' buttons in a theme that outlines its cards) under a layer, as the editor dims its disabled
+    // widgets.
+    for (const Widget &w : settingsWidgets()) {
+        if (w.disabled)
+            c.pushLayer({0.0f, 0.0f}, kDimOpacity, w.rect.inset(-2.0f));
         paintWidget(c, w);
+        if (w.disabled)
+            c.popLayer();
+    }
 }
 
 // Save only for a preset loaded from a file and changed since; Save As for any preset, but for Init only once changed.

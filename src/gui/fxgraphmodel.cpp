@@ -170,15 +170,19 @@ void FxGraphModel::writeLine(const FxLine &line) {
         else if (!three[split]) // and a middle band gone takes its solo with it
             want[paramIndex(split, SumParam::SoloMid)] = 0.0;
     }
-    // What modulated a level reset, or the crossover of a split no longer in use, goes.
-    for (const Assignment &m : modulation().assignments()) {
-        const int split = splitOf(m.target);
+    // What modulated a level reset, or the crossover of a split no longer in use, goes (an empty modulation onto one
+    // losing its target).
+    auto gone = [&](int target) {
+        const int split = splitOf(target);
         const bool crossover = split >= 0 && !used[split] &&
-                               (m.target == paramIndex(split, SplitParam::Low) ||
-                                m.target == paramIndex(split, SplitParam::High));
-        if (crossover || std::find(reset.begin(), reset.end(), m.target) != reset.end())
+                               (target == paramIndex(split, SplitParam::Low) ||
+                                target == paramIndex(split, SplitParam::High));
+        return crossover || std::find(reset.begin(), reset.end(), target) != reset.end();
+    };
+    for (const Assignment &m : modulation().assignments())
+        if (gone(m.target))
             modulation().removeSlot(m.source, m.slot);
-    }
+    modulation().forgetEmptyTargets(gone);
     std::vector<std::pair<int, double>> changes;
     for (const auto &[index, v] : want)
         if (value(index) != v)
@@ -328,10 +332,11 @@ void FxGraphModel::placeNew(int slot, int copyOf, FxSlotAt where) {
 void FxGraphModel::removeEffect(int slot) {
     const UndoScope step(controller_);
     setFolded(true, slot, false);
-    // Modulation of its knobs goes with it.
+    // Modulation of its knobs goes with it, and the MODS view's empty modulations onto them lose their target.
     for (const Assignment &m : modulation().assignments())
         if (fxSlotOf(m.target) == slot)
             modulation().removeSlot(m.source, m.slot);
+    modulation().forgetEmptyTargets([slot](int target) { return fxSlotOf(target) == slot; });
     // Out of the line, which closes up behind it.
     FxLine line = this->line();
     for (FxLineItem &item : line)
@@ -355,6 +360,7 @@ std::vector<int> FxGraphModel::clear() {
     for (const Assignment &m : modulation().assignments()) // the modulation of their knobs goes with them
         if (fxSlotOf(m.target) >= 0)
             modulation().removeSlot(m.source, m.slot);
+    modulation().forgetEmptyTargets([](int target) { return fxSlotOf(target) >= 0; });
     const std::vector<int> chain = this->chain();
     for (int slot : chain)
         setFolded(true, slot, false);

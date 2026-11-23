@@ -28,13 +28,6 @@ std::string pitchName(int pitch) {
     return std::string(kPitchNames[((pitch % 12) + 12) % 12]) + std::to_string(pitch / 12 - 1);
 }
 
-std::string caps(std::string text) {
-    for (char &ch : text)
-        if (ch >= 'a' && ch <= 'z')
-            ch = static_cast<char>(ch - 'a' + 'A');
-    return text;
-}
-
 constexpr double kNewVelocity = 100.0 / 127.0;
 constexpr float kSeqScaleListW = 170.0f; // the scale's list, wider than its button: "Pentatonic Major" and the rest
 constexpr float kSeqBareMacroDot = 0.3f; // how strongly a macro's dot shows while it has no curve in the pattern
@@ -50,7 +43,7 @@ constexpr int kToolBend = 2; // the third tool
 Rect seqRootBox() { return {kSeqCardControls, kSeqScaleY, 48.0f, 22.0f}; }
 Rect seqScaleButton() { return {kSeqCardControls + 52.0f, kSeqScaleY, 102.0f, 22.0f}; }
 Rect seqFoldButton() { return {kSeqCard.x + kSeqCard.w - 12.0f - 54.0f, kSeqScaleY, 54.0f, 22.0f}; }
-Rect seqLaneTab(const SeqRoll &r, int lane) { // NOTE BEND after MOD WHEEL, before the macros' tab
+Rect seqLaneTab(const SeqRoll &r, int lane) { // Note Bend after Mod Wheel, before the macros' tab
     const int place = lane == static_cast<int>(SeqLane::NoteBend) ? kSeqLaneTabCount - 1 : lane;
     return {r.grid.x + place * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 72.0f, r.laneTabs.h - 6.0f};
 }
@@ -290,6 +283,9 @@ bool SeqPanel::step() {
     bool moved = seqEdgeScroll();
     if (controller().patchLoads() != seqLoadsSeen_) {
         seqLoadsSeen_ = controller().patchLoads();
+        // The notes and points picked were the patch's before: their slots now hold the new one's.
+        seqSelection_.clear();
+        seqCurvePick_ = SeqCurvePick{};
         seqFit();
         moved = true;
     }
@@ -430,9 +426,12 @@ int SeqPanel::seqFreeSlot() const {
     return -1;
 }
 
+// A note past the pattern's end (its Length shortened, which keeps the notes for when it grows again) neither plays
+// nor shows: it isn't picked, so nothing moves it or moves the others by it.
 bool SeqPanel::seqSelected(int slot) const {
     return seqSelectionPattern_ == seqPattern() &&
-           std::find(seqSelection_.begin(), seqSelection_.end(), slot) != seqSelection_.end();
+           std::find(seqSelection_.begin(), seqSelection_.end(), slot) != seqSelection_.end() &&
+           value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Start)) < seqSteps();
 }
 
 std::vector<int> SeqPanel::seqPicked() const {
@@ -440,7 +439,8 @@ std::vector<int> SeqPanel::seqPicked() const {
     if (seqSelectionPattern_ != seqPattern())
         return picked;
     for (int slot : seqSelection_)
-        if (value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Length)) > 0.0)
+        if (value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Length)) > 0.0 &&
+            value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Start)) < seqSteps())
             picked.push_back(slot);
     return picked;
 }
@@ -704,6 +704,20 @@ void SeqPanel::seqDropCovered(const std::vector<int> &kept) {
                 drop.push_back(n.slot);
                 break;
             }
+    }
+    // Two kept landing on one another (quantized onto one step, stretched against the end): the first stays.
+    for (size_t i = 0; i < notes.size(); ++i) {
+        const SeqNote &n = notes[i];
+        if (!isKept(n.slot) || std::find(drop.begin(), drop.end(), n.slot) != drop.end())
+            continue;
+        for (size_t j = 0; j < i; ++j) {
+            const SeqNote &k = notes[j];
+            if (isKept(k.slot) && k.pitch == n.pitch && std::abs(k.start - n.start) < 1e-6 &&
+                std::find(drop.begin(), drop.end(), k.slot) == drop.end()) {
+                drop.push_back(n.slot);
+                break;
+            }
+        }
     }
     std::vector<int> picked = seqSelection_; // the notes dropped leave what is picked, the rest stay picked
     removeSeqNotes(drop);
@@ -1238,7 +1252,7 @@ void SeqPanel::paintSeqBend(int slot, double from, double fromValue, double step
 // Each bent note's bend: a line from its start along its points to its end, in the notes' color lightened, a faint
 // ribbon down to the note's own pitch, dashed where the note is muted or plays at a chance, and past its end (a point
 // left there by a note made shorter, which doesn't play) faint and dashed; the notes that can be edited show their
-// points and their segments' handles. On the roll each at its pitch, in the NOTE BEND lane about the lane's middle.
+// points and their segments' handles. On the roll each at its pitch, in the Note Bend lane about the lane's middle.
 void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes, bool lane) {
     const bool on = value(paramIndex(SeqParam::Enabled)) >= 0.5;
     const Color ink = mix(kAccent, kText, 0.45f);
@@ -1709,7 +1723,8 @@ bool SeqPanel::key(Key key, bool shift) {
         seqCurvePick_ = SeqCurvePick{};
         seqSelection_.clear();
         for (const SeqNote &n : seqNotes())
-            seqSelection_.push_back(n.slot);
+            if (n.start < seqSteps()) // not those past the pattern's end
+                seqSelection_.push_back(n.slot);
         return true;
     }
     if (key == Key::Paste) { // at the step under the mouse on the roll, else after what was copied or pasted last
@@ -1752,7 +1767,7 @@ bool SeqPanel::key(Key key, bool shift) {
         double by = (key == Key::Right ? 1.0 : -1.0) * (grid > 0.0 ? grid : 1.0);
         for (int slot : picked) {
             const double start = value(seqNoteIndex(pattern, slot, SeqNoteParam::Start));
-            by = std::clamp(by, -start, seqSteps() - kShortestNote - start);
+            by = std::clamp(by, std::min(-start, 0.0), std::max(seqSteps() - kShortestNote - start, 0.0));
         }
         for (int slot : picked)
             changes.push_back({seqNoteIndex(pattern, slot, SeqNoteParam::Start),
@@ -2261,11 +2276,20 @@ void SeqPanel::drag(const DragState &d) {
         seqDrag_.mode == SeqDrag::Mode::ResizeStart)
         seqDrag_.free = mods.shift || mods.alt;
     // A point of the lane's curve, or a stroke drawing it, on the grid while Ctrl is held; a note bend's point on the
-    // roll off the grid while Shift or Alt is, and in the NOTE BEND lane on it while Ctrl is.
+    // roll off the grid while Shift or Alt is, and in the Note Bend lane on it while Ctrl is.
     if (seqDrag_.mode == SeqDrag::Mode::CurvePoint || seqDrag_.mode == SeqDrag::Mode::CurvePaint)
         seqDrag_.free = !mods.ctrl;
     if (seqDrag_.mode == SeqDrag::Mode::BendPoint)
         seqDrag_.free = seqDrag_.inLane ? !mods.ctrl : mods.shift || mods.alt;
+    // A note held after a double-click: the cursor left and right or up and down as the mouse last went, once it has
+    // gone a few pixels, so a hand's tremble doesn't flip it.
+    if (seqDrag_.mode == SeqDrag::Mode::Velocity && seqDrag_.extend) {
+        const float dx = std::abs(p.x - seqDrag_.turnedAt.x), dy = std::abs(p.y - seqDrag_.turnedAt.y);
+        if (std::max(dx, dy) >= 4.0f) {
+            seqDrag_.across = dx > dy;
+            seqDrag_.turnedAt = p;
+        }
+    }
     seqDrag(p);
 }
 
@@ -2292,7 +2316,8 @@ void SeqPanel::seqDrag(Point p) {
                 earliest = std::min(earliest, n.start);
                 latest = std::max(latest, n.start);
             }
-            shift = std::clamp(shift, -earliest, steps - kShortestNote - latest);
+            // (Never past the low bound: a note picked can't be past the pattern's end, but the bounds never cross.)
+            shift = std::clamp(shift, std::min(-earliest, 0.0), std::max(steps - kShortestNote - latest, 0.0));
             const std::vector<int> rows = seqRows();
             const int pitchShift = seqPitchAt(p.y) - d.grabPitch;
             for (const SeqNote &n : d.origin) {
@@ -2611,7 +2636,7 @@ void SeqPanel::release() { // a note still heard stops (a release that never cam
 
 // A note bend's point double-clicked goes (but one the press before put down, which stays; a lone point left at 0
 // going with it, as it bends nothing), and a segment's middle straightens; elsewhere, with `adds`, a point put down on a
-// picked note there (the NOTE BEND lane's). Whether it took the double-click.
+// picked note there (the Note Bend lane's). Whether it took the double-click.
 bool SeqPanel::doubleClickBend(Point p, bool lane, bool adds, Modifiers mods) {
     if (const BendHit h = seqBendPointAt(p, lane); h.slot >= 0) {
         if (h == seqBendJustAdded_) {
@@ -2670,11 +2695,12 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
             seqDrag_.mode = SeqDrag::Mode::Velocity;
             seqDrag_.anchor = slot;
             seqDrag_.extend = true;
+            seqDrag_.across = true; // left and right until the mouse goes up or down
             seqDrag_.grabStep = seqStepAt(p.x);
             for (const SeqNote &n : seqNotes())
                 if (n.slot == slot)
                     seqDrag_.origin.push_back(n);
-            seqDrag_.start = seqDrag_.now = p;
+            seqDrag_.start = seqDrag_.now = seqDrag_.turnedAt = p;
             // Its undo step open; and as the press it comes in place of left the drag (see View::doubleClick()), on
             // no widget.
             host_.startDrag(*this, Widget{}, p, true);
@@ -2756,6 +2782,8 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
         }
         controller().beginStep();
         editMany(changes);
+        if (w.b == 4) // onto the grid: what they land on goes, as Quantize has it
+            seqDropCovered(picked);
         controller().endStep();
         return true;
     }
@@ -3503,6 +3531,10 @@ SeqPanel::SeqDrag::Mode SeqPanel::seqRulerMode(float x) const {
 }
 
 std::optional<CursorKind> SeqPanel::cursor(const Widget &w) const {
+    // A note held after a double-click, whose drag is on no widget: left and right while the mouse goes across, setting
+    // its length, up and down while it goes up and down, setting its velocity.
+    if (seqDrag_.mode == SeqDrag::Mode::Velocity && seqDrag_.extend)
+        return seqDrag_.across ? CursorKind::Horizontal : CursorKind::Vertical;
     if (w.kind == Kind::SeqTile) { // a hand to pick it up; moving while it is carried, and over what the roll shows
         if (dragging())
             return seqDrag_.mode == SeqDrag::Mode::ViewRect || (seqDrag_.mode == SeqDrag::Mode::Tile && seqDrag_.carried)
@@ -3610,7 +3642,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             const Str plays[] = {Str::SeqPlayHost, Str::SeqPlayKey, Str::SeqPlayLatch};
             const std::string text = w.param == paramIndex(SeqParam::Pattern)
                                          ? seqPatternName(w.b)
-                                         : caps(tr(plays[std::clamp(w.b, 0, 2)]));
+                                         : std::string(tr(plays[std::clamp(w.b, 0, 2)]));
             c.text(w.rect, text, kTextLabel, on ? litInk(kText) : kDim, Align::Center, on);
         }
         return true;
@@ -3768,7 +3800,8 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::SeqRoot: {
         const bool lit = hovered || host_.isActive(w);
         c.fillRect(w.rect, lit ? wellHover() : wellColor(), kRadiusControl);
-        c.text(w.rect, pitchName(stepped(value(w.param), 0, 127)), kTextBody, lit ? kText : kDim, Align::Center);
+        // The scale's root is a pitch class: its octave does nothing (the keys transpose a pattern from C4).
+        c.text(w.rect, kPitchNames[stepped(value(w.param), 0, 127) % 12], kTextBody, lit ? kText : kDim, Align::Center);
         return true;
     }
     case Kind::SeqFold: { // a well while off, as the root's beside it

@@ -119,10 +119,10 @@ From top to bottom, the plugin window has:
 
 - The **header**: a title bar with the preset bar and file buttons, and the global strip with the output scope,
   meter, global knobs and play controls.
-- The **view tabs**: **ROUTING**, **MATRIX**, **FX**, **SEQ** and **MODS**, which choose what the main panel shows.
-  While ROUTING or MATRIX is shown, an **ALGORITHM** button sits at the right end of the row.
-- The **main panel**. In ROUTING and MATRIX it shows the routing graph or matrix, with the **inspector** floating
-  over its left end. FX, SEQ and MODS use the whole panel. At full size, SEQ also covers the modulation panel, for a
+- The **view tabs**: **Routing**, **Matrix**, **FX**, **Seq** and **Mods**, which choose what the main panel shows.
+  While Routing or Matrix is shown, an **Algorithm** button sits at the right end of the row.
+- The **main panel**. In Routing and Matrix it shows the routing graph or matrix, with the **inspector** floating
+  over its left end. FX, Seq and Mods use the whole panel. At full size, Seq also covers the modulation panel, for a
   taller piano roll.
 - The **modulation panel**: the source cards.
 - The **keyboard strip**: macros, the note and velocity sources, the pitch and mod wheels and a six-octave keyboard.
@@ -134,7 +134,7 @@ shorter.
 
 Tabs use two small marks in their top-right corner, with the same meaning everywhere:
 
-- A **filled dot** means what the tab shows is on and you hear it: FX while an effect is switched on, SEQ while the
+- A **filled dot** means what the tab shows is on and you hear it: FX while an effect is switched on, Seq while the
   sequencer is on, and a node's tab in the inspector while the node is sent to the output.
 - A **ring** means a control on that tab is being modulated, like the ring on a modulated knob. It shows whether
   the tab is open or not, so you can spot modulation on a tab you aren't looking at.
@@ -262,7 +262,7 @@ else) to make it velocity-sensitive.
 
 Below the main controls, a set of tabs selects what the lower part of the page shows.
 
-**ENVELOPE** shows the operator's amplitude envelope (AHDSR) with its knobs. By default it is an organ-like gate:
+**Envelope** shows the operator's amplitude envelope (AHDSR) with its knobs. By default it is an organ-like gate:
 instant attack, full sustain and a 15 ms release.
 
 - **Attack**, **Decay** and **Release**: 0 ms to 10 s. A 0 ms attack starts the note at full level.
@@ -278,7 +278,7 @@ The display zooms to fit the whole envelope. While notes play, a dashed line and
 
 ### Unison tab
 
-**UNISON** sets how many copies of the operator play (up to 16) and how they spread:
+**Unison** sets how many copies of the operator play (up to 16) and how they spread:
 
 - **Unison**: the number of copies.
 - **Detune**: spreads the copies in pitch, up to ±200 cents for the outermost ones.
@@ -305,7 +305,7 @@ In the routing graph, an operator with unison is drawn as a stack of rings.
 
 ### Warp tab
 
-**WARP** shows a scope of the operator and provides phase warp and hard sync functions.
+**Warp** shows a scope of the operator and provides phase warp and hard sync functions.
 
 The **scope** shows the operator's output in the most recent voice, with its FM, envelope and modulation. The trace
 stands still even under heavy FM. The **1 / 2 / 4** buttons choose how many cycles are shown. With no note
@@ -335,7 +335,7 @@ The summary line names the warp and says "note sync" while either is active.
 
 ### Inputs tab
 
-**INPUTS** lists every node routed into the operator, one row each:
+**Inputs** lists every node routed into the operator, one row each:
 
 - the node's name (click it to show that node);
 - four buttons for the route's **mode** (Phase, Linear FM, Exp FM, Ring), with the active one lit;
@@ -354,7 +354,7 @@ With the Noise wave, the Ratio readout is replaced by:
   same loudness.
 - **Spread**: widens it from mono to fully uncorrelated left and right.
 
-Noise has no Pitch, Detune, Phase, unison or warp. Its first tab is **SPECTRUM**, which shows its spectrum against
+Noise has no Pitch, Detune, Phase, unison or warp. Its first tab is **Spectrum**, which shows its spectrum against
 white, pink and brown noise.
 
 ### Custom waves
@@ -375,7 +375,7 @@ button on the operator's summary line opens the partial editor again.
 
 ## 7. Routing
 
-The **ROUTING** and **MATRIX** tabs show the same connections in two ways: as a graph, which shows only the nodes
+The **Routing** and **Matrix** tabs show the same connections in two ways: as a graph, which shows only the nodes
 that are on, or as a grid, which lists every node.
 
 ### The routing graph
@@ -439,7 +439,7 @@ Every route into an operator works in one of four modes (Phase by default):
 | **Exp FM** | Modulates the operator's pitch in octaves, like the FM input of an analog synth (up to 4 octaves at 100 %). Deeper settings pull the pitch upward. |
 | **Ring** | Multiplies the operator's output by the source. At 100 % you hear only the sum and difference frequencies; at 50 % they are mixed with the original tone (amplitude modulation). |
 
-Set the mode from a wire's label, the right-click menu of a wire or matrix cell, or the operator's INPUTS tab. Feedback
+Set the mode from a wire's label, the right-click menu of a wire or matrix cell, or the operator's Inputs tab. Feedback
 is always Phase. Route amounts give finer control at low settings, and **FM Amount** scales all of them.
 
 ### Feedback and loops
@@ -449,7 +449,7 @@ Loops can get loud but never grow without limit, and they fade out after a note 
 
 ### The matrix
 
-The **MATRIX** view is a grid: each row is a source (operator, filter or shaper) and each column a destination (the
+The **Matrix** view is a grid: each row is a source (operator, filter or shaper) and each column a destination (the
 six operators, F1, F2, S1, S2 and OUT). The diagonal is each node's feedback.
 
 - Drag a cell up or down to set its amount.
@@ -462,7 +462,7 @@ row's or column's name shows that node in the inspector, switching it on if need
 
 ### Algorithms
 
-**ALGORITHM**, at the right of the tab row, opens a panel of the classic FM algorithms. The **Operators** switch in
+**Algorithm**, at the right of the tab row, opens a panel of the classic FM algorithms. The **Operators** switch in
 its title row chooses the set:
 
 - **6**: the 32 classic six-operator algorithms, numbered as on the classic charts.
@@ -500,13 +500,28 @@ route something into it, and route it to OUT.
 
 ### Filter types
 
-| Type | Description |
+The type list offers seven types: **Low-pass**, **High-pass**, **Band-pass**, **Notch**, **Comb**, **Formant** and
+**Morph**. Low-pass, high-pass and band-pass each come in several models, which you pick from the **Model** list beside
+the slope list, under the response display. Its **‹** and **›** arrows step through the models, so you can hear each in
+turn. When you pick another type, the filter keeps its model if the new type has it: a ladder low-pass becomes a ladder
+high-pass.
+
+| Type | Models |
 | --- | --- |
-| Low-pass, High-pass, Band-pass, Notch | The classic filter types. Slope 6, 12 (default), 18 or 24 dB/octave; band-pass and notch offer 12 and 24 only. |
+| Low-pass | **SVF**, **Ladder**, **Diode**, **Sallen-Key** |
+| High-pass | **SVF**, **Ladder**, **Sallen-Key** |
+| Band-pass | **SVF**, **Ladder** |
+| Notch, Comb, Formant, Morph | One model each, so no Model list |
+
+| Type or model | Description |
+| --- | --- |
+| SVF (low-pass, high-pass, band-pass), Notch | The clean, classic filters. Slope 6, 12 (default), 18 or 24 dB/octave; band-pass and notch offer 12 and 24 only. |
 | Comb | A tuned feedback delay: Cutoff sets the pitch, Resonance the feedback. |
-| Ladder | A four-pole transistor ladder low-pass with saturating stages. Slope picks 6 to 24 dB (one to four stages). Resonance thins the low end; it self-oscillates at high resonance. |
-| Diode | A four-pole diode ladder: darker than the ladder. 24 dB only. Self-oscillates. |
-| Sallen-Key LP, Sallen-Key HP | Two-pole filters in the style of a classic semi-modular, 12 dB only. Soft without resonance; they scream and break up as resonance rises. |
+| Ladder low-pass | A four-pole transistor ladder with saturating stages. Slope picks 6 to 24 dB (one to four stages). Resonance thins the low end; it self-oscillates at high resonance. |
+| Ladder high-pass | The same ladder built from high-pass stages. Slope picks 6 to 24 dB. Resonance thins the top end; it self-oscillates at high resonance. |
+| Ladder band-pass | A ladder that rings at its center, 12 or 24 dB. It self-oscillates at high resonance, louder than the low-pass ladder. |
+| Diode low-pass | A four-pole diode ladder: darker than the ladder. 24 dB only. Self-oscillates. |
+| Sallen-Key low-pass and high-pass | Two-pole filters in the style of a classic semi-modular, 12 dB only. Soft without resonance; they scream and break up as resonance rises. |
 | Formant | Three band-passes at the formants of a vowel. **Vowel** sweeps A, E, I, O, U; Cutoff shifts the formants; Resonance narrows them. |
 | Morph | Morphs from low-pass to high-pass as **Morph** goes from 0 to 1, through band-pass or (with its notch switch on) notch. 12 or 24 dB. |
 
@@ -516,8 +531,12 @@ route something into it, and route it to OUT.
 - **Resonance**.
 - **Key Track**: how far the cutoff follows the note from C4; at 100 % the cutoff moves an octave for every octave the
   note moves (0 by default).
-- **Drive**: saturation before the filter.
+- **Drive**: saturation before the filter. It changes the tone, not the volume: a sound comes out about as loud as it
+  went in, however far Drive is turned. On the Ladder and Diode models, a loud sound driven hard also pulls the
+  resonance down, as on an analog ladder. Projects made with earlier versions play their driven Ladder and Diode
+  filters this way too, so they can sound a little louder, with less resonance.
 - **Mix**: blends the filter's input with its output (100 % = fully filtered).
+- **Model**: a list under the response display, for a low-pass, high-pass or band-pass.
 - **Slope**: a list under the response display.
 - **Vowel** (Formant) or **Morph** and the notch switch (Morph).
 
@@ -572,7 +591,7 @@ filters that feed the shaper.
 - **Depth**: ±100 % of the target's range.
 - **Polarity**: every source is either **unipolar** (it pushes its targets one way, by its depth) or **bipolar** (it
   swings them both ways around their setting, half the depth each way). Change it from the source's right-click menu
-  or its switch in the MODS view; it applies to all of the source's modulations.
+  or its switch in the Mods view; it applies to all of the source's modulations.
 - **Curve**: each modulation can bend its source's output, from −100 % (slow start) to +100 % (fast start), before
   the depth is applied. One source can thus open a cutoff linearly and swell a level slowly at the same time.
 - **Amount**: scales the modulation's depth from 0 to 100 % (100 % by default).
@@ -594,8 +613,8 @@ Every source has a colored **handle** (on its card, beside each macro, over each
 Velocity displays, and an operator's letter at the top of its page). Drag it onto a knob, a wire label, a matrix cell,
 a stepper or the Ratio readout. A new modulation starts at +30 %.
 
-While you drag a handle, hold it over a view tab (ROUTING, MATRIX, FX, SEQ or MODS) for half a second to show that
-view, then drop it on a control there. Hold it over a node in ROUTING, or over a node's name in MATRIX, for half a
+While you drag a handle, hold it over a view tab (Routing, Matrix, FX, Seq or Mods) for half a second to show that
+view, then drop it on a control there. Hold it over a node in Routing, or over a node's name in Matrix, for half a
 second, or over its tab at the top of the inspector, to show that node's page in the inspector.
 
 The target then shows:
@@ -617,7 +636,7 @@ Hovering a source's handle draws dashed lines to all of its targets on screen. A
 **More modulations than fit**: when a control has more modulations than its width can show, a **+n** badge holds the
 rest. Click it to open a list of all modulations on that control, with bypass, aux, depth and remove for each row.
 
-**Assigning an aux**: drop a source's handle on another modulation's depth handle, on its aux cell in the MODS view,
+**Assigning an aux**: drop a source's handle on another modulation's depth handle, on its aux cell in the Mods view,
 or on a row of a +n badge's list. The depth handle then shows a ring in the aux's color.
 
 **Live display**: while notes play, a white dot on each modulated control shows the control's current value for the most
@@ -627,14 +646,15 @@ recent note. With no notes playing, it shows where the macros and mod wheel take
 
 The panel's title row has:
 
-- **+ SOURCE**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
+- **+ Source**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
   used (for example 4/32).
 
-Source cards show four at a time. After the last card, a dashed **ADD SOURCE** card opens the same list.
+Source cards show four at a time. After the last card, a dashed **Add Source** card opens the same list.
 
 Sources are numbered by type in the order they appear ("LFO 2", "Env 1", "Curve 1", "Random 1", "MIDI 1").
 
-**A card's title row** holds the handle, the name, a fold chevron, a power switch and an **×**.
+**A card's title row** holds the handle and the name at the left, and a fold chevron, a power switch and an **×** at the
+right. The fold chevron shows while the mouse is over the card (on a touchscreen, always).
 
 - **Power** switches the source off: it then stands still and modulates nothing, but keeps its targets.
 - **Fold** shrinks the card to a narrow strip.
@@ -642,8 +662,8 @@ Sources are numbered by type in the order they appear ("LFO 2", "Env 1", "Curve 
 - **Right-click** the title or handle to duplicate the source (without its targets), clear its targets, set
   Unipolar or Bipolar, or remove it.
 
-A card ends with a button that counts its modulations and opens them in the MODS view (**MODS ›**). With none, it
-reads **No modulations** and adds an empty modulation from the source.
+A card ends with a link that counts its modulations and opens them in the Mods view (**Mods ›**). With none, it
+reads **No modulations**; clicking it adds an empty modulation from the source.
 
 ### LFO
 
@@ -767,7 +787,7 @@ points). By default it is a straight line; draw it falling instead of rising to 
 
 ### Operators as sources
 
-Each operator's output is a source too: **Op A** to **Op F**. Pick one in the MODS view's source or aux menu, or drag
+Each operator's output is a source too: **Op A** to **Op F**. Pick one in the Mods view's source or aux menu, or drag
 the operator's letter at the top of its page in the inspector, which is its handle.
 
 - It follows what the operator plays, after its envelope. The operator doesn't need to be heard: one with its Out at
@@ -790,9 +810,9 @@ effect that takes audio-rate modulation, and its Formant type doesn't.
 When the last voice ends, its modulation of the effects (and of Volume) carries on while the effects ring out, so an
 LFO on a filter after a long reverb keeps sweeping the reverb's tail.
 
-### MODS view
+### Mods view
 
-The **MODS** tab lists every modulation as a row of a table, grouped by source. From left to right, a row has:
+The **Mods** tab lists every modulation as a row of a table, grouped by source. From left to right, a row has:
 
 - the **bypass** dot;
 - the **source**, with the source's **polarity** switch after its name on its first row;
@@ -867,14 +887,15 @@ The **FX** tab shows the effects as a **row of cards**, left to right in process
 
 **Adding effects**:
 
-- **+ EFFECT** at the top left opens the list of effect types, grouped as DRIVE, EQ & FILTER, DYNAMICS, SPACE,
+- **+ Effect** at the top left opens the list of effect types, grouped as DRIVE, EQ & FILTER, DYNAMICS, SPACE,
   MODULATION, STEREO & PHASE and SPLIT. The new effect goes at the end. A count shows how many of the 32 effects
   are used.
-- The dashed **ADD EFFECT** card after the last effect opens the same list.
+- The dashed **Add Effect** card after the last effect opens the same list.
 - The **arrow** before each card turns into a **+** under the mouse; click it to insert an effect there.
 
-**A card** has a title row with the effect's icon and name, a fold chevron, a power switch and an **×**, then a live
-display, then its controls. The display reflects modulation as it happens.
+**A card** has a title row with the effect's icon and name at the left and a fold chevron, a power switch and an **×**
+at the right, then a live display, then its controls. The fold chevron shows while the mouse is over the card (on a
+touchscreen, always). The display reflects modulation as it happens.
 
 - **Power** (or a click on the icon) switches the effect off.
 - **Drag** the title or icon to move the card along the chain. Hold **Ctrl** as you start dragging to place a copy.
@@ -904,7 +925,7 @@ In the row, a split appears as a **container card** holding its bands. Its left 
   down to −60 dB (silence);
 - an **S** under each level to **solo** that band.
 
-Next to these controls, the cards of the band shown, ending with a dashed **ADD TO LOW/MID/HIGH** card. Drag cards
+Next to these controls, the cards of the band shown, ending with a dashed **Add to Low/Mid/High** card. Drag cards
 onto a band, or onto a band's tab to put them at the end of that band; drag them out of a band to put them on the
 main chain. Switching from three bands to two asks where the middle band's effects should go.
 
@@ -924,7 +945,7 @@ Both views show the same chain.
 - Under the mouse, a node shows an **×** to remove it and, for an effect, a **power** symbol.
 - Drag a node to move it; the others glide aside. Hold Ctrl to place a copy. A split carries its bands and join.
 - Nodes and wires glow with the level of the sound passing through them.
-- **+ EFFECT** adds after the selected node.
+- **+ Effect** adds after the selected node.
 
 ### Seamless editing and latency
 
@@ -1016,8 +1037,9 @@ knobs below set the selected band.
 
 #### Filter
 
-The voice filters' types on the whole mix: low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
-and HP, formant and morph, with their slopes. Controls: **Cutoff**, **Reso**, **Key Track** (follows the most recent
+The voice filters' types on the whole mix: low-pass, high-pass, band-pass, notch, comb, formant and morph, with their
+models and slopes. The **Model** button under the display shows the model's short name (SVF, LAD, DIO, SK); click it
+to pick another. Controls: **Cutoff**, **Reso**, **Key Track** (follows the most recent
 note), **Drive** and **Mix**, plus **Vowel** or **Morph**. The display shows the response with a draggable handle and
 the output spectrum behind it. See [Filters](#8-filters).
 
@@ -1142,9 +1164,9 @@ The display shows the stereo field over frequency, with handles for each control
 
 ## 12. Sequencer
 
-FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **SEQ** view; switch it on with the
+FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **Seq** view; switch it on with the
 power switch on its settings card. At full size the view also takes the space of the modulation panel, for a taller
-piano roll and the patterns overview. The button next to the power switch, or a double-click on the **SEQ** tab,
+piano roll and the patterns overview. The button next to the power switch, or a double-click on the **Seq** tab,
 switches it to half size, with the modulation panel in view, and back.
 
 ![Sequencer](seq.png)
@@ -1165,15 +1187,16 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 ### The settings card
 
 - **Power** switch.
-- **PATTERN A–D**: the pattern you edit and play. To copy one, use the patterns overview below the card. You can
+- **Pattern A–D**: the pattern you edit and play. To copy one, use the patterns overview below the card. You can
   modulate it too: drag a source's handle onto the buttons. Modulation moves it in whole patterns, and the pattern it
   picks gets a ring (with nothing playing, the one the macros and mod wheel pick). Under the buttons, a line shows how far each modulation reaches, with depth handles
   you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
-- **PLAY**:
+- **Play**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you
     load it. To stop it, switch the sequencer off or pick **Key**.
-  - **Key**: plays while a key is held, from the pattern's start, transposed by the newest key relative to **Root**.
+  - **Key**: plays while a key is held, from the pattern's start, transposed by the newest key relative to C4: C4
+    plays the pattern as written, D4 two semitones higher. The scale's **Root** doesn't move it.
   - **Latch**: starts with a key and keeps playing after release; a new key transposes it. All Notes Off or All
     Sound Off (which hosts send when they stop) ends it.
 - **Speed**: how fast the steps go, against a step of a 1/16 note at the host's tempo: ×1 (the default) plays
@@ -1185,9 +1208,9 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
   variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
   four: drag a source's handle onto the knob, as with any other control.
-- **ORDER**: forward, backward, ping-pong or random.
-- **SCALE**: the **Root** (drag or scroll; double-click for C4), the scale (Chromatic, Major, Minor, Dorian,
-  Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **FOLD**,
+- **Order**: forward, backward, ping-pong or random.
+- **Scale**: the **Root** (drag or scroll; double-click for C), the scale (Chromatic, Major, Minor, Dorian,
+  Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **Fold**,
   which shows only the scale's rows. Notes off the scale are hatched.
 
 In Key and Latch, the keys you press play no notes of their own; they only start and transpose the pattern.
@@ -1209,12 +1232,12 @@ part of it the piano roll shows, and the one playing shows the playhead.
 The **toolbar** above the roll has:
 
 - **Select | Draw | Bend**: the editing tool.
-- **SNAP** and its list (Off, 1/4 to 1/64, triplets; the wheel steps it).
+- **Snap** and its list (Off, 1/4 to 1/64, triplets; the wheel steps it).
 - **×2** and **÷2**: makes the selected notes (or all notes) twice or half as long and as far apart.
-- The **note field**: NOTE, VEL, CHANCE, LEN, OFFSET and BEND of the selected notes. Drag or scroll a value to change
-  every selected note; double-click to reset VEL to 100, CHANCE to full and OFFSET to 0. BEND shows how far the note
+- The **note field**: Note, Vel, Chance, Len, Offset and Bend of the selected notes. Drag or scroll a value to change
+  every selected note; double-click to reset Vel to 100, Chance to full and Offset to 0. Bend shows how far the note
   bends, in semitones: drag it to make the selected notes' bends deeper or shallower, double-click to remove them.
-- **SLIDE** and **MUTE** for the selected notes.
+- **Slide** and **Mute** for the selected notes.
 - The **bin**, which clears the pattern after asking.
 
 The **roll** shows piano keys on the left (click to hear a key), bars and beats along the top, and the loop as an
@@ -1228,8 +1251,8 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
   to drag copies.
 - Drag a note's right or left end to change the length or start of the selected notes.
 - Drag from empty space to select notes with a box.
-- Double-click to add a note one grid step long (hold and drag up or down for velocity, sideways to lengthen);
-  double-click a note to delete it.
+- Double-click to add a note one grid step long (hold and drag up or down for velocity, sideways to lengthen; the
+  cursor shows which way you are dragging); double-click a note to delete it.
 
 **Editing with Draw**:
 
@@ -1270,12 +1293,12 @@ Double-click the ruler to loop the whole pattern.
 
 Under the roll, the **lane** shows a stem for each note. Its tabs select what it edits:
 
-- **VELOCITY** and **CHANCE**: drag across with Draw to set the notes there. With Select, click or box-select the
+- **Velocity** and **Chance**: drag across with Draw to set the notes there. With Select, click or box-select the
   dots (which selects their notes) and drag to change the selected notes together. Double-click to reset.
-- **BEND**, **MOD WHEEL** and **MACRO**: automation **curves** for the pattern, up to 64 points each.
+- **Bend**, **Mod Wheel** and **Macro**: automation **curves** for the pattern, up to 64 points each.
   - The **bend** curve adds to the pitch bend (as a share of the Bend range).
   - The **mod wheel** curve adds to the Mod Wheel.
-  - A **macro** curve replaces its macro's knob position while it plays. Click the MACRO tab's label to show the
+  - A **macro** curve replaces its macro's knob position while it plays. Click the Macro tab's label to show the
     macro it names; click its arrow to choose another from the list of the eight. A macro with a curve in this pattern
     shows it in the list.
 
@@ -1291,7 +1314,7 @@ On a curve:
 Curves wrap around the pattern's end, so the loop comes round without a jump. They create no automation or undo
 steps; the wheels and macro knobs show where the curves take them while they play.
 
-**NOTE BEND** shows the selected notes' own bends larger, which helps with chords whose notes overlap. Its range at
+**Note Bend** shows the selected notes' own bends larger, which helps with chords whose notes overlap. Its range at
 the right end fits the pattern's bends. Drag a point or a segment's middle as on the roll. With Draw or Bend, press
 over a selected note to add a point; with Select, double-click. Hold Ctrl to snap to whole semitones and the grid.
 
@@ -1303,7 +1326,7 @@ With the mouse over the plugin window:
 | --- | --- |
 | Ctrl+A | Select all notes |
 | Left / Right | Move selected notes one grid step |
-| Up / Down | Move selected notes one row (a scale degree with FOLD) |
+| Up / Down | Move selected notes one row (a scale degree with Fold) |
 | Shift+Up / Shift+Down | Move selected notes an octave |
 | Delete | Delete selected notes |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste (at the mouse position on the roll) |
@@ -1524,6 +1547,8 @@ your web browser.
 - **Lines**: how strongly the dashed lines from a source's handle to its targets are drawn (75 % by default).
 - **Grid**: how strongly the sequencer's grid lines are drawn (50 % by default).
 - **Handles**: the size of the depth handles: Small (default), Medium or Large.
+- **Cards**: **Plain** (default) or **Tinted**. Tinted gives each effect and source card a faint wash of its own
+  color in Spectrum and Porcelain. Midnight and Light outline their cards in color instead, so it is greyed out there.
 
 Double-click a slider to reset it. The plugin window's size is also remembered, shrunk to fit the screen if it is
 larger, and so is whether the keyboard strip is collapsed: new instances open at the size you last resized a plugin

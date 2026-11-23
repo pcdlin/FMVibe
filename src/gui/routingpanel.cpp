@@ -1253,7 +1253,7 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::NodeDelete: { // as on the effects graph's nodes (see FxPanel::paintFxGraph())
         const Point x = w.rect.center();
         const Color ink = hovered ? kText : kDim;
-        c.fillCircle(x, 7.5f, hovered ? kRaised : kCardColor);
+        c.fillCircle(x, 7.5f, nodeDiscFill(hovered));
         c.strokeCircle(x, 7.5f, ink, 1.2f);
         c.line({x.x - 3.0f, x.y - 3.0f}, {x.x + 3.0f, x.y + 3.0f}, ink, 1.4f);
         c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
@@ -1870,7 +1870,7 @@ bool RoutingPanel::menuCommand(int command) {
         edit(routeModeOfRoute(menuRoute_), command - kRouteModeCommand);
     } else if (command == kMenuResetBend && menuRoute_ >= 0) {
         const UndoScope step(controller());
-        routing_.setWireBend(menuRoute_, kDefaultWireBend);
+        routing_.setWireBend(menuRoute_, RoutingModel::defaultWireBend(menuRoute_)); // a line to OUT straight
     } else {
         return false;
     }
