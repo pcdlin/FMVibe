@@ -1333,7 +1333,8 @@ With the mouse over the plugin window:
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste (at the mouse position on the roll) |
 | Ctrl+D | Duplicate the selected notes and place the copies right after them |
 
-With no notes selected, these keys go to your host. The roll's right-click menu offers Cut, Copy, Paste, Duplicate,
+Notes moved up or down are heard for 300 ms at their new pitch. With no notes selected, these keys go to your
+host. The roll's right-click menu offers Cut, Copy, Paste, Duplicate,
 Delete, Select All, Slide, Mute and **Quantize** (moves the selected notes onto the snap grid).
 
 ### Sequencer behavior

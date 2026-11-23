@@ -1187,6 +1187,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   - **Keys**, while the mouse is over the editor (as for undo): **Ctrl+A** picks every note of the pattern; **Left**
     and **Right** move the notes picked a grid step (a step with the snap off), **Up** and **Down** a row (a degree of
     the scale while folded), and **Shift+Up** and **Shift+Down** an octave, and **Delete** removes them, each an undo step. Moved up or down, the
+    notes are heard alone at their new pitches for 300 ms (each pitch once; the next move lets them go), and the
     rows follow only as far as shows every note moved, and not at all while they all show. **Ctrl+C** copies the notes
     picked, **Ctrl+X** cuts them, and **Ctrl+V** pastes what was copied or cut into the pattern shown (any pattern),
     each note's pitch, length, velocity, chance, Slide and Mute as they were: at the step under the mouse on the roll

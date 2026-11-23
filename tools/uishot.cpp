@@ -7397,7 +7397,10 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     }
 
     // Keys: with nothing picked the arrows go on to the host; Ctrl+A picks every note, Right moves them a grid step
-    // (a step at 1/16), Up a semitone and Shift+Up an octave, each an undo step.
+    // (a step at 1/16), Up a semitone and Shift+Up an octave, each an undo step. The editor's clock is the test's until
+    // the rows' checks below: a note moved up or down is heard for 300 ms on it.
+    static double now = 0.0;
+    view.setClock([] { return now; });
     click(view, at(15.5, 66)); // nothing there: nothing picked
     const bool passed = !view.seqKey(View::Key::Right, false);
     const bool all = view.seqKey(View::Key::SelectAll, false);
@@ -7422,6 +7425,34 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
     check(passed && all && right && up && octave && field(0, SeqNoteParam::Start) == 0.0 &&
               field(0, SeqNoteParam::Pitch) == 48.0,
           "Ctrl+A picks every note, and the arrows move them a step, a semitone and with Shift an octave, undoably");
+    // A note moved up or down by the arrows is heard at its new pitch for 300 ms (the editor's clock moved on),
+    // a move before it let go as the next comes; Left and Right hear nothing.
+    {
+        click(view, at(15.5, 66)); // nothing picked
+        click(view, at(0.5, 48));  // the first note
+        now += 1.0; // what the moves above put on let go
+        view.poll();
+        model.lastAudition = -1;
+        view.seqKey(View::Key::Right, false);
+        const bool across = model.lastAudition < 0 && model.auditioning == 0;
+        view.seqKey(View::Key::Up, false);
+        const bool heardUp = model.lastAudition == 49 && model.auditioning == 1;
+        now += 0.2;
+        view.seqKey(View::Key::Up, true);
+        const bool heardOctave = model.lastAudition == 61 && model.auditioning == 1;
+        now += 0.2;
+        view.poll();
+        const bool still = model.auditioning == 1;
+        now += 0.15;
+        view.poll();
+        const bool ended = model.auditioning == 0;
+        view.undo();
+        view.undo();
+        view.undo();
+        model.ui.seqLow = 48; // the rows went up with the octave: back where they were
+        check(across && heardUp && heardOctave && still && ended && field(0, SeqNoteParam::Pitch) == 48.0,
+              "a note moved up or down by the arrows is heard at its new pitch for 300 ms");
+    }
     // Shift+Up moves the rows only as far as shows every note moved: every note picked (C3 to A#3), up an octave to
     // C4 to A#4, past the top row (A4, the rows scrolled down to end there), takes them up a row; the first alone, to
     // C4, leaves them where they are.
@@ -7445,6 +7476,11 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         check(lowAll == lowBefore + 1 && lowOne == lowBefore,
               "an octave's move takes the rows only as far as shows every note moved");
     }
+    now += 1.0; // the notes those moves put on let go, and the editor's clock its own again
+    view.poll();
+    view.setClock([] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    });
 
     // The lane: a picked note's dot ringed, an unpicked one's not (read off the rendered pixels).
     auto laneDot = [&](double step, double velocity) {

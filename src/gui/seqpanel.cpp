@@ -268,6 +268,8 @@ bool SeqPanel::seqEdgeScroll() {
 // The playhead, while the view shows, and the notes it plays glowing; the keys easing whether shown or not, so they
 // show where they are.
 void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
+    if (!seqBlipPitches_.empty() && host_.now() >= seqBlipUntil_)
+        seqBlipEnd();
     const Telemetry &was = host_.telemetry();
     bool moved = false;
     if (wide() && (t.seqPosition != was.seqPosition || t.seqPattern != was.seqPattern || t.seqKeys != was.seqKeys))
@@ -1955,15 +1957,39 @@ bool SeqPanel::key(Key key, bool shift) {
         seqDropCovered(picked);
         controller().endStep();
         seqReveal(picked, key == Key::Up);
+        seqBlip(picked);
         return true;
     }
     controller().beginStep();
     editMany(changes);
     seqDropCovered(picked);
     controller().endStep();
-    if (key == Key::Up || key == Key::Down)
+    if (key == Key::Up || key == Key::Down) {
         seqReveal(picked, key == Key::Up);
+        seqBlip(picked);
+    }
     return true;
+}
+
+void SeqPanel::seqBlip(const std::vector<int> &slots) {
+    seqBlipEnd();
+    const int pattern = seqPattern();
+    for (int slot : slots) {
+        if (value(seqNoteIndex(pattern, slot, SeqNoteParam::Length)) <= 0.0)
+            continue; // dropped, covered by another
+        const int pitch = stepped(value(seqNoteIndex(pattern, slot, SeqNoteParam::Pitch)), 0, 127);
+        if (std::find(seqBlipPitches_.begin(), seqBlipPitches_.end(), pitch) == seqBlipPitches_.end())
+            seqBlipPitches_.push_back(pitch);
+    }
+    for (int pitch : seqBlipPitches_)
+        controller().auditionNote(pitch, true);
+    seqBlipUntil_ = host_.now() + kSeqBlipSeconds;
+}
+
+void SeqPanel::seqBlipEnd() {
+    for (int pitch : seqBlipPitches_)
+        controller().auditionNote(pitch, false);
+    seqBlipPitches_.clear();
 }
 
 void SeqPanel::stepApplied(const UndoStep &step, bool forward) {

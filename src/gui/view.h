@@ -662,6 +662,7 @@ private:
     bool scoped() const override { return derivedDepth_ > 0; }
     const Telemetry &telemetry() const override { return telemetry_; }
     Point mouse() const override { return hoverPoint_; }
+    double now() const override { return clock_(); }
     const std::optional<Widget> &hovered() const override { return hover_; }
     bool shapeEditorOpen() const override { return shapeEditing() >= 0; }
     bool partialEditorOpen() const override { return partialEditing() >= 0; }

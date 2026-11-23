@@ -992,7 +992,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     each step dragged across; the card's switches showing tooltips of their own (read off the rendered pixels); the
     roll zoomed in across by its +, Ctrl+A picking every note and the arrows moving them a step, a semitone and with
     Shift an octave (the rows following only as far as shows every note moved; with none picked, going on to the
-    host), each undoably; a picked note's dot
+    host), each undoably, a note moved up or down heard at its new pitch for 300 ms (the editor's clock moved
+    on), Left and Right hearing nothing; a picked note's dot
     ringed in the lane (read off the rendered pixels) and, with Draw, the picked notes' velocities dragged together
     there (where notes start together, the picked one's alone), the
     lane's cursor a pen and up and down over a dot and while one is dragged; with Select, a box from the lane's empty

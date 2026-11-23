@@ -28,6 +28,7 @@ struct SeqRoll; // see layout.h
 class SeqPanel : public Panel {
 public:
     explicit SeqPanel(PanelHost &host);
+    ~SeqPanel() override { seqBlipEnd(); } // a note an arrow's move put on let go as the editor closes
 
     // The confirm dialog's question this panel asks (see View::confirm_, whose other kinds are the View's and the
     // preset browser's): every note of the pattern going.
@@ -400,6 +401,13 @@ private:
     };
     Point seqBoxStart() const; // the Box's starting corner, where the roll shows it now
     void seqHear(int pitch); // that note heard from now on in the drag, the one before let go; -1 lets it go
+    // The notes picked moved a row or an octave by the arrows, heard for a moment at their new pitches (each pitch
+    // once), those heard before let go; poll() lets them go once kSeqBlipSeconds have passed.
+    void seqBlip(const std::vector<int> &slots);
+    void seqBlipEnd();
+    static constexpr double kSeqBlipSeconds = 0.3;
+    std::vector<int> seqBlipPitches_; // the pitches heard
+    double seqBlipUntil_ = 0.0;       // until when, on the editor's clock (see PanelHost::now())
     SeqDrag seqDrag_;
     bool dragging() const { return seqDrag_.mode != SeqDrag::Mode::None; } // a drag of its own goes on
     // The pattern's loop, in steps, as its params have it (the end, 0 for the pattern's, as the pattern's end), and

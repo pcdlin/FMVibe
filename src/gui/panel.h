@@ -112,6 +112,8 @@ public:
     virtual const Telemetry &telemetry() const = 0;
     // Where the mouse is, and the widget under it as the last move found it.
     virtual Point mouse() const = 0;
+    // What the editor tells time by, in seconds (see View::setClock()).
+    virtual double now() const = 0;
     virtual const std::optional<Widget> &hovered() const = 0;
     // The full-size editors that show over the panels' row while they are open, hiding the views under them: a drawn
     // shape's, and an operator's Custom wave's partials.
