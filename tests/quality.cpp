@@ -3813,6 +3813,62 @@ template <class Span> ScopeMotion lowNoteMotion(Engine &e, Telemetry &t, const S
     return motion;
 }
 
+// Drive into the ladder and the diode: held under kAnalogDriveCeiling going in rather than 1, so a loud, driven sound
+// reaches their own saturation, which takes the input less the feedback, and their resonance comes down as it does in a
+// driven transistor ladder. A full-level saw through 85 % resonance: its peak at full Drive some 20 dB further under
+// its fundamental than undriven, in a voice filter and the filter effect (which hears the voices 12 dB down), where
+// held under 1 it came down 9 to 10 dB in a voice filter and 14 in the effect.
+void driveIntoLadderChecks() {
+    std::printf("drive into the ladder and the diode:\n");
+    // A saw at C2 through it, cut off at 1 kHz at 85 % resonance.
+    auto play = [](bool effect, FilterType type, double drive) {
+        return steadyTone(2, 36, [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+            if (effect) {
+                p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::Filter);
+                p[paramIndex(3, FxParam::FilterType)] = static_cast<double>(type);
+                p[paramIndex(3, FxParam::FilterSlope)] = 3.0;
+                p[paramIndex(3, FxParam::FilterCutoff)] = normFromCutoff(1000.0);
+                p[paramIndex(3, FxParam::FilterResonance)] = 0.85;
+                p[paramIndex(3, FxParam::FilterDrive)] = drive;
+                chain(p, {3});
+                return;
+            }
+            p[paramIndex(0, OpParam::Out)] = 0.0;
+            p[sendIndex(0, 0)] = 1.0;
+            p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            p[paramIndex(0, FilterParam::Type)] = static_cast<double>(type);
+            p[paramIndex(0, FilterParam::Slope)] = 3.0;
+            p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(1000.0);
+            p[paramIndex(0, FilterParam::Resonance)] = 0.85;
+            p[paramIndex(0, FilterParam::Drive)] = drive;
+            p[paramIndex(0, FilterParam::Out)] = 0.25;
+        });
+    };
+    // The resonance's peak (the harmonics from 850 to 1180 Hz) against the fundamental, in dB.
+    auto peak = [](const std::vector<float> &out) {
+        const std::vector<double> power = powerSpectrum(out);
+        const double binHz = kSampleRate / kFftSize;
+        double band = 1e-30, fundamental = 1e-30;
+        for (size_t b = static_cast<size_t>(850.0 / binHz); b < static_cast<size_t>(1180.0 / binHz); ++b)
+            band += power[b];
+        const long center = std::lround(keyHz(36) / binHz);
+        for (long b = center - 3; b <= center + 3; ++b)
+            fundamental += power[static_cast<size_t>(b)];
+        return 10.0 * std::log10(band / fundamental);
+    };
+    bool pulled = true;
+    for (bool effect : {false, true})
+        for (FilterType type : {FilterType::Ladder, FilterType::Diode}) {
+            const double undriven = peak(play(effect, type, 0.0)), driven = peak(play(effect, type, 1.0));
+            std::printf("      %-7s %-15s its resonance %.1f dB over the fundamental undriven, %.1f at full Drive\n",
+                        type == FilterType::Ladder ? "ladder" : "diode", effect ? "(effect)" : "(voice filter)",
+                        undriven, driven);
+            pulled = pulled && driven < undriven - (effect ? 16.0 : 15.0);
+        }
+    check(pulled, "a loud sound driven into the ladder and the diode pulls their resonance down");
+}
+
 // The scope: an operator's output, phase-locked to it, captured only while asked for.
 void scopeChecks() {
     std::printf("scope:\n");
@@ -6420,9 +6476,10 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -45.0},
-        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level), resonant
-        // here and cut off above the note's 4th harmonic: its stages' harmonics, which are what it sounds of, alias
-        // some 6 dB more than the driven low-pass's at 2x, falling as the oversampling rises.
+        // The ladder saturates in each of its stages as well as through Drive (which feeds it at full level, held
+        // under kAnalogDriveCeiling, so its stages take the loudest of it), resonant here and cut off above the note's
+        // 4th harmonic: its stages' harmonics, which are what it sounds of, alias some 8 dB more than the driven
+        // low-pass's at 2x (2 dB more than when Drive held what it fed it under 1), falling as the oversampling rises.
         {"saw into driven ladder at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6439,7 +6496,8 @@ int main() {
          -40.0},
         // The diode, saturating at its input, and the Sallen-Key, clipping in its loop, driven and resonant likewise.
         // The diode's one saturation takes its input less all of its feedback, so it clips harder there than the
-        // ladder's stages do, and aliases some 6 dB more at 2x, falling as the oversampling rises.
+        // ladder's stages do, and aliases some 2 dB more at 2x (Drive's ceiling sharing the clipping out with it, 2 dB
+        // less than when Drive held what it fed it under 1), falling as the oversampling rises.
         {"saw into driven diode at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6453,9 +6511,10 @@ int main() {
              p[paramIndex(0, FilterParam::Out)] = 0.25;
          },
          -35.0},
-        // The ladder's high-pass and band-pass saturate in their stages as its low-pass does; the high-pass, cut
-        // off under the note, passes all of its harmonics through them. Neither's peak sits on the note's top
-        // harmonics as the low-pass's does here, and both alias some 8 dB less at 2x.
+        // The ladder's high-pass and band-pass saturate in their stages as its low-pass does, Drive held under the
+        // same ceiling; the high-pass, cut off under the note, passes all of its harmonics through them. Neither's peak
+        // sits on the note's top harmonics as the low-pass's does here: the high-pass aliases some 7 dB less at 2x,
+        // and the band-pass, its input taken down as its resonance rises, some 16 dB less.
         {"saw into driven LAD HP at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
@@ -6514,6 +6573,7 @@ int main() {
     syncWarpChecks(factors);
     newerEffectChecks();
     unisonModeChecks();
+    driveIntoLadderChecks();
 
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should

@@ -340,6 +340,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     high shelf, a low cut and a high cut) sounding within 1.25 dB of their drawn curves from 3 to 15 kHz, and a
     delay's sixth echo of a 10 kHz burst, at a time between two samples, within 0.5 dB of Feedback's fifth power
     under its first;
+  - Drive into the ladder and the diode, in a voice filter and the filter effect: a full-level saw through 85 %
+    resonance coming out of full Drive with its peak some 20 dB further under its fundamental than undriven (with
+    Drive held under 1, as it was, 9 to 10 dB in a voice filter and 14 in the effect, which hears the voices 12 dB
+    down);
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
     retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as

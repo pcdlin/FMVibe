@@ -121,6 +121,19 @@ inline double analogSaturate(double x, double scale) {
 // scale of the levels an operator sends, so they come out warmed and Drive pushes them on into grit, while
 // self-oscillation and loud input are held.
 constexpr double kLadderSaturationScale = 1.5;
+// The level Drive's saturator holds what it feeds the ladder's types and the diode under (see Filter::process()):
+// twice the levels an operator sends, so a driven sound reaches their own saturation, which takes the input and the
+// feedback together and so pulls the resonance down as the sound gets louder, as a driven transistor ladder's does,
+// while the saturator's anti-aliasing still takes the hardest of the clipping. Feeding the drive straight in (no
+// ceiling) would pull the resonance down hardly further and alias some 7 dB more. It was 1, as the other types' still
+// is, and the resonance rode on top of what Drive left.
+constexpr double kAnalogDriveCeiling = 2.0;
+// Whether a type takes Drive under kAnalogDriveCeiling: the ladder's types and the diode, whose saturation takes what
+// goes in. The Sallen-Key's clips only in its resonance's loop: what goes in passes it straight, so Drive held under
+// more than 1 would only make it louder.
+constexpr bool drivesOwnSaturation(FilterType type) {
+    return isLadder(type) || type == FilterType::Diode;
+}
 
 // The diode ladder: four one-pole stages, each loading the one before by half as much as a passive RC ladder's would
 // (kDiodeCoupling), so its poles spread apart; normalized, stage n follows (y[n-1] - y[n]) - c (y[n] - y[n+1]), the
@@ -209,6 +222,10 @@ struct FilterSettings {
     int slope = kDefaultSlope;
     double drive = 1.0; // input gain into the saturator; 1 = clean
     double driveRoot = 1.0; // its square root, which the saturator's output is divided by
+    // The level the saturator holds what goes in under (kAnalogDriveCeiling into the ladder and the diode, else 1), and
+    // the drive over it, which what goes in is scaled by into the saturator's curve.
+    double driveCeiling = 1.0;
+    double driveIn = 1.0;
     Svf::Coefs main;
     Svf::Coefs second;
     double combDelay = 2.0; // samples
@@ -376,6 +393,8 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
     s.slope = playedSlope(type, slope);
     s.drive = 1.0 + 8.0 * std::clamp(drive, 0.0, 1.0);
     s.driveRoot = std::sqrt(s.drive);
+    s.driveCeiling = drivesOwnSaturation(type) ? kAnalogDriveCeiling : 1.0;
+    s.driveIn = s.drive / s.driveCeiling;
     // An integrator's or one-pole's rate for the cutoff, prewarped so it lands where the analog circuit's does: for the
     // analog types (those that self-oscillate) alone, the others working out their own.
     const double g = selfOscillates(type)
@@ -499,12 +518,15 @@ public:
         }
         uses_ = uses;
         // Drive saturates what goes in, taken back down by the drive's square root, except into the analog types
-        // (the ladder, the diode and the Sallen-Key's), which take it at full level, so their own saturation works on
-        // top of it, and take their output down instead.
+        // (the ladder's, the diode and the Sallen-Key's), which take it at full level, so their own saturation works
+        // on top of it, and take their output down instead. Into the ladder's types and the diode it holds what goes in
+        // under kAnalogDriveCeiling rather than 1 (a tanh that much larger, the same curve to begin with): a driven
+        // sound reaches their own saturation, which shares the loudest of it out with the feedback, as a driven
+        // transistor ladder does.
         if (s.drive > 1.0) {
             // The saturator averaged over the last sample step (antiderivative
             // anti-aliasing), so the harmonics it adds alias far less.
-            const double driven = in * s.drive;
+            const double driven = in * s.driveIn;
             const double dx = driven - lastDriven_;
             double y;
             if (std::abs(dx) < 1e-6) {
@@ -517,9 +539,9 @@ public:
                 y = (lastLogCosh_ - from) / dx;
             }
             lastDriven_ = driven;
-            in = selfOscillates(s.type) ? y : y / s.driveRoot;
-        } else {
-            lastDriven_ = in;
+            in = selfOscillates(s.type) ? s.driveCeiling * y : y / s.driveRoot;
+        } else { // as the saturator would take it, Drive at 0 (driveIn is 1 over the ceiling then)
+            lastDriven_ = in * s.driveIn;
             lastKnown_ = false;
         }
         switch (s.type) {

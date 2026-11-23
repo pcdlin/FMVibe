@@ -184,10 +184,19 @@ What the plugin does and how its editor works, in full. Building and installing 
     what it takes in, on a curve close to tanh, as a transistor ladder's pairs do: an operator at its usual level
     comes out warmed (a sine's 3rd harmonic about 30 dB under it, where the low-pass leaves it clean), and Drive's
     saturator feeds it at full level rather than taken back down, so its stages saturate on top of it (its output is
-    taken down instead). As its resonance rises its level below the cutoff falls (a quarter of that loss put back),
-    thinning the note. From about 93 % of Resonance it self-oscillates, a tone of its own at its cutoff held by its
-    stages' saturation, louder toward the top; once a released note's operators have faded, its resonance is held
-    at 90 %, so its ringing dies away and the voice ends;
+    taken down instead). The saturator holds what it feeds in under twice the level it holds the other types' (the
+    same curve, larger), so a loud, driven sound reaches the stages' own saturation, whose first stage takes the input
+    less the resonance's feedback: the louder the sound goes in, the less room is left for the feedback, and the
+    resonance comes down, as in a driven transistor ladder. A full-level saw through 85 % resonance comes out of full
+    Drive with its peak some 20 dB further under its fundamental than undriven, where it came down 10 dB with the
+    drive held under the other types' level, as it was until 0.17; a quiet sound plays within a dB of how it did.
+    Feeding the drive in with no ceiling at all would pull the resonance down hardly further and alias some 7 dB more;
+    with this one a driven ladder aliases about 2 dB more than it did. A project saved before plays its driven ladders
+    and diodes this way too: of the factory presets, Acid Rubber's and Cutoff Growl's, the two with a driven ladder,
+    come out about 0.1 and 1.1 LU louder. As its resonance rises its level below the cutoff falls (a quarter of that
+    loss put back), thinning the note. From about 93 % of Resonance it self-oscillates, a tone of its own at its
+    cutoff held by its stages' saturation, louder toward the top; once a released note's operators have faded, its
+    resonance is held at 90 %, so its ringing dies away and the voice ends;
   - Ladder HP: the ladder's loop around four one-pole high-pass stages, as in Moog's 904B, the low-pass ladder the
     other way round: **Slope** taps one to four of its stages, it saturates in each as the ladder does, takes Drive the
     same way, loses its top as its resonance rises as the ladder loses its bass (a quarter of that put back), and
@@ -203,11 +212,14 @@ What the plugin does and how its editor works, in full. Building and installing 
     RC ladder's would), so its poles spread apart: darker than the ladder without resonance, and its peak climbs
     toward the cutoff as the resonance rises, the cutoff where it lands at the top. 24 dB only. It saturates once, at
     its input less the feedback, loses less of its bass than the ladder (half of the loss put back), takes Drive as the
-    ladder does, and self-oscillates from about 93 % in the same way, held at 90 % once a released note has faded;
+    ladder does (its resonance coming down as a driven sound grows louder, some 22 dB at full Drive, where it came
+    down 9), and self-oscillates from about 93 % in the same way, held at 90 % once a released note has faded;
   - Sallen-Key LP and Sallen-Key HP: a two-pole Sallen-Key filter, as in Korg's MS-20, 12 dB only: soft without
     resonance (two poles at the cutoff), with its resonance's loop through a clipper set low, so that as Resonance
-    rises it screams and breaks up rather than ringing clean. It takes Drive as the ladder does, and self-oscillates
-    from about 93 % in the same way, held at 90 % once a released note has faded;
+    rises it screams and breaks up rather than ringing clean. It takes Drive at full level, its output taken down, as
+    the ladder does, but held under the other types' level: what goes in passes it unsaturated, all but its loop's
+    share, so more would only make it louder. It self-oscillates from about 93 % in the same way, held at 90 % once a
+    released note has faded;
   - Formant: three band-passes at a vowel's first three formants (a bass voice's A, E, I, O and U), each at its level.
     **Vowel** (A to begin with) goes from one vowel to the next in equal steps, moving the formants on a log scale and
     their levels in dB, so it can be swept or modulated like any knob. Cutoff shifts the formants, half an octave for
@@ -604,7 +616,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
     the last one left it. Like the Param EQ, its display shows what it puts out behind its response. It runs at
     twice the host rate, as the voice filters run oversampled, so the analog types' saturation and Drive alias far
-    less and Drive keeps the top.
+    less and Drive keeps the top. Its ladder and diode take Drive as a voice filter's do: the effects hear the voices
+    12 dB down, and a full-level saw's resonance comes down 18 to 22 dB at full Drive, where it came down 14.
   - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB, **Thresh** on the card), Ratio
     (1:1–20:1), a soft Knee (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Gain (makeup gain, 0–24 dB) and Mix for
     parallel compression. **SC HP** (Detector HP in the host; Off to begin with, then 20–500 Hz) high-passes what its
