@@ -295,6 +295,10 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
         if (filterType == FilterType::Morph) { // its slope's list and notch switch side by side
             add(Kind::ListButton, morphSlopeButton(kFilterDisplay), paramIndex(filter, FilterParam::Slope));
             add(Kind::Toggle, morphNotchButton(kFilterDisplay), paramIndex(filter, FilterParam::MorphMode));
+        } else if (hasFilterModels(filterType)) { // its Model list beside the slope's (see kModelList)
+            add(Kind::ListButton, filterModelButton(kFilterDisplay, false), paramIndex(filter, FilterParam::Type),
+                kModelList);
+            add(Kind::ListButton, filterModelSlopeButton(kFilterDisplay, false), paramIndex(filter, FilterParam::Slope));
         } else {
             add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
         }
@@ -340,19 +344,26 @@ void InspectorPanel::popups(std::vector<Widget> &list) const {
         open >= 0 && isFilterNode(pageNode) && open == paramIndex(pageNode - kOps, FilterParam::Slope);
     const bool typeList =
         open >= 0 && isFilterNode(pageNode) && open == paramIndex(pageNode - kOps, FilterParam::Type);
-    const bool morphSlope = slopeList && filterTypeOf(value(paramIndex(pageNode - kOps, FilterParam::Type))) ==
-                                             FilterType::Morph;
+    const FilterType pageType =
+        isFilterNode(pageNode) ? filterTypeOf(value(paramIndex(pageNode - kOps, FilterParam::Type))) : FilterType::LowPass;
+    const bool morphSlope = slopeList && pageType == FilterType::Morph;
+    const bool modelSlope = slopeList && hasFilterModels(pageType);
+    const bool model = typeList && host_.openListModel(); // its Model list, beside its slope's
     if (shaperList || slopeList || typeList) {
-        const Rect button = morphSlope ? morphSlopeButton(kFilterDisplay)
-                            : slopeList ? kFilterSlopeButton
-                            : typeList  ? kFilterTypeButton
-                                        : shaperModeButton(clipMode(value(open)) == ClipMode::Custom,
-                                                           clipMode(value(open)) == ClipMode::Stack);
-        const int items = listCount(open);
+        const Rect button = morphSlope   ? morphSlopeButton(kFilterDisplay)
+                            : modelSlope ? filterModelSlopeButton(kFilterDisplay, false)
+                            : slopeList  ? kFilterSlopeButton
+                            : model      ? filterModelMenuButton(filterModelButton(kFilterDisplay, false))
+                            : typeList   ? kFilterTypeButton
+                                         : shaperModeButton(clipMode(value(open)) == ClipMode::Custom,
+                                                            clipMode(value(open)) == ClipMode::Stack);
+        const int shown = static_cast<int>(std::lround(value(open)));
+        const int items = listCount(open, shown, model);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
         for (int item = 0; item < items; ++item)
-            add(Kind::ListItem, listMenuItem(button, items, item), open, -1, listItemValue(open, item));
+            add(Kind::ListItem, listMenuItem(button, items, item), open, model ? kModelList : -1,
+                listItemValue(open, item, shown, model));
     }
     // The open list of more waves, under "...", while its operator shows in the inspector.
     if (waveMenu_ >= 0 && waveMenu_ == controller().layout().selectedNode) {

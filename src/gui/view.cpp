@@ -490,19 +490,24 @@ bool View::listItemFits(int param, int item) const {
     return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
 }
 
-void View::stepList(int param, int dir) {
+bool View::listOpenFor(const Widget &w) const {
+    return listMenu_ == w.param && listModel_ == isModelList(w);
+}
+
+void View::stepList(int param, int dir, bool model) {
     // From the entry shown (from the list's end, for a value it doesn't offer) to the next one it can pick that way,
-    // round its ends, as a pick from the list would: one undo step, the list closed.
-    const int items = listCount(param);
+    // round its ends, as a pick from the list would: one undo step, the list closed. A filter's type steps along its
+    // families, keeping the model where the family has it, and its Model list along the family's models.
     const int shown = listShown(param);
+    const int items = listCount(param, shown, model);
     int at = dir > 0 ? -1 : items;
     for (int item = 0; item < items; ++item)
-        if (listItemValue(param, item) == shown)
+        if (listItemValue(param, item, shown, model) == shown)
             at = item;
     listMenu_ = -1;
     for (int k = 1; k <= items; ++k) {
         const int item = ((at + dir * k) % items + items) % items;
-        const int to = listItemValue(param, item);
+        const int to = listItemValue(param, item, shown, model);
         if (!listItemFits(param, to))
             continue;
         if (to != shown)
@@ -1878,21 +1883,27 @@ std::vector<View::Widget> View::widgets() const {
         (fxGraph() || !fxFolded(listSlot))) {
         if (const std::optional<Rect> shown = fxCardOf(listSlot)) {
             const Rect card = *shown;
-            const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
+            const FilterType filterType = filterTypeOf(value(paramIndex(listSlot, FxParam::FilterType)));
+            const Rect display = fxDisplayIn(card, FxType::Filter);
+            const bool model = listModel_ && listField == FxParam::FilterType;
+            const Rect button = model                               ? filterModelMenuButton(filterModelButton(display, true))
+                                : listField == FxParam::ReverbType    ? reverbTypeButton(card)
                                 : listField == FxParam::FilterType  ? filterTypeListButton(card)
                                 : listField == FxParam::FilterSlope
-                                    ? (filterTypeOf(value(paramIndex(listSlot, FxParam::FilterType))) == FilterType::Morph
-                                           ? morphSlopeButton(fxDisplayIn(card, FxType::Filter))
-                                           : slopeButton(fxDisplayIn(card, FxType::Filter)))
+                                    ? (filterType == FilterType::Morph ? morphSlopeButton(display)
+                                       : hasFilterModels(filterType)   ? filterModelSlopeButton(display, true)
+                                                                       : slopeButton(display))
                                 : listField == FxParam::AmpModel    ? ampModelButton(card)
                                 : listField == FxParam::AmpCab      ? ampCabButton(card)
                                                                     : clipModeButton(card, clipMode(value(listMenu_)) ==
                                                                                                     ClipMode::Custom);
-            const int items = listCount(listMenu_);
+            const int picked = listShown(listMenu_);
+            const int items = listCount(listMenu_, picked, model);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
             for (int item = 0; item < items; ++item)
-                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, listItemValue(listMenu_, item));
+                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, model ? kModelList : -1,
+                    listItemValue(listMenu_, item, picked, model));
         }
     }
     // A split's list of slopes, under its button on its card (in the row's container or the graph's inspector).
@@ -2101,6 +2112,10 @@ void View::effectCardWidgets(std::vector<Widget> &list, int slot, Rect card) con
         if (filterType == FilterType::Morph) {
             add(Kind::ListButton, morphSlopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
             add(Kind::Toggle, morphNotchButton(fxDisplayIn(card, type)), at(FxParam::FilterMorphMode));
+        } else if (hasFilterModels(filterType)) { // its Model list beside the slope's, short and without arrows
+            add(Kind::ListButton, filterModelButton(fxDisplayIn(card, type), true), at(FxParam::FilterType),
+                kModelListPlain);
+            add(Kind::ListButton, filterModelSlopeButton(fxDisplayIn(card, type), true), at(FxParam::FilterSlope));
         } else {
             add(Kind::ListButton, slopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
         }
@@ -4624,7 +4639,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const int shown = listShown(w.param);
         const bool relevant =
             !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
-        const bool lit = relevant && (hovered || listMenu_ == w.param);
+        const bool lit = relevant && (hovered || listOpenFor(w));
         const Color color = listColor(w.param);
         if (look.flat) { // filled dark, without an outline, tinted with its color under the mouse
             c.fillRect(w.rect, wellColor(), kRadiusControl);
@@ -4635,21 +4650,25 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
         }
         const Color text = !relevant ? kFaint : lit ? kText : kDim;
-        // An LFO's shape and a filter's type show their icons before their names.
-        const bool filterType = isFilterTypeList(w.param);
+        // An LFO's shape and a filter's type show their icons before their names: a type's list its family's, a
+        // Model list its model's (but on the filter effect's card, where it shows the model's short name alone).
+        const bool model = isModelList(w), plain = w.a == kModelListPlain;
+        const bool filterType = isFilterTypeList(w.param) && !plain;
         const float indent = isLfoShape(w.param) ? 24.0f : filterType ? 30.0f : 0.0f;
         // A list with arrows has them at its ends (see the ListStep widgets), and no chevron.
-        const bool steps = isSteppableList(w.param);
+        const bool steps = isSteppableList(w.param) && !plain;
         const float left = w.rect.x + (steps ? kListStepW + 2.0f : 10.0f);
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {left, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown), color);
         if (filterType) {
             const Rect icon = filterTypeIconRect(w.rect);
-            filterIcon(c, {icon.x + left - (w.rect.x + 10.0f), icon.y, icon.w, icon.h}, static_cast<FilterType>(shown),
-                       color);
+            const FilterType type = filterTypeAt(shown);
+            filterIcon(c, {icon.x + left - (w.rect.x + 10.0f), icon.y, icon.w, icon.h},
+                       model ? type : filterFamilyTypes(type).types[0], color);
         }
         const float right = w.rect.right() - (steps ? kListStepW + 2.0f : 20.0f);
-        c.text({left + indent, w.rect.y, right - left - indent, w.rect.h}, listItemName(w.param, shown),
+        c.text({left + indent, w.rect.y, right - left - indent, w.rect.h},
+               plain ? std::string(filterModelShortName(filterTypeAt(shown))) : listItemName(w.param, shown, model),
                kTextBody, text, Align::Left, true);
         if (!steps)
             paintChevron(c, {w.rect.right() - 13.0f, w.rect.center().y}, text);
@@ -4737,12 +4756,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         if (isLfoShape(w.param))
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(w.b),
                          selected ? listColor(w.param) : kDim);
-        if (filterType)
-            filterIcon(c, filterTypeIconRect(w.rect), static_cast<FilterType>(w.b), selected ? listColor(w.param) : kDim);
+        if (filterType) // a family's icon, or on a Model list the model's
+            filterIcon(c, filterTypeIconRect(w.rect),
+                       isModelList(w) ? filterTypeAt(w.b) : filterFamilyTypes(filterTypeAt(w.b)).types[0],
+                       selected ? listColor(w.param) : kDim);
         if (modeChoice)
             routeModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<RouteMode>(w.b),
                           selected ? listColor(w.param) : kDim);
-        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h}, listItemName(w.param, w.b),
+        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h},
+               listItemName(w.param, w.b, isModelList(w)),
                kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
@@ -5518,7 +5540,8 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::DynBand &&
          hover_->kind != Kind::ListStep &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
-         !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param)))))
+         !(hover_->kind == Kind::ListButton &&
+           (isSlopeList(hover_->param) || isMidiInput(hover_->param) || isModelList(*hover_)))))
         return;
     // A source's handle tells how to use it only until it modulates something.
     const bool handle = hover_->kind == Kind::MacroHandle || hover_->kind == Kind::SourceHandle;
@@ -5634,13 +5657,16 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipLfoSync);
     else if (hover_->kind == Kind::ListStep) {
         const bool next = hover_->b > 0;
-        text = tr(isClipMode(param)                 ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
+        text = tr(isModelList(*hover_)              ? (next ? Str::TipNextModel : Str::TipPrevModel)
+                  : isClipMode(param)               ? (next ? Str::TipNextCurve : Str::TipPrevCurve)
                   : isLfoShape(param)               ? (next ? Str::TipNextShape : Str::TipPrevShape)
                   : field == FxParam::ReverbType    ? (next ? Str::TipNextAlgorithm : Str::TipPrevAlgorithm)
                   : field == FxParam::AmpModel      ? (next ? Str::TipNextModel : Str::TipPrevModel)
                   : field == FxParam::AmpCab        ? (next ? Str::TipNextCabinet : Str::TipPrevCabinet)
                                                     : (next ? Str::TipNextType : Str::TipPrevType));
     }
+    else if (hover_->kind == Kind::ListButton && isModelList(*hover_))
+        text = tr(Str::TipFilterModel);
     else if (hover_->kind == Kind::ListButton && isSplitSlope(param))
         text = tr(Str::TipSlope);
     else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
@@ -6659,10 +6685,15 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ListButton:
         if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param))))))
             break; // a comb has no slope: its list stays shut
-        listMenu_ = listMenu_ == w.param ? -1 : w.param;
+        if (listOpenFor(w)) {
+            listMenu_ = -1;
+        } else { // a filter's Model list and its type's are each their own, on the one param
+            listMenu_ = w.param;
+            listModel_ = isModelList(w);
+        }
         break;
     case Kind::ListStep:
-        stepList(w.param, w.b);
+        stepList(w.param, w.b, isModelList(w));
         break;
     case Kind::ListMenu:
         if (w.a == 0) // a click anywhere else closes the list
@@ -6848,7 +6879,8 @@ void View::mouseUp(Point p, Modifiers) {
         const auto target = hitTest(p);
         // On a depth handle or a row of a pill's list: it becomes that modulation's aux; on a panel's own that takes it
         // (a MODS row's aux cell, as the aux too), what that panel makes of it.
-        const bool row = target && target->popup && target->kind != Kind::ModList;
+        // (A row names its modulation: the list's own scrollbar, a popup too, names none.)
+        const bool row = target && target->popup && target->kind != Kind::ModList && target->a >= 0 && target->b >= 0;
         if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
             mods_.setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
@@ -7606,6 +7638,21 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             edit(hit->param, slopes[std::clamp(at + whole, first, 2)]);
         return;
     }
+    if (isFilterTypeList(hit->param)) { // to the next family along its list, or over its Model list the next model,
+        const bool model = isModelList(*hit); // held at the list's ends, a run of notches one undo step
+        const int shown = listShown(hit->param);
+        const int items = listCount(hit->param, shown, model);
+        int at = 0;
+        for (int item = 0; item < items; ++item)
+            if (listItemValue(hit->param, item, shown, model) == shown)
+                at = item;
+        const int to = listItemValue(hit->param, std::clamp(at + whole, 0, items - 1), shown, model);
+        if (whole != 0 && to != shown) {
+            const UndoScope notches(controller_, true);
+            edit(hit->param, to);
+        }
+        return;
+    }
     if (isClipMode(hit->param)) { // to the next curve along its list, as the wheel turns
         const auto *first = std::begin(kClipModesOffered), *last = std::end(kClipModesOffered);
         const ClipMode now = clipMode(value(hit->param));
@@ -8045,7 +8092,11 @@ void View::endTyping(bool commit) {
         const size_t start = t.text.find_first_not_of(' ');
         std::string name = start == std::string::npos ? std::string()
                                                       : t.text.substr(start, t.text.find_last_not_of(' ') - start + 1);
-        name = name.substr(0, 24);
+        // As many bytes as the state saves, cut between whole characters (never in the middle of one's UTF-8).
+        size_t cut = std::min(name.size(), kMaxMacroName);
+        while (cut > 0 && cut < name.size() && (static_cast<unsigned char>(name[cut]) & 0xC0) == 0x80)
+            --cut;
+        name.resize(cut);
         if (name == trf(Str::MacroDefaultName, {std::to_string(t.widget.a + 1)}))
             name.clear();
         UiLayout &layout = controller_.layout();

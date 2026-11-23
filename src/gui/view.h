@@ -303,7 +303,7 @@ private:
     int listShown(int param) const;
     // Steps a list's choice to the entry before (dir -1) or after (1) the one shown, round its ends (its button's
     // arrows).
-    void stepList(int param, int dir);
+    void stepList(int param, int dir, bool model = false);
     // Effects (see FxPanel). The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
     // The slots that hold an effect, in the line's order (see FxGraphModel::chain()), kept while a scope goes on.
@@ -671,7 +671,13 @@ private:
     std::optional<std::pair<double, double>> lfoNow(int lfo) const override;
     std::vector<Widget> listedWidgets() const override { return widgets(); }
     int openList() const override { return listMenu_; }
-    void showList(int param) override { listMenu_ = param; }
+    bool openListModel() const override { return listMenu_ >= 0 && listModel_; }
+    void showList(int param) override {
+        listMenu_ = param;
+        listModel_ = false;
+    }
+    // Whether `w` (a list's button, arrow or entry) is of the list open: a filter's Model list or its type's.
+    bool listOpenFor(const Widget &w) const;
 
     Controller &controller_;
     // The preset library and the patch as a file (see Controller::presetStore()).
@@ -755,6 +761,7 @@ private:
     std::optional<ModListOpen> modList_;     // a pill's open list
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
+    bool listModel_ = false;                 // and whether it is a filter's Model list (see kModelList)
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE

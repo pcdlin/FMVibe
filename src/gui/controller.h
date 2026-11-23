@@ -115,6 +115,8 @@ inline int prefixCategory(std::string_view name) {
     return -1;
 }
 // Editor state that isn't a param but is saved with the patch.
+constexpr size_t kMaxMacroName = 24; // bytes of a macro's name, as the state saves it
+
 struct UiLayout {
     // Node positions in the routing graph, 0..1 within the graph area: the operators' circles, and the boxes of the
     // filters and then the shapers. Default: on the points of the grid Ctrl+drag snaps to (the centers of its 12 x 5
@@ -142,7 +144,8 @@ struct UiLayout {
     // Like the zoom, it belongs to the editor, not the patch: presets leave it alone.
     int shapeGridX = 16;
     int shapeGridY = 8;
-    // The macros' names, empty for "Macro 1" and so on: part of the patch, like the node places.
+    // The macros' names, empty for "Macro 1" and so on: part of the patch, like the node places. UTF-8, at most
+    // kMaxMacroName bytes (whole characters), as the state saves them.
     std::array<std::string, kMacros> macroNames{};
     // The effect slots' and source places' cards folded to a narrow strip, a bit each; saved with the patch,
     // but not undone.

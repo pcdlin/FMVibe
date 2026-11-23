@@ -296,6 +296,9 @@ bool SeqPanel::step() {
     bool moved = seqEdgeScroll();
     if (controller().patchLoads() != seqLoadsSeen_) {
         seqLoadsSeen_ = controller().patchLoads();
+        // The notes and points picked were the patch's before: their slots now hold the new one's.
+        seqSelection_.clear();
+        seqCurvePick_ = SeqCurvePick{};
         seqFit();
         moved = true;
     }
@@ -436,9 +439,12 @@ int SeqPanel::seqFreeSlot() const {
     return -1;
 }
 
+// A note past the pattern's end (its Length shortened, which keeps the notes for when it grows again) neither plays
+// nor shows: it isn't picked, so nothing moves it or moves the others by it.
 bool SeqPanel::seqSelected(int slot) const {
     return seqSelectionPattern_ == seqPattern() &&
-           std::find(seqSelection_.begin(), seqSelection_.end(), slot) != seqSelection_.end();
+           std::find(seqSelection_.begin(), seqSelection_.end(), slot) != seqSelection_.end() &&
+           value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Start)) < seqSteps();
 }
 
 std::vector<int> SeqPanel::seqPicked() const {
@@ -446,7 +452,8 @@ std::vector<int> SeqPanel::seqPicked() const {
     if (seqSelectionPattern_ != seqPattern())
         return picked;
     for (int slot : seqSelection_)
-        if (value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Length)) > 0.0)
+        if (value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Length)) > 0.0 &&
+            value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Start)) < seqSteps())
             picked.push_back(slot);
     return picked;
 }
@@ -695,6 +702,20 @@ void SeqPanel::seqDropCovered(const std::vector<int> &kept) {
                 drop.push_back(n.slot);
                 break;
             }
+    }
+    // Two kept landing on one another (quantized onto one step, stretched against the end): the first stays.
+    for (size_t i = 0; i < notes.size(); ++i) {
+        const SeqNote &n = notes[i];
+        if (!isKept(n.slot) || std::find(drop.begin(), drop.end(), n.slot) != drop.end())
+            continue;
+        for (size_t j = 0; j < i; ++j) {
+            const SeqNote &k = notes[j];
+            if (isKept(k.slot) && k.pitch == n.pitch && std::abs(k.start - n.start) < 1e-6 &&
+                std::find(drop.begin(), drop.end(), k.slot) == drop.end()) {
+                drop.push_back(n.slot);
+                break;
+            }
+        }
     }
     std::vector<int> picked = seqSelection_; // the notes dropped leave what is picked, the rest stay picked
     removeSeqNotes(drop);
@@ -1358,7 +1379,8 @@ bool SeqPanel::key(Key key, bool shift) {
         seqCurvePick_ = SeqCurvePick{};
         seqSelection_.clear();
         for (const SeqNote &n : seqNotes())
-            seqSelection_.push_back(n.slot);
+            if (n.start < seqSteps()) // not those past the pattern's end
+                seqSelection_.push_back(n.slot);
         return true;
     }
     if (key == Key::Paste) { // at the step under the mouse on the roll, else after what was copied or pasted last
@@ -1401,7 +1423,7 @@ bool SeqPanel::key(Key key, bool shift) {
         double by = (key == Key::Right ? 1.0 : -1.0) * (grid > 0.0 ? grid : 1.0);
         for (int slot : picked) {
             const double start = value(seqNoteIndex(pattern, slot, SeqNoteParam::Start));
-            by = std::clamp(by, -start, seqSteps() - kShortestNote - start);
+            by = std::clamp(by, std::min(-start, 0.0), std::max(seqSteps() - kShortestNote - start, 0.0));
         }
         for (int slot : picked)
             changes.push_back({seqNoteIndex(pattern, slot, SeqNoteParam::Start),
@@ -1851,7 +1873,8 @@ void SeqPanel::seqDrag(Point p) {
                 earliest = std::min(earliest, n.start);
                 latest = std::max(latest, n.start);
             }
-            shift = std::clamp(shift, -earliest, steps - kShortestNote - latest);
+            // (Never past the low bound: a note picked can't be past the pattern's end, but the bounds never cross.)
+            shift = std::clamp(shift, std::min(-earliest, 0.0), std::max(steps - kShortestNote - latest, 0.0));
             const std::vector<int> rows = seqRows();
             const int pitchShift = seqPitchAt(p.y) - d.grabPitch;
             for (const SeqNote &n : d.origin) {
@@ -2223,6 +2246,8 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
         }
         controller().beginStep();
         editMany(changes);
+        if (w.b == 4) // onto the grid: what they land on goes, as Quantize has it
+            seqDropCovered(picked);
         controller().endStep();
         return true;
     }

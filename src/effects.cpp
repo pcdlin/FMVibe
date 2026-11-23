@@ -342,8 +342,9 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
     const bool ampMix = fx.running == FxType::Amp && fx.fade > 0.0 &&
                         (fx.amp->mix < 1.0 || p[paramIndex(slot, FxParam::AmpMix)] < 1.0);
     float dry[2][kChunk];
-    slotDry(slot, io, dry, n, p, !(on && fx.fade >= 1.0) || ampMix);
+    const int dryWait = slotDry(slot, io, dry, n, p, !(on && fx.fade >= 1.0) || ampMix);
     if (!on && fx.fade <= 0.0) {
+        fx.prime = 0; // started again from the start
         reduction_[slot] = {};
         bandLevel_[slot] = {};
         bandGain_[slot] = {};
@@ -353,8 +354,11 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         return;
     }
     const auto ctx = context(slot, p, tempo, pitch); // an fx::Context (`fx` here is the slot)
-    if (fx.fade <= 0.0)
+    if (fx.fade <= 0.0 && fx.prime <= 0) {
         start(slot, ctx);
+        // A flanger through zero puts out nothing until its dry sound's wait has filled.
+        fx.prime = fxSlotWaits([&p](int i) { return p[i]; }, slot) ? throughZeroWaitSamples(sampleRate_) : 0;
+    }
     // Each type's run, by the type it processes as: a static dispatch, every type's state held in the slot.
     switch (fx.running) {
     case FxType::Shaper:
@@ -428,7 +432,12 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         return;
     orderStale_ = true; // fading: an effect taken away is in the graph until it has faded out (see nodeWanted())
     for (uint32_t s = 0; s < n; ++s) {
-        fx.fade = std::clamp(fx.fade + (on ? fadeStep : -fadeStep), 0.0, 1.0);
+        if (on && fx.prime > 0)
+            --fx.prime; // its wet sound still silent: the dry one goes on
+        else if (!on && static_cast<int>(s) < dryWait)
+            ; // its dry sound still silent (a new path's wait filling): the wet one goes on
+        else
+            fx.fade = std::clamp(fx.fade + (on ? fadeStep : -fadeStep), 0.0, 1.0);
         for (int c = 0; c < 2; ++c)
             io[c][s] = static_cast<float>(dry[c][s] + (io[c][s] - dry[c][s]) * fx.fade);
     }
@@ -487,6 +496,7 @@ void Effects::setEnd(WireEnd &e, int port, double level, double fade, const FxLa
     e.port = port;
     e.level = level;
     e.fade = fade;
+    e.prime = 0;
     e.pad = port >= 0 ? pad : FxLag{};
     if (!lags_ || e.pad.none() || e.pad.count() > kEndPaths)
         return;
@@ -506,6 +516,7 @@ void Effects::setEnd(WireEnd &e, int port, double level, double fade, const FxLa
             if (kind == FxLag::kWait) {
                 for (Wait &side : lags_->poolWait[i])
                     side.reset();
+                e.prime = std::max(e.prime, lags_->poolWait[i][0].size); // silent until it has filled
             } else {
                 lags_->pool[i] = lags_->fresh[kind]; // cleared, at that factor
             }
@@ -529,8 +540,8 @@ void Effects::padEnd(const WireEnd &e, const float *const *from, float (*out)[kC
     }
 }
 
-void Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], uint32_t n, const ParamValues &p,
-                      bool needed) {
+int Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], uint32_t n, const ParamValues &p,
+                     bool needed) {
     std::copy_n(io[0], n, dry[0]);
     std::copy_n(io[1], n, dry[1]);
     SlotDry &d = lags_->dry[slot];
@@ -546,17 +557,26 @@ void Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], ui
             d.now[c] = factor >= 2 ? lags_->fresh[FxLag::kindOf(factor)][c] : UpDown{};
         for (Wait &side : d.nowWait)
             side.reset();
+        d.prime = d.lag.paths[FxLag::kWait] ? d.nowWait[0].size : 0;
         d.wasFade = d.live ? 1.0 : 0.0;
     }
-    if (!needed) { // the effect fully in: its dry sound isn't heard, and starts again from silence when it is
+    int prime = d.prime; // of this chunk's samples, how many the wait has yet to fill
+    d.prime = std::max(d.prime - static_cast<int>(n), 0);
+    if (!needed) {
+        // The effect fully in: its dry sound isn't heard, and starts again from silence when it is. All but a wait,
+        // which goes on filling: as long as the effect would fade out in, it would leave a gap to fade into.
+        if (d.lag.paths[FxLag::kWait])
+            for (int c = 0; c < 2; ++c) {
+                float waited[kChunk];
+                std::copy_n(io[c], n, waited);
+                d.nowWait[c].run(waited, static_cast<int>(n));
+            }
         d.live = false;
         d.wasFade = 0.0;
-        return;
+        return prime;
     }
     if (!d.live) {
         for (UpDown &side : d.now)
-            side.reset();
-        for (Wait &side : d.nowWait)
             side.reset();
         d.live = true;
     }
@@ -574,18 +594,29 @@ void Effects::slotDry(int slot, const float *const *io, float (*dry)[kChunk], ui
             d.nowWait[c].run(dry[c], static_cast<int>(n));
     }
     if (!crossing)
-        return;
+        return prime;
     const double fadeStep = 1.0 / (0.005 * sampleRate_);
     for (uint32_t s = 0; s < n; ++s) {
-        d.wasFade = std::max(d.wasFade - fadeStep, 0.0);
+        if (prime > 0)
+            --prime; // the new path's wait still silent: the one it had goes on
+        else
+            d.wasFade = std::max(d.wasFade - fadeStep, 0.0);
         const float w = static_cast<float>(0.5 - 0.5 * std::cos(std::numbers::pi * d.wasFade));
         for (int c = 0; c < 2; ++c)
             dry[c][s] += (was[c][s] - dry[c][s]) * w;
     }
+    return 0; // the path it had heard meanwhile
 }
 
 void Effects::idleSlot(int slot) {
     slots_[slot].fade = 0.0; // so start() clears it when it runs again
+    if (lags_) { // and its dry sound: what its wait held is long gone
+        SlotDry &d = lags_->dry[slot];
+        d.live = false;
+        for (Wait &side : d.nowWait)
+            side.reset();
+        d.prime = 0;
+    }
     reduction_[slot] = {};
     bandLevel_[slot] = {};
     bandGain_[slot] = {};
@@ -788,6 +819,10 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             from[1] = padded[1];
             heard = true;
         }
+        if (e.prime > 0) { // its pad's wait still filling: it waits to fade in, as long as this chunk is silent
+            fadeTo = std::min(fadeTo, e.fade);
+            e.prime = std::max(e.prime - static_cast<int>(n), 0);
+        }
         const double step = rampStep(e.level, target, n, rampShortest_);
         const double end = rampEnds(e.level, target, n, rampShortest_) ? target : e.level + step * n;
         double level = e.level, fade = e.fade;
@@ -839,8 +874,9 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             }
         }
         const bool asSet = w.now.port == set && w.now.pad == pad;
+        const bool priming = w.now.prime > 0; // what it came from goes on until what it comes from is heard
         add(w.now, asSet ? wireTarget(node, input, p) : w.now.level, asSet ? 1.0 : 0.0);
-        add(w.was, w.was.level, 0.0);
+        add(w.was, w.was.level, priming ? w.was.fade : 0.0);
     }
 }
 

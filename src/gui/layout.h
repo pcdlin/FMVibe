@@ -236,6 +236,20 @@ inline Rect morphSlopeButton(Rect display) {
 inline Rect morphNotchButton(Rect display) {
     return {display.center().x + 21.0f, display.bottom() + 4.0f, 36.0f, 18.0f};
 }
+// A filter's Model list (for a family of more than one model, see gui/lists.h) and its slope's beside it, in the
+// slope's place under its display, centered together: on a filter's page the model's button with its arrows and icon,
+// on the filter effect's card (`plain`) with neither, its name short. Its list opens wide enough for the models' names.
+inline Rect filterModelButton(Rect display, bool plain) {
+    const float w = plain ? 64.0f : 136.0f;
+    return {display.center().x - 0.5f * (w + 6.0f + 72.0f), display.bottom() + 4.0f, w, 18.0f};
+}
+inline Rect filterModelSlopeButton(Rect display, bool plain) {
+    const Rect model = filterModelButton(display, plain);
+    return {model.right() + 6.0f, model.y, 72.0f, 18.0f};
+}
+inline Rect filterModelMenuButton(Rect button) {
+    return {button.x, button.y, std::max(button.w, 136.0f), button.h};
+}
 // A filter's page: its type's list across the row under the summary (where a shaper's curve's is), its response with
 // the slope's list under it.
 constexpr Rect kFilterTypeButton{kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f, 22.0f};

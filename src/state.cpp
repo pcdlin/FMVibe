@@ -22,7 +22,6 @@ constexpr uint32_t kStateMagic = 0x38454C43;    // "CLE8"
 constexpr uint32_t kLayoutMagic = 0x5459414C;   // "LAYT"
 constexpr uint32_t kSettingsMagic = 0x47544553; // "SETG"
 constexpr uint32_t kPresetMagic = 0x54535250;   // "PRST"
-constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
 // Bytes of a preset's info that are saved: what can be typed, three times over for UTF-8 from a file.
 constexpr size_t kMaxInfoAuthor = 3 * gui::kMaxPresetAuthor;
 // A category's stays as it was saved since the info came in (20 characters), longer than a new one can be typed now
@@ -35,7 +34,7 @@ constexpr size_t kMaxInfoDescription = 3 * gui::kMaxPresetDescription;
 constexpr uint32_t kMaxLayoutFloats = 4096;
 constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
-                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 +
+                  kMacros * (1 + gui::kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 +
                   2 + kFxSplits + 1 + 5 + 1 + 3 + kMaxInfoAuthor + kMaxInfoCategory + kMaxInfoDescription + 1 <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
@@ -354,7 +353,7 @@ void layoutFields(Io &io, Layout &ui) {
     // The macros' names, each as its length and then its bytes. Saved before the macros came, they keep their
     // numbers.
     for (auto &name : ui.macroNames)
-        io.text(name, kMaxMacroName);
+        io.text(name, gui::kMaxMacroName);
     io.number(ui.fxFolded, 0.0f, 65535.0f, rounded<uint32_t>); // 16 bits each: exact as floats
     io.bits(ui.sourcesFolded, 0); // the first kFirstSources places' (the rest at the end)
     io.number(ui.keysCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
@@ -558,6 +557,9 @@ void loadRandomSources(ParamValues &values) {
     const ParamTable &table = paramTable();
     for (int s = 0; s < kMaxSources; ++s) {
         const SourceType type = sourceType(values[paramIndex(s, SourceParam::Type)]);
+        // An LFO's Rate at 0 was its slowest, 0.02 Hz, where it now stands still: it loads just above, as it played.
+        if (type == SourceType::Lfo && values[paramIndex(s, SourceParam::Rate)] < kLeastNorm)
+            values[paramIndex(s, SourceParam::Rate)] = kLeastNorm;
         if (type == SourceType::Random) {
             for (const SourceParam f : {SourceParam::Division, SourceParam::Free, SourceParam::OneShot,
                                         SourceParam::Anchor, SourceParam::RandomSmooth, SourceParam::RandomChaos})
@@ -683,6 +685,18 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                 const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
                 if (target >= 0 && table[target].kind == ParamKind::EnvTime)
                     loaded[slotAmountIndex(source, slot)] *= kMaxEnvNorm / (table[target].max - table[target].min);
+            }
+    // Before version 3 (released up to 0.3), the envelopes' times, holds too, reached 0 to 1 (20 s), not kMaxEnvNorm
+    // (10 s): on top of the step above, a depth on one swings it as far as it did, and so does one on a hold, whose
+    // range has stayed 0 to kMaxEnvNorm since.
+    if (header[1] < 3)
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                const bool hold = target >= 0 && table[target].kind == ParamKind::TimeOrOff &&
+                                  table[target].max == kMaxEnvNorm; // an operator's or an envelope's Hold
+                if (target >= 0 && (table[target].kind == ParamKind::EnvTime || hold))
+                    loaded[slotAmountIndex(source, slot)] /= kMaxEnvNorm;
             }
     if (header[1] < 7) // as far as they swung Glide: its range was 0 to 1 then
         for (int source = 0; source < kAllSources; ++source)

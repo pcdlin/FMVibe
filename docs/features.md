@@ -164,7 +164,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   share of a high-pass, band-pass or notch) gliding sample by sample, so a fast envelope or LFO on the cutoff sweeps
   it rather than stepping it every block (which buzzed faintly at the steps' rate, 1.5 kHz at 48 kHz:
   some 72 dB under an LFO's sweep, 53 dB for a morph's place, now 96 dB and more). Its type, slope and morph mode switch
-  at once. Types:
+  at once. The editor shows the types as seven families (Low-pass, High-pass, Band-pass, Notch, Comb, Formant and
+  Morph), the first three each a family of models: the low-passes SVF (the state-variable filter's), Ladder, Diode and
+  Sallen-Key, the high-passes SVF, Ladder and Sallen-Key, and the band-passes SVF and Ladder (see the filter's page,
+  under Editor). That is the editor's alone: the Type param stores the type, so hosts, presets and states see the
+  types below. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
     **Slope** picks 6, 12 (the default), 18 or 24 dB per octave. At 6 dB the filter is a one-pole, taken from the
     state-variable filter so resonance still adds a peak at the cutoff (as high as at 12 dB) while the slope past it
@@ -179,20 +183,43 @@ What the plugin does and how its editor works, in full. Building and installing 
     taps one to four of its stages (6 to 24 dB), the resonance coming from around all four. Each stage saturates
     what it takes in, on a curve close to tanh, as a transistor ladder's pairs do: an operator at its usual level
     comes out warmed (a sine's 3rd harmonic about 30 dB under it, where the low-pass leaves it clean), and Drive's
-    saturator feeds it at full level rather than taken back down, so its stages saturate on top of it (its output is
-    taken down instead). As its resonance rises its level below the cutoff falls (a quarter of that loss put back),
-    thinning the note. From about 93 % of Resonance it self-oscillates, a tone of its own at its cutoff held by its
-    stages' saturation, louder toward the top; once a released note's operators have faded, its resonance is held
-    at 90 %, so its ringing dies away and the voice ends;
+    saturator feeds it at full level rather than brought back to the level the sound went in at, so its stages
+    saturate on top of it (its output is brought back instead). The saturator holds what it feeds in under twice the level it holds the other types' (the
+    same curve, larger), so a loud, driven sound reaches the stages' own saturation, whose first stage takes the input
+    less the resonance's feedback: the louder the sound goes in, the less room is left for the feedback, and the
+    resonance comes down, as in a driven transistor ladder. A full-level saw through 85 % resonance comes out of full
+    Drive with its peak some 20 dB further under its fundamental than undriven, where it came down 10 dB with the
+    drive held under the other types' level, as it was until 0.17; a quiet sound plays within a dB of how it did.
+    Feeding the drive in with no ceiling at all would pull the resonance down hardly further and alias some 7 dB more;
+    with this one a driven ladder aliases about 2 dB more than it did. A project saved before plays its driven ladders
+    and diodes this way too: of the factory presets, Acid Rubber's and Cutoff Growl's, the two with a driven ladder,
+    come out about 0.1 and 1.1 LU louder. As its resonance rises its level below the cutoff falls (a quarter of that
+    loss put back), thinning the note. From about 93 % of Resonance it self-oscillates, a tone of its own at its
+    cutoff held by its stages' saturation, louder toward the top; once a released note's operators have faded, its
+    resonance is held at 90 %, so its ringing dies away and the voice ends;
+  - Ladder HP: the ladder's loop around four one-pole high-pass stages, as in Moog's 904B, the low-pass ladder the
+    other way round: **Slope** taps one to four of its stages, it saturates in each as the ladder does, takes Drive the
+    same way, loses its top as its resonance rises as the ladder loses its bass (a quarter of that put back), and
+    self-oscillates near its cutoff from about 93 %, held at 90 % once a released note has faded;
+  - Ladder BP: the ladder's loop around low- and high-pass stages in turn, its feedback added rather than taken off,
+    so that it rings at its center: 12 dB (taken after its second stage, 6 dB per octave either side) or 24 dB (after
+    its fourth, 12 either side), 6 and 18 playing as the slope above, at unity at its center without resonance. Its
+    peak rises with Resonance, its input taken down as it does (by 1 + k/4, as the ladder's is taken up) so that the
+    peak stays about as far over what it passes as the ladder's; it saturates in its stages, takes Drive and
+    self-oscillates as the ladder does, ringing louder than the ladder, since what it passes at its center stays at
+    unity;
   - Diode: a four-pole diode ladder, its stages loading each other (each the one before it half as much as a passive
     RC ladder's would), so its poles spread apart: darker than the ladder without resonance, and its peak climbs
     toward the cutoff as the resonance rises, the cutoff where it lands at the top. 24 dB only. It saturates once, at
     its input less the feedback, loses less of its bass than the ladder (half of the loss put back), takes Drive as the
-    ladder does, and self-oscillates from about 93 % in the same way, held at 90 % once a released note has faded;
+    ladder does (its resonance coming down as a driven sound grows louder, some 22 dB at full Drive, where it came
+    down 9), and self-oscillates from about 93 % in the same way, held at 90 % once a released note has faded;
   - Sallen-Key LP and Sallen-Key HP: a two-pole Sallen-Key filter, as in Korg's MS-20, 12 dB only: soft without
     resonance (two poles at the cutoff), with its resonance's loop through a clipper set low, so that as Resonance
-    rises it screams and breaks up rather than ringing clean. It takes Drive as the ladder does, and self-oscillates
-    from about 93 % in the same way, held at 90 % once a released note has faded;
+    rises it screams and breaks up rather than ringing clean. It takes Drive at full level, its output brought back, as
+    the ladder does, but held under the other types' level: what goes in passes it unsaturated, all but its loop's
+    share, so more would only make it louder. It self-oscillates from about 93 % in the same way, held at 90 % once a
+    released note has faded;
   - Formant: three band-passes at a vowel's first three formants (a bass voice's A, E, I, O and U), each at its level.
     **Vowel** (A to begin with) goes from one vowel to the next in equal steps, moving the formants on a log scale and
     their levels in dB, so it can be swept or modulated like any knob. Cutoff shifts the formants, half an octave for
@@ -211,7 +238,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   Every filter's Cutoff, the filter effect's too, starts (and resets) at its knob's middle, about 632 Hz: there,
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
   far the cutoff follows the note from C4 on, an octave per octave at 100 %; 0 to begin with, on every filter) and
-  Drive (saturation before the filter, anti-aliased like the shapers), and **Mix**, which blends what goes in (before
+  Drive (saturation before the filter, anti-aliased like the shapers, its output brought back to the level the sound
+  went in at: two followers of the power, of what goes in and of what the saturator puts out, averaged over 50 ms,
+  give the gain back, so a quiet sound and a loud one keep their levels at any Drive, within a dB once settled, and
+  Drive changes the tone alone; until 0.17 its output was divided by the drive's square root, taking a full-level
+  operator 5 dB down at full Drive and putting a quiet one 9 dB up), and **Mix**, which blends what goes in (before
   Drive) with what the filter makes of it, as the filter effect's does (100 % to begin with, all filter): everything
   the filter puts out, to the output, the operators, the filters and the shapers, is that blend. A voice only ends once its filters have
   rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings
@@ -465,7 +496,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     in step at every frequency: a split's bands sum back flat whatever runs on them, and a path beside one of these
     effects doesn't comb with it. Such an effect is as late switched off as on (what it passes then, and what it fades
     from, goes up and down or waits too), so switching it moves nothing; a new effect, another oversampling, TZF
-    switched or a wire moved that changes how late a path is crossfades that path over 5 ms. The output is
+    switched or a wire moved that changes how late a path is crossfades that path over 5 ms. A wait started afresh
+    (a flanger through zero coming in, its dry sound's new path, a new pad) is silent for its 6.5 ms, longer than the
+    fade, so what fades in waits for it to fill and what fades out goes on meanwhile, leaving no gap. The output is
     then as late as its latest path, which, with the voices' decimator's couple of samples, is the latency the plugin
     reports to the host; a change that moves it asks the host to restart the plugin, which takes up the new one (see
     Restarting, under CLAP and VST3). Only what the output hears runs: an effect no wire takes on to the
@@ -579,16 +612,18 @@ What the plugin does and how its editor works, in full. Building and installing 
     them in the top octaves too, within about a dB up to 15 kHz: their poles and zeros go where the analog band's are
     (the high cut's zeros matching its level at 0 Hz, its corner and the half rate instead), where the usual bilinear
     design squeezed a bell or shelf up there narrower and lower than drawn.
-  - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb, ladder, diode, Sallen-Key LP
-    and HP, formant, morph; a list across its card under its title, as the shaper's curves are, with the list of
-    slopes under the response, a morph's with its notch switch (the notch's icon) beside it, and a formant's Vowel or a morph's Morph
-    between Drive and Mix) and their
+  - **Filter**: the voice filters' types (their families: low-pass, high-pass, band-pass, notch, comb, formant and
+    morph, in a list across its card under its title, as the shaper's curves are; with the list of slopes under the
+    response, a morph's with its notch switch (the notch's icon) beside it, a low-, high- or band-pass's with its
+    Model list before it, its button naming the model short (SVF, LAD, DIO, SK) and without arrows, its list naming
+    them in full; and a formant's Vowel or a morph's Morph between Drive and Mix) and their
     slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
     the last one left it. Like the Param EQ, its display shows what it puts out behind its response. It runs at
     twice the host rate, as the voice filters run oversampled, so the analog types' saturation and Drive alias far
-    less and Drive keeps the top.
+    less and Drive keeps the top. Its ladder and diode take Drive as a voice filter's do: the effects hear the voices
+    12 dB down, and a full-level saw's resonance comes down 18 to 22 dB at full Drive, where it came down 14.
   - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB, **Thresh** on the card), Ratio
     (1:1–20:1), a soft Knee (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Gain (makeup gain, 0–24 dB) and Mix for
     parallel compression. **SC HP** (Detector HP in the host; Off to begin with, then 20–500 Hz) high-passes what its
@@ -769,7 +804,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
   - **Lo-Fi** (under DRIVE in the list of effects): an early digital converter. **Bits** (1–16, 8 to begin with) puts
     each sample on the nearest of that many bits' levels (2 to the Bits), each in the middle of its share of full
-    scale, so 1 bit plays ±0.5; **Rate** (200 Hz–20 kHz, 12 kHz to begin
+    scale, so 1 bit plays ±0.5 (silence going in for 10 ms, under -120 dB, coming out as silence rather than half a step
+    off 0); **Rate** (200 Hz–20 kHz, 12 kHz to begin
     with) holds each side between samples taken that often, the steps between folding the top back down as such
     converters did; **Smooth** (50 % to begin with) blends in what a 12 dB low-pass just under half Rate makes of it,
     as a converter's output filter does; **Mix** blends it with the dry sound. Its display draws two cycles of a sine
@@ -1098,8 +1134,12 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     it began, so it reaches notes that didn't show as it started). A patch loaded (a preset, Init, a
     project) fits the roll to its pattern's notes: the whole pattern across, and the rows about the notes, lower where
     they don't all fit.
-  - **No two notes on one spot**: a note put down, moved, stretched or transposed onto another's start and pitch takes
-    its place, the one there removed in the same undo step.
+  - **No two notes on one spot**: a note put down, moved, stretched, quantized or transposed onto another's start and
+    pitch takes its place, the one there removed in the same undo step; notes picked that land on one another (quantized
+    onto one step, stretched against the pattern's end) leave the first of them.
+  - **Picks**: the notes picked are let go of as a patch loads (a preset, Init, the host's state), whose notes are
+    another's; notes past the pattern's end (its Length shortened, which keeps them for when it grows again) are
+    never picked.
   - **Keys**, while the mouse is over the editor (as for undo): **Ctrl+A** picks every note of the pattern; **Left**
     and **Right** move the notes picked a grid step (a step with the snap off), **Up** and **Down** a row (a degree of
     the scale while folded), and **Shift+Up** and **Shift+Down** an octave, and **Delete** removes them, each an undo step. Moved up or down, the
@@ -1611,6 +1651,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     source's menu. An empty modulation is a row with no source or no target yet ("Source…" and "Target…" in their
     places, a hollow dot, and only its ×): it modulates nothing. Picking its source and its target from their menus,
     in either order, makes it a modulation of that source, as its handle dropped on the target makes one (at +30 %),
+    (an effect taken out, or a split's crossover or a join's level reset, takes the target of an empty modulation onto
+    it away, as a source removed does its own),
     which takes its place among the source's rows; until then its source's menu offers any source with a slot free,
     and its target's every target. An empty modulation whose source already has rows goes right after them, as
     soon as it has that source (added from it, or once it is picked), and the list jumps there, showing as many of
@@ -1856,14 +1898,19 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
     operators it modulates, as a shaper's has), the type's list across the row under it (where a shaper's curve's
-    is), its button and each of its entries a small picture of the type's response before its name, the wheel over
-    it stepping along them, cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph after
+    is), offering the seven families (Low-pass, High-pass, Band-pass, Notch, Comb, Formant and Morph), its button and
+    each of its entries a small picture of the family's response before its name, the wheel over it and its arrows
+    stepping along them (a family picked keeping the model where it has it, Ladder's high-pass for a ladder, say, else
+    taking its first), then, for a low-, high- or band-pass, the **Model** list beside the slope's (SVF, Ladder, Diode
+    and Sallen-Key for a low-pass; SVF, Ladder and Sallen-Key for a high-pass; SVF and Ladder for a band-pass), with
+    arrows that step along the family's models round its ends, the wheel stepping them held at the ends, and each a
+    small picture of the model's response before its name, cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph after
     them, the six knobs a little closer together, and a morph's slope's list and notch switch (the notch's icon) side
     by side where the slope's list is), key tracking, drive and mix (its output level is its line to OUT's
     label), and a live response curve, drawn as its Mix blends what goes in back in (a notch at 50 % dips about 6 dB,
     a low-pass leveling off 6 dB down past its cutoff), whose
-    handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it, as the filter effect's and
-    a split's are: 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
+    handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it (beside the Model list, for
+    a family of models), as the filter effect's and a split's are: 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
     what plays; for a comb it is faint and doesn't open). With its cutoff or resonance modulated, faint curves
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that
@@ -2127,7 +2174,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
   the name to change it (Enter
-  keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
+  keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch, up to
+  24 bytes of it in UTF-8, cut between whole characters).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. A macro's
   knob takes modulation like any other knob (a source's handle dropped on it, its depth handles under it), but not
   its own macro's handle nor one that would loop, which says why as it is let go of; its dot then shows where the

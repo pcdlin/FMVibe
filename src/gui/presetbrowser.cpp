@@ -214,6 +214,23 @@ void paintCaret(Canvas &c, Rect panel, float x) {
         c.polyline(tip, 3, kBorder, 1.0f);
 }
 
+// The preset `presets[index]` names, copied (a scan of the library moves the others in the list), if there is one.
+std::optional<PresetEntry> entryAt(const std::vector<PresetEntry> &presets, int index) {
+    if (index < 0 || index >= static_cast<int>(presets.size()))
+        return std::nullopt;
+    return presets[static_cast<size_t>(index)];
+}
+
+// Where `entry` is in `presets` (by its folder and name), or -1: a pick found again once the library has been scanned.
+int indexOfEntry(const std::vector<PresetEntry> &presets, const std::optional<PresetEntry> &entry) {
+    if (!entry)
+        return -1;
+    for (size_t i = 0; i < presets.size(); ++i)
+        if (presets[i].factory == entry->factory && presets[i].folder == entry->folder && presets[i].name == entry->name)
+            return static_cast<int>(i);
+    return -1;
+}
+
 } // namespace
 
 PresetBrowser::PresetBrowser(PanelHost &host) : host_(host) {}
@@ -1668,15 +1685,20 @@ void PresetBrowser::runNameMenu() {
                 host_.flash(tr(Str::MsgFolderExists));
                 return;
             }
+            std::optional<PresetEntry> picked = entryAt(presetStore().presets(), browserPick_);
             if (!presetStore().renamePresetFolder(renameFolder_, to)) {
                 host_.flash(tr(Str::MsgFolderNotRenamed));
                 return;
             }
-            // What showed the folder or one in it follows it: the browser's tree and the folder it shows.
+            // What showed the folder or one in it follows it: the browser's tree and the folder it shows, and the
+            // preset picked, found again in the library scanned again (another place in its list).
             auto moved = [&](std::string &f) {
                 if (f == renameFolder_ || f.starts_with(renameFolder_ + "/"))
                     f = to + f.substr(renameFolder_.size());
             };
+            if (picked && !picked->factory)
+                moved(picked->folder);
+            browserPick_ = indexOfEntry(presetStore().presets(), picked);
             std::set<std::string> opened; // the browser's tree keeps it and those in it opened
             for (std::string f : browserOpenFolders_) {
                 moved(f);
@@ -2410,7 +2432,10 @@ Panel::ConfirmWords PresetBrowser::confirmWords(int kind) const {
 void PresetBrowser::confirmed(int kind, int button) {
     if (kind == kConfirmFolderDelete) { // into the Recycle Bin
         if (button == 1) {
+            const std::optional<PresetEntry> picked = entryAt(presetStore().presets(), browserPick_);
             if (presetStore().deletePresetFolder(confirmFolder_)) {
+                // The preset picked found again in the library scanned again (none, if it was in the folder).
+                browserPick_ = indexOfEntry(presetStore().presets(), picked);
                 // The browser showing it, or one in it, shows the folder it was in.
                 if (browserScope_ == BrowserScope::Folder &&
                     (browserFolder_ == confirmFolder_ || browserFolder_.starts_with(confirmFolder_ + "/"))) {

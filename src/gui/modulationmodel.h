@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -77,6 +78,9 @@ public:
     void assign(int source, int target);
     // A modulation gone (an empty one's row too), with what modulated its depth.
     void removeSlot(int source, int slot);
+    // The MODS view's empty modulations onto a param `gone` says no longer is (an effect taken out, a split's
+    // crossover out of use) lose their target, as a removed source's do, so nothing they are given modulates it.
+    void forgetEmptyTargets(const std::function<bool(int)> &gone);
     void toggleBypass(int source, int slot);
     // Makes a source swing every one of its targets both ways, or one way.
     void setSourcePolarity(int source, bool bipolar);

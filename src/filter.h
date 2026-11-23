@@ -8,6 +8,16 @@
 #include <complex>
 #include <numbers>
 
+// What only some patches use stays out of the voices' loop, which MSVC builds worse the more goes into it (as in
+// synth.cpp).
+#ifndef FMVIBE_NOINLINE
+#ifdef _MSC_VER
+#define FMVIBE_NOINLINE __declspec(noinline)
+#else
+#define FMVIBE_NOINLINE __attribute__((noinline))
+#endif
+#endif
+
 namespace fmvibe {
 
 // Topology-preserving state-variable filter (Zavalishin/Simper): stays stable
@@ -66,10 +76,21 @@ inline double combFeedback(double resonance) {
     return 0.97 * std::clamp(resonance, 0.0, 1.0);
 }
 
-// The types that self-oscillate at the top of their resonance: the ladder, the diode and the Sallen-Key's.
+// The types that self-oscillate at the top of their resonance: the ladder's, the diode and the Sallen-Key's.
 constexpr bool selfOscillates(FilterType type) {
     return type == FilterType::Ladder || type == FilterType::Diode || type == FilterType::SallenKeyLow ||
-           type == FilterType::SallenKeyHigh;
+           type == FilterType::SallenKeyHigh || type == FilterType::LadderHigh || type == FilterType::LadderBand;
+}
+// The ladder's types: its loop around four one-pole stages, low-passes (Ladder), high-passes (LadderHigh, as in Moog's
+// 904B) or low- and high-passes in turn (LadderBand). Each stage passes a quarter of the loop's gain at the cutoff,
+// where the loop turns half a cycle (the band-pass's with its feedback added rather than taken off), so they share
+// their feedback and saturation.
+constexpr bool isLadder(FilterType type) {
+    return type == FilterType::Ladder || type == FilterType::LadderHigh || type == FilterType::LadderBand;
+}
+// Whether the ladder's stage `i` is a high-pass.
+constexpr bool ladderStageHigh(FilterType type, int i) {
+    return type == FilterType::LadderHigh || (type == FilterType::LadderBand && i % 2 == 1);
 }
 // The highest resonance a voice's self-oscillating filter keeps once its operators have faded (see Voice::tail), below
 // where it oscillates, so its ringing dies away and the voice can end.
@@ -89,9 +110,16 @@ inline double ladderFeedback(double resonance) {
     return 4.0 * resonanceFeedback(resonance);
 }
 // The ladder's level at DC falls to 1 / (1 + k) as its feedback k rises, thinning the note as a transistor ladder
-// does; it takes back a quarter of that by putting its input in at 1 + k/4.
-inline double ladderInputGain(double feedback) {
-    return 1.0 + 0.25 * feedback;
+// does; it takes back a quarter of that by putting its input in at 1 + k/4. The high-pass loses its top the same way,
+// and takes it back the same way. The band-pass loses nothing: its peak rises to 4 / (4 - k) times the input, so it
+// takes its input in at 1 / (1 + k/4), its peak about as loud as the low-pass's above what it passes.
+inline double ladderInputGain(double feedback, FilterType type = FilterType::Ladder) {
+    return type == FilterType::LadderBand ? 1.0 / (1.0 + 0.25 * feedback) : 1.0 + 0.25 * feedback;
+}
+// What the band-pass's tap is scaled by, for its peak at unity without resonance: after two stages (12 dB) a half
+// there, after four (24 dB) a quarter.
+constexpr double ladderBandGain(int slope) {
+    return slope < 2 ? 2.0 : 4.0;
 }
 // The analog types' saturation: a rational curve close to tanh, smooth to its flat ends at 3 times its scale (its
 // slope 0 there) and without a library call. Odd, so silence stays silence.
@@ -103,6 +131,29 @@ inline double analogSaturate(double x, double scale) {
 // scale of the levels an operator sends, so they come out warmed and Drive pushes them on into grit, while
 // self-oscillation and loud input are held.
 constexpr double kLadderSaturationScale = 1.5;
+// The level Drive's saturator holds what it feeds the ladder's types and the diode under (see Filter::process()):
+// twice the levels an operator sends, so a driven sound reaches their own saturation, which takes the input and the
+// feedback together and so pulls the resonance down as the sound gets louder, as a driven transistor ladder's does,
+// while the saturator's anti-aliasing still takes the hardest of the clipping. Feeding the drive straight in (no
+// ceiling) would pull the resonance down hardly further and alias some 7 dB more. It was 1, as the other types' still
+// is, and the resonance rode on top of what Drive left.
+constexpr double kAnalogDriveCeiling = 2.0;
+// How long Drive's level followers average the power over (s): long beside a low note's cycle, so the gain they give
+// hardly ripples with it, short beside a note's swell and fade, which it follows.
+constexpr double kDriveLevelTime = 0.05;
+// How many samples the gain they give is held for before it is worked out again: in that long the followers move a
+// three-hundredth of the way to a new level at 48 kHz (less at the voices' oversampled rates), so the steps are far
+// under hearing, and the root and division it takes cost a fifth of what they would every sample.
+constexpr int kDriveMakeUpEvery = 8;
+// The power the followers add to what goes in before taking their ratio (-120 dB), and to what comes out as the drive
+// takes it up: so near silence, where the saturator is a straight line, they give its gain back, as they do above.
+constexpr double kDriveLevelFloor = 1e-12;
+// Whether a type takes Drive under kAnalogDriveCeiling: the ladder's types and the diode, whose saturation takes what
+// goes in. The Sallen-Key's clips only in its resonance's loop: what goes in passes it straight, so Drive held under
+// more than 1 would only make it louder.
+constexpr bool drivesOwnSaturation(FilterType type) {
+    return isLadder(type) || type == FilterType::Diode;
+}
 
 // The diode ladder: four one-pole stages, each loading the one before by half as much as a passive RC ladder's would
 // (kDiodeCoupling), so its poles spread apart; normalized, stage n follows (y[n-1] - y[n]) - c (y[n] - y[n+1]), the
@@ -190,7 +241,14 @@ struct FilterSettings {
     // a single peak.
     int slope = kDefaultSlope;
     double drive = 1.0; // input gain into the saturator; 1 = clean
-    double driveRoot = 1.0; // its square root, which the saturator's output is divided by
+    // The share of a sample's power the level followers around the saturator take in (see Filter::process()): they
+    // average over kDriveLevelTime. (It takes the place of the drive's square root, which the saturator's output was
+    // divided by, keeping the settings' size, which MSVC's voice loop is quick to feel.)
+    double driveFollow = 0.0;
+    // The level the saturator holds what goes in under (kAnalogDriveCeiling into the ladder and the diode, else 1), and
+    // the drive over it, which what goes in is scaled by into the saturator's curve.
+    double driveCeiling = 1.0;
+    double driveIn = 1.0;
     Svf::Coefs main;
     Svf::Coefs second;
     double combDelay = 2.0; // samples
@@ -199,9 +257,11 @@ struct FilterSettings {
     // The analog types' feedback (the ladder's and diode's k, the Sallen-Key's K) and what their input is scaled by.
     double feedback = 0.0;
     double inputGain = 1.0;
-    // The ladder's: each stage's share of its input, g / (1 + g) (each stage putting out G x + (1 - G) times its
-    // state), and 1 / (1 + k G^4), which solves the loop for the fourth stage's output.
+    // The ladder's: each stage's share of its input, g / (1 + g) (a low-pass stage putting out G x + (1 - G) times
+    // its state, a high-pass (1 - G) (x - its state)), the four stages' gain A for what goes in (G^4 for the
+    // low-pass), and 1 / (1 + k A) (the band-pass's 1 / (1 - k A)), which solves the loop for the fourth's output.
     double ladderG = 0.0;
+    double ladderGain = 0.0;
     double ladderSolve = 1.0;
     // The diode's: its stages' rate g, the factors that solve (I - g M) y = r for them (the inverse of each pivot and
     // the upper diagonal over it, see Filter::process()), its stages' answer to a unit input, and 1 / (1 + k h[3]).
@@ -272,6 +332,22 @@ inline void setDiodeRate(FilterSettings &s, double gd) {
         s.diodeUnit[i] = forward[i] - (i < 3 ? s.diodeUpper[i] * s.diodeUnit[i + 1] : 0.0);
 }
 
+// The ladder's stages at share `G` (see FilterSettings::ladderG), with its feedback set.
+inline void setLadderRate(FilterSettings &s, double G) {
+    s.ladderG = G;
+    if (s.type == FilterType::Ladder) { // worked out in this order, as it always was
+        const double g2 = G * G;
+        s.ladderGain = g2 * g2;
+        s.ladderSolve = 1.0 / (1.0 + s.feedback * g2 * g2);
+        return;
+    }
+    double gain = 1.0;
+    for (int i = 0; i < 4; ++i)
+        gain *= ladderStageHigh(s.type, i) ? 1.0 - G : G;
+    s.ladderGain = gain;
+    s.ladderSolve = 1.0 / (1.0 + (s.type == FilterType::LadderBand ? -s.feedback : s.feedback) * gain);
+}
+
 // How far filter FM takes a filter's integrators at `sampleRate`: the rates of the cutoffs filterSettings() holds to.
 struct CutoffFmRange {
     double low = 0.0, high = 0.0;
@@ -304,11 +380,12 @@ inline void modulateCutoff(FilterSettings &now, const FilterSettings &base, doub
     case FilterType::Comb:
         now.combDelay = std::max(base.combDelay / factor, 2.0);
         break;
-    case FilterType::Ladder: {
+    case FilterType::Ladder:
+    case FilterType::LadderHigh:
+    case FilterType::LadderBand: {
         const double g = rate(base.ladderG / (1.0 - base.ladderG));
-        now.ladderG = g / (1.0 + g);
-        const double g2 = now.ladderG * now.ladderG;
-        now.ladderSolve = 1.0 / (1.0 + base.feedback * g2 * g2);
+        now.feedback = base.feedback;
+        setLadderRate(now, g / (1.0 + g));
         break;
     }
     case FilterType::Diode:
@@ -338,7 +415,9 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
     s.type = type;
     s.slope = playedSlope(type, slope);
     s.drive = 1.0 + 8.0 * std::clamp(drive, 0.0, 1.0);
-    s.driveRoot = std::sqrt(s.drive);
+    s.driveFollow = 1.0 - std::exp(-1.0 / (kDriveLevelTime * sampleRate));
+    s.driveCeiling = drivesOwnSaturation(type) ? kAnalogDriveCeiling : 1.0;
+    s.driveIn = s.drive / s.driveCeiling;
     // An integrator's or one-pole's rate for the cutoff, prewarped so it lands where the analog circuit's does: for the
     // analog types (those that self-oscillate) alone, the others working out their own.
     const double g = selfOscillates(type)
@@ -358,14 +437,13 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
         s.combFeedback = combFeedback(resonance);
         s.combGain = std::sqrt(1.0 - s.combFeedback * s.combFeedback); // keeps broadband level steady
         break;
-    case FilterType::Ladder: {
-        s.ladderG = g / (1.0 + g);
+    case FilterType::Ladder:
+    case FilterType::LadderHigh:
+    case FilterType::LadderBand:
         s.feedback = ladderFeedback(resonance);
-        s.inputGain = ladderInputGain(s.feedback);
-        const double g2 = s.ladderG * s.ladderG;
-        s.ladderSolve = 1.0 / (1.0 + s.feedback * g2 * g2);
+        s.inputGain = ladderInputGain(s.feedback, type);
+        setLadderRate(s, g / (1.0 + g));
         break;
-    }
     case FilterType::Diode:
         setDiodeRate(s, g / kDiodeTurn);
         s.feedback = diodeFeedback(resonance);
@@ -462,13 +540,19 @@ public:
             }
         }
         uses_ = uses;
-        // Drive saturates what goes in, taken back down by the drive's square root, except into the analog types
-        // (the ladder, the diode and the Sallen-Key's), which take it at full level, so their own saturation works on
-        // top of it, and take their output down instead.
+        // Drive saturates what goes in, brought back to the level it went in at, except into the analog types (the
+        // ladder's, the diode and the Sallen-Key's), which take it at full level, so their own saturation works on top
+        // of it, and bring their output back instead. Into the ladder's types and the diode it holds what goes in under
+        // kAnalogDriveCeiling rather than 1 (a tanh that much larger, the same curve to begin with): a driven sound
+        // reaches their own saturation, which shares the loudest of it out with the feedback, as a driven transistor
+        // ladder does. The level is matched by two followers of the power, one of what goes in and one of what the
+        // saturator puts out, alike in time, so the gain they give is the saturator's own at the level the sound is at:
+        // a quiet sound and a loud one keep their levels however hard they are driven, Drive changing their tone alone.
+        // Following both at once, they rise together as a note starts, and their ratio is right from its first samples.
         if (s.drive > 1.0) {
             // The saturator averaged over the last sample step (antiderivative
             // anti-aliasing), so the harmonics it adds alias far less.
-            const double driven = in * s.drive;
+            const double driven = in * s.driveIn;
             const double dx = driven - lastDriven_;
             double y;
             if (std::abs(dx) < 1e-6) {
@@ -481,10 +565,25 @@ public:
                 y = (lastLogCosh_ - from) / dx;
             }
             lastDriven_ = driven;
-            in = selfOscillates(s.type) ? y : y / s.driveRoot;
-        } else {
-            lastDriven_ = in;
+            if (inLevel_ < 0.0) { // Drive just turned up: the followers start afresh
+                inLevel_ = outLevel_ = 0.0;
+                makeUpIn_ = 0;
+            }
+            inLevel_ += s.driveFollow * (in * in - inLevel_);
+            outLevel_ += s.driveFollow * (y * y - outLevel_);
+            // Their ratio moves slowly, so it is worked out every few samples (a root and a division each time).
+            if (--makeUpIn_ < 0) {
+                makeUpIn_ = kDriveMakeUpEvery - 1;
+                makeUp_ = std::sqrt((inLevel_ + kDriveLevelFloor) /
+                                    (outLevel_ + kDriveLevelFloor * s.driveIn * s.driveIn));
+                driveScale_ = makeUp_ / s.driveCeiling;
+            }
+            in = selfOscillates(s.type) ? s.driveCeiling * y : makeUp_ * y;
+        } else { // as the saturator would take it, Drive at 0 (driveIn is 1 over the ceiling then)
+            lastDriven_ = in * s.driveIn;
             lastKnown_ = false;
+            inLevel_ = -1.0;
+            driveScale_ = 1.0;
         }
         switch (s.type) {
         case FilterType::LowPass:
@@ -517,9 +616,8 @@ public:
             const double G = s.ladderG, keep = 1.0 - G;
             const double carried =
                 ((state_[0] * keep * G + state_[1] * keep) * G + state_[2] * keep) * G + state_[3] * keep;
-            const double G2 = G * G;
             const double x = in * s.inputGain;
-            const double fourth = (G2 * G2 * x + carried) * s.ladderSolve;
+            const double fourth = (s.ladderGain * x + carried) * s.ladderSolve;
             double y = x - s.feedback * fourth;
             double out = 0.0;
             for (int i = 0; i < 4; ++i) {
@@ -529,8 +627,11 @@ public:
                 if (i == s.slope)
                     out = y;
             }
-            return out / s.driveRoot;
+            return out * driveScale_;
         }
+        case FilterType::LadderHigh:
+        case FilterType::LadderBand:
+            return ladderHighOrBand(in, s);
         case FilterType::Diode: {
             // The stages solved for what their states alone put out (the system's pivots worked out once a block),
             // the fourth one's output then found with the feedback as if it were linear, the input less the feedback
@@ -552,7 +653,7 @@ public:
                 state_[i] = 2.0 * y - state_[i];
                 out = y; // the fourth's, the last
             }
-            return out / s.driveRoot;
+            return out * driveScale_;
         }
         case FilterType::SallenKeyLow:
         case FilterType::SallenKeyHigh: {
@@ -568,7 +669,7 @@ public:
             state_[0] = 2.0 * y1 - state_[0];
             state_[1] = 2.0 * y2 - state_[1];
             const double out = s.type == FilterType::SallenKeyLow ? y2 : in - 2.0 * (y1 - y2) + clipped - y2;
-            return out / s.driveRoot;
+            return out * driveScale_;
         }
         case FilterType::Formant: { // three band-passes, each at unity gain at its center, by its formant's level
             double out = 0.0;
@@ -591,6 +692,33 @@ public:
     }
 
 private:
+    // The ladder's loop with high-pass stages (all four, or every other one): each puts out what it takes in less its
+    // low-pass's output, (1 - G) (x - its state) as if it were linear. The band-pass adds its feedback, its loop turning
+    // a whole cycle at the cutoff, and is taken from its second stage (12 dB) or its fourth (24 dB), scaled for its
+    // peak. Out of line, so the voices' loop, which process() goes into, carries none of it. (Taking ladderGain and
+    // driveCeiling back out of FilterSettings made notes releasing 3 % slower on MSVC, though no filter played.)
+    FMVIBE_NOINLINE double ladderHighOrBand(double in, const FilterSettings &s) {
+        const bool band = s.type == FilterType::LadderBand;
+        const double G = s.ladderG, keep = 1.0 - G;
+        double carried = 0.0;
+        for (int i = 0; i < 4; ++i)
+            carried = ladderStageHigh(s.type, i) ? keep * (carried - state_[i]) : G * carried + keep * state_[i];
+        const double x = in * s.inputGain;
+        const double fourth = (s.ladderGain * x + carried) * s.ladderSolve;
+        double y = band ? x + s.feedback * fourth : x - s.feedback * fourth;
+        double out = 0.0;
+        for (int i = 0; i < 4; ++i) {
+            const double z = analogSaturate(y, kLadderSaturationScale);
+            const double v = (z - state_[i]) * G;
+            const double low = v + state_[i];
+            state_[i] = low + v;
+            y = ladderStageHigh(s.type, i) ? z - low : low;
+            if (i == s.slope)
+                out = y;
+        }
+        return (band ? ladderBandGain(s.slope) * out : out) * driveScale_;
+    }
+
     // log(cosh(x)), the antiderivative of tanh, without overflowing for large x.
     static double logCosh(double x) {
         const double a = std::abs(x);
@@ -617,14 +745,19 @@ private:
     // What the type and slope ran last time (uses_, 0 before the first time): the state-variable stages (the Morph
     // type's too), the comb's line, an analog type's stages (each its own, though they share state_), or the formants.
     static constexpr unsigned kUsesA = 1, kUsesB = 2, kUsesComb = 4, kUsesLadder = 8, kUsesDiode = 16,
-                              kUsesSallenKey = 32, kUsesFormant = 64;
-    static constexpr unsigned kUsesAnalog = kUsesLadder | kUsesDiode | kUsesSallenKey;
+                              kUsesSallenKey = 32, kUsesFormant = 64, kUsesLadderHigh = 128, kUsesLadderBand = 256;
+    static constexpr unsigned kUsesAnalog =
+        kUsesLadder | kUsesDiode | kUsesSallenKey | kUsesLadderHigh | kUsesLadderBand;
     static unsigned usesOf(const FilterSettings &s) {
         switch (s.type) {
         case FilterType::Comb:
             return kUsesComb;
         case FilterType::Ladder:
             return kUsesLadder;
+        case FilterType::LadderHigh:
+            return kUsesLadderHigh;
+        case FilterType::LadderBand:
+            return kUsesLadderBand;
         case FilterType::Diode:
             return kUsesDiode;
         case FilterType::SallenKeyLow:
@@ -646,6 +779,13 @@ private:
     double lastDriven_ = 0.0; // the saturator's previous input
     double lastLogCosh_ = 0.0; // and logCosh() of it, when worked out already (lastKnown_)
     bool lastKnown_ = false;
+    // Drive's level followers: the power of what goes in (below 0 while Drive is at 0, so they start afresh as it
+    // turns up) and of what the saturator puts out; and what an analog type's output is scaled by for them.
+    double inLevel_ = -1.0;
+    double outLevel_ = 0.0;
+    double makeUp_ = 1.0; // the gain they give, worked out again in makeUpIn_ + 1 samples
+    int makeUpIn_ = 0;
+    double driveScale_ = 1.0;
 #ifdef __EMSCRIPTEN__
     double guard_ = 1e-20; // see process()
 #endif
@@ -701,6 +841,20 @@ inline double filterResponse(FilterType type, int slope, double cutoffHz, double
             taps *= pole;
         const Complex all = pole * pole * pole * pole;
         h = ladderInputGain(k) * taps / (all + k);
+        break;
+    }
+    case FilterType::LadderHigh:
+    case FilterType::LadderBand: { // the stages up to the tap over 1 + k (or 1 - k) times all four, as its input is
+        const double k = ladderFeedback(resonance);
+        Complex taps{1.0}, all{1.0};
+        for (int i = 0; i < 4; ++i) {
+            const Complex pole = ladderStageHigh(type, i) ? s / (1.0 + s) : 1.0 / (1.0 + s);
+            all *= pole;
+            if (i <= slope)
+                taps *= pole;
+        }
+        const bool band = type == FilterType::LadderBand;
+        h = ladderInputGain(k, type) * (band ? ladderBandGain(slope) : 1.0) * taps / (1.0 + (band ? -k : k) * all);
         break;
     }
     case FilterType::Diode: {
