@@ -2293,7 +2293,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     - The **list** shows the folder's presets, and with **Subfolders** on (the switch in the search row, on to begin
       with, greyed out for All, Favorites, Recent and Factory) its subfolders' too, each then with its folder's name before it; the folder's path over it leads back up,
       a click on a part showing that folder, and the category filters show beside it as chips, a click taking one off.
-      Each row has the name, its description in faint text in the room the name leaves, the category's
+      Each row has the name (in a light grey near the text's color, standing out from the grey author, and in the text's
+      color under the mouse and picked), its description in faint text in the room the name leaves, the category's
       pill (right-aligned in a column as wide as the widest listed), a star (a favorite, or not) and the author; the preset loaded has a
       dot. A click (or a tap) on a preset loads it at once, the browser staying open for the next; a double-click (or
       Enter, for the preset Up, Down or the search picked) loads it and closes the browser. Loading asks first while the

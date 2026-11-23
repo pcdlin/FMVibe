@@ -1103,7 +1103,10 @@ void PresetBrowser::paintBrowser(Canvas &c) {
         }
         const std::string name = fitted(c, e.name, kTextBody, picked, nameRight - nx - 14.0f);
         const float nameW = std::ceil(c.textWidth(name, kTextBody, picked));
-        c.text({nx, r.y, nameW + 2.0f, r.h}, name, kTextBody, picked || hovered ? kText : kDim, Align::Left, picked);
+        // At rest well toward the text's color, standing out from the grey author and the faint description, and in
+        // it under the mouse and picked.
+        c.text({nx, r.y, nameW + 2.0f, r.h}, name, kTextBody, picked || hovered ? kText : mix(kDim, kText, 0.65f),
+               Align::Left, picked);
         if (i == loaded)
             c.fillCircle({nx + nameW + 8.0f, r.center().y}, 2.5f, kAccent);
         // Its description, faint, in the room the name leaves.

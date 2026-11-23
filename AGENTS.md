@@ -812,7 +812,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its category's dot at its left, its name in the middle and its author at its right (read off the rendered pixels),
     and its tooltip; its info card's star making the preset a favorite, Edit Info, Show in Browser, Escape
     and a click around it closing it, and a factory preset's offering Save Copy; the browser opening on Factory, then where it was left, Show in Browser on the preset's
-    folder, listing its subfolders' presets unless Subfolders is off, a click loading a preset and leaving it open, a
+    folder, listing its subfolders' presets unless Subfolders is off, its names standing
+    out from their authors in every theme (read off the rendered pixels), a click loading a preset and leaving it open, a
     double-click loading one and closing it, and Close closing it; its sidebar's All, Favorites and Recent, its tree's folders opening and closing and its categories
     filtering (two at once, Clear taking them off); the folder's path leading back up and the file's button
     showing the preset's file (none for a factory preset); its search finding presets by

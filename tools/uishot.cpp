@@ -2594,6 +2594,47 @@ void testTitleActionFace(const std::filesystem::path &dir, Renderer &renderer) {
 // place with the mouse elsewhere, its chevron with it over the card's display, and gone again once it leaves, while the
 // x's cross shows throughout, in Midnight and in Spectrum; the fold still taking a click while hidden; and shown with
 // no mouse once a finger has touched the editor (read off the rendered pixels, against the card's face beside them).
+// The preset browser's names stand out from the rows' authors: a name at rest (not picked, the mouse away) further
+// from the row's background than its author is, in every theme (read off the rendered pixels: the inkiest pixel of
+// each, by its channels' distance from the background beside them).
+void testBrowserNamesStandOut(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    for (PresetEntry &e : model.library)
+        e.info.author = "Someone";
+    View view(model);
+    click(view, detail::kPresetName.center()); // the browser, on the factory presets: Bell and Pad
+    const Point away{600.0f, 960.0f};
+    view.mouseMove(away, {});
+    const bool open = view.browserShown() && view.browserListed().size() == 2 && view.browserPicked() < 0;
+    // The first row: its name from the list's left, its author in the last 84 px (as the browser lays them out).
+    const float rowTop = 132.0f, listLeft = 418.0f, listRight = 984.0f;
+    auto inkiest = [&](float from, float to) {
+        const uint32_t back = renderer.pixel({from - 6.0f, rowTop + 3.0f});
+        int most = 0;
+        for (float y = rowTop + 2.0f; y < rowTop + 24.0f; y += 1.0f)
+            for (float x = from; x < to; x += 1.0f) {
+                const uint32_t p = renderer.pixel({x, y});
+                int d = 0;
+                for (int shift : {0, 8, 16})
+                    d += std::abs(static_cast<int>(p >> shift & 255) - static_cast<int>(back >> shift & 255));
+                most = std::max(most, d);
+            }
+        return most;
+    };
+    bool apart = open;
+    for (const char *theme : {"Spectrum", "Midnight", "Porcelain", "Light"}) {
+        model.themeName = theme;
+        view.mouseMove(away, {});
+        const bool shot = renderer.save(view, dir / (std::string("22z-browser-names-") + theme + ".png"));
+        const int name = shot ? inkiest(listLeft + 10.0f, listLeft + 60.0f) : 0;
+        const int author = shot ? inkiest(listRight - 84.0f, listRight - 6.0f) : 0;
+        std::printf("      %s: the name's ink %d from the row's background, the author's %d\n", theme, name, author);
+        apart = apart && name > author + 60;
+    }
+    model.themeName = "Midnight";
+    check(apart, "the preset browser's names stand out from their authors in every theme (read off the rendered pixels)");
+}
+
 void testTitleActionsOnHover(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -15125,6 +15166,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testCardOutline(dir, renderer);
     testTitleActionFace(dir, renderer);
     testTitleActionsOnHover(dir, renderer);
+    testBrowserNamesStandOut(dir, renderer);
     testFlatModulatedKnob(dir, renderer);
     testModEndMarks(dir, renderer);
     testFlatThemes(dir, renderer);
