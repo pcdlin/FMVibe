@@ -13,6 +13,10 @@ namespace fmvibe::gui {
 
 using namespace detail;
 
+bool View::cardsTintable() const {
+    return kThemes[themeIndex(controller_.editorSettings().theme)].flat;
+}
+
 std::vector<View::Widget> View::settingsWidgets() const {
     const Rect panel = settingsPanel(height());
     std::vector<Widget> list;
@@ -50,8 +54,10 @@ std::vector<View::Widget> View::settingsWidgets() const {
         add(Kind::SettingsHandles, settingsHandles(panel, size), -1, size);
     mergeButtons(list, row);
     row = list.size();
-    for (int tinted = 0; tinted < 2; ++tinted)
+    for (int tinted = 0; tinted < 2; ++tinted) {
         add(Kind::SettingsCards, settingsCards(panel, tinted), -1, tinted);
+        list.back().disabled = !cardsTintable(); // dimmed, and the mouse passes it by
+    }
     mergeButtons(list, row);
     add(Kind::SettingsManual, settingsManual(panel));
     add(Kind::SettingsClose, settingsClose(panel));
@@ -121,10 +127,10 @@ void View::paintSettings(Canvas &c) {
     const Rect handles = settingsHandles(panel, 0);
     c.text({panel.x + 24.0f, handles.y, kSettingsLabelW, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim,
            Align::Left, true);
-    // CARDS, faint in a theme that outlines its cards, where tinting does nothing (its buttons still take clicks).
+    // CARDS, faint in a theme that outlines its cards, where tinting does nothing (its buttons disabled).
     const Rect cards = settingsCards(panel, 0);
     c.text({panel.x + 24.0f, cards.y, kSettingsLabelW, cards.h}, tr(Str::SettingsCards), kTextLabel,
-           look.flat ? kDim : kFaint, Align::Left, true);
+           cardsTintable() ? kDim : kFaint, Align::Left, true);
     c.text({panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.

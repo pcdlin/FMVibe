@@ -142,6 +142,7 @@ public:
     bool browserShown() const { return presets_.browserShown(); }
     bool infoCardShown() const { return presets_.infoCardShown(); }
     bool confirmShown() const { return confirm_ >= 0; }
+    bool settingsShown() const { return settingsOpen_; }
     bool saveShown() const { return presets_.saveShown(); }
     bool saveFolderListShown() const { return presets_.saveFolderListShown(); }
     bool nameMenuShown() const { return presets_.nameMenuShown(); }
@@ -597,6 +598,9 @@ private:
     void paintTooltip(Canvas &c);
     // The settings dialog: while it is open it takes every click.
     std::vector<Widget> settingsWidgets() const;
+    // Whether the theme picked tints its cards with tinted cards on (Spectrum, Porcelain): the settings' CARDS is
+    // disabled in the others.
+    bool cardsTintable() const;
     std::vector<Widget> confirmWidgets() const;
     // The confirm dialog's button `button` pressed (0 Cancel, 1 the way ahead, 2 to 4 the bands' and the split's others).
     void answerConfirm(int button);

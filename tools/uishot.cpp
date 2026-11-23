@@ -15119,16 +15119,27 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, handlesButton(0));
     check(startsSmall && picksLarge && picksMedium && model.handles == 0 && handlesShot && model.values == handlesBefore,
           "the settings dialog's HANDLES picks the depth handles' size");
-    // CARDS: Plain to begin with, Tinted tinting a flat theme's cards, leaving the patch alone.
+    // CARDS: Plain to begin with, Tinted tinting a flat theme's cards (Spectrum's), leaving the patch alone; disabled in
+    // Midnight, where a click on it changes nothing and leaves the dialog open.
     auto cardsButton = [&](int tinted) { return detail::settingsCards(dialog, tinted).center(); };
+    const std::string themeBefore = model.themeName;
+    click(view, theme(0)); // Spectrum
     const bool startsPlain = !model.tinted;
     click(view, cardsButton(1));
     const bool picksTinted = model.tinted;
     view.mouseMove(cardsButton(0), {});
     const bool cardsShot = renderer.save(view, dir / "14h2-settings-cards.png");
     click(view, cardsButton(0));
-    check(startsPlain && picksTinted && !model.tinted && cardsShot && model.values == handlesBefore,
+    check(model.themeName == "Spectrum" && startsPlain && picksTinted && !model.tinted && cardsShot &&
+              model.values == handlesBefore,
           "the settings dialog's CARDS switches tinted cards on and off");
+    click(view, theme(2)); // Midnight
+    view.mouseMove(cardsButton(1), {});
+    const bool disabledShot = renderer.save(view, dir / "14h3-settings-cards-disabled.png");
+    click(view, cardsButton(1));
+    check(model.themeName == "Midnight" && disabledShot && !model.tinted && view.settingsShown(),
+          "the settings dialog's CARDS is disabled in Midnight, a click on it changing nothing");
+    model.themeName = themeBefore;
     click(view, closeDialog);
     view.mouseMove(cog, {});
     check(renderer.save(view, dir / "14b-settings-closed.png"), "render the cog after the dialog closed");

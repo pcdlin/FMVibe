@@ -4840,8 +4840,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsMpeRange:
     case Kind::SettingsHandles:
     case Kind::SettingsCards: {
-        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, and the cards' look in a theme
-        // that outlines its cards, though they still take clicks.
+        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks;
+        // the cards' look fades in a theme that outlines its cards, where it is disabled.
         const bool on = w.kind == Kind::SettingsOption    ? controller_.oversampling() == w.b
                         : w.kind == Kind::SettingsCards   ? controller_.editorSettings().tintedCards == (w.b != 0)
                         : w.kind == Kind::SettingsMpe     ? controller_.mpe() == (w.b != 0)
@@ -4849,7 +4849,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                                                        kModHandleSizeCount - 1) == w.b
                                                           : controller_.mpeBendRange() == w.b;
         const bool faint = (w.kind == Kind::SettingsMpeRange && !controller_.mpe()) ||
-                           (w.kind == Kind::SettingsCards && !look.flat);
+                           (w.kind == Kind::SettingsCards && w.disabled);
         const Color accent = faint ? kDim : kAccent;
         paintButtonFace(c, w, on, hovered, accent, 0.22f, kRadiusControl); // in its row's pill, or on its own
         char factor[16];

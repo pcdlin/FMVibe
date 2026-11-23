@@ -2418,8 +2418,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). **Cards**,
   Plain (to begin with) or Tinted, tints each effect's and source card's face with its own color in Spectrum and
   Porcelain, as those themes drew their cards before they were plain (switched off, faintly); Midnight and Light
-  outline their cards in their colors instead, so there it changes nothing, and its name and buttons are faint, still
-  taking a click. All seven are yours rather than the
+  outline their cards in their colors instead, so there its name and buttons are faint and disabled, taking no
+  click. All seven are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license. A book before its x (its tooltip "Open the user manual") opens the user manual online, at the address the
