@@ -14,10 +14,12 @@
 #include <type_traits>
 
 // What only some patches use stays out of renderBlock()'s code, which MSVC builds worse the more goes into it.
+#ifndef FMVIBE_NOINLINE // filter.h defines it too
 #ifdef _MSC_VER
 #define FMVIBE_NOINLINE __declspec(noinline)
 #else
 #define FMVIBE_NOINLINE __attribute__((noinline))
+#endif
 #endif
 
 namespace fmvibe {

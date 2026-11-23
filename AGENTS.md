@@ -84,7 +84,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - the ladder's slopes tapping one to four of its one-pole stages, its high-pass's one to four one-pole high-passes,
-    and its band-pass two poles at 12 dB and two of them at 24 (6 and 18 playing 12 and 24); the ladder (its low-,
+    and its band-pass two poles at 12 dB and two of them at 24 (6 and 18 playing 12 and 24), those two played at a
+    quarter of an operator's level, under their stages' saturation; the ladder (its low-,
     high- and band-pass), the diode and both Sallen-Key's, at full resonance and plucked, ringing on at their cutoff, steady and finite (silent by then at 80 %); an A4 sine
     under the ladder's cutoff coming out with a 3rd harmonic from its saturation, more with Drive, where the
     low-pass's stays clean, and its resonance thinning the note, where the low-pass's leaves it as it was; the diode
