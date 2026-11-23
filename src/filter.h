@@ -232,8 +232,9 @@ struct FilterSettings {
     int slope = kDefaultSlope;
     double drive = 1.0; // input gain into the saturator; 1 = clean
     double driveRoot = 1.0; // its square root, which the saturator's output is divided by
-    // The drive over the level the saturator holds what goes in under (kAnalogDriveCeiling into the ladder's types and
-    // the diode, else 1, see drivesOwnSaturation()), which what goes in is scaled by into the saturator's curve.
+    // The level the saturator holds what goes in under (kAnalogDriveCeiling into the ladder and the diode, else 1), and
+    // the drive over it, which what goes in is scaled by into the saturator's curve.
+    double driveCeiling = 1.0;
     double driveIn = 1.0;
     Svf::Coefs main;
     Svf::Coefs second;
@@ -244,9 +245,10 @@ struct FilterSettings {
     double feedback = 0.0;
     double inputGain = 1.0;
     // The ladder's: each stage's share of its input, g / (1 + g) (a low-pass stage putting out G x + (1 - G) times
-    // its state, a high-pass (1 - G) (x - its state)), and 1 / (1 + k A) (the band-pass's 1 / (1 - k A)), which solves
-    // the loop for the fourth's output, A the four stages' gain for what goes in (ladderGain(), G^4 for the low-pass).
+    // its state, a high-pass (1 - G) (x - its state)), the four stages' gain A for what goes in (G^4 for the
+    // low-pass), and 1 / (1 + k A) (the band-pass's 1 / (1 - k A)), which solves the loop for the fourth's output.
     double ladderG = 0.0;
+    double ladderGain = 0.0;
     double ladderSolve = 1.0;
     // The diode's: its stages' rate g, the factors that solve (I - g M) y = r for them (the inverse of each pivot and
     // the upper diagonal over it, see Filter::process()), its stages' answer to a unit input, and 1 / (1 + k h[3]).
@@ -317,25 +319,20 @@ inline void setDiodeRate(FilterSettings &s, double gd) {
         s.diodeUnit[i] = forward[i] - (i < 3 ? s.diodeUpper[i] * s.diodeUnit[i + 1] : 0.0);
 }
 
-// The high-pass's and the band-pass ladder's four stages' gain for what goes in at share `G`: 1 - G a high-pass stage,
-// G a low-pass one.
-inline double ladderGain(FilterType type, double G) {
-    double gain = 1.0;
-    for (int i = 0; i < 4; ++i)
-        gain *= ladderStageHigh(type, i) ? 1.0 - G : G;
-    return gain;
-}
-
 // The ladder's stages at share `G` (see FilterSettings::ladderG), with its feedback set.
 inline void setLadderRate(FilterSettings &s, double G) {
     s.ladderG = G;
     if (s.type == FilterType::Ladder) { // worked out in this order, as it always was
         const double g2 = G * G;
+        s.ladderGain = g2 * g2;
         s.ladderSolve = 1.0 / (1.0 + s.feedback * g2 * g2);
         return;
     }
-    s.ladderSolve =
-        1.0 / (1.0 + (s.type == FilterType::LadderBand ? -s.feedback : s.feedback) * ladderGain(s.type, G));
+    double gain = 1.0;
+    for (int i = 0; i < 4; ++i)
+        gain *= ladderStageHigh(s.type, i) ? 1.0 - G : G;
+    s.ladderGain = gain;
+    s.ladderSolve = 1.0 / (1.0 + (s.type == FilterType::LadderBand ? -s.feedback : s.feedback) * gain);
 }
 
 // How far filter FM takes a filter's integrators at `sampleRate`: the rates of the cutoffs filterSettings() holds to.
@@ -406,7 +403,8 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
     s.slope = playedSlope(type, slope);
     s.drive = 1.0 + 8.0 * std::clamp(drive, 0.0, 1.0);
     s.driveRoot = std::sqrt(s.drive);
-    s.driveIn = s.drive / (drivesOwnSaturation(type) ? kAnalogDriveCeiling : 1.0);
+    s.driveCeiling = drivesOwnSaturation(type) ? kAnalogDriveCeiling : 1.0;
+    s.driveIn = s.drive / s.driveCeiling;
     // An integrator's or one-pole's rate for the cutoff, prewarped so it lands where the analog circuit's does: for the
     // analog types (those that self-oscillate) alone, the others working out their own.
     const double g = selfOscillates(type)
@@ -551,7 +549,7 @@ public:
                 y = (lastLogCosh_ - from) / dx;
             }
             lastDriven_ = driven;
-            in = !selfOscillates(s.type) ? y / s.driveRoot : drivesOwnSaturation(s.type) ? kAnalogDriveCeiling * y : y;
+            in = selfOscillates(s.type) ? s.driveCeiling * y : y / s.driveRoot;
         } else { // as the saturator would take it, Drive at 0 (driveIn is 1 over the ceiling then)
             lastDriven_ = in * s.driveIn;
             lastKnown_ = false;
@@ -587,9 +585,8 @@ public:
             const double G = s.ladderG, keep = 1.0 - G;
             const double carried =
                 ((state_[0] * keep * G + state_[1] * keep) * G + state_[2] * keep) * G + state_[3] * keep;
-            const double G2 = G * G;
             const double x = in * s.inputGain;
-            const double fourth = (G2 * G2 * x + carried) * s.ladderSolve;
+            const double fourth = (s.ladderGain * x + carried) * s.ladderSolve;
             double y = x - s.feedback * fourth;
             double out = 0.0;
             for (int i = 0; i < 4; ++i) {
@@ -667,7 +664,8 @@ private:
     // The ladder's loop with high-pass stages (all four, or every other one): each puts out what it takes in less its
     // low-pass's output, (1 - G) (x - its state) as if it were linear. The band-pass adds its feedback, its loop turning
     // a whole cycle at the cutoff, and is taken from its second stage (12 dB) or its fourth (24 dB), scaled for its
-    // peak. Out of line, so the voices' loop, which process() goes into, carries none of it.
+    // peak. Out of line, so the voices' loop, which process() goes into, carries none of it. (Taking ladderGain and
+    // driveCeiling back out of FilterSettings made notes releasing 3 % slower on MSVC, though no filter played.)
     FMVIBE_NOINLINE double ladderHighOrBand(double in, const FilterSettings &s) {
         const bool band = s.type == FilterType::LadderBand;
         const double G = s.ladderG, keep = 1.0 - G;
@@ -675,7 +673,7 @@ private:
         for (int i = 0; i < 4; ++i)
             carried = ladderStageHigh(s.type, i) ? keep * (carried - state_[i]) : G * carried + keep * state_[i];
         const double x = in * s.inputGain;
-        const double fourth = (ladderGain(s.type, G) * x + carried) * s.ladderSolve;
+        const double fourth = (s.ladderGain * x + carried) * s.ladderSolve;
         double y = band ? x + s.feedback * fourth : x - s.feedback * fourth;
         double out = 0.0;
         for (int i = 0; i < 4; ++i) {
