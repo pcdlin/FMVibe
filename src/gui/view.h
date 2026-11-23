@@ -167,6 +167,9 @@ public:
     // node): a test may hand it a clock of its own.
     using Clock = double (*)();
     void setClock(Clock clock) { clock_ = clock; }
+    // How many cards the editor keeps where it last painted them, for the mouse to find (see noteCard()): a test checks
+    // that partial paints don't pile them up.
+    size_t cardsNoted() const { return cardRects_.size(); }
 
 private:
     using Kind = WidgetKind;
@@ -696,9 +699,16 @@ private:
     std::optional<Widget> hover_;
     Point hoverPoint_; // where the mouse is
     // Where the effect and source cards were last painted, as much of each as shows (a source by its number, an effect
-    // by kMaxSources + its slot), and the one the mouse is over (-1 for none): a theme whose cards go without an
-    // outline outlines that one alone.
-    std::vector<std::pair<int, Rect>> cardRects_;
+    // by kMaxSources + its slot), in the order they were painted, each with the paint that noted it, and the one the
+    // mouse is over (-1 for none): a theme whose cards go without an outline outlines that one alone. A card noted
+    // again by a later paint takes the place of where an earlier one noted it, so partial paints don't pile them up.
+    struct NotedCard {
+        int id;
+        Rect rect;
+        uint32_t paint;
+    };
+    std::vector<NotedCard> cardRects_;
+    uint32_t cardPaint_ = 0; // counts the paints, for cardRects_
     int hoverCard_ = -1;
     bool touched_ = false;   // a finger has touched the editor: the cards' folds show without a mouse over them
     bool mouseOver_ = false; // the mouse is over the editor (since it last moved there, until it left)

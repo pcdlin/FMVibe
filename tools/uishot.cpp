@@ -5625,6 +5625,33 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
         same = same && model.value(i) == before[i - kFxSplitBase];
     check(graphShot && same, "switching to the graph and back leaves the split as it was");
 
+    // Its fold shows while the mouse is over the container, its controls or a card on its band shown (the reverb), as
+    // a card's does while the mouse is over the card, and not with the mouse away (read off the rendered pixels: how
+    // many pixels inside the fold differ from the container's face left of it).
+    {
+        const Rect boxFold = detail::cardFold(column, false);
+        auto inked = [&] {
+            const uint32_t face = renderer.pixel({boxFold.x - 4.0f, boxFold.y + 3.0f});
+            int count = 0;
+            for (float y = boxFold.y + 2.0f; y < boxFold.bottom() - 2.0f; y += 1.0f)
+                for (float x = boxFold.x + 2.0f; x < boxFold.right() - 2.0f; x += 1.0f)
+                    count += renderer.pixel({x, y}) != face;
+            return count;
+        };
+        view.mouseMove({600.0f, 600.0f}, {});
+        const int away = renderer.save(view, dir / "41f2-fx-row-fold-away.png") ? inked() : -1;
+        view.mouseMove({column.center().x, column.bottom() - 40.0f}, {});
+        const int overControls = renderer.save(view, dir / "41f3-fx-row-fold-controls.png") ? inked() : -1;
+        view.mouseMove({reverbCard.center().x, reverbCard.bottom() - 30.0f}, {});
+        const int overBandCard = renderer.save(view, dir / "41f4-fx-row-fold-band-card.png") ? inked() : -1;
+        view.mouseMove({600.0f, 600.0f}, {});
+        std::printf("      the container's fold's ink: with the mouse away %d, over its controls %d, over its band's "
+                    "reverb %d\n",
+                    away, overControls, overBandCard);
+        check(away == 0 && overControls > 10 && overBandCard > 10,
+              "a container's fold shows while the mouse is over it or a card on its band, and not with the mouse away");
+    }
+
     // Folded to a strip by the chevron left of its x, and unfolded by a click on the strip.
     click(view, centerOf(detail::cardFold(column, false)));
     const bool folded = model.ui.splitsFolded == 1u;
@@ -6116,6 +6143,29 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     const bool idleMoved = view.poll() && only(detail::sourceCard(0.0f));
     check(idleMoved && samePixels("99i-idle-lfo.png"),
           "a free LFO's dot moving with no notes playing repaints its card alone, as a whole paint would");
+    // Its card repainted again and again, as the window polls, notes where the cards are no more times than a whole
+    // paint does: the mouse finds a card among as many as show, however long the editor has been open.
+    {
+        const size_t noted = view.cardsNoted();
+        size_t most = noted;
+        int repaints = 0;
+        for (int i = 1; i <= 300; ++i) {
+            model.live.lfoPhases[0] = std::fmod(0.6f + 0.013f * static_cast<float>(i), 1.0f);
+            if (!view.poll())
+                continue;
+            for (const Rect &area : view.changedAreas())
+                renderer.repaint(view, area);
+            ++repaints;
+            most = std::max(most, view.cardsNoted());
+        }
+        std::printf("      cards noted after a whole paint %zu, at most %zu over %d partial repaints\n", noted, most,
+                    repaints);
+        check(noted > 0 && repaints >= 100 && most == noted,
+              "partial repaints of a free LFO's card don't pile up where the cards are noted");
+        model.live.lfoPhases[0] = 0.6f;
+        view.poll();
+        renderer.save(view, dir / "99i2-idle-lfo-repainted.png");
+    }
     const std::vector<uint32_t> withDot = renderer.image();
     model.set(paramIndex(0, SourceParam::Free), 0.0);
     view.poll();

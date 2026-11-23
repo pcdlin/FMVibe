@@ -630,7 +630,7 @@ The panel's title row has:
 - **+ Source**, which opens the list of source types (Envelope, LFO, Curve, Random, MIDI), and a count of sources
   used (for example 4/32).
 
-Source cards show four at a time. After the last card, a dashed **Add source** card opens the same list.
+Source cards show four at a time. After the last card, a dashed **Add Source** card opens the same list.
 
 Sources are numbered by type in the order they appear ("LFO 2", "Env 1", "Curve 1", "Random 1", "MIDI 1").
 
@@ -871,7 +871,7 @@ The **FX** tab shows the effects as a **row of cards**, left to right in process
 - **+ Effect** at the top left opens the list of effect types, grouped as DRIVE, EQ & FILTER, DYNAMICS, SPACE,
   MODULATION, STEREO & PHASE and SPLIT. The new effect goes at the end. A count shows how many of the 32 effects
   are used.
-- The dashed **Add effect** card after the last effect opens the same list.
+- The dashed **Add Effect** card after the last effect opens the same list.
 - The **arrow** before each card turns into a **+** under the mouse; click it to insert an effect there.
 
 **A card** has a title row with the effect's icon and name at the left and a fold chevron, a power switch and an **×**

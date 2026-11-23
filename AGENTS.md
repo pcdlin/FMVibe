@@ -521,7 +521,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     whole paint and those parts take printed); with no notes playing, a compressor's meter the panels' row and the
     host's tempo the whole editor;
     with none playing, a free LFO's dot moving repainting its card alone, and the editor telling the plugin while one
-    runs (so it keeps processing); a retrigger one showing no dot, but while the effects' tail runs it its dot moving
+    runs (so it keeps processing), and its card repainted hundreds of times noting the cards no more often than a
+    whole paint does; a retrigger one showing no dot, but while the effects' tail runs it its dot moving
     there, gone again with the tail;
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
@@ -539,7 +540,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     container's Low knob setting the low band's level, lowering that band's curve on its display (read off the
     rendered pixels), its S buttons soloing each band on its own, the band shown faint while the other is soloed (read
     off the rendered pixels), both undone, and its crossover handle dragged; the
-    graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
+    graph and back leaving every wire as it was; its fold showing while the mouse is over it or a card
+    on its band (read off the rendered pixels); the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
     pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); a card at its band's end
     moved right within its own place, or carried straight down out of the panel, moving nothing, carried over its neighbor and then the

@@ -2408,6 +2408,7 @@ void View::paint(Canvas &c, Rect area) {
     glow_ = glowing = shownGlow();
     links_ = shownLinks();
     handles_ = controller_.editorSettings().handleSize;
+    ++cardPaint_;
     if (partial) {
         c.fillRect(area, kBackground);
     } else {
@@ -7031,21 +7032,39 @@ void View::mouseLeave() {
 void View::noteCard(int id, Rect card, Rect shown) {
     const float x = std::max(card.x, shown.x), y = std::max(card.y, shown.y);
     const float right = std::min(card.right(), shown.right()), bottom = std::min(card.bottom(), shown.bottom());
+    // Where an earlier paint noted it goes (a partial paint notes the cards it repaints again, and a full one starts
+    // over); where this one did stays, as on top of what it was painted under.
+    std::erase_if(cardRects_, [&](const NotedCard &n) { return n.id == id && n.paint != cardPaint_; });
     if (right > x && bottom > y)
-        cardRects_.push_back({id, {x, y, right - x, bottom - y}});
+        cardRects_.push_back({id, {x, y, right - x, bottom - y}, cardPaint_});
 }
 
 int View::cardAt(Point p) const {
     for (auto it = cardRects_.rbegin(); it != cardRects_.rend(); ++it) // the last painted is on top
-        if (it->second.contains(p))
-            return it->first;
+        if (it->rect.contains(p))
+            return it->id;
     return -1;
 }
 
 // Whether the mouse is over the card as it is painted now: the card's widgets are painted after every card's face has
-// noted where it is, so a card just moved, widened or scrolled under a resting mouse counts.
+// noted where it is, so a card just moved, widened or scrolled under a resting mouse counts. A card painted within
+// another counts as over that one too (an effect in a split's band, for its container).
 bool View::cardFoldShown(int card) const {
-    return touched_ || (mouseOver_ && cardAt(hoverPoint_) == card);
+    if (touched_)
+        return true;
+    if (!mouseOver_)
+        return false;
+    for (auto it = cardRects_.rbegin(); it != cardRects_.rend(); ++it)
+        if (it->rect.contains(hoverPoint_)) {
+            if (it->id == card)
+                return true;
+            const Rect in = it->rect;
+            return std::any_of(it + 1, cardRects_.rend(), [&](const NotedCard &n) {
+                return n.id == card && in.x >= n.rect.x && in.y >= n.rect.y && in.right() <= n.rect.right() &&
+                       in.bottom() <= n.rect.bottom();
+            });
+        }
+    return false;
 }
 
 // A card's outline: always, but in a theme whose cards go without one, only while it is dragged or under the mouse.

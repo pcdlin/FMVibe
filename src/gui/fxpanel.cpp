@@ -2328,7 +2328,7 @@ bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const float arm = 9.0f;
         const Point m{w.rect.center().x, w.rect.center().y - 14.0f};
         const Color ink = paintAddCard(c, w.rect, m, arm, hovered);
-        // As Add effect and Add source are.
+        // As Add Effect and Add Source are.
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, tr(Str::ButtonAddToBand), kTextLabel, ink, Align::Center,
                true);
         c.text({w.rect.x, m.y + arm + 20.0f, w.rect.w, 14.0f},

@@ -779,11 +779,11 @@ STR(SwitchRms, "RMS") // the three-band dynamics' detector: RMS, or peaks while 
 STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's display
 STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
-STR(ButtonAddEffect, "Add effect")
+STR(ButtonAddEffect, "Add Effect")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
 STR(ButtonClearSeq, "Clear") // the confirm dialog's button that removes every note of a pattern
 STR(ButtonRemoveCategory, "Remove") // the confirm dialog's button that removes one of the user's categories
-STR(ButtonAddSource, "Add source") // the dashed card after the sources: opens the list of source types
+STR(ButtonAddSource, "Add Source") // the dashed card after the sources: opens the list of source types
 STR(ButtonEffect, "Effect") // + EFFECT and + SOURCE, after a drawn plus
 STR(ButtonSource, "Source")
 STR(ButtonCancel, "Cancel")

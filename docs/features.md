@@ -950,7 +950,7 @@ Its buttons look as what they do, wherever they are. An action (undo and redo, t
 the Seq view's copy and stretch, a shape's tools) is an icon alone, named in its tooltip, on a raised face; the small
 ones in a card's title row, its fold and its x, show that face only under the mouse itself, as tall as the power switch
 beside them, and the fold shows at all only while the mouse is over the card (an effect's, a source's or a split's
-container, and from a finger's first touch on, always), still taking a click while hidden. A switch or a choice of a param is set in a well and lit in its color, a row of them all icons or all words. A
+container, the effects in its bands counting as over it, and from a finger's first touch on, always), still taking a click while hidden. A switch or a choice of a param is set in a well and lit in its color, a row of them all icons or all words. A
 button that opens a list or a menu shows its name, after an icon where it has one, then a chevron pointing down, one
 chevron alike on every such button (a smaller one inside a row). A tab is its name, the one shown marked.
 
@@ -1466,7 +1466,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     Cancel, or a click around the dialog, leaves it in three. To the right of the controls, the
     cards of the band shown, the arrows into them in the band's color (faint, cards and arrows, while another band
     is soloed), then
-    a narrow dashed card (Add to Low, Add to Mid or Add to High, as Add effect is) that opens the list of effects at the mouse (effects only: a band holds no split), the one
+    a narrow dashed card (Add to Low, Add to Mid or Add to High, as Add Effect is) that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
     + Effect offer **2-band split** and **3-band split** as one more group, SPLIT, the one over the other under
@@ -1883,7 +1883,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
-  card with a plus, **Add source**, as tall as the cards, opens the list of source types at the mouse, moved back
+  card with a plus, **Add Source**, as tall as the cards, opens the list of source types at the mouse, moved back
   inside the editor where it would reach past an edge (Envelope, LFO, Curve,
   Random and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
   the list. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
