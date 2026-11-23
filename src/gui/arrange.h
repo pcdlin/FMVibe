@@ -314,13 +314,15 @@ inline ArrangeScore arrangeScore(const ArrangeGraph &graph, const UiLayout &layo
                 if (on > 16.0f)
                     ++score.clashes;
             }
-            // Wires meeting at a node from nearly the same way, their arrowheads or starts on each other.
+            // Wires meeting at a node from nearly the same way, their arrowheads or starts on each other: the layout
+            // keeps them kApart, and only those nearly on top of each other count as a clash (arrowheads overlapping
+            // a little, as Randomizer's two into F2 do at 7.5 degrees, are fine).
             auto at = [](const Path &w, int node) { return node == w.from ? w.leaves : w.arrives; };
             for (int node : {p.from, p.to})
                 if (node == q.from || node == q.to) {
                     float apart = std::abs(at(p, node) - at(q, node));
                     apart = std::min(apart, 2.0f * kPi - apart) * 180.0f / kPi;
-                    constexpr float kApart = 16.0f, kTooClose = 11.0f; // degrees
+                    constexpr float kApart = 16.0f, kTooClose = 6.0f; // degrees
                     if (apart < kApart)
                         score.cost += 80.0f * (kApart - apart);
                     if (apart < kTooClose)
