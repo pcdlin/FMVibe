@@ -800,6 +800,40 @@ void effectsChainChecks() {
         }
     }
     {
+        // A Lo-Fi puts silence out as silence, its levels half a step off 0 notwithstanding: at 1 bit after a reverb,
+        // whose tail goes through it, the effects ring out and rest, putting out nothing (no DC to keep them going).
+        const auto fxHeap = std::make_unique<Effects>();
+        Effects &fx = *fxHeap;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::LoFi);
+        p[paramIndex(1, FxParam::LoFiBits)] = 1.0;
+        chain(p, {0, 1});
+        std::vector<float> left(kBlock), right(kBlock);
+        auto run = [&](double seconds, double amplitude) {
+            float peak = 0.0f;
+            for (size_t t = 0, end = static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+            }
+            return peak;
+        };
+        const float sounding = run(0.5, 0.5);
+        int waited = 0;
+        while (fx.ringing() && waited++ < 120) // up to a minute for the reverb's tail
+            run(0.5, 0.0);
+        const float rested = run(1.0, 0.0);
+        std::printf("      a 1-bit Lo-Fi after a reverb: %.2f sounding, rung out after %.1f s, %.1e after that\n", sounding,
+                    0.5 * waited, rested);
+        check(sounding > 0.1f && !fx.ringing() && rested == 0.0f,
+              "a Lo-Fi puts silence out as silence, and the effects ring out through it");
+    }
+    {
         // Effects with nothing to do: once every tail has rung out, silence costs a small share of what a sound
         // through them does, and comes out as silence; a sound after it comes through again.
         const auto fxHeap = std::make_unique<Effects>();
@@ -1449,6 +1483,33 @@ void effectsChainChecks() {
                                 toTwo, 69) &&
                      banded;
         }
+        // A flanger through zero at Mix 0 (the note as it is, 6.5 ms late) switched off and on, and put on a split's
+        // high band, the low band's wire then waiting as long: what fades in waits for its wait to fill rather than
+        // fading into a gap. On a D#3, whose period is about as long as the wait, so the note through the low band's
+        // new pad is in step with itself as it was.
+        auto flanger = [&](ParamValues &p, int slot) {
+            p[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Flanger);
+            p[paramIndex(slot, FxParam::FlangerMix)] = 0.0;
+            p[paramIndex(slot, FxParam::FlangerThroughZero)] = 1.0;
+        };
+        auto flanged = [&](ParamValues &p) {
+            line(p);
+            flanger(p, 0);
+        };
+        const bool waitedOff = steadyEdit("a flanger through zero switched off", flanged, [&](ParamValues &p) {
+            p[paramIndex(0, FxParam::Enabled)] = 0.0;
+        });
+        const bool waitedOn = steadyEdit(
+            "a flanger through zero switched on",
+            [&](ParamValues &p) {
+                flanged(p);
+                p[paramIndex(0, FxParam::Enabled)] = 0.0;
+            },
+            [&](ParamValues &p) { p[paramIndex(0, FxParam::Enabled)] = 1.0; });
+        const bool waitedBand = steadyEdit(
+            "a flanger through zero put on a split's high band", split, [&](ParamValues &p) { flanger(p, 0); }, 51);
+        check(waitedOff && waitedOn && waitedBand,
+              "a flanger through zero switched or put on a band fades in only once its wait has filled");
         check(added && removed && unsplit && sloped && banded,
               "editing the effects graph as a note plays neither clicks nor drops out");
 
@@ -2108,6 +2169,48 @@ void effectsChainChecks() {
               "a state before version 10 loads its depths on the three-band dynamics' thresholds as far as they swung");
     }
     {
+        // Up to 0.3 (version 2), the envelopes' times and holds reached 0 to 1; since 0.4 (version 4) their attacks,
+        // decays and releases kMinEnvNorm to kMaxEnvNorm and their holds 0 to kMaxEnvNorm, and a depth is a share of
+        // its target's range: a version 2 state's depths load as deep as swings them as far as they swung, a version 3
+        // state's (its times 0 to kMaxEnvNorm, holds as now) on the times alone, and a version 4 state's as saved.
+        ParamValues p = defaults();
+        p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(paramIndex(0, OpParam::Attack))) + 1.0;
+        p[slotAmountIndex(0, 0)] = 0.5;
+        p[slotTargetIndex(0, 1)] = static_cast<double>(idOfIndex(paramIndex(0, OpParam::Hold))) + 1.0;
+        p[slotAmountIndex(0, 1)] = 0.5;
+        p[slotTargetIndex(0, 2)] = static_cast<double>(idOfIndex(paramIndex(1, SourceParam::Release))) + 1.0;
+        p[slotAmountIndex(0, 2)] = -0.4;
+        p[slotTargetIndex(0, 3)] = static_cast<double>(idOfIndex(paramIndex(GlobalParam::Volume))) + 1.0;
+        p[slotAmountIndex(0, 3)] = 0.3;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues two = load(2), three = load(3), four = load(4);
+        const double times = kMaxEnvNorm - kMinEnvNorm;
+        auto near = [](double a, double b) { return std::abs(a - b) < 1e-12; };
+        const bool fromTwo = near(two[slotAmountIndex(0, 0)], 0.5 / times) &&
+                             near(two[slotAmountIndex(0, 1)], 0.5 / kMaxEnvNorm) &&
+                             near(two[slotAmountIndex(0, 2)], -0.4 / times) && two[slotAmountIndex(0, 3)] == 0.3;
+        const bool fromThree = near(three[slotAmountIndex(0, 0)], 0.5 * kMaxEnvNorm / times) &&
+                               three[slotAmountIndex(0, 1)] == 0.5 && three[slotAmountIndex(0, 3)] == 0.3;
+        const bool fromFour = four[slotAmountIndex(0, 0)] == 0.5 && four[slotAmountIndex(0, 1)] == 0.5 &&
+                              four[slotAmountIndex(0, 2)] == -0.4;
+        std::printf("      envelope depths from version 2: attack %.4f, hold %.4f (0.5 saved); version 3: %.4f, %.4f\n",
+                    two[slotAmountIndex(0, 0)], two[slotAmountIndex(0, 1)], three[slotAmountIndex(0, 0)],
+                    three[slotAmountIndex(0, 1)]);
+        check(fromTwo && fromThree && fromFour,
+              "a state up to 0.3 loads its depths on envelope times and holds as far as they swung");
+    }
+    {
         // Before version 11, a Random source took a value for each note and held it, and an LFO could have the Random
         // shape. The source loads as a random LFO standing still (unsynced at 0 Hz, on its own clock in each voice, the
         // LFO's fields it now uses as they start but for those), its polarity kept; an LFO with the Random shape as a
@@ -2130,6 +2233,10 @@ void effectsChainChecks() {
         }
         set(3, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(3, SourceParam::Shape, static_cast<double>(LfoShape::Saw));
+        // An LFO at Rate 0, its slowest then (0.02 Hz), where 0 now stands still: it loads just above, as it played.
+        set(4, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+        set(4, SourceParam::Sync, 0.0);
+        set(4, SourceParam::Rate, 0.0);
         asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
@@ -2161,8 +2268,11 @@ void effectsChainChecks() {
                    at(place, SourceParam::Unipolar) == 0.0;
         const bool plain = at(3, SourceParam::Type) == static_cast<double>(SourceType::Lfo) &&
                            at(3, SourceParam::Shape) == static_cast<double>(LfoShape::Saw);
+        const bool slowest = std::abs(sweepRateHz(at(4, SourceParam::Rate)) - rateFromNorm(0.0)) < 1e-6 &&
+                             now[paramIndex(4, SourceParam::Rate)] == 0.0;
         check(source, "a state before version 11 loads its Random source as one standing still, taking a value a note");
         check(lfos && plain, "a state before version 11 loads its random LFO as a Random source running as it ran");
+        check(slowest, "a state before version 11 loads an LFO at its slowest Rate playing as slowly, not standing still");
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 11 state loads its sources as saved");
     }
     {
@@ -4992,6 +5102,33 @@ void sequencerChecks() {
                   isModTarget(paramIndex(SeqParam::Humanize)) && !isModTarget(paramIndex(SeqParam::Octave)),
               "a macro, the host and an LFO modulate the sequencer's Gate, Swing and Velocity");
     }
+    // A macro's slot on Gate whose aux runs in each voice (velocity) reaches the sequencer too, from the newest voice's
+    // slots: the macro's full knob a quarter of Gate's range down, scaled by the velocity of the note the sequencer plays.
+    {
+        auto t = std::make_unique<Telemetry>();
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        note(e.p, 0, 0.0, 1.0, 69);
+        const int gate = paramIndex(SeqParam::Gate);
+        e.p[paramIndex(0, MacroParam::Value)] = 1.0;
+        e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(gate);
+        e.p[slotAmountIndex(kMaxSources, 0)] = -0.25;
+        e.p[slotAuxIndex(kMaxSources, 0)] = slotAuxValue(kVelocitySource);
+        e.synth().setTempo(120.0);
+        e.render(256);
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        for (int i = 0; i < 10; ++i)
+            e.render(480);
+        e.synth().telemetry(*t);
+        const double gateRange = paramTable()[gate].max - paramTable()[gate].min;
+        const double played = e.p[seqNoteIndex(0, 0, SeqNoteParam::Velocity)];
+        std::printf("      Gate by a macro scaled by velocity: %+.4f (a quarter of its range down at velocity %.3f is "
+                    "%+.4f)\n",
+                    t->seqFeel[1], played, -0.25 * gateRange * played);
+        check(played > 0.0 && std::abs(t->seqFeel[1] + 0.25 * gateRange * played) < 1e-4,
+              "a macro's slot on the sequencer's Gate, its aux running in each voice, modulates it");
+    }
     // The pattern picked takes modulation in whole steps: a macro's slot on it, a third of its range at the macro's full
     // knob, plays B from a key where A is set; at the knob's middle (half a step) it still plays A; and the telemetry
     // says how far it takes the pattern.
@@ -5386,6 +5523,36 @@ void sequencerChecks() {
                   keyEnded && !seqEnded && std::abs(position - 4.0f) < 0.1f,
               "in Key, a key plays the pattern transposed by it and stops it when let go");
         check(programmedLit, "the telemetry gives the keys of the notes playing as written, not as transposed");
+    }
+    // In Key, two notes on one key (their ids apart, as a host's overlapping notes or MPE have them): the first let go,
+    // the pattern plays on while the other holds the key, and stops once it is let go too.
+    {
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        for (int step = 0; step < 16; step += 2)
+            note(e.p, step / 2, step, 1.0, 60);
+        e.synth().setTempo(120.0);
+        e.render(480);
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        e.render(static_cast<size_t>(kStep));
+        e.synth().noteOn({2, 0, 0, 60}, 1.0);
+        e.render(static_cast<size_t>(kStep));
+        e.synth().noteOff({1, 0, 0, 60});
+        auto peak = [](const std::vector<float> &x) {
+            float most = 0.0f;
+            for (float s : x)
+                most = std::max(most, std::abs(s));
+            return most;
+        };
+        const float onAfterFirst = peak(e.render(static_cast<size_t>(4 * kStep)));
+        e.synth().noteOff({2, 0, 0, 60});
+        e.render(48000);
+        const float afterBoth = peak(e.render(static_cast<size_t>(4 * kStep)));
+        std::printf("      Key, two notes on one key: %.3f once the first is let go, %.4f once both are\n", onAfterFirst,
+                    afterBoth);
+        check(onAfterFirst > 0.1f && afterBoth == 0.0f,
+              "in Key, a pattern plays on while another note holds its key, and stops once every one is let go");
     }
     // A slide holds on into the next note, which ends it as it starts; one the next note starts within ends at its own
     // end, as written, not a step after.

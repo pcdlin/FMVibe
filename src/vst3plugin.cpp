@@ -25,6 +25,7 @@
 #else
 #include <cerrno>
 #include <fcntl.h>
+#include <mutex>
 #include <poll.h>
 #include <thread>
 #include <unistd.h>
@@ -354,8 +355,22 @@ public:
     }
 
     // IPluginBase
-    tresult PLUGIN_API initialize(FUnknown *) override { return kResultOk; }
+    tresult PLUGIN_API initialize(FUnknown *context) override;
     tresult PLUGIN_API terminate() override;
+
+    // Holds the main thread's work and the wake thread's apart (see mainLock_); nothing on Windows, whose wake
+    // window is the main thread's.
+    class MainLock {
+    public:
+#ifdef _WIN32
+        explicit MainLock(Plugin &) {}
+#else
+        explicit MainLock(Plugin &plugin) : lock_(plugin.mainLock_) {}
+
+    private:
+        std::lock_guard<std::recursive_mutex> lock_;
+#endif
+    };
 
     // IComponent
     tresult PLUGIN_API getControllerClassId(TUID) override { return kNotImplemented; } // this is its controller
@@ -531,6 +546,9 @@ private:
 #else
     // Main thread: the host's run loop came or went with the view's frame.
     void frameChanged(IPlugFrame *frame);
+    // Main thread, without mainLock_ (it may stop the wake thread, which waits for it): wakes the main thread through
+    // `runLoop`, whose reference it takes, or else (`orThread`) through a thread of its own.
+    void useRunLoop(Linux::IRunLoop *runLoop, bool orThread);
 #endif
 
     // Hands each of the block's param changes and events to `take`, in the host's order (see Change::order).
@@ -553,6 +571,11 @@ private:
     // The pipe other threads write to, the run loop (or the thread) reads: the main thread wakes there.
     int wakePipe_[2] = {-1, -1};
     Linux::IRunLoop *runLoop_ = nullptr;
+    Linux::IRunLoop *hostRunLoop_ = nullptr; // the host application's, where it offers one without a view
+    // With no run loop, the wake thread does the main thread's work: this keeps it from running beside the host's
+    // calls on its main thread (a state handed over, the handler set, the editor opened), which take it too. Never
+    // held across restartComponent(), which a host may answer from its main thread.
+    std::recursive_mutex mainLock_;
     WakeHandler *wakeHandler_ = nullptr;
     std::thread wakeThread_;
     std::atomic<bool> wakeThreadRunning_{false};
@@ -583,6 +606,7 @@ public:
     explicit View(Plugin &plugin) : plugin_(plugin) { plugin_.addRef(); }
     ~View() {
         if (owns()) {
+            const Plugin::MainLock lock(plugin_);
             plugin_.view_ = nullptr;
             plugin_.closeEditor();
         }
@@ -612,6 +636,7 @@ public:
     tresult PLUGIN_API attached(void *parent, FIDString type) override {
         if (isPlatformTypeSupported(type) != kResultTrue || !parent || !owns())
             return kResultFalse;
+        const Plugin::MainLock lock(plugin_);
         if (!plugin_.editor()) // attached again after removed()
             plugin_.openEditor();
         gui::Editor *editor = plugin_.editor();
@@ -627,6 +652,7 @@ public:
 #endif
     }
     tresult PLUGIN_API removed() override {
+        const Plugin::MainLock lock(plugin_);
         if (owns())
             plugin_.closeEditor();
         return kResultOk;
@@ -638,6 +664,7 @@ public:
     tresult PLUGIN_API getSize(ViewRect *size) override {
         if (!size)
             return kInvalidArgument;
+        const Plugin::MainLock lock(plugin_);
         uint32_t width = 0, height = 0;
         if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr) {
             editor->size(width, height);
@@ -653,6 +680,7 @@ public:
     tresult PLUGIN_API onSize(ViewRect *size) override {
         if (!size)
             return kInvalidArgument;
+        const Plugin::MainLock lock(plugin_);
         if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr)
             editor->setSize(static_cast<uint32_t>(std::max(size->getWidth(), 1)),
                             static_cast<uint32_t>(std::max(size->getHeight(), 1)));
@@ -662,14 +690,18 @@ public:
     // The host's content scale: the editor keeps its zoom, the host is asked for the size that has it at the scale.
 #ifndef _WIN32
     tresult PLUGIN_API setContentScaleFactor(float factor) override {
+        const Plugin::MainLock lock(plugin_);
         if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr)
             editor->setScale(factor);
         return kResultOk;
     }
 #endif
     tresult PLUGIN_API setFrame(IPlugFrame *frame) override {
-        frame_ = frame; // the host's, alive while it is set
-        plugin_.frameChanged(frame);
+        {
+            const Plugin::MainLock lock(plugin_);
+            frame_ = frame; // the host's, alive while it is set
+        }
+        plugin_.frameChanged(frame); // without the lock, as it may stop the wake thread
         return kResultOk;
     }
     tresult PLUGIN_API canResize() override { return kResultTrue; }
@@ -677,6 +709,7 @@ public:
     tresult PLUGIN_API checkSizeConstraint(ViewRect *rect) override {
         if (!rect)
             return kInvalidArgument;
+        const Plugin::MainLock lock(plugin_);
         auto width = static_cast<uint32_t>(std::max(rect->getWidth(), 1));
         uint32_t height = 0;
         if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr)
@@ -730,6 +763,14 @@ Plugin::Plugin() {
 }
 
 Plugin::~Plugin() {
+#ifndef _WIN32
+    // The wake thread first: it may be using the handler.
+    useRunLoop(nullptr, false);
+    stopWakeThread();
+    if (hostRunLoop_)
+        hostRunLoop_->release();
+    hostRunLoop_ = nullptr;
+#endif
     closeEditor();
     setComponentHandler(nullptr);
 #ifdef _WIN32
@@ -740,8 +781,6 @@ Plugin::~Plugin() {
     if (--liveWakeWindows == 0)
         UnregisterClassW(kWakeClass, moduleHandle());
 #else
-    frameChanged(nullptr);
-    stopWakeThread();
     if (wakePipe_[0] >= 0)
         ::close(wakePipe_[0]);
     if (wakePipe_[1] >= 0)
@@ -765,13 +804,40 @@ tresult PLUGIN_API Plugin::queryInterface(const TUID queried, void **obj) {
     return kNoInterface;
 }
 
-tresult PLUGIN_API Plugin::terminate() {
-    closeEditor();
-    setComponentHandler(nullptr);
+// The host application's Linux run loop, where it offers one: the main thread wakes there with no view open, rather
+// than on a thread of the plugin's own.
+tresult PLUGIN_API Plugin::initialize(FUnknown *context) {
 #ifndef _WIN32
-    frameChanged(nullptr);
-    stopWakeThread();
+    void *runLoop = nullptr;
+    if (context && !hostRunLoop_ && context->queryInterface(Linux::IRunLoop::iid, &runLoop) == kResultOk && runLoop) {
+        hostRunLoop_ = static_cast<Linux::IRunLoop *>(runLoop);
+        if (!runLoop_) {
+            hostRunLoop_->addRef();
+            useRunLoop(hostRunLoop_, true);
+        }
+    }
+    if (!runLoop_)
+        startWakeThread(); // initialized again after terminate(), which stopped it
+#else
+    (void)context;
 #endif
+    return kResultOk;
+}
+
+tresult PLUGIN_API Plugin::terminate() {
+    {
+        const MainLock lock(*this);
+        closeEditor();
+    }
+#ifndef _WIN32
+    // The wake thread before the handler goes: it may be using it.
+    useRunLoop(nullptr, false);
+    stopWakeThread();
+    if (hostRunLoop_)
+        hostRunLoop_->release();
+    hostRunLoop_ = nullptr;
+#endif
+    setComponentHandler(nullptr);
     return kResultOk;
 }
 
@@ -791,19 +857,43 @@ LRESULT CALLBACK Plugin::wakeProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 void Plugin::woken() {
     wakePosted_.store(false);
+    IComponentHandler *handler = nullptr;
+    int32 flags = 0;
+    {
+        const MainLock lock(*this);
 #ifndef _WIN32
-    pumpEditor();
+        pumpEditor();
 #endif
-    if (callbackPending_.exchange(false))
-        onMainThread(); // may ask for a restart: that comes next
-    if (const int32 flags = restartFlags_.exchange(0); flags && handler_)
-        handler_->restartComponent(flags);
+        if (callbackPending_.exchange(false))
+            onMainThread(); // may ask for a restart: that comes next
+        flags = restartFlags_.exchange(0);
+        if (flags && handler_) {
+            handler = handler_;
+            handler->addRef();
+        }
+    }
+    if (handler) {
+        handler->restartComponent(flags);
+        handler->release();
+    }
 }
 
 void Plugin::timerTicked() {
-    onTimer(); // may ask for a restart: that comes next
-    if (const int32 flags = restartFlags_.exchange(0); flags && handler_)
-        handler_->restartComponent(flags);
+    IComponentHandler *handler = nullptr;
+    int32 flags = 0;
+    {
+        const MainLock lock(*this);
+        onTimer(); // may ask for a restart: that comes next
+        flags = restartFlags_.exchange(0);
+        if (flags && handler_) {
+            handler = handler_;
+            handler->addRef();
+        }
+    }
+    if (handler) {
+        handler->restartComponent(flags);
+        handler->release();
+    }
 }
 
 #ifndef _WIN32
@@ -873,14 +963,24 @@ void Plugin::stopWakeThread() {
         wakeThread_.join();
 }
 
-// The view's frame: the host's run loop comes with it, where it offers one (Bitwig does). The pipe's read end is what
-// wakes the main thread there; without a run loop, a thread of our own reads it.
+// The view's frame: the host's run loop comes with it, where it offers one (Bitwig does), else the host application's.
+// The pipe's read end is what wakes the main thread there; without a run loop, a thread of our own reads it.
 void Plugin::frameChanged(IPlugFrame *frame) {
     Linux::IRunLoop *runLoop = nullptr;
     if (frame && frame->queryInterface(Linux::IRunLoop::iid, reinterpret_cast<void **>(&runLoop)) != kResultOk)
         runLoop = nullptr;
-    if (runLoop == runLoop_)
+    if (!runLoop && hostRunLoop_) {
+        runLoop = hostRunLoop_;
+        runLoop->addRef();
+    }
+    useRunLoop(runLoop, true);
+}
+
+void Plugin::useRunLoop(Linux::IRunLoop *runLoop, bool orThread) {
+    if (runLoop && runLoop == runLoop_) { // the one it has: the reference handed over isn't needed
+        runLoop->release();
         return;
+    }
     if (runLoop_ && wakeHandler_) {
         runLoop_->unregisterTimer(wakeHandler_);
         runLoop_->unregisterEventHandler(wakeHandler_);
@@ -902,9 +1002,10 @@ void Plugin::frameChanged(IPlugFrame *frame) {
             wakeHandler_ = nullptr;
             runLoop_->release();
             runLoop_ = nullptr;
-            startWakeThread();
+            if (orThread)
+                startWakeThread();
         }
-    } else {
+    } else if (orThread) {
         startWakeThread();
     }
 }
@@ -937,6 +1038,7 @@ tresult PLUGIN_API Plugin::getBusInfo(MediaType type, BusDirection dir, int32 in
 }
 
 tresult PLUGIN_API Plugin::setActive(TBool state) {
+    const MainLock lock(*this);
     if (state) {
         stoppedForRestart_.store(false);
         active_ = activate(sampleRate_); // voices are allocated here, on the main thread
@@ -953,6 +1055,7 @@ tresult PLUGIN_API Plugin::setActive(TBool state) {
 tresult Plugin::setComponentBytes(IBStream *state) {
     if (!state)
         return kInvalidArgument;
+    const MainLock lock(*this);
     const clap_istream_t stream = streamIn(state);
     try {
         if (!loadState(&stream))
@@ -967,6 +1070,7 @@ tresult Plugin::setComponentBytes(IBStream *state) {
 tresult Plugin::getComponentBytes(IBStream *state) {
     if (!state)
         return kInvalidArgument;
+    const MainLock lock(*this);
     const clap_ostream_t stream = streamOut(state);
     try {
         return saveState(&stream) ? kResultOk : kResultFalse;
@@ -1281,12 +1385,15 @@ tresult PLUGIN_API Plugin::setParamNormalized(ParamID id, ParamValue value) {
     const int index = indexOfId(id);
     if (index < 0)
         return isMidiParam(id) ? kResultOk : kInvalidArgument;
-    if (!processing_.load())
+    if (!processing_.load()) {
+        const MainLock lock(*this);
         setHostValue(index, toPlain(index, value), false);
+    }
     return kResultOk;
 }
 
 tresult PLUGIN_API Plugin::setComponentHandler(IComponentHandler *handler) {
+    const MainLock lock(*this);
     if (handler == handler_)
         return kResultOk;
     if (handler2_)
@@ -1305,6 +1412,7 @@ tresult PLUGIN_API Plugin::setComponentHandler(IComponentHandler *handler) {
 }
 
 IPlugView *PLUGIN_API Plugin::createView(FIDString name) {
+    const MainLock lock(*this);
     if (!name || std::strcmp(name, ViewType::kEditor) != 0 || !openEditor()) // one editor at a time
         return nullptr;
     auto *view = new View(*this);

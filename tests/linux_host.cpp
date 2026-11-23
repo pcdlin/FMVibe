@@ -4,6 +4,7 @@
 
 #include <clap/clap.h>
 
+#include <pluginterfaces/base/ibstream.h>
 #include <pluginterfaces/base/ipluginbase.h>
 #include <pluginterfaces/gui/iplugview.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
@@ -17,6 +18,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -393,8 +395,9 @@ public:
     uint32 PLUGIN_API addRef() override { return ++refs_; }
     uint32 PLUGIN_API release() override { return --refs_; } // one reference, for the whole test
     tresult PLUGIN_API registerEventHandler(Steinberg::Linux::IEventHandler *handler,
-                                            Steinberg::Linux::FileDescriptor) override {
+                                            Steinberg::Linux::FileDescriptor fd) override {
         event_ = handler;
+        fd_ = fd;
         return kResultOk;
     }
     tresult PLUGIN_API unregisterEventHandler(Steinberg::Linux::IEventHandler *handler) override {
@@ -417,9 +420,18 @@ public:
         timer_->onTimer();
         return true;
     }
+    // The file descriptor it watches has something to read, as the host's run loop finds.
+    bool fire() {
+        if (!event_)
+            return false;
+        event_->onFDIsSet(fd_);
+        return true;
+    }
+    bool watching() const { return event_ != nullptr; }
 
 private:
     std::atomic<uint32> refs_{1};
+    int fd_ = -1;
     Steinberg::Linux::IEventHandler *event_ = nullptr;
     Steinberg::Linux::ITimerHandler *timer_ = nullptr;
 };
@@ -446,6 +458,141 @@ public:
 private:
     std::atomic<uint32> refs_{1};
 };
+
+// A host application that offers its run loop as the context it initializes a plugin with, as some Linux hosts do.
+class TestHostContext final : public FUnknown {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
+        QUERY_INTERFACE(iid, obj, FUnknown::iid, FUnknown)
+        if (FUnknownPrivate::iidEqual(iid, Steinberg::Linux::IRunLoop::iid)) {
+            runLoop.addRef();
+            *obj = &runLoop;
+            return kResultOk;
+        }
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+
+    TestRunLoop runLoop;
+};
+
+// Records the restarts a plugin asks for, and on which thread.
+class TestHandler final : public IComponentHandler {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
+        QUERY_INTERFACE(iid, obj, FUnknown::iid, IComponentHandler)
+        QUERY_INTERFACE(iid, obj, IComponentHandler::iid, IComponentHandler)
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    tresult PLUGIN_API beginEdit(ParamID) override { return kResultOk; }
+    tresult PLUGIN_API performEdit(ParamID, ParamValue) override { return kResultOk; }
+    tresult PLUGIN_API endEdit(ParamID) override { return kResultOk; }
+    tresult PLUGIN_API restartComponent(int32 flags) override {
+        restarts.fetch_or(flags);
+        if (std::this_thread::get_id() != mainThread)
+            offMain.store(true);
+        return kResultOk;
+    }
+
+    std::thread::id mainThread = std::this_thread::get_id();
+    std::atomic<int32> restarts{0};
+    std::atomic<bool> offMain{false};
+};
+
+// A state's bytes in memory.
+class MemoryStream final : public IBStream {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
+        QUERY_INTERFACE(iid, obj, FUnknown::iid, IBStream)
+        QUERY_INTERFACE(iid, obj, IBStream::iid, IBStream)
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    tresult PLUGIN_API read(void *buffer, int32 bytes, int32 *done) override {
+        const int32 n = std::max<int32>(0, std::min<int32>(bytes, static_cast<int32>(data.size() - at)));
+        std::memcpy(buffer, data.data() + at, static_cast<size_t>(n));
+        at += static_cast<size_t>(n);
+        if (done)
+            *done = n;
+        return kResultOk;
+    }
+    tresult PLUGIN_API write(void *buffer, int32 bytes, int32 *done) override {
+        const auto *from = static_cast<const uint8_t *>(buffer);
+        data.insert(data.begin() + static_cast<std::ptrdiff_t>(at), from, from + bytes);
+        at += static_cast<size_t>(bytes);
+        if (done)
+            *done = bytes;
+        return kResultOk;
+    }
+    tresult PLUGIN_API seek(int64 pos, int32 mode, int64 *result) override {
+        const int64 base = mode == kIBSeekSet ? 0 : mode == kIBSeekCur ? static_cast<int64>(at) : static_cast<int64>(data.size());
+        at = static_cast<size_t>(std::clamp<int64>(base + pos, 0, static_cast<int64>(data.size())));
+        if (result)
+            *result = static_cast<int64>(at);
+        return kResultOk;
+    }
+    tresult PLUGIN_API tell(int64 *pos) override {
+        if (pos)
+            *pos = static_cast<int64>(at);
+        return kResultOk;
+    }
+
+    std::vector<uint8_t> data;
+    size_t at = 0;
+};
+
+// A state handed over with no view open asks the host to read the values again (kParamValuesChanged) on its main
+// thread: through the host application's run loop where it offers one, only once that run loop finds the wake; and
+// without one, through the plugin's own thread, after setState() has returned.
+void testVst3Wake(IPluginFactory *factory, const TUID cid) {
+    for (const bool hostLoop : {true, false}) {
+        FUnknown *unknown = nullptr;
+        if (factory->createInstance(cid, IComponent::iid, reinterpret_cast<void **>(&unknown)) != kResultOk) {
+            check(false, "a second component is made");
+            return;
+        }
+        auto *component = static_cast<IComponent *>(unknown);
+        TestHostContext context;
+        component->initialize(hostLoop ? static_cast<FUnknown *>(&context) : nullptr);
+        IEditController *edit = nullptr;
+        component->queryInterface(IEditController::iid, reinterpret_cast<void **>(&edit));
+        TestHandler handler;
+        if (edit)
+            edit->setComponentHandler(&handler);
+        MemoryStream state;
+        component->getState(&state);
+        state.at = 0;
+        const bool loaded = component->setState(&state) == kResultOk;
+        if (hostLoop) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250)); // no thread of its own to do it meanwhile
+            const bool waited = handler.restarts.load() == 0;
+            const bool fired = context.runLoop.fire();
+            check(loaded && context.runLoop.watching() && waited && fired &&
+                      (handler.restarts.load() & kParamValuesChanged) && !handler.offMain.load(),
+                  "with no view open, a state's restart comes through the host application's run loop, on its main "
+                  "thread");
+        } else {
+            for (int k = 0; k < 100 && !(handler.restarts.load() & kParamValuesChanged); ++k)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            check(loaded && (handler.restarts.load() & kParamValuesChanged),
+                  "with no run loop, a state's restart comes through the plugin's own thread");
+        }
+        if (edit) {
+            edit->setComponentHandler(nullptr);
+            edit->release();
+        }
+        component->terminate();
+        check(!context.runLoop.watching(), "terminated, it leaves the host's run loop");
+        component->release();
+    }
+}
 
 void testVst3(const char *path) {
     void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -564,6 +711,7 @@ void testVst3(const char *path) {
             }
             check(painted, "the VST3 editor paints");
             view->removed();
+            view->setFrame(nullptr); // while the frame and its run loop are alive, as a host does
             XDestroyWindow(display, parent);
             XCloseDisplay(display);
         }
@@ -578,6 +726,7 @@ void testVst3(const char *path) {
     }
     check(component->terminate() == kResultOk, "it terminates");
     component->release();
+    testVst3Wake(factory, info.cid);
     dlclose(library);
 }
 

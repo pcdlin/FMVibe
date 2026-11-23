@@ -274,8 +274,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     modulation along (a linked one's bands taking the low band's settings), while a version 6 state loads one back
     as saved; and a version 9 state's depths on its thresholds loading three quarters as deep, as their range grew
     from 60 dB to 80, a version 10 state's as saved; and a version 10 state's Random source loading as one standing
-    still at 0 Hz and its LFO with the retired Random shape as a Random source running as it ran, a version 11
-    state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
+    still at 0 Hz, its LFO with the retired Random shape as a Random source running as it ran and an LFO at Rate 0
+    (its slowest then) playing as slowly rather than standing still, a version 11 state's as saved; and a version 2
+    state's depths on envelope times and holds loading as far as they swung (their range 0 to 1 then), a version 3
+    state's on the times alone, a version 4 state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
     it ran (its points and polarity kept), a version 12 state's as saved; and a version 12 state's depth on an
     operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
     saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
@@ -1091,6 +1093,8 @@ there is one.
   process), at a scale given before its window (opening at that size), and destroys the host's window before the
   editor, the host still running after. It reads a window's pixels only once the window shows and only what of it is
   on the screen (`grabShown()`), as a window manager (a desktop's, WSLg's) shows the host's window a moment late.
+  It also checks that, with no view open, a state's restart comes through a run loop the host application offers
+  as `initialize()`'s context, on its main thread, and through the plugin's own thread where there is none.
 
 - **Looking at the editor**: the snapshots are PNGs in `build/linux/ui-shots`, one or more for each step that
   `tools/uishot.cpp` replays; an agent can open them as images. To see a change, render the snapshots and open the
@@ -1492,7 +1496,8 @@ itself.
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
-  range now reaches below 0 down to 0 ms and a depth is a share of its target's range; before version 5, an
+  range now reaches below 0 down to 0 ms and a depth is a share of its target's range, and before version 3 (up to 0.3,
+  whose envelope times and holds reached 0 to 1) divided by `kMaxEnvNorm` on top, a depth on a hold too; before version 5, an
   operator's ratio loads from its Coarse and Fine, and their modulations move onto Ratio; before version 6, a slot
   holding the retired three-band compressor loads as a three-band dynamics, while a later state loads one back as
   saved, so a state always loads what was saved; before version 7, a modulation's depth on Glide loads scaled by
@@ -1504,7 +1509,8 @@ itself.
   loads scaled by `kMdRetiredThresholdMinDb / kMdThresholdMinDb`, since their range now reaches down to -80 dB rather
   than -60; before version 11, a Random source, which then took a value for each note, loads unsynced at 0 Hz (the
   LFO fields it now uses otherwise at their defaults), standing still and taking one for each note, and an LFO with
-  the retired Random shape as a Random source running as it ran (`loadRandomSources()`); before version 12, an LFO
+  the retired Random shape as a Random source running as it ran (`loadRandomSources()`), and an LFO at Rate 0, then its
+  slowest (0.02 Hz) and now standing still, at `kLeastNorm`, as slowly as it played; before version 12, an LFO
   with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`); before version 13,
   a modulation's depth on an operator's Unison Detune loads scaled by `kRetiredMaxUnisonDetune / kMaxUnisonDetune`,
   since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
@@ -1567,7 +1573,9 @@ itself.
   thread has the main-thread callback ask once they are all up, and an activate keeps the voices only while none is
   held. A voice limit still settling holds every restart off, so they come as one. What VST3 only allows on the main
   thread, and the audio thread may ask for, goes through a message-only window there (on Linux, a pipe the host's
-  run loop watches). Each voice takes about 86 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
+  run loop watches: the view's frame's, else the one the host application offers as `initialize()`'s context, else,
+  with neither, a thread of the plugin's own, which takes a lock the host's main-thread calls take too, so it never
+  runs beside them, and calls `restartComponent()` without it). Each voice takes about 86 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 125 KB, so 512 voices reserve about 64 MB. Voices isn't automatable for the same reason. The comb lines,
   and the effects' delay lines (every slot has every type's, a few MB a slot), are `ZeroBuffer`s
   (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written (on Linux, `calloc()`'s, whose

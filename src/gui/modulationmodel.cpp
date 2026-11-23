@@ -251,6 +251,17 @@ void ModulationModel::removeSlot(int source, int slot) {
         controller_.layoutChanged();
 }
 
+void ModulationModel::forgetEmptyTargets(const std::function<bool(int)> &gone) {
+    bool emptied = false;
+    for (auto &[from, target] : controller_.layout().emptyMods)
+        if (target >= 0 && gone(target)) {
+            target = -1;
+            emptied = true;
+        }
+    if (emptied)
+        controller_.layoutChanged();
+}
+
 bool ModulationModel::slotBypassed(int source, int slot) const {
     return slot >= 0 && value(slotBypassIndex(source, slot)) >= 0.5;
 }

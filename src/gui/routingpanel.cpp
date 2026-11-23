@@ -1870,7 +1870,7 @@ bool RoutingPanel::menuCommand(int command) {
         edit(routeModeOfRoute(menuRoute_), command - kRouteModeCommand);
     } else if (command == kMenuResetBend && menuRoute_ >= 0) {
         const UndoScope step(controller());
-        routing_.setWireBend(menuRoute_, kDefaultWireBend);
+        routing_.setWireBend(menuRoute_, RoutingModel::defaultWireBend(menuRoute_)); // a line to OUT straight
     } else {
         return false;
     }

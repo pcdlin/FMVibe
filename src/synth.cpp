@@ -543,7 +543,10 @@ bool Synth::releaseKeys(const NoteRef &match) {
         std::copy(keysTaken_.begin() + i + 1, keysTaken_.begin() + keysTakenCount_, keysTaken_.begin() + i);
         --keysTakenCount_;
         reportEnded(note);
-        seq_.keyUp(note.key);
+        // The key goes up for the sequencer once no other note holds it (two notes on one key, by their ids or MPE).
+        if (std::none_of(keysTaken_.begin(), keysTaken_.begin() + keysTakenCount_,
+                         [&](const NoteRef &other) { return other.key == note.key; }))
+            seq_.keyUp(note.key);
         any = true;
     }
     // Let go of every key, the sequencer stops (in Key) and what it plays ends.
@@ -891,8 +894,9 @@ void Synth::applyMacros(const ParamValues &params) {
             continue;
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(params[slotTargetIndex(source, slot)]);
+            // (The sequencer's feel too, past kModulatedCount: feedSeqFeel() takes it from the newest voice.)
             if (const int aux = slotAux(get, source, slot); aux >= 0 && runsPerVoice(aux) && target >= 0 &&
-                                                             target < kModulatedCount &&
+                                                             (target < kModulatedCount || isSeqFeel(target)) &&
                                                              params[slotBypassIndex(source, slot)] < 0.5)
                 voiceMacroSlots_[voiceMacroSlotCount_++] = {source, slot};
         }

@@ -6841,7 +6841,8 @@ void View::mouseUp(Point p, Modifiers) {
         const auto target = hitTest(p);
         // On a depth handle or a row of a pill's list: it becomes that modulation's aux; on a panel's own that takes it
         // (a MODS row's aux cell, as the aux too), what that panel makes of it.
-        const bool row = target && target->popup && target->kind != Kind::ModList;
+        // (A row names its modulation: the list's own scrollbar, a popup too, names none.)
+        const bool row = target && target->popup && target->kind != Kind::ModList && target->a >= 0 && target->b >= 0;
         if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
             mods_.setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target

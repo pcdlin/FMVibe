@@ -4124,6 +4124,157 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
 // stopping as a whole at a neighbor not picked; Shift+click adding a point; with Draw, a point picked dragged moving
 // the others too; Ctrl+A over the lane picking every point and Delete removing them, undoably; a click off the lane
 // letting them go, and Ctrl+A over the roll too, Delete then removing the notes.
+// The SEQ view's picks: notes past the pattern's end (its Length shortened, which keeps them) neither picked by Ctrl+A
+// nor moving the others by them, the arrow moving the one shown a step on; two notes quantized onto one place leaving
+// one of them; and a patch loaded letting go of what was picked, whose slots now hold the new patch's notes.
+// An effect taken out takes the MODS view's empty modulations onto its knobs with it (they lose their target, as a
+// removed source's do), so the next effect in its slot isn't modulated by them once they are given a source; undone,
+// they point at it again. The bin likewise.
+// A library scanned again as the plugin's is, as a folder goes or is renamed: its presets listed by folder and name.
+struct ScannedLibrary : FakeController {
+    void sortLibrary() {
+        std::stable_sort(library.begin(), library.end(), [](const PresetEntry &a, const PresetEntry &b) {
+            if (a.factory != b.factory)
+                return a.factory;
+            return std::tie(a.folder, a.name) < std::tie(b.folder, b.name);
+        });
+    }
+    bool renamePresetFolder(const std::string &from, const std::string &to) override {
+        FakeController::renamePresetFolder(from, to);
+        sortLibrary();
+        return true;
+    }
+    bool deletePresetFolder(const std::string &folder) override {
+        FakeController::deletePresetFolder(folder);
+        std::erase_if(library, [&](const PresetEntry &e) { return !e.factory && inFolder(e.folder, folder); });
+        return true;
+    }
+};
+
+// The browser's pick, its folder's presets moving along the list as a folder before them is deleted or renamed:
+// still the preset it was (Enter would load it), not whichever now sits at its place in the list.
+void testBrowserPickRescanned(const std::filesystem::path &, Renderer &) {
+    auto treeRow = [&](int row) { return Point{300.0f, 215.0f + row * 26.0f + 13.0f}; };
+    bool kept = true;
+    for (const bool rename : {false, true}) {
+        ScannedLibrary model;
+        model.library = {{"a1", "A", false, {}}, {"a2", "A", false, {}}, {"a3", "A", false, {}}, {"x", "Z", false, {}}};
+        model.folders = {"A", "Z"};
+        model.loadPresetAt(3); // Z/x
+        View view(model);
+        view.poll();
+        click(view, detail::kPresetName.center()); // the browser, on Factory
+        click(view, {216.0f, treeRow(1).y});       // User opened: A and Z under it
+        click(view, treeRow(3));                   // Z
+        click(view, {620.0f, 132.0f + 13.0f});     // its x picked
+        const bool picked = view.browserShown() && view.browserPicked() == 3;
+        const std::vector<MenuItem> menu = view.contextMenu(treeRow(2)); // A
+        const bool offered = menu.size() == 5;
+        if (rename) {
+            view.menuCommand(offered ? menu[3].command : 0);
+            view.typeKey(View::Key::SelectAll);
+            type(view, "ZZ"); // after Z
+        } else {
+            view.menuCommand(offered ? menu[4].command : 0);
+        }
+        view.typeKey(View::Key::Enter);
+        if (!rename)
+            view.dialogKey(View::Key::Enter);
+        const int now = view.browserPicked();
+        const bool same = now >= 0 && now < static_cast<int>(model.library.size()) && model.library[now].name == "x" &&
+                          model.library[now].folder == "Z";
+        std::printf("      %s A: x picked at 3 before, at %d after\n", rename ? "renamed" : "deleted", now);
+        kept = kept && picked && offered && same;
+    }
+    check(kept, "the browser's pick stays on its preset as a folder before it is deleted or renamed");
+}
+
+void testFxEmptyMods(const std::filesystem::path &, Renderer &) {
+    FakeController model;
+    FxGraphModel graph(model);
+    const int slot = graph.addEffect(FxType::Chorus, -1, {});
+    const int other = graph.addEffect(FxType::Delay, -1, {});
+    const int rate = paramIndex(slot, FxParam::ChorusRate), time = paramIndex(other, FxParam::DelayTimeL);
+    model.ui.emptyMods = {{-1, rate}, {-1, time}};
+    {
+        UndoScope step(model);
+        graph.removeEffect(slot);
+    }
+    const bool lost = model.ui.emptyMods.size() == 2 && model.ui.emptyMods[0].second < 0 &&
+                      model.ui.emptyMods[1].second == time;
+    model.undo();
+    const bool back = model.ui.emptyMods.size() == 2 && model.ui.emptyMods[0].second == rate;
+    graph.clear();
+    const bool binned = model.ui.emptyMods.size() == 2 && model.ui.emptyMods[0].second < 0 &&
+                        model.ui.emptyMods[1].second < 0;
+    check(slot >= 0 && other >= 0 && lost && back && binned,
+          "an effect taken out takes the empty modulations onto its knobs with it, undoably, and the bin every one");
+}
+
+void testSeqPicks(const std::filesystem::path &, Renderer &) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    click(view, {308.0f, 116.0f}); // the SEQ tab
+    auto field = [&](int slot, SeqNoteParam f) { return model.value(seqNoteIndex(0, slot, f)); };
+    auto put = [&](int slot, double start, int pitch) {
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Start), start);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Length), 1.0);
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Pitch), static_cast<double>(pitch));
+        model.set(seqNoteIndex(0, slot, SeqNoteParam::Velocity), 100.0 / 127.0);
+    };
+    auto load = [&] { // as a preset loaded has it: the roll fits its notes
+        model.clearHistory();
+        view.poll();
+    };
+    using detail::kSeqGrid;
+    const Point empty{kSeqGrid.x + kSeqGrid.w - 6.0f, kSeqGrid.y + 6.0f}; // the top row, at the bar's end: no note
+    // Two bars, notes on steps 2 and 20; then one bar, the note on 20 past its end.
+    model.set(paramIndex(0, SeqPatternParam::Length), 2.0);
+    put(0, 2.0, 60);
+    put(1, 20.0, 60);
+    load();
+    model.set(paramIndex(0, SeqPatternParam::Length), 1.0);
+    view.poll();
+    view.mouseMove(empty, {});
+    view.seqKey(View::Key::SelectAll, false);
+    view.seqKey(View::Key::Right, false);
+    const bool stepped = field(0, SeqNoteParam::Start) == 3.0 && field(1, SeqNoteParam::Start) == 20.0;
+    view.undo();
+    check(stepped && field(0, SeqNoteParam::Start) == 2.0,
+          "a note past the pattern's end isn't picked, and the arrow moves the notes shown a step on");
+
+    // Snap at 1/4: notes on 1 and 1.25 on one row both quantize onto 0, one of them left there.
+    model.layout().seqSnap = 1;
+    model.set(seqNoteIndex(0, 1, SeqNoteParam::Length), 0.0);
+    put(0, 1.0, 60);
+    put(1, 1.25, 60);
+    view.poll();
+    view.seqKey(View::Key::SelectAll, false);
+    int command = -1;
+    for (const MenuItem &item : view.contextMenu(empty))
+        if (item.label == tr(Str::MenuSeqQuantize))
+            command = item.command;
+    view.menuCommand(command);
+    int onZero = 0;
+    for (int slot = 0; slot < kSeqNotes; ++slot)
+        onZero += field(slot, SeqNoteParam::Length) > 0.0 && field(slot, SeqNoteParam::Start) == 0.0;
+    view.undo();
+    check(command >= 0 && onZero == 1 && field(0, SeqNoteParam::Start) == 1.0 && field(1, SeqNoteParam::Start) == 1.25,
+          "two notes quantized onto one place leave one of them there, undoably");
+
+    // A note picked, then another patch loaded whose note sits in the same slot: Delete leaves it alone.
+    model.set(seqNoteIndex(0, 1, SeqNoteParam::Length), 0.0);
+    view.poll();
+    view.seqKey(View::Key::SelectAll, false);
+    put(0, 6.0, 64);
+    load();
+    view.mouseMove(empty, {});
+    const bool taken = view.seqKey(View::Key::Delete, false);
+    check(!taken && field(0, SeqNoteParam::Length) == 1.0,
+          "a patch loaded lets go of the notes picked, whose slots now hold its own");
+}
+
 void testSeqCurvePick(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -9602,10 +9753,21 @@ void testOutBend(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool undone = bendOf() == 0.0f;
     view.redo();
+    // Its right-click menu's Reset Bend straightens it too, and is then no longer offered.
+    auto resetBend = [&] {
+        for (const MenuItem &item : view.contextMenu(along(bent, 0.3f)))
+            if (item.label == tr(Str::MenuResetBend))
+                return item.command;
+        return -1;
+    };
+    const int reset = resetBend();
+    view.menuCommand(reset);
+    const bool resetStraight = reset >= 0 && bendOf() == 0.0f && resetBend() < 0;
+    view.undo();
     doubleClick(view, along(bent, 0.3f));
     std::printf("      A's line to OUT bent to %.3f\n", bent);
-    check(shot && bent != 0.0f && undone && bendOf() == 0.0f && model.value(out) == 1.0,
-          "a node's line to OUT bends when dragged sideways, undoably, and a double-click straightens it");
+    check(shot && bent != 0.0f && undone && bendOf() == 0.0f && model.value(out) == 1.0 && resetStraight,
+          "a node's line to OUT bends when dragged sideways, undoably, and a double-click or Reset Bend straightens it");
 }
 
 // The routing graph's glow: a bloom from OUT, dithered rather than stepped (along a stretch of the panel's bottom, under
@@ -11012,8 +11174,24 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
           "a pill's list shows six rows, scrolls by the wheel and the middle button, bypasses, sets the depth of and "
           "removes its modulations, and closes at a click elsewhere");
 
-    // Macro 2's handle held over the pill opens the list; let go of on LFO 4's row, Macro 2 becomes its aux.
+    // Macro 2's handle held over the pill opens the list; let go of on the list's scrollbar (right of the rows, 6 px
+    // in from the list's right edge, 136.5 px right of the pill's middle), it changes nothing.
     const float strip = view.height() - 179.0f;
+    {
+        const ParamValues before = model.values;
+        view.mouseDown({252.0f, strip}, {});
+        view.mouseMove({600.0f, strip - 100.0f}, {});
+        view.mouseMove(pill, {});
+        const Point scrollbar{pill.x + 136.5f - 8.0f, row(2, 0.0f).y};
+        view.mouseMove(scrollbar, {});
+        view.mouseUp(scrollbar, {});
+        const bool unchanged = model.values == before;
+        view.mouseMove({600.0f, 328.0f}, {});
+        click(view, {600.0f, 328.0f});
+        check(unchanged, "a source's handle let go of on a pill's list's scrollbar edits nothing");
+    }
+
+    // Macro 2's handle held over the pill opens the list; let go of on LFO 4's row, Macro 2 becomes its aux.
     view.mouseDown({252.0f, strip}, {});
     view.mouseMove({600.0f, strip - 100.0f}, {});
     view.mouseMove(pill, {});
@@ -14992,6 +15170,9 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapers(dir, renderer);
     testShapePick(dir, renderer);
     testSeqCurvePick(dir, renderer);
+    testSeqPicks(dir, renderer);
+    testFxEmptyMods(dir, renderer);
+    testBrowserPickRescanned(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);

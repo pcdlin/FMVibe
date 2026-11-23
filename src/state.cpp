@@ -558,6 +558,9 @@ void loadRandomSources(ParamValues &values) {
     const ParamTable &table = paramTable();
     for (int s = 0; s < kMaxSources; ++s) {
         const SourceType type = sourceType(values[paramIndex(s, SourceParam::Type)]);
+        // An LFO's Rate at 0 was its slowest, 0.02 Hz, where it now stands still: it loads just above, as it played.
+        if (type == SourceType::Lfo && values[paramIndex(s, SourceParam::Rate)] < kLeastNorm)
+            values[paramIndex(s, SourceParam::Rate)] = kLeastNorm;
         if (type == SourceType::Random) {
             for (const SourceParam f : {SourceParam::Division, SourceParam::Free, SourceParam::OneShot,
                                         SourceParam::Anchor, SourceParam::RandomSmooth, SourceParam::RandomChaos})
@@ -683,6 +686,18 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                 const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
                 if (target >= 0 && table[target].kind == ParamKind::EnvTime)
                     loaded[slotAmountIndex(source, slot)] *= kMaxEnvNorm / (table[target].max - table[target].min);
+            }
+    // Before version 3 (released up to 0.3), the envelopes' times, holds too, reached 0 to 1 (20 s), not kMaxEnvNorm
+    // (10 s): on top of the step above, a depth on one swings it as far as it did, and so does one on a hold, whose
+    // range has stayed 0 to kMaxEnvNorm since.
+    if (header[1] < 3)
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                const bool hold = target >= 0 && table[target].kind == ParamKind::TimeOrOff &&
+                                  table[target].max == kMaxEnvNorm; // an operator's or an envelope's Hold
+                if (target >= 0 && (table[target].kind == ParamKind::EnvTime || hold))
+                    loaded[slotAmountIndex(source, slot)] /= kMaxEnvNorm;
             }
     if (header[1] < 7) // as far as they swung Glide: its range was 0 to 1 then
         for (int source = 0; source < kAllSources; ++source)

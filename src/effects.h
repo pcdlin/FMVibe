@@ -98,6 +98,9 @@ private:
     struct Slot {
         FxType running = FxType::None;
         double fade = 0.0; // 0 = off .. 1 = fully in
+        // Samples its wet sound is still silent for once it starts (a flanger's wait through zero, longer than a
+        // fade): it fades in only after, else the dry sound would fade out into a gap.
+        int prime = 0;
         fx::Shaper shaper;
         fx::Delay delay;
         fx::Eq eq;
@@ -149,6 +152,7 @@ private:
         double fade = 0.0;  // 0 out .. 1 in, along a raised cosine as heard (see mixInputs())
         FxLag pad;          // what it is put through to meet the node's other inputs in step
         int paths = 0;      // how many of the pool's it holds, in `path`
+        int prime = 0;      // samples its pad's fresh wait still puts out silence for: it fades in only after
         std::array<uint8_t, kEndPaths> path{};
         // Whether it holds every path its pad asks for.
         bool padded() const { return paths == pad.count(); }
@@ -285,6 +289,7 @@ private:
         FxLag lag, wasLag;                    // the slot's (see fxSlotLag()) that `now` and `was` are
         double wasFade = 0.0; // 1 .. 0
         bool live = false;    // whether the last chunk ran it (else it starts again from silence)
+        int prime = 0;        // samples a fresh `nowWait` still puts out silence for: `was` fades out only after
     };
     // On the heap, from prepare(): about 600 KB, too much for the stack the tests keep an Effects on.
     static constexpr int kPoolPaths = 96;
@@ -308,8 +313,9 @@ private:
     int freePaths() const;
     // What comes out of `from` through `e`'s pad, into `out`.
     void padEnd(const WireEnd &e, const float *const *from, float (*out)[kChunk], uint32_t n);
-    // The slot's dry sound into `dry`, as late as its effect makes its wet sound (see SlotDry), and whether it ran.
-    void slotDry(int slot, const float *const *io, float (*dry)[kChunk], uint32_t n, const ParamValues &p, bool needed);
+    // The slot's dry sound into `dry`, as late as its effect makes its wet sound (see SlotDry). Returns how many
+    // samples from the chunk's start it is still silent for (a fresh wait filling), which the effect waits out.
+    int slotDry(int slot, const float *const *io, float (*dry)[kChunk], uint32_t n, const ParamValues &p, bool needed);
 };
 
 } // namespace fmvibe
