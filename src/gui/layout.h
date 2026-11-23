@@ -606,14 +606,17 @@ inline Rect cardTool(Rect card, int i) {
     return {cardPower(card).x - 4.0f - kCardToolW - static_cast<float>(i) * kCardToolStep, card.y + 7.0f, kCardToolW,
             22.0f};
 }
+// The fold button: 6 px clear of what is right of it (as the power switch is of the cross), the name stopping as far
+// short of it on its left.
+constexpr float kCardFoldGap = 6.0f;
 inline Rect cardFold(Rect card, bool power = true, int tools = 0) {
     const float edge = !power     ? cardClose(card).x
                        : tools > 0 ? cardTool(card, tools - 1).x - 2.0f
                                    : cardPower(card).x;
-    return {edge - 16.0f, card.y + 9.0f, 14.0f, 19.0f};
+    return {edge - kCardFoldGap - 14.0f, card.y + 9.0f, 14.0f, 19.0f};
 }
 inline float cardTitleRight(Rect card, bool power = true, int tools = 0) {
-    return cardFold(card, power, tools).x - 3.0f;
+    return cardFold(card, power, tools).x - kCardFoldGap;
 }
 
 // A card by its screen place: 0..3, fractions while it scrolls.
