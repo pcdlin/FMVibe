@@ -138,8 +138,15 @@ void View::paintSettings(Canvas &c) {
     const Rect about{panel.x + 24.0f, lookY + 312.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
-    for (const Widget &w : settingsWidgets())
+    // A disabled one (CARDS' buttons in a theme that outlines its cards) under a layer, as the editor dims its disabled
+    // widgets.
+    for (const Widget &w : settingsWidgets()) {
+        if (w.disabled)
+            c.pushLayer({0.0f, 0.0f}, kDimOpacity, w.rect.inset(-2.0f));
         paintWidget(c, w);
+        if (w.disabled)
+            c.popLayer();
+    }
 }
 
 // Save only for a preset loaded from a file and changed since; Save As for any preset, but for Init only once changed.

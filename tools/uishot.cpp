@@ -15136,9 +15136,28 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, theme(2)); // Midnight
     view.mouseMove(cardsButton(1), {});
     const bool disabledShot = renderer.save(view, dir / "14h3-settings-cards-disabled.png");
+    // Dimmed as the editor's disabled widgets are: its buttons' inkiest pixel (by its channels' distance from the
+    // dialog's face beside them) far nearer the face than HANDLES' buttons' above them (read off the rendered pixels).
+    auto inkiest = [&](Rect from, Rect to) {
+        const uint32_t face = renderer.pixel({dialog.x + 10.0f, from.center().y});
+        int most = 0;
+        for (float y = from.y; y < from.bottom(); y += 1.0f)
+            for (float x = from.x; x < to.right(); x += 1.0f) {
+                const uint32_t p = renderer.pixel({x, y});
+                int d = 0;
+                for (int shift : {0, 8, 16})
+                    d += std::abs(static_cast<int>(p >> shift & 255) - static_cast<int>(face >> shift & 255));
+                most = std::max(most, d);
+            }
+        return most;
+    };
+    const int cardsInk = disabledShot ? inkiest(detail::settingsCards(dialog, 0), detail::settingsCards(dialog, 1)) : 0;
+    const int handlesInk = inkiest(detail::settingsHandles(dialog, 0), detail::settingsHandles(dialog, 1));
+    std::printf("      the disabled CARDS' buttons' ink %d, HANDLES' %d\n", cardsInk, handlesInk);
     click(view, cardsButton(1));
-    check(model.themeName == "Midnight" && disabledShot && !model.tinted && view.settingsShown(),
-          "the settings dialog's CARDS is disabled in Midnight, a click on it changing nothing");
+    check(model.themeName == "Midnight" && disabledShot && !model.tinted && view.settingsShown() &&
+              cardsInk * 2 < handlesInk,
+          "the settings dialog's CARDS is disabled and dimmed in Midnight, a click on it changing nothing");
     model.themeName = themeBefore;
     click(view, closeDialog);
     view.mouseMove(cog, {});
