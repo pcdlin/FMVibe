@@ -28,10 +28,10 @@ constexpr int kSeqSnapCount = static_cast<int>(std::size(kSeqSnaps));
 constexpr const char *kSeqSnapNames[] = {nullptr, "1/4", "1/8", "1/16", "1/32", "1/64", "1/8T", "1/16T"};
 static_assert(std::size(kSeqSnapNames) == std::size(kSeqSnaps));
 // The values the SEQ view's lane shows for each note: its velocity, or its chance.
-// What the lane under the roll shows: the notes' velocities or chances, the pattern's pitch bend, mod wheel or a
-// macro's curve (see SeqCurve), or the notes' own bends (see SeqNoteBendParam). Stored by number: only append.
-enum class SeqLane { Velocity, Chance, Bend, ModWheel, Macro1, NoteBend = Macro1 + kMacros, Count };
-constexpr bool seqLaneMacro(SeqLane lane) { return lane >= SeqLane::Macro1 && lane < SeqLane::NoteBend; }
+// What the lane under the roll shows: the notes' velocities or chances, or the pattern's pitch bend, mod wheel or a
+// macro's curve (see SeqCurve). Stored by number: only append.
+enum class SeqLane { Velocity, Chance, Bend, ModWheel, Macro1, Count = Macro1 + kMacros };
+constexpr bool seqLaneMacro(SeqLane lane) { return lane >= SeqLane::Macro1; }
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
 // the page (Envelope, Unison, Warp, Inputs) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note

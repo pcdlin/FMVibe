@@ -4299,8 +4299,9 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
 // grid; a point dragged stopping at its neighbor; a segment's middle bent and straightened by a double-click, a point
 // double-clicked going; Shift+drag drawing the bend a point a grid line; the field's Bend scaling and clearing the
 // picked notes' bends; copied, pasted, stretched and removed with their notes; folded to a scale, a row up a degree
-// of it; and the Note Bend lane after Mod Wheel showing the picked note's bend about its middle, a point dragged there
-// and one put down by a double-click. Each an undo step.
+// of it; and the mouse over a bend's line showing a faint point there, following it, and the arrow, a press putting a
+// point down on the line, and a bar its bend has left taking nothing; the notes faint with Bend and the hovered note's bend lit;
+// and points picked by a box, Shift+click and Ctrl+A, moved together and removed by Delete. Each an undo step.
 void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -4360,8 +4361,8 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseUp(at(6.6, 62.6), {false, false, true});
     const bool free = std::abs(py(0, 1) - 2.6) < 0.1 && std::abs(px(0, 1) - 2.6) < 0.1;
     view.undo();
-    view.mouseDown(at(7.0, 60.0), {}); // a third point, at 3 steps, back at 0
-    view.mouseUp(at(7.0, 60.0), {});
+    view.mouseDown(at(7.0, 62.0), {}); // a third point, on the line at 3 steps
+    view.mouseUp(at(7.0, 62.0), {});
     drag(view, at(6.0, 62.0), at(7.5, 62.0));
     const bool stopped = count(0) == 3.0 && nearly(px(0, 1), 3.0) && nearly(px(0, 2), 3.0);
     view.undo();
@@ -4374,7 +4375,7 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     const bool bent = pc(0, 0) != 0.0;
     doubleClick(view, at(5.0, 60.0 + 2.0 * shapeBend(0.5, pc(0, 0)))); // where the bend took the middle
     const bool straight = pc(0, 0) == 0.0;
-    doubleClick(view, at(7.0, 60.0));
+    doubleClick(view, at(7.0, 62.0));
     const bool gone = count(0) == 2.0;
     if (!(bent && straight && gone))
         std::printf("      segment: bent %d straight %d, %g points left\n", bent, straight, count(0));
@@ -4469,34 +4470,111 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     check(folded, "folded to a scale, a bend's point goes up a degree of it a row");
 
-    // The Note Bend lane, after Mod Wheel: the picked note's bend about its middle, ±2 (its farthest +2 at the lane's
-    // top), its point dragged back down to the middle (off the grid), and a double-click inside the note putting
-    // another down; the macros' tab moved along after it still opening their lane.
-    click(view, rectCenter(detail::seqToolButton(0)));
-    click(view, at(4.5, 60.0));
-    const Rect tab{kSeqGrid.x + 4.0f * detail::kSeqLaneTabStep, detail::kSeqLaneTabs.y + 3.0f, 72.0f,
-                   detail::kSeqLaneTabs.h - 6.0f};
-    click(view, rectCenter(tab));
-    const bool laneShown = model.ui.seqLane == SeqLane::NoteBend;
-    const float laneTop = detail::kSeqLaneArea.y + 6.0f, laneH = detail::kSeqLaneArea.h - 12.0f;
-    auto lanePoint = [&](double step, double semitones) {
-        return Point{at(step, 60.0).x, laneTop + 0.5f * laneH - static_cast<float>(semitones / 2.0) * 0.5f * laneH};
-    };
+    // With Bend, the mouse over a bend's line: a faint point there (read off the rendered pixels), following the mouse
+    // along it (the editor told to paint again as it moves), and the arrow, where over a note without a bend the cursor
+    // goes up and down; over a bar its bend has left, the arrow too, and a press there putting nothing down; a press on
+    // the line puts a point down on it as it runs. The notes are faint with Bend, and the bend of the note under the
+    // mouse lit (read off the rendered pixels).
+    const Point onLine = at(7.0, 62.0), alongLine = at(7.5, 62.0), onNote = at(5.0, 60.0), plain = at(12.0, 55.0);
     view.mouseMove({600.0f, 40.0f}, {});
-    const bool laneShot = renderer.save(view, dir / "36v-seq-bend-lane.png");
-    drag(view, lanePoint(6.0, 2.0), lanePoint(6.0, 0.0));
-    const bool laneMoved = std::abs(py(0, 1)) < 0.1;
+    renderer.save(view, dir / "36v-seq-bend-line.png");
+    const int lineBare = lit(renderer.pixel(onLine)), alongBare = lit(renderer.pixel(alongLine));
+    const int noteFaint = lit(renderer.pixel(plain));
+    const bool entered = view.mouseMove(onLine, {});
+    const bool arrow = view.cursor() == CursorKind::Arrow;
+    const bool hoverShot = renderer.save(view, dir / "36v-seq-bend-line-hover.png");
+    const int lineHovered = lit(renderer.pixel(onLine));
+    const bool followed = view.mouseMove(alongLine, {});
+    renderer.save(view, dir / "36v-seq-bend-line-along.png");
+    const int alongHovered = lit(renderer.pixel(alongLine)), leftBehind = lit(renderer.pixel(onLine));
+    view.mouseMove(plain, {});
+    const bool upDown = view.cursor() == CursorKind::Vertical;
+    view.mouseMove(onNote, {});
+    const bool offBar = view.cursor() == CursorKind::Arrow;
+    renderer.save(view, dir / "36v-seq-bend-lit.png");
+    const int lineLit = lit(renderer.pixel(at(7.5, 62.0)));
+    click(view, onNote);
+    const bool nothingThere = count(0) == 2.0;
+    click(view, onLine);
+    const bool onIt = count(0) == 3.0 && nearly(px(0, 2), 3.0, 0.05) && nearly(py(0, 2), 2.0, 0.05);
     view.undo();
-    doubleClick(view, lanePoint(7.0, 1.0));
-    const bool laneAdded = count(0) == 3.0 && std::abs(py(0, 2) - 1.0) < 0.1;
+    click(view, rectCenter(detail::seqToolButton(0)));
+    view.mouseMove({600.0f, 40.0f}, {});
+    renderer.save(view, dir / "36v-seq-bend-select.png");
+    const int noteFull = lit(renderer.pixel(plain));
+    std::printf("      over a bend's line: %d there, %d without the mouse; moved along, %d there (%d bare), %d behind; "
+                "lit %d; a note %d with Bend, %d with Select\n",
+                lineHovered, lineBare, alongHovered, alongBare, leftBehind, lineLit, noteFaint, noteFull);
+    check(entered && followed && arrow && upDown && offBar && nothingThere && hoverShot &&
+              std::abs(lineHovered - lineBare) > 20 &&
+              std::abs(alongHovered - alongBare) > 20 && leftBehind > lineHovered + 50 && onIt &&
+              count(0) == 2.0,
+          "with Bend, the mouse over a bend's line shows a faint point following it and the arrow, and a press puts one "
+          "down there, but not on a bar its bend has left");
+    check(noteFull > noteFaint + 30 && lineLit > alongBare + 20,
+          "with Bend, the notes are faint, and the bend of the note under the mouse is lit");
+
+    // With Bend, a box from empty space picks the points it holds (ringed, read off the rendered pixels), and one of
+    // them dragged moves them together, one undo step, a step later and a row up (each held between its neighbors);
+    // Shift+click lets one go, the other then moving alone; Ctrl+A over the roll picks every point and Delete removes
+    // them, undoably.
+    click(view, rectCenter(detail::seqToolButton(2)));
+    view.mouseMove({600.0f, 40.0f}, {});
+    renderer.save(view, dir / "36v-seq-bend-unpicked.png");
+    const Point ringAt{at(6.0, 62.0).x - 6.0f, at(6.0, 62.0).y};
+    const int unringed = lit(renderer.pixel(ringAt));
+    view.mouseDown(at(3.5, 63.5), {});
+    view.mouseMove(at(5.0, 61.0), {});
+    view.mouseMove(at(6.5, 59.5), {});
+    const bool boxShot = renderer.save(view, dir / "36v-seq-bend-box.png");
+    view.mouseUp(at(6.5, 59.5), {});
+    view.mouseMove({600.0f, 40.0f}, {});
+    renderer.save(view, dir / "36v-seq-bend-picked.png");
+    const int ringed = lit(renderer.pixel(ringAt));
+    drag(view, at(6.0, 62.0), at(7.0, 63.0));
+    const bool together = nearly(px(0, 0), 1.0) && nearly(py(0, 0), 1.0) && nearly(px(0, 1), 3.0) &&
+                          nearly(py(0, 1), 3.0);
     view.undo();
-    click(view, rectCenter(detail::seqMacroLabel(detail::kSeqMacroTab)));
-    const bool macroLane = seqLaneMacro(model.ui.seqLane);
-    if (!(laneShown && laneMoved && laneAdded && macroLane))
-        std::printf("      lane: shown %d moved %d (%+.2f) added %d (%g points) macros %d\n", laneShown, laneMoved, py(0, 1),
-                    laneAdded, count(0), macroLane);
-    check(laneShown && laneShot && laneMoved && laneAdded && macroLane,
-          "the Note Bend lane shows the picked note's bend, its points dragged and put down there, undoably");
+    const bool back = nearly(px(0, 0), 0.0) && nearly(py(0, 0), 0.0) && nearly(px(0, 1), 2.0) && nearly(py(0, 1), 2.0);
+    click(view, at(4.0, 60.0), {true, false, false}); // the first let go
+    drag(view, at(6.0, 62.0), at(6.0, 63.0));
+    const bool alone = nearly(py(0, 0), 0.0) && nearly(py(0, 1), 3.0);
+    view.undo();
+    view.mouseMove(at(3.0, 70.0), {});
+    const bool all = view.seqKey(View::Key::SelectAll, false);
+    const bool removed = view.seqKey(View::Key::Delete, false) && count(0) == 0.0;
+    view.undo();
+    std::printf("      bend points: a ring %d picked, %d not\n", ringed, unringed);
+    check(boxShot && ringed > unringed + 30 && together && back && alone && all && removed && count(0) == 2.0,
+          "with Bend, a box picks bend points, moved together undoably; Shift+click lets one go, and Ctrl+A and Delete "
+          "remove them");
+
+    // A bend's point dragged past the roll's top scrolls the rows up, as a note dragged there does, the point going
+    // along, higher than the rows showed as it was grabbed.
+    {
+        const int lowWas = model.ui.seqLow, rows = static_cast<int>(std::floor(kSeqGrid.h / detail::kSeqRowH));
+        const int lowBefore = 66 - rows + 1; // the rows up to 66, the point at 62 near the top
+        model.ui.seqLow = lowBefore;
+        view.poll();
+        const int shownTop = lowBefore + rows - 1;
+        const Point grab{at(6.0, 62.0).x, kSeqGrid.y + kSeqGrid.h - (static_cast<float>(62 - lowBefore) + 0.5f) * rh};
+        click(view, grab); // the point picked alone
+        view.mouseDown(grab, {});
+        view.mouseMove({grab.x, kSeqGrid.y + 20.0f}, {});
+        view.mouseMove({grab.x, kSeqGrid.y - 20.0f}, {});
+        for (int i = 0; i < 60 && model.ui.seqLow < lowBefore + 10; ++i)
+            view.poll();
+        const int lowScrolled = model.ui.seqLow;
+        const double reached = 60.0 + py(0, 1);
+        view.mouseUp({grab.x, kSeqGrid.y - 20.0f}, {});
+        view.undo();
+        model.ui.seqLow = lowWas;
+        view.poll();
+        std::printf("      a bend's point dragged past the top: rows from %d (from %d), the point at %.1f (top row %d)\n",
+                    lowScrolled, lowBefore, reached, shownTop);
+        check(lowScrolled > lowBefore && reached > shownTop && nearly(py(0, 1), 2.0),
+              "a bend's point dragged past the roll's edge scrolls it, the point going along");
+    }
 }
 
 // The SEQ view's picks: notes past the pattern's end (its Length shortened, which keeps them) neither picked by Ctrl+A

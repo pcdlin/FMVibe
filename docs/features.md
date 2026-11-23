@@ -935,7 +935,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     middle starts where its bend is there. A note gliding from a bent one (in mono or poly) starts its glide from the
     pitch that one was bent to, so a bend up into a slide to the note it reached joins without a jump. The
     note source and key-tracked filters follow the bent pitch; fixed operators don't move. The SEQ view draws them over
-    the roll and edits them with its **Bend** tool and in its **Note Bend** lane (see [Editor](#editor)).
+    the roll and edits them with its **Bend** tool (see [Editor](#editor)).
   - Its notes start and end at their sample, however the host splits its blocks, and go to the voices as notes do
     (stealing, mono, legato and glide alike); the host is never told of their ends, and the keyboard strip lights only
     the keys played (by the host, its own keys and the computer's), not the sequencer's notes. A jump of the transport, or a
@@ -1109,23 +1109,33 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     (the cursor saying which over it). Each edit is one undo step.
   - **Note bends** (see Sequencer): each bent note's bend is a line from its start along its points to its end, across
     the rows (a row a semitone; folded to the scale, between the rows it falls between, in proportion), lighter than
-    the notes, a faint ribbon down to the note's own row, dashed for a note muted or at a chance below full, and past
+    the notes and faint behind them unless Bend is picked, a faint ribbon down to the note's own row, dashed for a note muted or at a chance below full, and past
     the note's end (where a note made shorter leaves a point, which doesn't play) faint and dashed. **Bend** edits
-    them, showing every bent note's points and the handles at the middles of its segments that rise or fall: a note
-    pressed puts a point down where the mouse is and drags it, on the rows (only the scale's while folded) and the
+    them: the notes go faint and the bends stand out over them, every bent note showing its points and the handles at
+    the middles of its segments that rise or fall, and the bend of the note under the mouse (or whose line, point or
+    handle is) lit, as is the one being edited: a note pressed where its bend runs over its bar (or one without a
+    bend) puts a point down where the mouse is and drags it (where the bend has left the bar, the bar takes nothing), on the rows (only the scale's while folded) and the
     snap's lines, within the note (from a point at its start at its pitch, where it had none); with Alt held, or
     Shift while dragging, off the grid, to the cent; a point dragged moves between its neighbors, and a segment's
-    middle dragged up or down bends it; a double-click on a point takes it away (a lone point at 0 left going with it)
+    middle dragged up or down bends it; the mouse over a bend's line shows a faint point there, following it along the
+    line, under the arrow, and a press there puts a point down on the line as it runs and drags it; a double-click on a point takes it away (a lone
+    point at 0 left going with it)
     and on a segment's middle straightens it, but leaves a point its own first click put down; with Shift, a drag
     across a note draws its bend, a point on every line of the grid it crosses, in place of the points there. A note
     bends through 8 points at most (a message says so). While a point is dragged, a readout by it says how far it
-    bends, and the note sounds alone at that pitch (in the browser demo too). The note is picked as it is pressed;
-    empty space takes a box, as with Select, and a double-click there does nothing. The cursor moves over a point,
-    goes up and down over a segment's middle or a note, and is a pen drawing. Each edit is one undo step. A note's
+    bends, and the note sounds alone at that pitch (in the browser demo too). The note is picked as it is pressed.
+    Points are picked as notes are: a point clicked is picked alone (on one of several picked, once it is let go
+    unmoved), Shift+click or Ctrl+click picks it along with the others or lets it go (once let go unmoved), a drag
+    from empty space draws a box picking the points it holds (with Shift or Ctrl added to those picked), Ctrl+A over
+    the roll picks every point and Delete removes those picked, one undo step; picked points are ringed. A picked
+    point dragged moves every one picked as far, one undo step, each between its nearest neighbors not picked (or its
+    note's ends) and within ±24 semitones. A point put down is picked alone. A double-click on empty space does
+    nothing. The cursor moves over a point, goes up and down over a segment's middle or a bar a press bends, stays the
+    arrow over a bend's line and a bar its bend has left, and is a pen drawing. Each edit is one undo step. A note's
     bend goes with it: copied, cut, pasted, duplicated and carried as a copy with Ctrl, as the pattern is copied or
     pasted, stretched by ×2 and ÷2, and removed with it; moved or transposed, it bends from where it lands.
   - **The lane** under the roll, a slight line parting the two: a stem for each note at its start, as high as its velocity or its chance, as the
-    **Velocity | Chance | Bend | Mod Wheel | Note Bend** tabs under it pick, a note picked ringed there too. After the tabs,
+    **Velocity | Chance | Bend | Mod Wheel** tabs under it pick, a note picked ringed there too. After the tabs,
     a **Macro** tab, with a dot in its macro's color (faint while the macro has no curve in this pattern, here and in the
     list) and that macro's number, in two parts lit apart under the mouse: its label, a click on which shows the macro
     it names (the macro last shown), and at its right end its arrow (pointing down, and up while the list is open), a thin line parting the two while either is lit,
@@ -1160,18 +1170,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     dragging a picked point moves every one picked as far, one undo step, keeping their spacing: across between the
     nearest points not picked (or the pattern's ends), and up and down within the curve's range. Ctrl+A over the lane
     picks every point, and Delete removes those picked, one undo step. A click off the lane lets them go.
-    On **Note Bend**, the lane shows the notes' own bends about its middle, as the roll is zoomed and scrolled, across
-    the range they fit, named at its right end (±2, ±5, ±12 or ±24 semitones: as far as the pattern's notes bend),
-    with a line at each semitone (each second at ±24), stronger at fifths and octaves, as strong as the GRID setting
-    says: the picked notes' over the others', which are faint, with their points and segments' handles. With either
-    tool, a point dragged moves between its neighbors (anywhere, to the cent; with Ctrl on the snap's lines and whole
-    semitones) and a segment's middle bends it; with Draw or Bend, a press over a picked note puts a point down there
-    and drags it, and with Select a double-click does; a double-click on a point takes it away and on a segment's
-    middle straightens it. Each is an undo step. Overlapping notes, a chord's, are easier to edit here than on the roll.
   - **Hearing notes**: a key clicked in the roll's keys (each click, however quick), and a note clicked, drawn or put down by a double-click on
     the roll, sound alone while the button is held (a note moved to another row sounding that row's), whatever Play is: never the sequencer's
     pattern, which only the keyboard strip's keys and the host's notes start in Key and Latch.
-  - **Following what is dragged**: a note, a box or a paint stroke dragged to the roll's edge (or past it) scrolls the
+  - **Following what is dragged**: a note, a box, a paint stroke, a bend's point (or the points picked) or a stroke drawing a bend dragged to the roll's edge (or past it) scrolls the
     roll that way, faster the further past it, what is dragged going along (a box's start staying on the notes where
     it began, so it reaches notes that didn't show as it started). A patch loaded (a preset, Init, a
     project) fits the roll to its pattern's notes: the whole pattern across, and the rows about the notes, lower where

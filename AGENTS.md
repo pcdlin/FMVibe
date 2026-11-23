@@ -960,9 +960,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), with Alt off the grid, a point dragged stopping at its neighbor, a segment's middle bent and
     straightened by a double-click and a point double-clicked going, Shift+drag drawing the bend a point a grid line;
     the field's Bend scaling and clearing the picked notes' bends; a bend copied, pasted, stretched by x2 and removed
-    with its note; folded to a scale, a row up a degree of it; and the Note Bend lane, after Mod Wheel, showing the
-    picked note's bend about its middle, a point dragged there and one put down by a double-click, the macros' tab
-    moved along after it still opening their lane, each an undo step;
+    with its note; folded to a scale, a row up a degree of it; and the mouse over a bend's line showing a faint point
+    there and following it along the line, the editor told to paint again as it moves (read off the rendered pixels),
+    and the arrow (over the note, up and down), a press there putting a point down on the line, the notes faint with
+    Bend and the bend of the note under the mouse lit (read off the rendered pixels), a bar its bend has left taking no
+    press and showing the arrow; and bend points picked by a box (ringed, read off the rendered pixels), moved
+    together, Shift+click letting one go, Ctrl+A and Delete removing them, each an undo step, and a point dragged past
+    the roll's top scrolling the rows, the point going along;
   - the SEQ view's PATTERNS: a pattern's notes drawn in its tile where an empty one's has none (read off the rendered
     pixels), what the roll shows a rectangle in the shown pattern's tile, narrowing as the roll zooms in, and no other
     tile changing (read off the rendered pixels), a click on a tile picking its pattern, undoably, a tile carried onto another ringing it (read off the

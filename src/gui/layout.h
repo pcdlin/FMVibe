@@ -403,8 +403,8 @@ constexpr Rect seqFieldRect(int field) { // left of Slide, the note first
     return {x, kSeqTools.y, kSeqFieldWidths[field], kSeqTools.h};
 }
 static_assert(seqFieldRect(0).x >= seqStretchButton(-2).x + seqStretchButton(-2).w + 8.0f, "the field reaches the tools");
-// The lane's tabs: Velocity, Chance, Bend, Mod Wheel, Note Bend, then the macros' (see SeqRoll::macroTab).
-constexpr int kSeqLaneTabCount = 5;
+// The lane's tabs: Velocity, Chance, Bend, Mod Wheel, then the macros' (see SeqRoll::macroTab).
+constexpr int kSeqLaneTabCount = 4;
 // The roll's places, down to the panel's bottom less 10 px (`bottom`): its box, the keys, the grid and the rows' scroll
 // bar, the ruler over them, the lane and its tabs under them, and after the lane's tabs the macros' curves: one more
 // tab, wider for its macro's number and its arrow, and over it the list of macros it opens.

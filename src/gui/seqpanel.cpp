@@ -43,9 +43,8 @@ constexpr int kToolBend = 2; // the third tool
 Rect seqRootBox() { return {kSeqCardControls, kSeqScaleY, 48.0f, 22.0f}; }
 Rect seqScaleButton() { return {kSeqCardControls + 52.0f, kSeqScaleY, 102.0f, 22.0f}; }
 Rect seqFoldButton() { return {kSeqCard.x + kSeqCard.w - 12.0f - 54.0f, kSeqScaleY, 54.0f, 22.0f}; }
-Rect seqLaneTab(const SeqRoll &r, int lane) { // Note Bend after Mod Wheel, before the macros' tab
-    const int place = lane == static_cast<int>(SeqLane::NoteBend) ? kSeqLaneTabCount - 1 : lane;
-    return {r.grid.x + place * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 72.0f, r.laneTabs.h - 6.0f};
+Rect seqLaneTab(const SeqRoll &r, int lane) {
+    return {r.grid.x + lane * kSeqLaneTabStep, r.laneTabs.y + 3.0f, 72.0f, r.laneTabs.h - 6.0f};
 }
 // The zoom's buttons at the lane tabs' right: across out and in, then up and down out and in, each pair after its
 // arrow.
@@ -223,9 +222,13 @@ bool SeqPanel::seqEdgeScroll() {
     if (!dragging() || !wide())
         return false;
     const SeqDrag::Mode mode = seqDrag_.mode;
+    // A note bend's point (or the points picked) dragged, and a stroke drawing a bend, as notes are.
+    const bool bend = mode == SeqDrag::Mode::BendPoint || mode == SeqDrag::Mode::BendGroup ||
+                      mode == SeqDrag::Mode::BendPaint;
     const bool across = mode == SeqDrag::Mode::Move || mode == SeqDrag::Mode::Resize ||
-                        mode == SeqDrag::Mode::ResizeStart || mode == SeqDrag::Mode::Box || mode == SeqDrag::Mode::Paint;
-    const bool rows = mode == SeqDrag::Mode::Move || mode == SeqDrag::Mode::Box || mode == SeqDrag::Mode::Paint;
+                        mode == SeqDrag::Mode::ResizeStart || mode == SeqDrag::Mode::Box || mode == SeqDrag::Mode::Paint ||
+                        bend;
+    const bool rows = mode == SeqDrag::Mode::Move || mode == SeqDrag::Mode::Box || mode == SeqDrag::Mode::Paint || bend;
     if (!across)
         return false;
     constexpr float kZone = 10.0f;
@@ -506,8 +509,6 @@ void SeqPanel::widgets(std::vector<Widget> &list) const {
     add(Kind::SeqLane, roll().laneArea);
     for (int lane = 0; lane < static_cast<int>(SeqLane::Macro1); ++lane)
         add(Kind::SeqLaneTab, seqLaneTab(roll(), lane), -1, -1, lane);
-    add(Kind::SeqLaneTab, seqLaneTab(roll(), static_cast<int>(SeqLane::NoteBend)), -1, -1,
-        static_cast<int>(SeqLane::NoteBend));
     add(Kind::SeqMacroTab, seqMacroLabel(roll().macroTab));
     add(Kind::SeqMacroArrow, seqMacroArrow(roll().macroTab));
     for (int b = 0; b < 4; ++b)
@@ -774,10 +775,7 @@ void SeqPanel::stretchSeq(double factor) {
 
 // --- The lane's curves: the pattern's pitch bend, mod wheel and macros.
 
-bool SeqPanel::seqCurveLane() const {
-    const SeqLane lane = controller().layout().seqLane;
-    return lane >= SeqLane::Bend && lane != SeqLane::NoteBend;
-}
+bool SeqPanel::seqCurveLane() const { return controller().layout().seqLane >= SeqLane::Bend; }
 
 int SeqPanel::seqTabMacro() const {
     const SeqLane lane = controller().layout().seqLane;
@@ -1018,7 +1016,6 @@ std::string bendText(double semitones, bool unit = true) {
 
 bool SeqPanel::seqDrawing() const { return controller().layout().seqDraw && !controller().layout().seqBend; }
 bool SeqPanel::seqBendTool() const { return controller().layout().seqBend; }
-bool SeqPanel::seqNoteBendLane() const { return controller().layout().seqLane == SeqLane::NoteBend; }
 
 std::vector<int> SeqPanel::seqSlotParams(int pattern, int slot) {
     std::vector<int> params;
@@ -1111,73 +1108,51 @@ double SeqPanel::seqPitchAtY(float y) const {
     return pitches[k] + (index - static_cast<double>(k)) * (pitches[k + 1] - pitches[k]);
 }
 
-double SeqPanel::seqBendRange() const {
-    double most = 0.0;
-    for (const SeqNote &n : seqNotes())
-        most = std::max(most, std::abs(seqBendExtreme(n.slot)));
-    for (const double range : {2.0, 5.0, 12.0})
-        if (most <= range + 1e-9)
-            return range;
-    return kSeqMaxNoteBend;
+float SeqPanel::seqBendY(const SeqNote &n, double semitones) const {
+    return seqPitchY(n.pitch + semitones);
 }
 
-float SeqPanel::seqBendY(const SeqNote &n, double semitones, bool lane) const {
-    if (!lane)
-        return seqPitchY(n.pitch + semitones);
-    const float top = roll().laneArea.y + 6.0f, h = roll().laneArea.h - 12.0f;
-    return top + 0.5f * h - static_cast<float>(semitones / seqBendRange()) * 0.5f * h;
+double SeqPanel::seqBendAtY(const SeqNote &n, float y) const {
+    return seqPitchAtY(y) - n.pitch;
 }
 
-double SeqPanel::seqBendAtY(const SeqNote &n, float y, bool lane) const {
-    if (!lane)
-        return seqPitchAtY(y) - n.pitch;
-    const float top = roll().laneArea.y + 6.0f, h = roll().laneArea.h - 12.0f;
-    return (top + 0.5f * h - y) / (0.5f * h) * seqBendRange();
-}
-
-bool SeqPanel::seqBendEditable(int slot, bool lane) const {
-    return lane ? seqSelected(slot) : seqBendTool();
-}
-
-SeqPanel::BendHit SeqPanel::seqBendPointAt(Point p, bool lane) const {
+SeqPanel::BendHit SeqPanel::seqBendPointAt(Point p) const {
+    if (!seqBendTool())
+        return {};
     const std::vector<SeqNote> notes = seqNotes();
     for (auto it = notes.rbegin(); it != notes.rend(); ++it) {
-        if (!seqBendEditable(it->slot, lane))
-            continue;
         const std::vector<SeqCurvePoint> points = seqBendPoints(it->slot);
         for (int i = static_cast<int>(points.size()) - 1; i >= 0; --i) {
             const SeqCurvePoint &q = points[static_cast<size_t>(i)];
-            if (std::hypot(p.x - seqStepX(it->start + q.x), p.y - seqBendY(*it, q.y, lane)) <= 6.0f)
+            if (std::hypot(p.x - seqStepX(it->start + q.x), p.y - seqBendY(*it, q.y)) <= 6.0f)
                 return {it->slot, i};
         }
     }
     return {};
 }
 
-bool SeqPanel::seqBendSegmentBends(const SeqNote &n, const std::vector<SeqCurvePoint> &points, int segment,
-                                   bool) const {
+bool SeqPanel::seqBendSegmentBends(const SeqNote &n, const std::vector<SeqCurvePoint> &points, int segment) const {
     if (segment < 0 || segment + 1 >= static_cast<int>(points.size()))
         return false;
     const SeqCurvePoint &a = points[static_cast<size_t>(segment)], &b = points[static_cast<size_t>(segment) + 1];
     return seqStepX(n.start + b.x) - seqStepX(n.start + a.x) >= 20.0f && std::abs(b.y - a.y) >= 1e-6;
 }
 
-Point SeqPanel::seqBendSegmentPos(const SeqNote &n, const std::vector<SeqCurvePoint> &points, int segment,
-                                  bool lane) const {
+Point SeqPanel::seqBendSegmentPos(const SeqNote &n, const std::vector<SeqCurvePoint> &points, int segment) const {
     const SeqCurvePoint &a = points[static_cast<size_t>(segment)], &b = points[static_cast<size_t>(segment) + 1];
-    return {seqStepX(n.start + (a.x + b.x) * 0.5), seqBendY(n, a.y + (b.y - a.y) * shapeBend(0.5, a.curve), lane)};
+    return {seqStepX(n.start + (a.x + b.x) * 0.5), seqBendY(n, a.y + (b.y - a.y) * shapeBend(0.5, a.curve))};
 }
 
-SeqPanel::BendHit SeqPanel::seqBendSegmentAt(Point p, bool lane) const {
+SeqPanel::BendHit SeqPanel::seqBendSegmentAt(Point p) const {
+    if (!seqBendTool())
+        return {};
     const std::vector<SeqNote> notes = seqNotes();
     for (auto it = notes.rbegin(); it != notes.rend(); ++it) {
-        if (!seqBendEditable(it->slot, lane))
-            continue;
         const std::vector<SeqCurvePoint> points = seqBendPoints(it->slot);
         for (int i = 0; i + 1 < static_cast<int>(points.size()); ++i) {
-            if (!seqBendSegmentBends(*it, points, i, lane))
+            if (!seqBendSegmentBends(*it, points, i))
                 continue;
-            const Point handle = seqBendSegmentPos(*it, points, i, lane);
+            const Point handle = seqBendSegmentPos(*it, points, i);
             if (std::hypot(p.x - handle.x, p.y - handle.y) <= 6.0f)
                 return {it->slot, i};
         }
@@ -1185,17 +1160,167 @@ SeqPanel::BendHit SeqPanel::seqBendSegmentAt(Point p, bool lane) const {
     return {};
 }
 
-SeqCurvePoint SeqPanel::seqBendPointFor(const SeqNote &n, Point p, bool free, bool lane) const {
+std::optional<SeqPanel::BendLineHit> SeqPanel::seqBendLineAt(Point p) const {
+    if (!seqBendTool() || seqBendPointAt(p).slot >= 0 || seqBendSegmentAt(p).slot >= 0)
+        return std::nullopt;
+    const std::vector<SeqNote> notes = seqNotes();
+    const double step = seqStepAt(p.x);
+    for (auto it = notes.rbegin(); it != notes.rend(); ++it) {
+        const double t = step - it->start;
+        if (t < 0.0 || t > it->length)
+            continue;
+        const std::vector<SeqCurvePoint> points = seqBendPoints(it->slot);
+        if (points.empty())
+            continue;
+        const double v = seqNoteBendAt(static_cast<int>(points.size()),
+                                       [&](int i) { return points[static_cast<size_t>(i)]; }, t);
+        const float y = seqBendY(*it, v);
+        if (std::abs(p.y - y) <= 5.0f)
+            return BendLineHit{it->slot, {t, v, 0.0}, {p.x, y}};
+    }
+    return std::nullopt;
+}
+
+std::vector<SeqPanel::BendHit> SeqPanel::seqBendPicked() const {
+    std::vector<BendHit> points;
+    if (!seqBendTool() || seqBendPick_.pattern != seqPattern())
+        return points;
+    for (size_t i = 0; i < seqBendPick_.points.size(); ++i) {
+        const BendHit &h = seqBendPick_.points[i];
+        const int count = static_cast<int>(seqBendPoints(h.slot).size());
+        if (count == seqBendPick_.counts[i] && h.index >= 0 && h.index < count &&
+            value(seqNoteIndex(seqPattern(), h.slot, SeqNoteParam::Length)) > 0.0)
+            points.push_back(h);
+    }
+    return points;
+}
+
+void SeqPanel::setSeqBendPick(std::vector<BendHit> points) {
+    std::sort(points.begin(), points.end(),
+              [](const BendHit &a, const BendHit &b) { return a.slot != b.slot ? a.slot < b.slot : a.index < b.index; });
+    points.erase(std::unique(points.begin(), points.end()), points.end());
+    seqBendPick_ = {seqPattern(), points, {}};
+    for (const BendHit &h : points)
+        seqBendPick_.counts.push_back(static_cast<int>(seqBendPoints(h.slot).size()));
+}
+
+void SeqPanel::moveSeqBendPoints(Point p) {
+    // As the lane's curve's picked points move together: as far as the one grabbed, as far as each can, up and down
+    // within a bend's reach and across between its nearest neighbors not picked (or its note's ends).
+    const SeqDrag &d = seqDrag_;
+    const auto grabbed = std::find(d.bendPoints.begin(), d.bendPoints.end(), BendHit{d.anchor, d.bendIndex});
+    const std::optional<SeqNote> anchor = seqNoteOf(d.anchor);
+    if (grabbed == d.bendPoints.end() || !anchor || d.bendOrigin.size() != d.bendPoints.size())
+        return;
+    const SeqCurvePoint &from = d.bendOrigin[static_cast<size_t>(grabbed - d.bendPoints.begin())];
+    const SeqCurvePoint to = seqBendPointFor(*anchor, p, d.free);
+    double dx = to.x - from.x, dy = to.y - from.y;
+    auto isPicked = [&](int slot, int index) {
+        return std::find(d.bendPoints.begin(), d.bendPoints.end(), BendHit{slot, index}) != d.bendPoints.end();
+    };
+    for (size_t k = 0; k < d.bendPoints.size(); ++k) {
+        const BendHit &h = d.bendPoints[k];
+        const SeqCurvePoint &o = d.bendOrigin[k];
+        const std::optional<SeqNote> n = seqNoteOf(h.slot);
+        const std::vector<SeqCurvePoint> points = seqBendPoints(h.slot);
+        if (!n || h.index >= static_cast<int>(points.size()))
+            return;
+        dy = std::clamp(dy, std::min(-kSeqMaxNoteBend - o.y, 0.0), std::max(kSeqMaxNoteBend - o.y, 0.0));
+        int below = h.index - 1, above = h.index + 1;
+        while (below >= 0 && isPicked(h.slot, below))
+            --below;
+        while (above < static_cast<int>(points.size()) && isPicked(h.slot, above))
+            ++above;
+        const double lo = below >= 0 ? points[static_cast<size_t>(below)].x : 0.0;
+        const double hi = above < static_cast<int>(points.size()) ? points[static_cast<size_t>(above)].x : n->length;
+        dx = std::clamp(dx, std::min(lo - o.x, 0.0), std::max(hi - o.x, 0.0));
+    }
+    std::vector<int> slots;
+    for (const BendHit &h : d.bendPoints)
+        if (std::find(slots.begin(), slots.end(), h.slot) == slots.end())
+            slots.push_back(h.slot);
+    for (int slot : slots) {
+        std::vector<SeqCurvePoint> points = seqBendPoints(slot);
+        for (size_t k = 0; k < d.bendPoints.size(); ++k)
+            if (d.bendPoints[k].slot == slot) {
+                SeqCurvePoint &q = points[static_cast<size_t>(d.bendPoints[k].index)];
+                q.x = d.bendOrigin[k].x + dx;
+                q.y = d.bendOrigin[k].y + dy;
+            }
+        setSeqBend(slot, points);
+    }
+    if (d.sounding >= 0) // the note grabbed heard at the pitch it bends to
+        controller().auditionBend(from.y + dy);
+}
+
+void SeqPanel::removeSeqBendPoints(const std::vector<BendHit> &picked) {
+    std::vector<int> slots;
+    for (const BendHit &h : picked)
+        if (std::find(slots.begin(), slots.end(), h.slot) == slots.end())
+            slots.push_back(h.slot);
+    controller().beginStep();
+    for (int slot : slots) {
+        std::vector<SeqCurvePoint> points = seqBendPoints(slot);
+        for (int i = static_cast<int>(points.size()) - 1; i >= 0; --i)
+            if (std::find(picked.begin(), picked.end(), BendHit{slot, i}) != picked.end())
+                points.erase(points.begin() + i);
+        if (points.size() == 1 && std::abs(points.front().y) < 1e-9) // a lone point at 0 bends nothing
+            points.clear();
+        setSeqBend(slot, points);
+    }
+    controller().endStep();
+    seqBendPick_ = BendPick{};
+}
+
+int SeqPanel::seqBendNoteAt(Point p) const {
+    const int slot = seqNoteAt(p);
+    const std::optional<SeqNote> n = slot >= 0 ? seqNoteOf(slot) : std::nullopt;
+    if (!n)
+        return -1;
+    const std::vector<SeqCurvePoint> points = seqBendPoints(slot);
+    if (points.empty())
+        return slot;
+    const double v = seqNoteBendAt(static_cast<int>(points.size()), [&](int i) { return points[static_cast<size_t>(i)]; },
+                                   std::clamp(seqStepAt(p.x) - n->start, 0.0, n->length));
+    const float y = seqBendY(*n, v);
+    const Rect bar = seqNoteRect(*n);
+    return y >= bar.y - 1.0f && y <= bar.bottom() + 1.0f ? slot : -1;
+}
+
+int SeqPanel::seqBendLitNote(Point p) const {
+    if (!seqBendTool() || !roll().grid.contains(p))
+        return -1;
+    if (const BendHit h = seqBendPointAt(p); h.slot >= 0)
+        return h.slot;
+    if (const BendHit h = seqBendSegmentAt(p); h.slot >= 0)
+        return h.slot;
+    if (const std::optional<BendLineHit> line = seqBendLineAt(p))
+        return line->slot;
+    return seqNoteAt(p);
+}
+
+bool SeqPanel::hoverMoves(Point before, Point now) const {
+    if (!wide() || !seqBendTool() || !(roll().grid.contains(before) || roll().grid.contains(now)))
+        return false;
+    const bool wasIn = roll().grid.contains(before), isIn = roll().grid.contains(now);
+    const std::optional<BendLineHit> lineBefore = wasIn ? seqBendLineAt(before) : std::nullopt;
+    const std::optional<BendLineHit> lineNow = isIn ? seqBendLineAt(now) : std::nullopt;
+    if (lineBefore || lineNow) // the faint point moves along the line, or comes or goes
+        return true;
+    return (wasIn ? seqBendPointAt(before) : BendHit{}) != (isIn ? seqBendPointAt(now) : BendHit{}) ||
+           (wasIn ? seqBendSegmentAt(before) : BendHit{}) != (isIn ? seqBendSegmentAt(now) : BendHit{}) ||
+           seqBendLitNote(before) != seqBendLitNote(now);
+}
+
+SeqCurvePoint SeqPanel::seqBendPointFor(const SeqNote &n, Point p, bool free) const {
     const double grid = free ? 0.0 : kSeqSnaps[std::clamp(controller().layout().seqSnap, 0, kSeqSnapCount - 1)];
     double step = seqStepAt(p.x);
     if (grid > 0.0)
         step = std::round(step / grid) * grid;
     const double x = std::clamp(step - n.start, 0.0, n.length);
-    double v = seqBendAtY(n, p.y, lane);
+    double v = seqBendAtY(n, p.y);
     if (free) {
         v = std::round(v * 100.0) / 100.0;
-    } else if (lane) {
-        v = std::round(v);
     } else { // onto the nearest row the roll can show: a semitone, or a degree of the scale while folded
         const std::vector<int> pitches = seqPitchList();
         const double pitch = n.pitch + v;
@@ -1249,32 +1374,46 @@ void SeqPanel::paintSeqBend(int slot, double from, double fromValue, double step
     setSeqBend(slot, points);
 }
 
-// Each bent note's bend: a line from its start along its points to its end, in the notes' color lightened, a faint
-// ribbon down to the note's own pitch, dashed where the note is muted or plays at a chance, and past its end (a point
-// left there by a note made shorter, which doesn't play) faint and dashed; the notes that can be edited show their
-// points and their segments' handles. On the roll each at its pitch, in the Note Bend lane about the lane's middle.
-void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes, bool lane) {
+// Each bent note's bend, at its pitch: a line from its start along its points to its end, in the notes' color
+// lightened, a faint ribbon down to the note's own row, dashed where the note is muted or plays at a chance, and past
+// its end (a point left there by a note made shorter, which doesn't play) faint and dashed. With Bend, the bends stand
+// out over the faded notes, every bent note shows its points and its segments' handles, the bend of the note under the
+// mouse (or whose line, point or handle is) is lit, and the mouse over a line shows a faint point where a press puts
+// one down.
+void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes) {
     const bool on = value(paramIndex(SeqParam::Enabled)) >= 0.5;
+    const bool tool = seqBendTool();
     const Color ink = mix(kAccent, kText, 0.45f);
-    const bool here = dragging() && seqDrag_.inLane == lane;
-    const BendHit hotPoint = here && seqDrag_.mode == SeqDrag::Mode::BendPoint ? BendHit{seqDrag_.anchor, seqDrag_.bendIndex}
-                             : !dragging()                                     ? seqBendPointAt(host_.mouse(), lane)
-                                                                               : BendHit{};
-    const BendHit hotSegment = here && seqDrag_.mode == SeqDrag::Mode::BendCurve
+    const std::vector<BendHit> pickedPoints = seqBendPicked();
+    const int lit = dragging() ? (seqDrag_.mode == SeqDrag::Mode::BendPoint || seqDrag_.mode == SeqDrag::Mode::BendCurve ||
+                                          seqDrag_.mode == SeqDrag::Mode::BendPaint || seqDrag_.mode == SeqDrag::Mode::BendGroup
+                                      ? seqDrag_.anchor
+                                      : -1)
+                               : seqBendLitNote(host_.mouse());
+    const BendHit hotPoint = dragging() && (seqDrag_.mode == SeqDrag::Mode::BendPoint ||
+                                            seqDrag_.mode == SeqDrag::Mode::BendGroup)
+                                 ? BendHit{seqDrag_.anchor, seqDrag_.bendIndex}
+                             : !dragging() ? seqBendPointAt(host_.mouse())
+                                           : BendHit{};
+    const BendHit hotSegment = dragging() && seqDrag_.mode == SeqDrag::Mode::BendCurve
                                    ? BendHit{seqDrag_.anchor, seqDrag_.bendIndex}
-                               : !dragging() && hotPoint.slot < 0 ? seqBendSegmentAt(host_.mouse(), lane)
+                               : !dragging() && hotPoint.slot < 0 ? seqBendSegmentAt(host_.mouse())
                                                                   : BendHit{};
     for (const SeqNote &n : notes) {
         const std::vector<SeqCurvePoint> points = seqBendPoints(n.slot);
         if (points.empty())
             continue;
         const bool picked = seqSelected(n.slot);
-        const float level = lane ? (picked ? 1.0f : 0.35f)
-                                 : static_cast<float>(0.55 + 0.45 * std::clamp(n.velocity, 0.0, 1.0)) * (on ? 1.0f : 0.75f);
+        const bool hot = tool && n.slot == lit;
+        // Strong with Bend, which edits them; else faint, behind the notes they belong to.
+        const float level = tool ? (on ? 1.0f : 0.8f)
+                                 : static_cast<float>(0.55 + 0.45 * std::clamp(n.velocity, 0.0, 1.0)) * (on ? 1.0f : 0.75f) *
+                                       0.45f;
+        const Color lineInk = hot ? kText : ink;
         const int count = static_cast<int>(points.size());
         auto at = [&](double t) {
             return Point{seqStepX(n.start + t),
-                         seqBendY(n, seqNoteBendAt(count, [&](int i) { return points[static_cast<size_t>(i)]; }, t), lane)};
+                         seqBendY(n, seqNoteBendAt(count, [&](int i) { return points[static_cast<size_t>(i)]; }, t))};
         };
         auto trace = [&](double from, double to) {
             std::vector<Point> line;
@@ -1284,42 +1423,57 @@ void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes, bool 
             return line;
         };
         std::vector<Point> line = trace(0.0, n.length);
-        const float base = seqBendY(n, 0.0, lane);
+        const float base = seqBendY(n, 0.0);
         std::vector<Point> area = line;
         area.push_back({line.back().x, base});
         area.push_back({line.front().x, base});
-        c.fillPolygon(area.data(), area.size(), ink.alpha(0.14f * level));
-        c.polyline(line.data(), line.size(), (n.mute ? kFaint : ink).alpha(level), picked ? 2.0f : 1.5f,
-                   n.mute || n.chance < 1.0);
+        c.fillPolygon(area.data(), area.size(), lineInk.alpha((hot ? 0.24f : tool ? 0.18f : 0.2f) * level));
+        c.polyline(line.data(), line.size(), (n.mute ? kFaint : lineInk).alpha(level),
+                   hot ? 2.6f : tool || picked ? 2.0f : 1.5f, n.mute || n.chance < 1.0);
         if (points.back().x > n.length + 1e-9) {
             const std::vector<Point> tail = trace(n.length, points.back().x);
-            c.polyline(tail.data(), tail.size(), ink.alpha(0.35f * level), 1.2f, true);
+            c.polyline(tail.data(), tail.size(), lineInk.alpha(0.35f * level), 1.2f, true);
         }
-        if (!seqBendEditable(n.slot, lane))
+        if (!tool)
             continue;
         for (int i = 0; i + 1 < count; ++i)
-            if (seqBendSegmentBends(n, points, i, lane)) {
+            if (seqBendSegmentBends(n, points, i)) {
                 const bool hot = hotSegment == BendHit{n.slot, i};
-                c.strokeCircle(seqBendSegmentPos(n, points, i, lane), hot ? 4.0f : 2.5f, ink.alpha(hot ? 1.0f : 0.7f), 1.2f);
+                c.strokeCircle(seqBendSegmentPos(n, points, i), hot ? 4.0f : 2.5f, ink.alpha(hot ? 1.0f : 0.7f), 1.2f);
             }
         for (int i = 0; i < count; ++i) {
             const SeqCurvePoint &q = points[static_cast<size_t>(i)];
-            const Point dot{seqStepX(n.start + q.x), seqBendY(n, q.y, lane)};
+            const Point dot{seqStepX(n.start + q.x), seqBendY(n, q.y)};
             c.fillCircle(dot, 3.5f, wellColor());
             c.strokeCircle(dot, 3.5f, ink.alpha(q.x > n.length + 1e-9 ? 0.4f : 1.0f), 1.5f);
             if (hotPoint == BendHit{n.slot, i})
                 c.strokeCircle(dot, 6.0f, kText, 1.5f);
+            else if (std::find(pickedPoints.begin(), pickedPoints.end(), BendHit{n.slot, i}) != pickedPoints.end())
+                c.strokeCircle(dot, 6.0f, ink, 1.5f); // picked: ringed
         }
     }
+    // The box being dragged, picking the points it holds.
+    if (dragging() && seqDrag_.mode == SeqDrag::Mode::BendBox) {
+        const Rect box{std::min(seqDrag_.start.x, seqDrag_.now.x), std::min(seqDrag_.start.y, seqDrag_.now.y),
+                       std::abs(seqDrag_.now.x - seqDrag_.start.x), std::abs(seqDrag_.now.y - seqDrag_.start.y)};
+        c.fillRect(box, ink.alpha(0.12f));
+        c.strokeRect(box, ink.alpha(0.7f), 1.0f);
+    }
+    // The mouse over a bend's line: a faint point there, where a press puts one down.
+    if (!dragging() && roll().grid.contains(host_.mouse()))
+        if (const std::optional<BendLineHit> line = seqBendLineAt(host_.mouse())) {
+            c.fillCircle(line->at, 3.5f, wellColor().alpha(0.6f));
+            c.strokeCircle(line->at, 3.5f, ink.alpha(0.45f), 1.2f);
+        }
     // While a point is dragged, how far it bends, by it.
-    if (here && seqDrag_.mode == SeqDrag::Mode::BendPoint)
+    if (dragging() && (seqDrag_.mode == SeqDrag::Mode::BendPoint || seqDrag_.mode == SeqDrag::Mode::BendGroup))
         if (const std::optional<SeqNote> n = seqNoteOf(seqDrag_.anchor)) {
             const std::vector<SeqCurvePoint> points = seqBendPoints(n->slot);
             if (seqDrag_.bendIndex >= 0 && seqDrag_.bendIndex < static_cast<int>(points.size())) {
                 const SeqCurvePoint &q = points[static_cast<size_t>(seqDrag_.bendIndex)];
                 const std::string text = bendText(q.y);
                 const float w = c.textWidth(text, kTextSmall, true) + 10.0f;
-                const Point dot{seqStepX(n->start + q.x), seqBendY(*n, q.y, lane)};
+                const Point dot{seqStepX(n->start + q.x), seqBendY(*n, q.y)};
                 const Rect pill{dot.x + 9.0f, dot.y - 18.0f, w, 14.0f};
                 c.fillRect(pill, kRaised, kRadiusMark);
                 c.strokeRect(pill, ink.alpha(0.6f), 1.0f, kRadiusMark);
@@ -1682,6 +1836,19 @@ void SeqPanel::closePopups() {
 bool SeqPanel::key(Key key, bool shift) {
     if (!wide())
         return false;
+    // With Bend, Delete removes the bend points picked, and Ctrl+A over the roll picks every one.
+    if (seqBendTool() && key == Key::Delete && !seqBendPicked().empty()) {
+        removeSeqBendPoints(seqBendPicked());
+        return true;
+    }
+    if (seqBendTool() && key == Key::SelectAll && roll().grid.contains(host_.mouse())) {
+        std::vector<BendHit> all;
+        for (const SeqNote &n : seqNotes())
+            for (int i = 0; i < static_cast<int>(seqBendPoints(n.slot).size()); ++i)
+                all.push_back({n.slot, i});
+        setSeqBendPick(std::move(all));
+        return true;
+    }
     // The lane's curve: Delete removes its points picked, and Ctrl+A over the lane picks every one.
     if (seqCurveLane() && key == Key::Delete && !seqCurvePicked().empty()) {
         const SeqCurve curve = seqLaneCurve();
@@ -1987,44 +2154,6 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         return true;
     }
     case Kind::SeqLane: {
-        if (seqNoteBendLane()) {
-            // The picked notes' bends: a point dragged (anywhere, or with Ctrl on the grid: the snap's lines and whole
-            // semitones), a segment's middle bending it; elsewhere over a picked note, with Draw or Bend, a point put down
-            // there and dragged. Each an undo step.
-            seqBendJustAdded_ = {};
-            if (const BendHit h = seqBendPointAt(p, true); h.slot >= 0) {
-                startDrag(SeqDrag::Mode::BendPoint, true);
-                seqDrag_.anchor = h.slot;
-                seqDrag_.bendIndex = h.index;
-                seqDrag_.inLane = true;
-                seqDrag_.free = !mods.ctrl;
-                return true;
-            }
-            if (const BendHit h = seqBendSegmentAt(p, true); h.slot >= 0) {
-                startDrag(SeqDrag::Mode::BendCurve, true);
-                seqDrag_.anchor = h.slot;
-                seqDrag_.bendIndex = h.index;
-                seqDrag_.inLane = true;
-                seqDrag_.startCurve = seqBendPoints(h.slot)[static_cast<size_t>(h.index)].curve;
-                return true;
-            }
-            if (!seqDrawing() && !seqBendTool())
-                return true;
-            const double step = seqStepAt(p.x);
-            for (const int slot : seqPicked()) {
-                const std::optional<SeqNote> n = seqNoteOf(slot);
-                if (!n || step < n->start || step > n->start + n->length)
-                    continue;
-                startDrag(SeqDrag::Mode::BendPoint, true);
-                seqDrag_.anchor = slot;
-                seqDrag_.inLane = true;
-                seqDrag_.free = !mods.ctrl;
-                seqDrag_.bendIndex = addSeqBendPoint(slot, seqBendPointFor(*n, p, !mods.ctrl, true));
-                seqBendJustAdded_ = {slot, seqDrag_.bendIndex};
-                return true;
-            }
-            return true;
-        }
         if (seqCurveLane()) {
             // As with notes: on a point, it moves; on a segment's middle, the segment bends; elsewhere, Draw puts a point
             // down and moves it while the button is held, or with Shift draws the curve, and Select does nothing (a
@@ -2140,10 +2269,12 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         return true;
     }
     case Kind::SeqGrid: {
-        // With Bend: a note's point dragged, a segment's middle bending it, and a note pressed putting a point down where
-        // the mouse is and dragging it (from a point at its start at its pitch, where it had none), or with Shift drawing
-        // its bend; each an undo step, the note picked and heard at its bend while the button is held. Empty space
-        // takes a box, as with Select.
+        // With Bend: a note's point dragged (with the other points picked), a segment's middle bending it, and a note
+        // pressed putting a point down where the mouse is and dragging it (from a point at its start at its pitch, where
+        // it had none), or with Shift drawing its bend; each an undo step, the note picked and heard at its bend while
+        // the button is held. Points are picked as notes are: a point clicked picked alone (on one of several picked,
+        // once it is let go unmoved), with Shift or Ctrl along with the others (or let go, once let go unmoved), and a
+        // box from empty space picking the points it holds (Shift or Ctrl adding them).
         if (seqBendTool()) {
             seqBendJustAdded_ = {};
             auto hearBent = [&](int slot, double semitones) {
@@ -2154,16 +2285,37 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
                 if (!seqSelected(slot))
                     seqSelection_ = {slot};
             };
-            if (const BendHit h = seqBendPointAt(p, false); h.slot >= 0) {
-                startDrag(SeqDrag::Mode::BendPoint, true);
+            const bool adds = mods.shift || mods.ctrl;
+            if (const BendHit h = seqBendPointAt(p); h.slot >= 0) {
+                std::vector<BendHit> picked = seqBendPicked();
+                const bool was = std::find(picked.begin(), picked.end(), h) != picked.end();
+                bool unpick = false, narrow = false;
+                if (adds && was)
+                    unpick = true;
+                else if (adds)
+                    picked.push_back(h);
+                else if (!was)
+                    picked = {h};
+                else
+                    narrow = picked.size() > 1;
+                setSeqBendPick(picked);
+                picked = seqBendPicked();
+                startDrag(picked.size() > 1 ? SeqDrag::Mode::BendGroup : SeqDrag::Mode::BendPoint, true);
                 seqDrag_.anchor = h.slot;
                 seqDrag_.bendIndex = h.index;
                 seqDrag_.free = mods.alt || mods.shift;
+                seqDrag_.unpick = unpick;
+                seqDrag_.narrow = narrow;
+                if (picked.size() > 1) {
+                    for (const BendHit &q : picked)
+                        seqDrag_.bendOrigin.push_back(seqBendPoints(q.slot)[static_cast<size_t>(q.index)]);
+                    seqDrag_.bendPoints = std::move(picked);
+                }
                 pick(h.slot);
                 hearBent(h.slot, seqBendPoints(h.slot)[static_cast<size_t>(h.index)].y);
                 return true;
             }
-            if (const BendHit h = seqBendSegmentAt(p, false); h.slot >= 0) {
+            if (const BendHit h = seqBendSegmentAt(p); h.slot >= 0) {
                 startDrag(SeqDrag::Mode::BendCurve, true);
                 seqDrag_.anchor = h.slot;
                 seqDrag_.bendIndex = h.index;
@@ -2171,15 +2323,27 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
                 pick(h.slot);
                 return true;
             }
-            if (const int note = seqNoteAt(p); note >= 0) {
+            if (const std::optional<BendLineHit> line = seqBendLineAt(p)) { // a point put down on the line, as it runs
+                startDrag(SeqDrag::Mode::BendPoint, true);
+                seqDrag_.anchor = line->slot;
+                seqDrag_.free = mods.alt;
+                seqDrag_.bendIndex = addSeqBendPoint(line->slot, line->point);
+                seqBendJustAdded_ = {line->slot, seqDrag_.bendIndex};
+                setSeqBendPick(seqDrag_.bendIndex >= 0 ? std::vector<BendHit>{seqBendJustAdded_} : std::vector<BendHit>{});
+                pick(line->slot);
+                hearBent(line->slot, line->point.y);
+                return true;
+            }
+            if (const int note = seqBendNoteAt(p); note >= 0) {
                 const std::optional<SeqNote> n = seqNoteOf(note);
                 pick(note);
                 if (mods.shift) { // a point on every line of the grid the stroke crosses, a step apart with the snap off
                     const double grid = kSeqSnaps[std::clamp(layout.seqSnap, 0, kSeqSnapCount - 1)];
                     const double unit = grid > 0.0 ? grid : 1.0;
-                    const SeqCurvePoint at = seqBendPointFor(*n, p, false, false);
+                    const SeqCurvePoint at = seqBendPointFor(*n, p, false);
                     const double step = at.x;
                     startDrag(SeqDrag::Mode::BendPaint, true);
+                    seqBendPick_ = BendPick{};
                     seqDrag_.anchor = note;
                     seqDrag_.loopFrom = step;
                     seqDrag_.startCurve = at.y;
@@ -2190,12 +2354,17 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
                 startDrag(SeqDrag::Mode::BendPoint, true);
                 seqDrag_.anchor = note;
                 seqDrag_.free = mods.alt;
-                const SeqCurvePoint at = seqBendPointFor(*n, p, mods.alt, false);
+                const SeqCurvePoint at = seqBendPointFor(*n, p, mods.alt);
                 seqDrag_.bendIndex = addSeqBendPoint(note, at);
                 seqBendJustAdded_ = {note, seqDrag_.bendIndex};
+                setSeqBendPick(seqDrag_.bendIndex >= 0 ? std::vector<BendHit>{seqBendJustAdded_} : std::vector<BendHit>{});
                 hearBent(note, at.y);
                 return true;
             }
+            startDrag(SeqDrag::Mode::BendBox, false); // a box picking the points it holds
+            seqDrag_.bendPoints = adds ? seqBendPicked() : std::vector<BendHit>{};
+            setSeqBendPick(seqDrag_.bendPoints);
+            return true;
         }
         bool atEnd = false, atStart = false;
         const int hit = seqNoteAt(p, &atEnd, &atStart);
@@ -2279,8 +2448,8 @@ void SeqPanel::drag(const DragState &d) {
     // roll off the grid while Shift or Alt is, and in the Note Bend lane on it while Ctrl is.
     if (seqDrag_.mode == SeqDrag::Mode::CurvePoint || seqDrag_.mode == SeqDrag::Mode::CurvePaint)
         seqDrag_.free = !mods.ctrl;
-    if (seqDrag_.mode == SeqDrag::Mode::BendPoint)
-        seqDrag_.free = seqDrag_.inLane ? !mods.ctrl : mods.shift || mods.alt;
+    if (seqDrag_.mode == SeqDrag::Mode::BendPoint || seqDrag_.mode == SeqDrag::Mode::BendGroup)
+        seqDrag_.free = mods.shift || mods.alt;
     // A note held after a double-click: the cursor left and right or up and down as the mouse last went, once it has
     // gone a few pixels, so a hand's tremble doesn't flip it.
     if (seqDrag_.mode == SeqDrag::Mode::Velocity && seqDrag_.extend) {
@@ -2554,12 +2723,29 @@ void SeqPanel::seqDrag(Point p) {
         const size_t i = static_cast<size_t>(d.bendIndex);
         const double lo = i > 0 ? points[i - 1].x : 0.0;
         const double hi = i + 1 < points.size() ? points[i + 1].x : std::max(n->length, lo);
-        const SeqCurvePoint to = seqBendPointFor(*n, p, d.free, d.inLane);
+        const SeqCurvePoint to = seqBendPointFor(*n, p, d.free);
         points[i].x = std::clamp(to.x, lo, std::max(lo, hi));
         points[i].y = to.y;
         setSeqBend(d.anchor, points);
         if (d.sounding >= 0) // heard at the pitch it bends to
             controller().auditionBend(to.y);
+        break;
+    }
+    case SeqDrag::Mode::BendGroup:
+        moveSeqBendPoints(p);
+        break;
+    case SeqDrag::Mode::BendBox: { // the points inside it, and those picked before it
+        const Rect box{std::min(d.start.x, p.x), std::min(d.start.y, p.y), std::abs(p.x - d.start.x),
+                       std::abs(p.y - d.start.y)};
+        std::vector<BendHit> picked = d.bendPoints;
+        for (const SeqNote &n : seqNotes()) {
+            const std::vector<SeqCurvePoint> points = seqBendPoints(n.slot);
+            for (int i = 0; i < static_cast<int>(points.size()); ++i)
+                if (box.contains({seqStepX(n.start + points[static_cast<size_t>(i)].x),
+                                  seqBendY(n, points[static_cast<size_t>(i)].y)}))
+                    picked.push_back({n.slot, i});
+        }
+        setSeqBendPick(std::move(picked));
         break;
     }
     case SeqDrag::Mode::BendCurve: { // its middle follows the mouse up and down, as far as a bend takes it
@@ -2577,7 +2763,7 @@ void SeqPanel::seqDrag(Point p) {
         if (!n)
             break;
         const double snap = kSeqSnaps[std::clamp(controller().layout().seqSnap, 0, kSeqSnapCount - 1)];
-        const SeqCurvePoint at = seqBendPointFor(*n, p, false, false);
+        const SeqCurvePoint at = seqBendPointFor(*n, p, false);
         if (std::abs(at.x - d.loopFrom) < 1e-9)
             break; // still on the line it painted last
         paintSeqBend(d.anchor, d.loopFrom, d.startCurve, at.x, at.y, snap > 0.0 ? snap : 1.0);
@@ -2621,6 +2807,17 @@ void SeqPanel::drop(const DragState &d) {
             picked = {seqDrag_.anchor};
         setSeqCurvePick(std::move(picked));
     }
+    if ((mode == SeqDrag::Mode::BendPoint || mode == SeqDrag::Mode::BendGroup) && !moved &&
+        (seqDrag_.unpick || seqDrag_.narrow)) {
+        // A bend point clicked: with Shift or Ctrl, one picked let go; without, one of several picked picked alone.
+        std::vector<BendHit> picked = seqBendPicked();
+        const BendHit clicked{seqDrag_.anchor, seqDrag_.bendIndex};
+        if (seqDrag_.unpick)
+            std::erase(picked, clicked);
+        else
+            picked = {clicked};
+        setSeqBendPick(std::move(picked));
+    }
     if (mode == SeqDrag::Mode::Move || mode == SeqDrag::Mode::ResizeStart ||
         (mode == SeqDrag::Mode::Field && (seqDrag_.anchor == 0 || seqDrag_.anchor == 4)))
         seqDropCovered(seqPicked()); // in the drag's undo step, which closes after this
@@ -2635,13 +2832,12 @@ void SeqPanel::release() { // a note still heard stops (a release that never cam
 }
 
 // A note bend's point double-clicked goes (but one the press before put down, which stays; a lone point left at 0
-// going with it, as it bends nothing), and a segment's middle straightens; elsewhere, with `adds`, a point put down on a
-// picked note there (the Note Bend lane's). Whether it took the double-click.
-bool SeqPanel::doubleClickBend(Point p, bool lane, bool adds, Modifiers mods) {
-    if (const BendHit h = seqBendPointAt(p, lane); h.slot >= 0) {
+// going with it, as it bends nothing), and a segment's middle straightens.
+void SeqPanel::doubleClickBend(Point p) {
+    if (const BendHit h = seqBendPointAt(p); h.slot >= 0) {
         if (h == seqBendJustAdded_) {
             seqBendJustAdded_ = {};
-            return true;
+            return;
         }
         std::vector<SeqCurvePoint> points = seqBendPoints(h.slot);
         points.erase(points.begin() + h.index);
@@ -2650,27 +2846,15 @@ bool SeqPanel::doubleClickBend(Point p, bool lane, bool adds, Modifiers mods) {
         controller().beginStep();
         setSeqBend(h.slot, points);
         controller().endStep();
-        return true;
+        return;
     }
-    if (const BendHit h = seqBendSegmentAt(p, lane); h.slot >= 0) {
+    if (const BendHit h = seqBendSegmentAt(p); h.slot >= 0) {
         std::vector<SeqCurvePoint> points = seqBendPoints(h.slot);
         points[static_cast<size_t>(h.index)].curve = 0.0;
         controller().beginStep();
         setSeqBend(h.slot, points);
         controller().endStep();
-        return true;
     }
-    if (!adds)
-        return false;
-    const double step = seqStepAt(p.x);
-    for (const int slot : seqPicked())
-        if (const std::optional<SeqNote> n = seqNoteOf(slot); n && step >= n->start && step <= n->start + n->length) {
-            controller().beginStep();
-            addSeqBendPoint(slot, seqBendPointFor(*n, p, !mods.ctrl, true));
-            controller().endStep();
-            return true;
-        }
-    return true;
 }
 
 bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
@@ -2678,7 +2862,7 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
     switch (w.kind) {
     case Kind::SeqGrid: { // on a note, deletes it; elsewhere, puts one down; with Bend, its bend's points and segments
         if (seqBendTool()) {
-            doubleClickBend(p, false, false, mods);
+            doubleClickBend(p);
             return true;
         }
         if (const int hit = seqNoteAt(p); hit >= 0) {
@@ -2719,8 +2903,6 @@ bool SeqPanel::doubleClick(const Widget &w, Point p, Modifiers mods) {
         edit(w.param, table_[w.param].def);
         return true;
     case Kind::SeqLane: { // the notes there back to their velocity or chance to begin with
-        if (seqNoteBendLane())
-            return doubleClickBend(p, true, true, mods);
         if (seqCurveLane()) {
             const SeqCurve curve = seqLaneCurve();
             std::vector<SeqCurvePoint> points = seqCurvePoints(curve);
@@ -2943,7 +3125,6 @@ std::string SeqPanel::tooltip(const Widget &w) const {
     case Kind::SeqLaneTab:
         return w.b == static_cast<int>(SeqLane::Bend)       ? std::string(tr(Str::TipSeqLaneBend))
                : w.b == static_cast<int>(SeqLane::ModWheel) ? std::string(tr(Str::TipSeqLaneWheel))
-               : w.b == static_cast<int>(SeqLane::NoteBend) ? std::string(tr(Str::TipSeqLaneNoteBend))
                                                             : std::string();
     default:
         return {};
@@ -3235,8 +3416,10 @@ void SeqPanel::paintBack(Canvas &c) {
         if (r.y > roll().grid.y + roll().grid.h)
             continue; // its row isn't shown
         const bool picked = seqSelected(n.slot);
-        // Full strength at full velocity, down to 40 % at none; a little dimmer while the sequencer is off.
-        const float level = static_cast<float>(0.4 + 0.6 * std::clamp(n.velocity, 0.0, 1.0)) * (on ? 1.0f : 0.75f);
+        // Full strength at full velocity, down to 40 % at none; a little dimmer while the sequencer is off, and faint
+        // with Bend, which edits the bends drawn over them.
+        const float level = static_cast<float>(0.4 + 0.6 * std::clamp(n.velocity, 0.0, 1.0)) * (on ? 1.0f : 0.75f) *
+                            (seqBendTool() ? 0.6f : 1.0f);
         if (const float glow = seqGlow(n); glow > 0.0f) // played just now: glowing, as the glow setting says
             featherRect(c, r, kRadiusMark, 8.0f, ink.alpha(0.6f * glow));
         if (n.mute) {
@@ -3267,7 +3450,7 @@ void SeqPanel::paintBack(Canvas &c) {
             c.text({r.x + 3.0f, r.y, r.w - 4.0f, r.h}, std::to_string(std::lround(n.chance * 100.0)) + "%",
                    kTextSmall, kText, Align::Left);
     }
-    paintSeqBends(c, notes, false);
+    paintSeqBends(c, notes);
     // The box being dragged, picking what it reaches.
     if (dragging() && seqDrag_.mode == SeqDrag::Mode::Box) {
         const Point from = seqBoxStart(), to = seqDrag_.now;
@@ -3333,29 +3516,6 @@ void SeqPanel::paintBack(Canvas &c) {
     c.pushClip(roll().laneArea);
     std::vector<SeqNote> stems = notes; // the picked ones last, over the others
     std::stable_partition(stems.begin(), stems.end(), [&](const SeqNote &n) { return !seqSelected(n.slot); });
-    if (seqNoteBendLane()) {
-        // The notes' bends about the lane's middle, across the range they fit (named at the lane's right end): a line at
-        // each semitone (each second at ±24), stronger at fifths and octaves, as strong as the GRID setting says; the
-        // picked ones over the others, which are faint, their points and segments' handles to edit.
-        const double range = seqBendRange();
-        const float right = std::min(roll().grid.x + roll().grid.w, seqStepX(steps));
-        const SeqNote any{-1, 0.0, 0.0, 60, 0.0, 1.0, false, false};
-        const int every = range > 12.0 ? 2 : 1;
-        for (int k = -static_cast<int>(range); k <= static_cast<int>(range); k += every) {
-            const float y = seqBendY(any, k, true);
-            const bool strong = k != 0 && (std::abs(k) % 12 == 0 || std::abs(k) % 12 == 7);
-            c.line({roll().grid.x, y}, {right, y},
-                   k == 0 ? kBorder : light.alpha((strong ? 0.1f : 0.04f) * gridLines), 1.0f);
-        }
-        std::vector<SeqNote> ordered = stems; // the picked ones last
-        stems.clear();
-        paintSeqBends(c, ordered, true);
-        const std::string tag = trf(Str::SeqLaneBendRange, {std::to_string(static_cast<int>(range))});
-        const float tagW = c.textWidth(tag, kTextSmall, true) + 10.0f;
-        const Rect tagRect{roll().grid.x + roll().grid.w - tagW - 6.0f, roll().laneArea.y + 4.0f, tagW, 14.0f};
-        c.fillRect(tagRect, kRaised.alpha(0.9f), kRadiusMark);
-        c.text(tagRect, tag, kTextSmall, kDim, Align::Center, true);
-    }
     if (seqCurveLane()) {
         // A curve instead: the line it rests on (the bend's 0, the mod wheel's bottom), the curve across the pattern,
         // filled down to that line, its points and the middles of the segments that bend.
@@ -3546,22 +3706,24 @@ std::optional<CursorKind> SeqPanel::cursor(const Widget &w) const {
         const SeqDrag::Mode mode = dragging() ? seqDrag_.mode : seqRulerMode(host_.mouse().x);
         return mode == SeqDrag::Mode::LoopMove ? CursorKind::Move : CursorKind::Horizontal;
     }
-    // A note bend's point moves, a segment's middle goes up and down, and with Bend a note drags up and down (bending it)
-    // and a stroke drawing its bend is a pen.
-    const bool bendLane = w.kind == Kind::SeqLane && seqNoteBendLane();
-    if (bendLane || (w.kind == Kind::SeqGrid && seqBendTool())) {
+    // With Bend, a note bend's point moves, a segment's middle goes up and down, the arrow stays over a bend's line (a
+    // faint point showing where a press puts one down), a note drags up and down (bending it) where its bend runs over
+    // its bar (elsewhere the arrow: the bar takes nothing there), a box picking points is the arrow and a stroke drawing its
+    // bend is a pen.
+    if (w.kind == Kind::SeqGrid && seqBendTool()) {
         if (dragging())
             return seqDrag_.mode == SeqDrag::Mode::BendCurve   ? CursorKind::Vertical
-                   : seqDrag_.mode == SeqDrag::Mode::BendPoint ? CursorKind::Move
+                   : seqDrag_.mode == SeqDrag::Mode::BendPoint || seqDrag_.mode == SeqDrag::Mode::BendGroup
+                       ? CursorKind::Move
                    : seqDrag_.mode == SeqDrag::Mode::BendPaint ? CursorKind::Pen
                                                                : CursorKind::Arrow;
-        if (seqBendPointAt(host_.mouse(), bendLane).slot >= 0)
+        if (seqBendPointAt(host_.mouse()).slot >= 0)
             return CursorKind::Move;
-        if (seqBendSegmentAt(host_.mouse(), bendLane).slot >= 0)
+        if (seqBendSegmentAt(host_.mouse()).slot >= 0)
             return CursorKind::Vertical;
-        if (bendLane)
-            return seqDrawing() || seqBendTool() ? std::optional<CursorKind>(CursorKind::Pen) : std::nullopt;
-        return seqNoteAt(host_.mouse()) >= 0 ? CursorKind::Vertical : CursorKind::Arrow;
+        if (seqBendLineAt(host_.mouse()))
+            return CursorKind::Arrow;
+        return seqBendNoteAt(host_.mouse()) >= 0 ? CursorKind::Vertical : CursorKind::Arrow;
     }
     if (w.kind == Kind::SeqLane && seqCurveLane()) { // moving over a point, up and down over a bend, a pen drawing
         if (dragging())
@@ -3818,10 +3980,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         if (on)
             c.fillRect(w.rect, kAccent.alpha(0.2f), kRadiusMark);
         const Str names[] = {Str::SeqLaneVelocity, Str::SeqLaneChance, Str::SeqLaneBend, Str::SeqLaneWheel};
-        const Str name = w.b == static_cast<int>(SeqLane::NoteBend)
-                             ? Str::SeqLaneNoteBend
-                             : names[std::clamp(w.b, 0, static_cast<int>(SeqLane::Macro1) - 1)];
-        c.text(w.rect, tr(name), kTextSmall,
+        c.text(w.rect, tr(names[std::clamp(w.b, 0, static_cast<int>(SeqLane::Macro1) - 1)]), kTextSmall,
                on ? kText : hovered ? kText : kDim, Align::Center, true);
         return true;
     }

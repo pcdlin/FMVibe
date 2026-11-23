@@ -1264,9 +1264,14 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
 voice bends; the other notes of a chord stay where they are.
 
 - Press a note and drag up or down to bend it there. The bend starts from the note's pitch at its start. Each row is
-  a semitone (a scale degree with FOLD).
+  a semitone (a scale degree with FOLD). Where a bend has left the note's bar, pressing the bar does nothing.
 - Hold Alt, or Shift while dragging, to bend off the grid, to the cent.
 - Drag a point to move it; drag the middle of a rising or falling segment to curve it.
+- Point at a bend's line to see a faint point there; press to add a point on the line and drag it.
+- While Bend is on, notes are faint so the bends stand out. The bend of the note under the mouse is highlighted. With
+  the other tools, the bends are faint behind the notes.
+- Drag a box from empty space to select points, or Shift+click or Ctrl+click points to add or remove them. Drag one
+  of the selected points to move them all together. Ctrl+A selects every point; Delete removes the selected points.
 - Double-click a point to delete it, or a segment's middle to straighten it.
 - Shift+drag across a note to draw its bend, a point on every grid line.
 - A note bends through up to 8 points, up to two octaves either way. You hear the note at the pitch you drag to.
@@ -1285,7 +1290,7 @@ Double-click the ruler to loop the whole pattern.
 - The mouse wheel scrolls the rows; Shift+wheel or a sideways wheel scrolls across.
 - Ctrl+wheel zooms across, Alt+wheel zooms the rows, or use the − and + buttons.
 - Drag with the middle button to pan.
-- Dragging a note or box past the edge scrolls the roll.
+- Dragging a note, a box or a bend point past the edge scrolls the roll.
 
 **Grid**: lines at every snap length, beats and bars stronger.
 
@@ -1313,10 +1318,6 @@ On a curve:
 
 Curves wrap around the pattern's end, so the loop comes round without a jump. They create no automation or undo
 steps; the wheels and macro knobs show where the curves take them while they play.
-
-**Note Bend** shows the selected notes' own bends larger, which helps with chords whose notes overlap. Its range at
-the right end fits the pattern's bends. Drag a point or a segment's middle as on the roll. With Draw or Bend, press
-over a selected note to add a point; with Select, double-click. Hold Ctrl to snap to whole semitones and the grid.
 
 ### Keyboard shortcuts in the roll
 

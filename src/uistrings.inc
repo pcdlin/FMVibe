@@ -631,8 +631,6 @@ STR(SeqLaneVelocity, "Velocity")
 STR(SeqLaneChance, "Chance")
 STR(SeqLaneBend, "Bend")
 STR(SeqLaneWheel, "Mod Wheel")
-STR(SeqLaneNoteBend, "Note Bend") // the lane's tab of the picked notes' own bends
-STR(SeqLaneBendRange, "±{1} st") // the Note Bend lane's range, {1} its semitones each way
 STR(SeqLaneMacro, "Macro {1}") // the lane's tab of the macros' curves, {1} the macro it shows
 STR(ModListCount, "{1} modulations") // in a pill's list, after the name of what they modulate
 STR(ModListCountOne, "1 modulation")
@@ -1107,7 +1105,6 @@ STR(TipSeqRuler, "Drag to set loop, double-click for whole pattern")
 STR(TipSeqField, "{1}: drag or scroll, double-click resets")
 STR(TipSeqLaneBend, "Pattern pitch bend")
 STR(TipSeqLaneWheel, "Pattern mod wheel")
-STR(TipSeqLaneNoteBend, "Picked notes' own bends")
 STR(TipSeqLaneMacro, "Pattern macro curves")
 STR(TipSeqLaneMacroPick, "Choose macro") // the arrow at the macros' tab's right end, which opens their list
 STR(TipSeqRoot, "The scale's root")
