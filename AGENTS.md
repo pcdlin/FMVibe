@@ -787,7 +787,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     it, its own macro's handle and one that would loop refused, its dot with no note playing showing where the other
     macro takes it (read off the rendered pixels), and the target menu's Macros listing the knobs by their names, the
     one that would loop and the row's own refused;
-  - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
+  - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names (a name cut at the 24
+    bytes the state saves between whole characters), the note source's
     and velocity's handles, displays and curve editors, the note source's and velocity's handles and the curves on
     their displays faint until they modulate something (read off the rendered pixels), the mod wheel's
     handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
@@ -1094,7 +1095,10 @@ there is one.
   editor, the host still running after. It reads a window's pixels only once the window shows and only what of it is
   on the screen (`grabShown()`), as a window manager (a desktop's, WSLg's) shows the host's window a moment late.
   It also checks that, with no view open, a state's restart comes through a run loop the host application offers
-  as `initialize()`'s context, on its main thread, and through the plugin's own thread where there is none.
+  as `initialize()`'s context, on its main thread, and through the plugin's own thread where there is none; and that
+  under a locale writing a decimal comma (de_DE, compiled with `localedef` into a folder of its own where none is
+  installed, left out where it can't be), the user's settings file's numbers read as written (a saved zoom of 0.6
+  and of 0.75 opening the editor as wide as they say).
 
 - **Looking at the editor**: the snapshots are PNGs in `build/linux/ui-shots`, one or more for each step that
   `tools/uishot.cpp` replays; an agent can open them as images. To see a change, render the snapshots and open the

@@ -8025,7 +8025,11 @@ void View::endTyping(bool commit) {
         const size_t start = t.text.find_first_not_of(' ');
         std::string name = start == std::string::npos ? std::string()
                                                       : t.text.substr(start, t.text.find_last_not_of(' ') - start + 1);
-        name = name.substr(0, 24);
+        // As many bytes as the state saves, cut between whole characters (never in the middle of one's UTF-8).
+        size_t cut = std::min(name.size(), kMaxMacroName);
+        while (cut > 0 && cut < name.size() && (static_cast<unsigned char>(name[cut]) & 0xC0) == 0x80)
+            --cut;
+        name.resize(cut);
         if (name == trf(Str::MacroDefaultName, {std::to_string(t.widget.a + 1)}))
             name.clear();
         UiLayout &layout = controller_.layout();

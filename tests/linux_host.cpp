@@ -19,10 +19,14 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <clocale>
+#include <cstdlib>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <string>
 #include <thread>
@@ -216,6 +220,80 @@ double play(const clap_plugin_t *plugin, int key = 69, int blocks = 8) {
     return peak;
 }
 
+// The user's settings file has a '.' before a fraction, whatever the locale: read in a host that has set one writing
+// a ',' (as GTK and Qt apps set the desktop's), saved zooms of 0.6 and 0.75 still open the editor as wide as they say
+// (both within the screen, which holds a larger one back), where atof() would have read 0, no zoom saved, for both.
+// Left out where no such locale is installed.
+void testSettingsLocale(const clap_plugin_factory_t *factory, const char *id) {
+    char dir[] = "/tmp/fmvibe-settings-XXXXXX";
+    if (!mkdtemp(dir)) {
+        check(false, "a settings folder is made");
+        return;
+    }
+    const std::string localeWas = std::setlocale(LC_ALL, nullptr);
+    auto commaLocale = []() -> const char * {
+        for (const char *name : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "fr_FR.utf8"})
+            if (std::setlocale(LC_ALL, name) && std::localeconv()->decimal_point[0] == ',')
+                return name;
+        return nullptr;
+    };
+    const char *comma = commaLocale();
+    const char *locpathWas = std::getenv("LOCPATH");
+    const std::string keepLocpath = locpathWas ? locpathWas : "";
+    if (!comma) { // none installed: one compiled into the folder, where glibc's localedef and its sources are
+        const std::string made = std::string("localedef -i de_DE -f UTF-8 ") + dir + "/de_DE.UTF-8 >/dev/null 2>&1";
+        if (std::system(made.c_str()) == 0) {
+            setenv("LOCPATH", dir, 1);
+            comma = commaLocale();
+        }
+    }
+    auto restore = [&] {
+        std::setlocale(LC_ALL, localeWas.c_str());
+        if (locpathWas)
+            setenv("LOCPATH", keepLocpath.c_str(), 1);
+        else
+            unsetenv("LOCPATH");
+    };
+    if (!comma) {
+        restore();
+        std::error_code ignored;
+        std::filesystem::remove_all(dir, ignored);
+        std::printf("       (no locale with a decimal comma to be had: the settings file's numbers aren't checked)\n");
+        return;
+    }
+    const char *dirWas = std::getenv("FMVIBE_SETTINGS_DIR");
+    const std::string keepDir = dirWas ? dirWas : "";
+    setenv("FMVIBE_SETTINGS_DIR", dir, 1);
+    auto width = [&](const char *zoom) {
+        std::ofstream(std::filesystem::path(dir) / "settings.txt") << "zoom=" << zoom << "\n";
+        ClapHost host;
+        const clap_plugin_t *plugin = factory->create_plugin(factory, &host.host, id);
+        uint32_t w = 0, h = 0;
+        if (plugin && plugin->init(plugin)) {
+            host.plugin = plugin;
+            const auto *gui = static_cast<const clap_plugin_gui_t *>(plugin->get_extension(plugin, CLAP_EXT_GUI));
+            if (gui && gui->create(plugin, CLAP_WINDOW_API_X11, false)) {
+                gui->get_size(plugin, &w, &h);
+                gui->destroy(plugin);
+            }
+        }
+        if (plugin)
+            plugin->destroy(plugin);
+        return w;
+    };
+    const uint32_t smaller = width("0.6"), larger = width("0.75");
+    restore();
+    if (dirWas)
+        setenv("FMVIBE_SETTINGS_DIR", keepDir.c_str(), 1);
+    else
+        unsetenv("FMVIBE_SETTINGS_DIR");
+    std::error_code ignored;
+    std::filesystem::remove_all(dir, ignored);
+    std::printf("       in %s, a saved zoom of 0.6 opens %u px wide, of 0.75 %u\n", comma, smaller, larger);
+    check(larger > 0 && std::abs(static_cast<double>(smaller) - 0.8 * larger) <= 2.0,
+          "a host's decimal comma leaves the settings file's numbers as they are written");
+}
+
 void testClap(const char *path) {
     void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!library) {
@@ -372,6 +450,8 @@ void testClap(const char *path) {
     plugin->stop_processing(plugin);
     plugin->deactivate(plugin);
     plugin->destroy(plugin);
+    if (std::getenv("DISPLAY"))
+        testSettingsLocale(factory, descriptor->id);
     entry->deinit();
     check(true, "it closes");
     dlclose(library);

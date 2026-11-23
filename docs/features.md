@@ -2131,7 +2131,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
   the name to change it (Enter
-  keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
+  keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch, up to
+  24 bytes of it in UTF-8, cut between whole characters).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. A macro's
   knob takes modulation like any other knob (a source's handle dropped on it, its depth handles under it), but not
   its own macro's handle nor one that would loop, which says why as it is let go of; its dot then shows where the

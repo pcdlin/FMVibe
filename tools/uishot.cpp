@@ -8392,9 +8392,20 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool undone = model.ui.macroNames[0].empty();
     view.redo();
+    // A name longer than the 24 bytes the state saves is cut between whole characters: one from a preset, 22 letters
+    // and an é (two bytes in UTF-8, the 23rd and 24th), with a letter typed before it keeps the 23 letters.
+    model.ui.macroNames[1] = "abcdefghijklmnopqrstuv\xC3\xA9";
+    doubleClick(view, {macroKnob(1).x, y + 26.0f});
+    view.typeKey(View::Key::Home);
+    type(view, "x");
+    view.typeKey(View::Key::Enter);
+    const bool wholeCharacters = model.ui.macroNames[1] == "xabcdefghijklmnopqrstuv";
+    view.undo();
+    model.ui.macroNames[1].clear();
     view.mouseMove({macroKnob(0).x - 32.0f, y}, {});
-    check(turned && mapped && renamed && undone && renderer.save(view, dir / "26-macros.png"),
-          "a macro's knob turns, its handle maps it, and a double-click renames it, undoably");
+    check(turned && mapped && renamed && undone && wholeCharacters && renderer.save(view, dir / "26-macros.png"),
+          "a macro's knob turns, its handle maps it, and a double-click renames it, undoably, cut between whole "
+          "characters");
     // A double-click on a macro's knob sets it back to 0, or a bipolar one's to its middle.
     const int macro2 = paramIndex(1, MacroParam::Value);
     model.set(macro2, 0.8);
