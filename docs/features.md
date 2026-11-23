@@ -1911,7 +1911,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets). Like a macro's, a source's handle is faint too
     while it modulates nothing (and scales no modulation as its aux).
-  - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
+  - The chevron left of the power switch folds the card to a narrow strip, as on the effects and as wide as theirs
+    (the handle as far in from the card's edge as an effect's icon, so it stays put): the handle, a grip
     to drag it by, the switch and ×, then the name, which unfolds it: its letters down the strip and its number
     across (a Random source's shortened to RND, a Curve source's to CRV).
   - Each source has a colored handle in its card's title row. Drag it onto any knob, wire label

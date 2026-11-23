@@ -4125,7 +4125,7 @@ void View::paintSource(Canvas &c, float card, int s) {
 
     // Title row: the handle (a widget) and the name, grey while the source is off; the row drags the card.
     // In title case, as an effect card's title.
-    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, mods_.sourceName(s), kTextBody,
+    c.text({p.x + kSourceHandleX + kSourceHandleW + 5.0f, p.y + 7.0f, 80.0f, 21.0f}, mods_.sourceName(s), kTextBody,
            mods_.sourceOn(s) ? kText : kDim, Align::Left, true);
 
     if (s == wideLfo()) {

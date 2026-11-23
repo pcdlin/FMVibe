@@ -640,7 +640,7 @@ Point sourceGrip(float card) {
 }
 
 Point sourceHandle(float card) {
-    return {cardX(card) + 24.0f, 582.0f};
+    return detail::sourceHandleRect(detail::sourceCard(card)).center();
 }
 
 // An LFO's sync switch, a square left of its Rate knob.
@@ -8258,10 +8258,11 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "28d-folded-handle.png");
     const bool handleStays = handlePixels() == handleOpen;
-    const float envX = cardX(0) + 60.0f; // the envelope's card, closed up after the 48 px strip
+    const float stripW = detail::sourceCard(0.0f, detail::kFoldedSource).w;
+    const float envX = cardX(0) + stripW + 12.0f; // the envelope's card, closed up after the strip
     click(view, {envX + kCardW - 38.0f, sourceTop + 17.5f}); // its switch
     const bool envClosedUp = model.value(sourceEnabledIndex(1)) < 0.5;
-    const float lfoStrip = cardX(0) + 24.0f;
+    const float lfoStrip = cardX(0) + stripW * 0.5f;
     drag(view, {lfoStrip, sourceTop + 38.0f}, {lfoStrip + 300.0f, sourceTop + 38.0f}); // its grip, past the envelope
     const bool moved = shown(model) == std::vector<int>{1, 0} && model.ui.sourcesFolded == 1u << 0;
     view.mouseMove({600.0f, 328.0f}, {});
@@ -8279,7 +8280,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     auto inked = [&](int line) {
         const uint32_t card = renderer.pixel({randomStrip + 4.0f, sourceTop + 150.0f});
         for (float y = sourceTop + 104.0f + line * 13.0f + 1.0f; y < sourceTop + 104.0f + (line + 1) * 13.0f; y += 1.0f)
-            for (float x = randomStrip + 8.0f; x < randomStrip + 40.0f; x += 1.0f)
+            for (float x = randomStrip + 6.0f; x < randomStrip + stripW - 4.0f; x += 1.0f)
                 if (renderer.pixel({x, y}) != card)
                     return true;
         return false;
@@ -10711,7 +10712,8 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         auto inked = [&](int line) {
             const uint32_t card = renderer.pixel({strip + 4.0f, top + 150.0f});
             for (float y = top + 104.0f + line * 13.0f + 1.0f; y < top + 104.0f + (line + 1) * 13.0f; y += 1.0f)
-                for (float x = strip + 8.0f; x < strip + 40.0f; x += 1.0f)
+                for (float x = strip + 6.0f; x < strip + detail::sourceCard(0.0f, detail::kFoldedSource).w - 4.0f;
+                     x += 1.0f)
                     if (renderer.pixel({x, y}) != card)
                         return true;
             return false;

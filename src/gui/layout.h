@@ -626,8 +626,9 @@ inline Rect sourceCard(float card, float span = 1.0f) {
 }
 // A folded card is a narrow strip: its handle, a grip, its switch and cross, then its name down the rest, which
 // unfolds it. An effect card folds much the same way: its icon, which switches it, then its cross and its name.
-// That strip is as wide as the icon's (or the handle's) place at the title's left, so it stays put as the card folds.
-constexpr float kSourceHandleX = 14.0f; // the handle's left edge, from the card's
+// That strip is as wide as the icon's (or the handle's) place at the title's left, so it stays put as the card folds:
+// a source's as narrow as an effect's, its handle as far in from the card's edge as an effect's icon.
+constexpr float kSourceHandleX = 9.0f; // the handle's left edge, from the card's
 constexpr float kSourceHandleY = 8.0f;  // and its top
 constexpr float kSourceHandleW = 20.0f;
 constexpr float kFoldedSource = (2.0f * kSourceHandleX + kSourceHandleW + kCardGap) / (kCardW + kCardGap);
