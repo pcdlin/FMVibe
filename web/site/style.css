@@ -1,11 +1,11 @@
 /* The page around the editor, in the editor's default theme: its background, panels, text and accent. */
 :root {
-  --background: #0c0e14;
-  --panel: #14151e;
+  --background: #0b0c11;
+  --panel: #12131a;
   --raised: #1c1d28;
   --border: #282c3e;
-  --text: #e9ebf4;
-  --muted: #9297a9;
+  --text: #e6e8f0;
+  --muted: #969bad;
   --accent: #7c8cff;
   --font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
 }
@@ -252,7 +252,7 @@ kbd {
   padding: 5px 14px;
   border-radius: 999px;
   background: var(--accent);
-  color: #0c0e14;
+  color: var(--background);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;

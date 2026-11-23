@@ -93,7 +93,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     the operator's own cycle). Its unison copies each sync to a note detuned as the copy is, and the note's pitch
     follows bend, glide and tuning. A restart's step, and the change in the wave's slope there, are smoothed over
     the samples either side as a band-limited restart would be (polyBLEP and polyBLAMP), so a synced sine at C6
-    keeps what aliases 65 dB down at the default 2x oversampling. Its scope (on the WARP tab) follows the note's
+    keeps what aliases 65 dB down at the default 2x oversampling. Its scope (on the Warp tab) follows the note's
     cycles. Noise has no cycle to sync or warp;
   - **Warp** (Off by default) and **Warp Amount** (−100 to +100 %, 0 to begin with): where along its cycle the
     operator reads its wave, any wave, Custom too (Vital-style phase warps):
@@ -269,7 +269,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
   whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
   Every source can be either, for all of its modulations, picked from its right-click menu or the switch after its
-  name in the MODS view (see the editor): LFOs, Random sources, the pitch bend and the operators start bipolar, and Curve sources, envelopes, macros,
+  name in the Mods view (see the editor): LFOs, Random sources, the pitch bend and the operators start bipolar, and Curve sources, envelopes, macros,
   the note source, the mod wheel and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of
   it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel, note source, velocity or pitch
   bend about the middle of what it puts out (a macro moves nothing with its knob at 50 %, the pitch bend nothing at
@@ -286,8 +286,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. The aux's **depth** (0–100 %, all of it to
   begin with) says how far down the aux can take the modulation: at 100 % an aux at 0 silences it, at 70 % it keeps
   30 % of its depth (an aux at half keeps 65 %), and at 0 % the aux does nothing. Taking the aux away puts its depth
-  back to 100 %; another aux in its place keeps it. Set either in the MODS view (see the
-  editor); the aux also by dropping a source's handle on the modulation's depth handle, or on its aux cell in the MODS view. An aux that runs per voice
+  back to 100 %; another aux in its place keeps it. Set either in the Mods view (see the
+  editor); the aux also by dropping a source's handle on the modulation's depth handle, or on its aux cell in the Mods view. An aux that runs per voice
   (an LFO, an envelope, the note source, velocity, the pitch bend) scales it in each voice by its own output there, as
   of the last 32-sample block (or this one, for a source that comes before it, and velocity and the pitch bend, known
   as the block starts; on a note's
@@ -356,7 +356,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     voice, and modulates from a note's first block on. It starts bipolar, so it moves nothing at rest and swings its
     targets both ways as the wheel goes up and down; unipolar, it moves them half its depth at rest and all of it fully
     up. The pitch still bends by Bend Range too, whatever the source modulates.
-  - **Operators**: each operator's output (**Op A** to **Op F**) is a source too, picked in the MODS view's source and
+  - **Operators**: each operator's output (**Op A** to **Op F**) is a source too, picked in the Mods view's source and
     aux menus, or dragged from the operator's letter at the top of its page in the inspector, which is its handle and
     lights under the mouse. Like velocity each has 16 slots and no switch of its own, runs per voice and reaches the effects through
     the newest voice. It puts out what the operator plays, after its envelope and whatever its Out says, so an operator
@@ -378,7 +378,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     between, as its other modulation does), from the operator's output averaged over the last such block: a slow
     operator (a fixed one at a few Hz, say) moves it along its wave and envelope, and one far above that rate averages
     away rather than aliasing. So does an operator as an aux. The
-    MODS view's rows and the knobs' rings show the average.
+    Mods view's rows and the knobs' rings show the average.
     **Filter FM**: on a voice filter's **Cutoff**, the cutoff moves every sample, by as many octaves as the depth takes
     the knob (100 % at full swing being the knob's 10 octaves). A voice's filter follows that voice's own operator. A
     filter effect's Cutoff takes it at audio rate too, the one effect param that does: a filter effect, which hears
@@ -847,7 +847,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob. Patches saved when it
     reached 20 s (state version 6 and earlier) load a longer glide as 6 s, and a modulation's depth on it larger by
     as much as its range shrank, so it swings Glide as far as it did.
-- **Sequencer**, off to begin with: a piano roll that plays the synth's own notes, edited in the SEQ view (see
+- **Sequencer**, off to begin with: a piano roll that plays the synth's own notes, edited in the Seq view (see
   [Editor](#editor)). It holds four **patterns**, A to D, saved with the preset, each up to 8 bars of 16 steps and up
   to 128 notes; the pattern picked plays, and another one picked while it plays takes over where the loop comes round.
   Each note has its start and length in steps (anywhere, not only on the grid), its pitch, velocity, **chance** (how
@@ -941,19 +941,20 @@ only what keeps to its place moves (the output meter and scope and the playing c
 operator's scope in the inspector), it repaints that place alone. So it does as notes play: a source moving repaints
 its card, and what its modulation moves the part of the editor that shows it (the header for its knobs, the panels'
 row for an operator's, a filter's, a shaper's or an effect's params, a source's card for that source's own, and the
-panels' row too while the MODS view shows); an operator's envelope repaints the inspector, and the effects' meters,
+panels' row too while the Mods view shows); an operator's envelope repaints the inspector, and the effects' meters,
 sweeps and spectra the panels' row. What may show anywhere repaints the whole of it: the note's pitch and velocity
 changing, the first note or the last ending, and the host's tempo. It looks over the params for changes only when
 one may have changed since it last did.
 
 Its buttons look as what they do, wherever they are. An action (undo and redo, the preset buttons, the cog, the bins,
-the SEQ view's copy and stretch, a shape's tools) is an icon alone, named in its tooltip, on a raised face; the small
-ones in a card's title row, its fold and its x, show that face only under the mouse, as tall as the power switch beside
-them. A switch or a choice of a param is set in a well and lit in its color, a row of them all icons or all words. A
+the Seq view's copy and stretch, a shape's tools) is an icon alone, named in its tooltip, on a raised face; the small
+ones in a card's title row, its fold and its x, show that face only under the mouse itself, as tall as the power switch
+beside them, and the fold shows at all only while the mouse is over the card (an effect's, a source's or a split's
+container, and from a finger's first touch on, always), still taking a click while hidden. A switch or a choice of a param is set in a well and lit in its color, a row of them all icons or all words. A
 button that opens a list or a menu shows its name, after an icon where it has one, then a chevron pointing down, one
 chevron alike on every such button (a smaller one inside a row). A tab is its name, the one shown marked.
 
-- **ROUTING / MATRIX / FX / SEQ / MODS** tabs, under the header, pick what the panel below them shows: the routing
+- **Routing / Matrix / FX / Seq / Mods** tabs, under the header, pick what the panel below them shows: the routing
   graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
   across the whole panel the effects chain, the sequencer or every modulation. The sequencer's view, at its full size,
   reaches down over the modulation panel too, as tall as the two together, the source cards coming back with another
@@ -962,37 +963,37 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   user's setting, kept in their settings file (full to begin with), not the patch's, and nothing to undo. The
   choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
   as it is. They are folder tabs: the one shown is part of the panel under it, its outline
-  curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
+  curving into the panel's edge (Routing, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
   showing faintly under the mouse. FX shows a dot in its upper right while an effect in the line is switched on,
-  and SEQ while the sequencer is on. Tabs mark their upper right one of two ways, alike everywhere: a filled dot
+  and Seq while the sequencer is on. Tabs mark their upper right one of two ways, alike everywhere: a filled dot
   says what the tab shows is at work and heard (these two, and a node's tab in the inspector), and a ring, as a
   modulated knob has, says a control on the tab, shown or hidden, is modulated (an operator page's tabs). While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
-- **SEQ** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
+- **Seq** (the sequencer, see [Sound engine](#sound-engine)): its settings on a card where the inspector floats, and
   the roll of the pattern picked in the rest, at its full size down to the modulation panel's bottom, which it covers,
   with the patterns' overview under the card; at its half size, down to the panels' row's bottom, without it.
   - **The card**: the sequencer's power switch, and left of it the size button (the Curve card's expand button at
-    the half size, its collapse button at the full one, its tooltip saying which); **PATTERN** A to D (the one picked plays and shows in the roll; the
+    the half size, its collapse button at the full one, its tooltip saying which); **Pattern** A to D (the one picked plays and shows in the roll; the
     overview's tiles copy and paste them), a modulation target too, in whole steps: a source's handle dropped on its
-    buttons (ringed together as one while carried) modulates it, the MODS view's target menu lists it under Sequencer,
+    buttons (ringed together as one while carried) modulates it, the Mods view's target menu lists it under Sequencer,
     a host may modulate it, and the button modulation picks, while it isn't the one set, is ringed, as the dot on its
     reach shows it (with nothing playing, where the macros and the mod wheel take it); under the row, as under a knob, its modulations' reach (a line from A's middle to D's, with the set
-    pattern's tick and the live dot) and their depth handles, centered, PLAY sitting lower to leave them room; the sequencer takes a pattern modulation picks as it takes one clicked, at once while nothing plays
-    and else where the loop comes round; **PLAY** Host | Key | Latch; the
+    pattern's tick and the live dot) and their depth handles, centered, Play sitting lower to leave them room; the sequencer takes a pattern modulation picks as it takes one clicked, at once while nothing plays
+    and else where the loop comes round; **Play** Host | Key | Latch; the
     controls in two rows of four, Speed and Length (the pattern's, in bars) over Octave and Transpose at the left, as
     steppers, and the knobs Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
-    are: the sources' handles drop on them, the MODS view's target menu lists them under Sequencer, and the host may
+    are: the sources' handles drop on them, the Mods view's target menu lists them under Sequencer, and the host may
     modulate them, for every note at once; the sequencer plays them, before each stretch it plans, as set with the
     host's and the macros' modulation and the newest voice's slots, or the last one's as the effects ring out, and
-    the knobs' dots show where it plays them); **ORDER** as
-    arrows (forward, back, to and fro, a die for random); **SCALE**: the root (dragged up and down or scrolled, a
+    the knobs' dots show where it plays them); **Order** as
+    arrows (forward, back, to and fro, a die for random); **Scale**: the root (dragged up and down or scrolled, a
     semitone a step; a double-click puts it back on C4), the scale's list (Chromatic, Major, Minor, Dorian, Phrygian,
     Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues; wider than its button, and
-    opening above it where the editor is too short for it below) and **FOLD**, which shows only the scale's rows, and
+    opening above it where the editor is too short for it below) and **Fold**, which shows only the scale's rows, and
     those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:
     a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
-    hatched across, folded or not. Its switches say what they do in their tooltips (PLAY's what each mode does).
+    hatched across, folded or not. Its switches say what they do in their tooltips (Play's what each mode does).
   - **PATTERNS**, a card like it under it, down to the panel's bottom: a tile a pattern, A to D, one under another,
     its letter at its left (lit, and the tile tinted and ringed, while it is the pattern picked) and its notes drawn
     small after it: across, the longest pattern's length (a shorter one's tile ends short, a line at each bar, outside
@@ -1014,17 +1015,17 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     (its length and loop staying). Each is one undo step.
   - **The grid**: a line at every snap's length across the roll (a step with the snap off), the beats and bars
     stronger, as strong as the settings dialog's **GRID** says (50 % to begin with).
-  - **The tools** over the roll: select | draw (select to begin with), **SNAP** and its list (Off, 1/4, 1/8, 1/16 to
+  - **The tools** over the roll: select | draw (select to begin with), **Snap** and its list (Off, 1/4, 1/8, 1/16 to
     begin with, 1/32, 1/64, 1/8 triplet, 1/16 triplet; the wheel steps it), **×2** and **÷2** (the notes picked, or
     every note, twice or half as long and as far apart; the whole pattern twice as long takes twice the bars), the
-    field of the notes picked (its NOTE, VEL, CHANCE, LEN and OFFSET, the offset a note's start off the grid in
+    field of the notes picked (its Note, Vel, Chance, Len and Offset, the offset a note's start off the grid in
     hundredths of a step; each dragged up and down or scrolled, moving every note picked, one undo step; a
-    double-click puts VEL back to 100, CHANCE to full and OFFSET to 0, on the grid), **SLIDE** and
-    **MUTE** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, its notes and curves, asking first.
-    The roll's settings (the tool, the snap, the lane, the rows scrolled to and FOLD) belong to the editor: a preset
+    double-click puts Vel back to 100, Chance to full and Offset to 0, on the grid), **Slide** and
+    **Mute** (for the notes picked: on, or off if they all are) and the bin, which clears the pattern, its notes and curves, asking first.
+    The roll's settings (the tool, the snap, the lane, the rows scrolled to and Fold) belong to the editor: a preset
     or Init leaves them as they are.
   - **The roll**: the piano keys at its left (white keys across, the black ones shorter over them, every C named; with
-    FOLD, each row's name), a click playing the key, and the keys the sequencer's notes are written on lit as it plays them (as written, before Octave, Transpose or a key move them), each rising and fading a moment rather than switching; the bars
+    Fold, each row's name), a click playing the key, and the keys the sequencer's notes are written on lit as it plays them (as written, before Octave, Transpose or a key move them), each rising and fading a moment rather than switching; the bars
     and beats over it, with the loop as a bar in the accent (dragged by its ends to size it and by its middle to move
     it, the cursor left and right or moving; across the bars outside it for a new loop; a double-click loops the whole
     pattern again), the steps outside the loop shaded; and the playhead, while the sequencer plays the pattern shown (running backward through the steps it plays
@@ -1041,7 +1042,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     sequencer plays, a note glows as the playhead reaches it, fading over as long as the note lasts at the tempo, as
     strongly as the glow setting says (not at all with it off).
   - **Select**: a click picks a note (Shift adds it or takes it out, once let go without a drag), a drag moves the notes picked (the one grabbed
-    landing on the grid, up and down by rows; with Shift or Alt held, off it, following the mouse, its OFFSET saying how
+    landing on the grid, up and down by rows; with Shift or Alt held, off it, following the mouse, its Offset saying how
     far off; Ctrl carrying copies), a note's right end dragged sets
     the length of every note picked and its left end their starts, their ends staying (on the grid; with Shift or Alt
     held, off it, following the mouse) (the cursor left-right over
@@ -1054,8 +1055,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
     (the cursor saying which over it). Each edit is one undo step.
   - **The lane** under the roll, a slight line parting the two: a stem for each note at its start, as high as its velocity or its chance, as the
-    **VELOCITY | CHANCE | BEND | MOD WHEEL** tabs under it pick, a note picked ringed there too. After the tabs,
-    a **MACRO** tab, with a dot in its macro's color (faint while the macro has no curve in this pattern, here and in the
+    **Velocity | Chance | Bend | Mod Wheel** tabs under it pick, a note picked ringed there too. After the tabs,
+    a **Macro** tab, with a dot in its macro's color (faint while the macro has no curve in this pattern, here and in the
     list) and that macro's number, in two parts lit apart under the mouse: its label, a click on which shows the macro
     it names (the macro last shown), and at its right end its arrow (pointing down, and up while the list is open), a thin line parting the two while either is lit,
     a click on which opens the list of the eight over it ("Choose macro" its tooltip): each with its color, its name and its curve in this pattern drawn small (a faint line
@@ -1070,7 +1071,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     over a dot, the arrow elsewhere). Either way a double-click puts the notes there back (velocity 100, chance full).
     Where notes start together and any of them is picked, the lane sets the picked ones alone (their dots drawn over
     the others').
-    On **BEND**, **MOD WHEEL** and **MACRO**, the lane shows the pattern's curve instead (see Sequencer), across the pattern as
+    On **Bend**, **Mod Wheel** and **Macro**, the lane shows the pattern's curve instead (see Sequencer), across the pattern as
     the roll is zoomed and scrolled, in the bend's, the mod wheel's or the macro's color, filled down to where it rests (the bend's
     middle, the bottom for the others), with its points and, on each segment that rises or falls and has room, a handle
     at its middle; behind it a grid, the roll's lines running on down through the lane and a line at each quarter of
@@ -1235,7 +1236,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     on, switches on the nodes it joins. A row's or column's name works like the node's tab in the
     inspector: clicking it shows that node there, switching it on if it is off, and the names of the node shown
     sit on a plate, like its tab, where a click switches it off, or on again.
-  - **Algorithms**: **ALGORITHM**, at the right end of the tabs' row while ROUTING or MATRIX is shown, opens a panel
+  - **Algorithms**: **Algorithm**, at the right end of the tabs' row while Routing or Matrix is shown, opens a panel
     of the classic FM algorithms over the graph or matrix (the inspector left in view), in four sets that the switch
     in its title row picks, by how many operators they use (**6 | 4 | 3 | 2**, with "Operators" before them): 6, the
     32 layouts of six, numbered as the classic charts have them; 4, the 8 of four (A to D), as the classic
@@ -1270,8 +1271,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
     purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, chorus periwinkle,
     frequency shifter cyan, phase disperser slate, widener fuchsia, amp tweed gold, utility gray, Lo-Fi dusty rose) and
-    with a title row laid out as every card's (the source cards' too): its icon and its name in capitals at the left, then a
-    chevron that folds it, its power switch and an × to remove it at the right; and under it a live display, which
+    with a title row laid out as every card's (the source cards' too): its icon and its name in title case at the left,
+    then a chevron that folds it, its power switch and an × to remove it at the right, in the corner (the chevron
+    showing while the mouse is over the card, left of what always shows, so nothing moves as it shows); and under it a
+    live display, which
     draws the effect as modulation takes its params now (the newest voice's, or the macros' while nothing plays); the
     Param EQ's band handles and the 3-band dynamics' threshold lines stay where they are set, as the filter's handle
     does. Its knobs go in rows across it, under the display: three to a row 30 px across (36 in the one row of a card
@@ -1381,9 +1384,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the power
     switch in the title row turns the effect off (the icon turns grey with the card, under the mouse too, and the
     effect costs nothing) or on again, in its color; a click on the icon does the same, and dragged, the icon moves
-    the card like the title. Folded, the strip keeps the icon, a grip, the power switch and the ×. **+ EFFECT** (a
+    the card like the title. Folded, the strip keeps the icon, a grip, the power switch and the ×. **+ Effect** (a
     drawn plus, the word and a chevron, neutral until the mouse is on it or its list is open, then in the theme's
-    accent, as + SOURCE is) at the panel's top left opens a list of the effect types (beside it, how many of the 32
+    accent, as + Source is) at the panel's top left opens a list of the effect types (beside it, how many of the 32
     places are taken, as in 3/32), and so does a dashed card with a plus after the last effect, at the mouse (moved
     back inside the editor where it would reach past an edge). The list groups the effects by kind in two columns,
     a little apart, each group under its name in capitals on a darker strip: DRIVE (Shaper, Amp, Lo-Fi), EQ & FILTER (DJ EQ, Param EQ, Filter) and DYNAMICS
@@ -1463,10 +1466,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     Cancel, or a click around the dialog, leaves it in three. To the right of the controls, the
     cards of the band shown, the arrows into them in the band's color (faint, cards and arrows, while another band
     is soloed), then
-    a narrow dashed card (ADD TO LOW, ADD TO MID or ADD TO HIGH, in capitals as ADD EFFECT) that opens the list of effects at the mouse (effects only: a band holds no split), the one
+    a narrow dashed card (Add to Low, Add to Mid or Add to High, as Add effect is) that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
-    + EFFECT offer **2-band split** and **3-band split** as one more group, SPLIT, the one over the other under
+    + Effect offer **2-band split** and **3-band split** as one more group, SPLIT, the one over the other under
     DYNAMICS, which go in there (at the
     line's end from the last two) with their join, their bands empty and their low band shown. A card dragged over the band a container shows
     lands on that band, and let go of on a container's tab it goes to the end of that band (the tab lit while it is
@@ -1537,15 +1540,15 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     effects), its place opening right after the original and the copy shown in the card at the right. Held at the graph's left or right edge, it scrolls
     that way. The x on a card removes its node: an effect closes up the
     line or band it was on, a split puts its bands' effects on the main line in its place (the high band's first),
-    and so does a join, which goes with its split. + EFFECT puts the new
+    and so does a join, which goes with its split. + Effect puts the new
     effect after the node picked: after an effect on its line or band, after a join on the main line, and at the end
     of a split's shortest band (the highest of those as short); with nothing picked, at the line's end. A copy goes right after its original. Wider than its box, the graph
     has a scrollbar under it (its thumb dragged, or the track clicked to jump there), and scrolls sideways under the
     wheel too or with the middle button held; it shows a node just added. Switching to the
     graph or back changes nothing but the view: both show the same line, splits and all. A click on a node shows it in the card at the right;
     right-click an effect's node for its card's menu, a split's or a join's to remove it. The node picked is saved
-    with the patch; the effects' count beside + EFFECT and the target menu follow the line's order.
-  - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
+    with the patch; the effects' count beside + Effect and the target menu follow the line's order.
+  - **Mods**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel, velocity and the pitch bend), the
     first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
@@ -1560,7 +1563,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     narrows the rows to the modulations whose source's and target's names hold every word of it, whatever the case
     (the empty modulations stay, having yet to get theirs), and it says at its right how many it shows of all.
     Its × empties it, Escape empties it and then lets the keyboard go, as Enter and a click elsewhere do; while it
-    holds something it stays open. A source card's MODS button empties it, so the source's rows show. A row has,
+    holds something it stays open. A source card's Mods button empties it, so the source's rows show. A row has,
     from its left:
     - the bypass dot, which switches the modulation off and on again, whatever its source;
     - the **source** and the **target**, and between them, after the source's name on the first of its rows, the
@@ -1627,7 +1630,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
     edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
   - **Shape editor**: adding a Curve source, a click anywhere on a Curve source's display (which shows an
-    edit button, a pencil, in its corner), or the expand button in its title row, left of the fold button, widens its card to two card places, the cards after it moving along and the row scrolling to show it
+    edit button, a pencil, in its corner), or the expand button in its title row, left of its power switch, widens its card to two card places, the cards after it moving along and the row scrolling to show it
     whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
     the other views can be turned and switched as the shape changes. The widened card keeps the source's own controls where a normal card has them,
     with the shape tools and drawing modes where its display was (see below), and the shape's plot beside them,
@@ -1638,7 +1641,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     full-size button (two arrows pointing apart); another shape, folding the card and removing it take it back to
     its size too. Every edit applies as it is
     made, so there is no done button. One card is widened at a time: widening another takes the first one back.
-    The SEQ view covering the modulation panel leaves the card as it was, widened or not, for when the panel shows
+    The Seq view covering the modulation panel leaves the card as it was, widened or not, for when the panel shows
     again; it isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
     which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
     input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
@@ -1788,21 +1791,21 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     an edit button (a pencil, the same as a Curve source's and a drawn shaper curve's), left of the keyboard, opens
     the operator's partial editor (lit while it is open; a second click closes it, as does picking another operator, filter or shaper in the
     inspector). Under the block, past a line across the page, a well: tabs along its top edge pick what the
-    display under them shows, and the tab's controls sit in a row under the well (INPUTS, which has none, takes the
+    display under them shows, and the tab's controls sit in a row under the well (Inputs, which has none, takes the
     well down to the lens's bottom). The tab is the same for every operator and saved with the project (a preset
     leaves it as it is); a tab whose knobs a source modulates, shown or hidden, has a ring in its corner (not the
     filled dot that says a tab's contents are at work), and holding a dragged
     source's handle over a tab for half a second opens it, as over a view's tab (passed over, a moment on each, it
     opens none), so its knobs can take the drop:
-    - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
+    - **Envelope** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does.
-    - **UNISON**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
+    - **Unison**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
       and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
       its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,
       past a rule, the three Unison Pans (five copies as dots, rising in pitch, placed across). Under it the knobs:
       Unison (the copies), Detune, Spread, Blend and Rnd Phase.
-    - **WARP**: the operator's scope, its warp and its note sync. Its display is a scope: the operator's output in
+    - **Warp**: the operator's scope, its warp and its note sync. Its display is a scope: the operator's output in
       the newest voice as it plays, with its unison copies together and everything that moves it (the FM it gets,
       its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output. It
       is caught at the operator's own phase (a synced one's at the note's), so a span starts where a cycle does and
@@ -1819,7 +1822,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
-    - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
+    - **Inputs**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
       wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
@@ -1827,7 +1830,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
       scroll, by the wheel over them, by dragging with the middle button held, or by the scrollbar at their right.
 
     A noise operator shows Slope and Spread in the Ratio readout's place, and no Pitch, Detune or Phase; its first tab is
-    **SPECTRUM**, its spectrum against white, pink and brown, and it has no WARP tab (picked, it shows its
+    **Spectrum**, its spectrum against white, pink and brown, and it has no Warp tab (picked, it shows its
     envelope).
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
@@ -1869,9 +1872,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     like the filter effect's, is what the filter puts out, all voices together, measured before its output level
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
     that is off shows none. Underneath are the send knobs of everything that feeds the filter.
-- **Modulation**: the panel's title row has its title, **MODULATION** (the panel doesn't collapse; the SEQ view
-  covers it), then **+ SOURCE**,
-  shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
+- **Modulation**: the panel's title row has its title, **MODULATION** (the panel doesn't collapse; the Seq view
+  covers it), then **+ Source**,
+  shaped like + Effect (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one, and beside it how many of the 32 places are taken, as in 4/32 (with every
   place taken it is dimmed, and a click says so). Random and Curve cards are laid out as an LFO's (see below), but
   have **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way their
@@ -1880,7 +1883,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
-  card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types at the mouse, moved back
+  card with a plus, **Add source**, as tall as the cards, opens the list of source types at the mouse, moved back
   inside the editor where it would reach past an edge (Envelope, LFO, Curve,
   Random and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
   the list. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
@@ -1899,12 +1902,12 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     the attack, decay or release, across the hold, and at the sustain level's point through the sustain. While the
     envelope follows its curve, the dot sits where the line meets it. Where it doesn't (a note let go during the
     decay releases from above the sustain), the dot keeps to the curve and the line shows the level. An envelope's
-    display (on a mod envelope's card and an operator's ENVELOPE tab alike) draws its curve as modulation of its
+    display (on a mod envelope's card and an operator's Envelope tab alike) draws its curve as modulation of its
     attack, hold, decay, sustain, release and bends takes it for the newest voice, or with no note playing as the
     macros take it, a faint line staying where the knobs set it, with the handles on it. Its time axis leaves room for
     the times at their longest under that modulation, so it stands still as the curve moves.
-  - A card's title row is laid out as an effect card's: the handle and the name in capitals ("LFO 2", "ENV 1") at
-    the left, then the fold chevron, the power switch and the × at the right.
+  - A card's title row is laid out as an effect card's: the handle and the name in title case ("LFO 2", "Env 1") at
+    the left, then the fold chevron, a Curve card's buttons, the power switch and the × at the right.
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets). Like a macro's, a source's handle is faint too
     while it modulates nothing (and scales no modulation as its aux).
@@ -1919,10 +1922,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     "Drag to assign" tooltip instead, as the macros', the note source's, the wheels' and velocity's handles do.
     A source that is another modulation's aux (see below) also gets a dotted line, in its color and bowed the
     other way, to that modulation's depth handle on screen, which is ringed with dots.
-  - A card doesn't list its modulations, and ends with a button under its display: it counts them, with **MODS ›**
-    at its right, and shows them in the MODS view, scrolled to the source's first row. While the source modulates
-    nothing, it reads **No modulations** and adds an empty modulation from the source there (see the MODS view),
-    with its target's menu open.
+  - A card doesn't list its modulations, and ends with a link under its display, words without a button's face:
+    it counts them in dim text, with **Mods ›** at its right in the accent (both lit under the mouse, the whole row
+    taking the click), and shows them in the Mods view, scrolled to the source's first row. While the source
+    modulates nothing, it reads **No modulations** alone and adds an empty modulation from the source there (see the
+    Mods view), with its target's menu open.
     A Random
     card has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
     while notes play it shows the source's own last four cycles instead, as one line scrolling left with the live dot
@@ -1944,7 +1948,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     on them, are the Rate and Phase knobs (a Random card's Rate alone),
     over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
     with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
-    Under it, level with the clock modes, is the **Unipolar** switch, a hump on a baseline as a MODS row's
+    Under it, level with the clock modes, is the **Unipolar** switch, a hump on a baseline as a Mods row's
     polarity switch has.
     The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A
@@ -1954,7 +1958,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a matrix cell, centered along its foot, the ranges along its top, right of a mode's glyph; on a wire or OUT label in the
-    graph and on the INPUTS tab's labels, centered just under it, the ranges running along its outline's top, so
+    graph and on the Inputs tab's labels, centered just under it, the ranges running along its outline's top, so
     its depth stays readable). Where a range runs past its target's end, cut off there, a short line across the
     ring or bar marks that end (in every theme; the Ratio readout's track has its arrow instead). The dots stay
     inside their knob's column, label or cell at each handle size; past
@@ -1964,7 +1968,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,
     and while its source's handle is on screen, a dashed line runs from the handle to the dot, as when the handle
     is hovered; with an aux, a dotted line runs from the aux's handle too. A source can modulate another source's depth too (drop its handle on
-    a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
+    a depth bar in the Mods view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 24 or
     26 px knob 2, under a 30 or 32 px one 3, under a 34 px one 4; on a wire label 5, a matrix cell 5, a depth bar 11), in the order the
@@ -1974,7 +1978,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
     it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
     a row each: its bypass dot, the source's name, its aux (while one of the rows has one, the list is wider by a
-    column for them: a chip in the aux's color with its name, its depth, as in the MODS view, and an × that takes it
+    column for them: a chip in the aux's color with its name, its depth, as in the Mods view, and an × that takes it
     away), its depth bar and its
     remove (right-clicking a row gives the depth handle's menu; hovering a row draws its range
     wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
@@ -1982,7 +1986,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     the wheel over them (off the depth bars, which the wheel turns), by dragging with the middle button held, or by
     the bar. A click anywhere else closes it, but not
     on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a view's tab
-    (ROUTING, MATRIX, FX, SEQ or MODS) for half a second shows that view, so it can be carried to what is there; held
+    (Routing, Matrix, FX, Seq or Mods) for half a second shows that view, so it can be carried to what is there; held
     as long over a node's tab atop the inspector, a node in the routing graph (or its edge), or a node's name in the
     matrix (a row's or a column's), it shows that node in the inspector, as it is, switching nothing on. Passed over them, a moment on
     each, it shows nothing: the half second starts again on each tab or node, and the poll shows it while the handle
@@ -1990,14 +1994,14 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.
-  - **Aux**: a source's handle dropped on another source's depth handle, on a MODS row's aux cell, or on a row of a pill's list (while it
+  - **Aux**: a source's handle dropped on another source's depth handle, on a Mods row's aux cell, or on a row of a pill's list (while it
     is dragged, the depth handles and rows are ringed faintly, the one under it brightly) makes the dropped source
     that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color, as much of
     it as the aux's depth, clockwise from the top, and the rest of it faint. Alt-dragging the depth handle up or down sets the aux depth
     (100 % in 100 px, finer with Shift), and its menu's Edit aux depth types one. A
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
     which an aux lets it go at most.
-  - **Bypass**: the dot at the start of a modulation's row in the MODS view or a pill's list switches that
+  - **Bypass**: the dot at the start of a modulation's row in the Mods view or a pill's list switches that
     modulation off and on again, keeping its target and depth, whatever its source (an LFO, an envelope, a macro, the
     note source, the mod wheel, velocity or the pitch bend); so do **Bypass** / **Resume** in the right-click
     menus of the row, the
@@ -2008,7 +2012,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
     playing, it shows where the macros and the mod wheel take it, as they apply with or without notes, and on an
     effect's knob and Volume, while the effects ring out after the last note, where its voice's modulation takes it.
-  - Each depth bar (in the MODS view and a pill's list) has a white tick where its modulation takes its target now,
+  - Each depth bar (in the Mods view and a pill's list) has a white tick where its modulation takes its target now,
     on the bar's own scale, so a unipolar one at the top of its swing reaches the depth's handle: the newest voice's
     while notes play, and a macro's or the mod wheel's from its knob, notes or not. A modulation another source
     must run per voice shows none with no note playing (but on an effect's param or Volume while the effects ring
@@ -2020,7 +2024,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
     modulation's range just above it, clear of its solid fill.
 - **Steppers**: the header's Voices, an operator's Unison and Mult (fixed), a shaper's Stack (a voice's and an
-  effect's, without a label), a MIDI source's CC and the SEQ card's Speed, Length, Octave and Transpose show as steppers
+  effect's, without a label), a MIDI source's CC and the Seq card's Speed, Length, Octave and Transpose show as steppers
   rather than knobs: the number in a field, − and + at the field's ends and its steps along the field's foot, a tick
   each where they fit 2.5 px apart or more (the one set lit), else a track filled to the value (from its middle where
   the range has 0 there), with no line across it. Every other
@@ -2047,7 +2051,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   view or no longer holds that type. A drag the editor loses the mouse during (another window taking it, or the
   browser demo's page its focus) ends where it is, its edit one undo step, but drops nothing: no route moves or goes,
   no modulation is assigned, no card moves. Hold the middle button and drag over a
-  panel that scrolls (the effects chain, the source cards, the MODS view's rows, an operator's INPUTS rows, the
+  panel that scrolls (the effects chain, the source cards, the Mods view's rows, an operator's Inputs rows, the
   preset browser's list, a pill's open list) to drag what it shows along with the mouse, whatever is under it; past
   either end the row stops, and dragged back it follows at once. A middle press on another open list or menu does
   nothing, and one that starts a drag closes it;
@@ -2067,8 +2071,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   confirm dialogs and the settings) takes the keyboard while it is open: Enter presses its button lit in the accent
   (Load, Init, Overwrite, Clear FX, Keep), Escape cancels it as a click around it does, and both close the settings;
   the dialog asking where a middle band's effects go lights none, and Enter leaves it open. An open list or menu (a
-  list button's, the list of effects or of source types, the wave menu, a pill's list, a MODS row's cascading menu, the
-  SEQ view's lists) closes at Escape, picking nothing, as at a click around it. A double-click whose first click closed the
+  list button's, the list of effects or of source types, the wave menu, a pill's list, a Mods row's cascading menu, the
+  Seq view's lists) closes at Escape, picking nothing, as at a click around it. A double-click whose first click closed the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
@@ -2079,7 +2083,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
 - **Menus and lists**: every list and menu (the effects', the source types', the waves', a list button's, a Param EQ
-  band's shapes, the MODS view's cascading menus) marks the row under the mouse, and the one picked, in the same
+  band's shapes, the Mods view's cascading menus) marks the row under the mouse, and the one picked, in the same
   neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
 - **Stepping lists**: a voice filter's and the filter effect's type, a voice shaper's and the shaper effect's curve, the
   amp's model and cabinet, the reverb's algorithm and an LFO's shape (its icon and name between the arrows) have an arrow at each end of their list's button, in place of the chevron: ‹ steps to
@@ -2102,7 +2106,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
   range between them, shift them by an octave). Each wheel's handle sits over it, under the strip's title. The toggle
   (a chevron and the title, as far from the strip's top as the modulation panel's title from its) collapses the strip to its top
-  row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (BEND, MOD) then
+  row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (Bend, Mod) then
   under them, so the wheels can still be assigned. Whether it is
   collapsed is kept with the editor, and loading a
   preset leaves it as it is. It is also kept in the user's settings (`keysCollapsed`), written as it is collapsed or
@@ -2357,28 +2361,30 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,
   and aren't undo steps.
-  **Theme**: Spectrum (deep indigo, the default), Porcelain (Spectrum in light: white panels lifted off a cool gray
+  **Theme**: Spectrum (deep indigo, the default: its window, panels, cards and displays' wells four steps of one
+  blue-grey, its text in three greys each at 4.5 : 1 or more on all of them), Porcelain (Spectrum in light: white panels lifted off a cool gray
   by soft shadows, their cards with a slight one too), Midnight or Light (crisp: white cards and knob caps on a cool
   gray, with deep colors), each button shown in its own colors. The browser demo's page around the editor is in
   Spectrum's colors. Its Full screen button, beside the links under the editor, puts the page in full screen with
   the editor alone, as large as the screen takes it in its shape, the button in the screen's top right corner to
   leave it (and a phone turned to landscape where the browser lets the page say so); where the browser can't put a
   page in full screen (an iPhone's Safari) the button isn't shown. Spectrum and Porcelain share a flat look: each
-  effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
+  effect and source card in the cards' plain color, as in every theme, its own color on its icon or handle, its
+  knobs, its curves and its lit switches, and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it
-  belongs to (its card's; in the inspector a filter's and a shaper's, and the routes into them on its INPUTS tab, in
+  belongs to (its card's; in the inspector a filter's and a shaper's, and the routes into them on its Inputs tab, in
   that node's color, as its switches are, an operator's in the accent), modulated or not: a modulation ring whose
   source's color is like the arc's is drawn lighter (in Spectrum) or darker (in Porcelain), keeping its hue, so it
   stands apart from the arc, while the others keep their sources' colors; and its pointer a dot; an LFO's shape filled on
   its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and polarity icons
   a little smaller there), and so the split's 2 | 3, the scope's cycle counts, the Param EQ's band chips (the picked
-  one tinted with its band's color), the octave buttons and the dialogs' buttons; list buttons, a source card's MODS
-  button, the lists and menus they open, tooltips, the name tags and the messages (on a soft shadow, white in
+  one tinted with its band's color), the octave buttons and the dialogs' buttons; list buttons, the lists and menus
+  they open, tooltips, the name tags and the messages (on a soft shadow, white in
   Porcelain and a step lighter than the rows in Spectrum, their rows shaded under the mouse), the title bar's
   buttons, the preset's name, the output scope, the Ratio readout (outlined under the mouse), the note source's and
   velocity's curves and the wheels without outlines, and search fields outlined only while typed in or holding
-  words; the dialogs lifted by a shadow in Porcelain, as its panels are; + EFFECT, + SOURCE and the MODS view's + Aux
+  words; the dialogs lifted by a shadow in Porcelain, as its panels are; + Effect, + Source and the Mods view's + Aux
   and + Add modulation as filled pills, an aux that is set a chip tinted with its source's color, and the cards that
   add an effect, a source or a band's effect filled faintly, a disc behind their plus; each operator, its tab, its
   names in the matrix (whose legend shows the operators' colors side by side) and the routes it sends to another
@@ -2386,7 +2392,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   theme); the routing nodes on a soft shadow (a silent one outlined in a faint tint of its color, and an operator's
   unison copies tinted discs peeking out on both sides, under the wires so an arrowhead coming in at its side shows);
   the effects graph's nodes, a split and a join too, filled
-  with a tint of their color, without an outline; and meters and a dimmed control taking the tint of the card they are on. Settings
+  with a tint of their color, without an outline; and meters and a dimmed control taking the shade of what they are on. Settings
   that name a theme no longer offered show the nearest one: Graphite and Machined as Midnight, Paper as Light.
   **Hue**, a slider under the themes along every hue, turns the theme's main color, its accent (and in Spectrum and
   Porcelain operator A's, which is the accent there), round the color wheel, as saturated and as light as the theme
@@ -2403,7 +2409,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   any of the three sliders puts it back to where it starts (Hue to Default). **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
   one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Grid**, a slider like it
-  from Off to 100 % (50 % to begin with, and a double-click puts it back), sets how strongly the SEQ view's roll draws
+  from Off to 100 % (50 % to begin with, and a double-click puts it back), sets how strongly the Seq view's roll draws
   its grid lines: Off draws none, 100 % twice as strongly as 50 %. With the mouse resting on any of the four sliders
   (not while one is dragged), a tooltip under it says what it sets and that a double-click puts it back. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in

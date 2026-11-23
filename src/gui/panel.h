@@ -142,12 +142,16 @@ public:
     // How strongly the graphs glow: the GLOW setting, or where its slider is dragged to (0..1).
     virtual float shownGlow() const = 0;
     // The cards of the rows the View shows (an effect's, a source's), by their number: a source's place, or kMaxSources
-    // and an effect's slot. Noting where one shows (as much of it as `shown` shows), for the mouse to find and a theme
-    // whose cards go without an outline to outline it under the mouse; a card's face, as every card's is painted
-    // (its shadow, its fill, tinted with `color` in a flat theme, faintly while it is off, and its outline in `color` at
-    // `edge` while it is on), noted; and what the View still lays out and paints of an effect's card: its widgets below
-    // its title row, and the card itself (its face, its title and its display; its widgets are painted with the others).
+    // and an effect's slot (or kMaxSources and a split's node, its container). Noting where one shows (as much of it as
+    // `shown` shows), for the mouse to find, a theme whose cards go without an outline to outline it under the mouse
+    // and its fold button to show then; a card's face, as every card's is painted (its shadow, its fill in the cards'
+    // plain color, and its outline in `color` at `edge` while it is on), noted; and what the View still lays out and
+    // paints of an effect's card: its widgets below its title row, and the card itself (its face, its title and its
+    // display; its widgets are painted with the others).
     virtual void noteCard(int card, Rect r, Rect shown) = 0;
+    // Whether a card's fold button shows: while the mouse is over the card, or always once a finger has touched the
+    // editor (with no mouse to show it, see View::touchDown()). Hidden, it still takes a click.
+    virtual bool cardFoldShown(int card) const = 0;
     virtual void paintCardFace(Canvas &c, Rect r, Color color, bool on, int card, bool dragged, float edge,
                                Rect shown) = 0;
     virtual void cardWidgets(std::vector<Widget> &list, int card, Rect r) const = 0;

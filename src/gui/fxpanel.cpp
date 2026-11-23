@@ -1765,7 +1765,7 @@ void FxPanel::paintFxGraph(Canvas &c) {
         const Point x = fxDeleteAt(place.node, at.node[place.node]);
         const bool hot = hover()->kind == Kind::FxNodeDelete;
         const Color ink = hot ? kText : kDim;
-        c.fillCircle(x, 7.5f, hot ? kRaised : kCardColor);
+        c.fillCircle(x, 7.5f, nodeDiscFill(hot));
         c.strokeCircle(x, 7.5f, ink, 1.2f);
         c.line({x.x - 3.0f, x.y - 3.0f}, {x.x + 3.0f, x.y + 3.0f}, ink, 1.4f);
         c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
@@ -1776,7 +1776,7 @@ void FxPanel::paintFxGraph(Canvas &c) {
         const bool hotPower = hover()->kind == Kind::FxNodePower;
         const bool on = value(paramIndex(place.node, FxParam::Enabled)) >= 0.5;
         const Color mark = on ? fxTypeColor(fx_.slotType(place.node)) : hotPower ? kText : kDim;
-        c.fillCircle(o, 7.5f, hotPower ? kRaised : kCardColor);
+        c.fillCircle(o, 7.5f, nodeDiscFill(hotPower));
         c.strokeCircle(o, 7.5f, hotPower ? kText : kDim, 1.2f);
         constexpr float kRadius = 3.2f, kGap = 0.75f; // the power symbol, small enough for the circle
         c.arc(o, kRadius, kGap, 2.0f * std::numbers::pi_v<float> - kGap, mark, 1.3f);
@@ -1905,8 +1905,9 @@ void FxPanel::cardWidgets(std::vector<Widget> &list, int slot, size_t pos, Rect 
     const WidgetAdder add{list};
     auto at = [slot](FxParam f) { return paramIndex(slot, f); };
     // The title row, as every card's: the icon at the title's left (which also switches the effect on and
-    // off, and drags the card like the title does), then the fold button, the power switch and the cross. In
-    // the graph, only the power switch, in the cross's corner: the node's own cross removes the effect.
+    // off, and drags the card like the title does), then the fold button (shown under the mouse), the power switch
+    // and the cross. In the graph, only the power switch, in the cross's corner: the node's own cross removes the
+    // effect.
     const Rect icon = fxIconRect(card).inset(-4.0f);
     if (!graph && fxFolded(slot)) { // a strip: the icon, a grip, the switch and cross, then the rest unfolds it
         add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
@@ -1922,7 +1923,7 @@ void FxPanel::cardWidgets(std::vector<Widget> &list, int slot, size_t pos, Rect 
     add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
     if (!graph)
         add(Kind::FxFold, cardFold(card), -1, slot);
-    add(Kind::Toggle, graph ? cardPowerInGraph(card) : cardPower(card), at(FxParam::Enabled));
+    add(Kind::Toggle, cardPower(card, !graph), at(FxParam::Enabled));
     if (!graph)
         add(Kind::FxRemove, cardClose(card), -1, slot);
     host_.cardWidgets(list, kMaxSources + slot, card); // what is below its title row
@@ -2160,7 +2161,7 @@ void FxPanel::paintFx(Canvas &c, std::optional<Rect> only) {
             // its icon and cross (widgets), the grip's dots between, then its name down the strip
             gripDots(r, (hover() && hover()->kind == Kind::FxGrip && hover()->a == slot && !host_.dragging()) ||
                             dragged);
-            paintDownward(c, {r.x, r.y + 104.0f, r.w, r.h - 110.0f}, fxTitle(type), on ? kText : kDim);
+            paintDownward(c, {r.x, r.y + 104.0f, r.w, r.h - 110.0f}, upperCase(fxTitle(type)), on ? kText : kDim);
             continue;
         }
         host_.paintCard(c, kMaxSources + slot, r, dragged);
@@ -2265,6 +2266,8 @@ bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
                 c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
         }
+        if (!hovered && !host_.cardFoldShown(kMaxSources + fxSplitNode(w.a)))
+            break;
         paintTitleActionFace(c, w.rect, hovered);
         paintChevron(c, w.rect.center(), hovered ? kText : kDim, ChevronWay::Left);
         break;
@@ -2325,12 +2328,12 @@ bool FxPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const float arm = 9.0f;
         const Point m{w.rect.center().x, w.rect.center().y - 14.0f};
         const Color ink = paintAddCard(c, w.rect, m, arm, hovered);
-        // In capitals, as ADD EFFECT and ADD SOURCE are.
-        c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, upperCase(tr(Str::ButtonAddToBand)), kTextLabel, ink,
-               Align::Center, true);
+        // As Add effect and Add source are.
+        c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, tr(Str::ButtonAddToBand), kTextLabel, ink, Align::Center,
+               true);
         c.text({w.rect.x, m.y + arm + 20.0f, w.rect.w, 14.0f},
-               upperCase(tr(w.a == 1 ? Str::TabBandHigh : w.a == 3 ? Str::TabBandMid : Str::TabBandLow)),
-               kTextLabel, ink, Align::Center, true);
+               tr(w.a == 1 ? Str::TabBandHigh : w.a == 3 ? Str::TabBandMid : Str::TabBandLow), kTextLabel, ink,
+               Align::Center, true);
         break;
     }
     case Kind::FxMenuButton: // its list, not the dashed card's

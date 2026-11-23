@@ -1560,11 +1560,10 @@ std::vector<View::Widget> View::widgets() const {
         const bool lfo = runsLfo(mods_.sourceTypeOf(s)); // an LFO, or Random, a random one
         const bool widened = s == wideLfo();
         const bool widens = lfo && !widened && mods_.lfoShapeOf(s) == LfoShape::Custom;
-        const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f // short of the reset, leftmost
-                              : widens ? lfoWidenButton(card).x - 4.0f
-                                       : cardTitleRight(p);
-        add(Kind::SourceGrip, {p.x, p.y, gripEnd - p.x, 34.0f}, -1, s, position);
-        add(Kind::SourceFold, cardFold(p), -1, s);
+        // Its always-shown buttons beside the switch: a widened card's three, or the one that widens it.
+        const int tools = widened ? kWideSourceTools : widens ? 1 : 0;
+        add(Kind::SourceGrip, {p.x, p.y, cardTitleRight(p, true, tools) - p.x, 34.0f}, -1, s, position);
+        add(Kind::SourceFold, cardFold(p, true, tools), -1, s);
         add(Kind::SourceHandle, sourceHandleRect(p), -1, s);
         add(Kind::Toggle, sourcePower(card, span), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
@@ -2821,7 +2820,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
     paintCardFace(c, card, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
-    const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
+    const float titleRight = fxGraph() ? cardPower(card, false).x - 3.0f : cardTitleRight(card);
     const Rect titleRect{card.x + 33.0f, card.y + kCardTitleY, titleRight - card.x - 33.0f, 20.0f};
     const char *title = fxTitle(type);
     float titleSize = kTextBody; // smaller for a long name, so it fits beside the icon
@@ -2887,7 +2886,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         paintAmpCab(c, cab, slot);
         // Dimmed as its controls are (switched off, the whole card's body is dimmed instead, see dimmedAreas()).
         if (on && value(paramIndex(slot, FxParam::AmpCabOn)) < 0.5)
-            c.fillRect(cab, cardFace(fx, on).alpha(1.0f - kDimOpacity), kRadiusCard);
+            c.fillRect(cab, kCardColor.alpha(1.0f - kDimOpacity), kRadiusCard);
         const float x = ampDivider(card);
         c.line({x, display.y}, {x, card.bottom() - 12.0f}, kBorder, 1.0f);
         break;
@@ -4123,8 +4122,8 @@ void View::paintSource(Canvas &c, float card, int s) {
     }
 
     // Title row: the handle (a widget) and the name, grey while the source is off; the row drags the card.
-    // In capitals, as an effect card's title.
-    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, upperCase(mods_.sourceName(s)), kTextBody,
+    // In title case, as an effect card's title.
+    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, mods_.sourceName(s), kTextBody,
            mods_.sourceOn(s) ? kText : kDim, Align::Left, true);
 
     if (s == wideLfo()) {
@@ -4429,28 +4428,21 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::SourceMods: {
-        // How many modulations the source has, and MODS with a chevron at the right; with none, an invitation to add
-        // one there.
+        // A link, without a face: how many modulations the source has, dim, and MODS with a chevron at the right in
+        // the accent; with none, No modulations alone. Both light up under the mouse, the whole row taking the click.
         const size_t count = usedSlots(w.a).size();
-        if (look.flat) { // as the list buttons on the card: in a well, without an outline, tinted with its color under the mouse
-            c.fillRect(w.rect, wellColor(), kRadiusControl);
-            if (hovered)
-                c.fillRect(w.rect, kSourceColors[w.a].alpha(0.24f), kRadiusControl);
-        } else {
-            c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-            c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, kRadiusControl);
-        }
-        paintChevron(c, {w.rect.right() - 12.0f, w.rect.center().y}, hovered ? kText : kDim, ChevronWay::Right);
+        const Color ink = hovered ? kText : kDim;
         if (count == 0) {
-            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardNoModulations), kTextBody,
-                   hovered ? kText : kDim, Align::Left);
+            c.text(w.rect, tr(Str::CardNoModulations), kTextLabel, ink, Align::Left);
             break;
         }
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 80.0f, w.rect.h},
-               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), kTextBody, kText,
+        const Color link = hovered ? kText : kAccent;
+        paintChevron(c, {w.rect.right() - 4.0f, w.rect.center().y}, link, ChevronWay::Right);
+        c.text({w.rect.x, w.rect.y, w.rect.w - 80.0f, w.rect.h},
+               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), kTextLabel, ink,
                Align::Left);
-        c.text({w.rect.right() - 80.0f, w.rect.y, 58.0f, w.rect.h}, tr(Str::ViewMods), kTextLabel, hovered ? kText : kDim,
-               Align::Right, true);
+        c.text({w.rect.right() - 80.0f, w.rect.y, 68.0f, w.rect.h}, tr(Str::ViewMods), kTextLabel, link, Align::Right,
+               true);
         break;
     }
     case Kind::ValueText:
@@ -4490,14 +4482,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break; // drawn with their card, editor, matrix or the keyboard strip
     case Kind::FxFold:
     case Kind::SourceFold: {
-        // Unfolded, a chevron in the title row that folds the card; folded, the strip below the cross, lit
-        // while hovered, which unfolds it.
+        // Unfolded, a chevron in the title row that folds the card, shown while the card is under the mouse; folded,
+        // the strip below the cross, lit while hovered, which unfolds it.
         const bool folded = w.kind == Kind::FxFold ? fxFolded(w.a) : sourceFolded(w.a);
         if (folded) {
             if (hovered)
                 c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
         }
+        if (!hovered && !cardFoldShown(w.kind == Kind::FxFold ? kMaxSources + w.a : w.a))
+            break;
         paintTitleActionFace(c, w.rect, hovered);
         paintChevron(c, w.rect.center(), hovered ? kText : kDim, ChevronWay::Left);
         break;
@@ -4554,7 +4548,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxRemove:
     case Kind::FxNodeRemove:
     case Kind::SourceRemove: {
-        paintTitleActionFace(c, w.rect, hovered); // a small action, as the fold beside it
+        paintTitleActionFace(c, w.rect, hovered); // a small action, as the fold
         const Point center = w.rect.center();
         const Color color = hovered ? kText : kFaint;
         c.line({center.x - 4.0f, center.y - 4.0f}, {center.x + 4.0f, center.y + 4.0f}, color, 1.5f);
@@ -5160,8 +5154,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const Color own = macro >= 0 ? kSourceColors[kMaxSources + macro] : plain;
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && mods_.sourceBipolar(kMaxSources + macro));
-    // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
-    // out on a card tinted with it as the plain track doesn't.
+    // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color.
     // Modulated, it keeps them: a modulation ring in a color like its own is told apart from it instead (ringColor()).
     const Color arc = own;
     const Color track = look.flat ? own.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack);
@@ -6371,6 +6364,7 @@ bool View::setCtrl(bool held) {
 bool View::mouseMove(Point p, Modifiers mods) {
     const Point before = hoverPoint_;
     hoverPoint_ = p;
+    mouseOver_ = true;
     const bool ctrlChanged = setCtrl(mods.ctrl);
     if (drag_.kind == DragKind::None) {
         envZoomLeft(p);
@@ -6385,8 +6379,8 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // with it held (see Panel::hoverMoves()).
         const bool gridEdge = std::any_of(panels_.begin(), panels_.end(),
                                           [&](const Panel *panel) { return panel->hoverMoves(before, p); });
-        // The card under the mouse, which a theme without card outlines outlines.
-        const int card = look.flat ? cardAt(p) : -1;
+        // The card under the mouse, which shows its fold and x, and which a theme without card outlines outlines.
+        const int card = cardAt(p);
         const bool cardChanged = card != hoverCard_;
         hoverCard_ = card;
         bool changed = cardChanged || ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() ||
@@ -7025,6 +7019,7 @@ void View::finishDrag() {
 }
 
 void View::mouseLeave() {
+    mouseOver_ = false;
     if (drag_.kind == DragKind::None) {
         hover_.reset();
         hoverCard_ = -1;
@@ -7047,33 +7042,27 @@ int View::cardAt(Point p) const {
     return -1;
 }
 
+// Whether the mouse is over the card as it is painted now: the card's widgets are painted after every card's face has
+// noted where it is, so a card just moved, widened or scrolled under a resting mouse counts.
+bool View::cardFoldShown(int card) const {
+    return touched_ || (mouseOver_ && cardAt(hoverPoint_) == card);
+}
+
 // A card's outline: always, but in a theme whose cards go without one, only while it is dragged or under the mouse.
 bool View::cardOutlined(int id, bool dragged) const {
     return !look.flat || dragged || (hoverCard_ == id && drag_.kind == DragKind::None);
 }
 
-// An effect's or a source's card under what it holds: its shadow, its fill, tinted with its color in a flat theme
-// (faintly while it is off), and its outline (in its color at `edge` while it is on), and noted as card `id`, as much
-// of it as `shown` shows, for the mouse to find.
+// An effect's or a source's card under what it holds: its shadow, its fill in the cards' plain color in every theme
+// (its own color goes on what is on it: its icon or handle, its knobs' arcs, its curves and its lit switches), and its
+// outline (in its color at `edge` while it is on), and noted as card `id`, as much of it as `shown` shows, for the
+// mouse to find.
 void View::paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown) {
     paintCardShadow(c, card);
     c.fillRect(card, kCardColor, kRadiusCard);
-    if (look.flat)
-        c.fillRect(card, color.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
     noteCard(id, card, shown);
     if (cardOutlined(id, dragged))
         c.strokeRect(card, dragged ? color : (on ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
-}
-
-// The face of the card a widget is on: its effect's or its source's card's.
-Color View::cardFaceUnder(const Widget &w) const {
-    if (w.param < 0)
-        return kCardColor;
-    if (const int slot = fxSlotOf(w.param); slot >= 0)
-        return cardFace(fxTypeColor(fx_.slotType(slot)), value(paramIndex(slot, FxParam::Enabled)) >= 0.5);
-    if (const int source = sourceOf(w.param); source >= 0 && source < kMaxSources)
-        return cardFace(kSourceColors[source], mods_.sourceOn(source));
-    return kCardColor;
 }
 
 std::vector<View::DimArea> View::dimmedAreas() const {
@@ -7085,11 +7074,11 @@ std::vector<View::DimArea> View::dimmedAreas() const {
             const float card = cardOf(s);
             if (card == kOffScreen || mods_.sourceOn(s) || sourceFolded(s))
                 continue;
-            areas.push_back({body(sourceCard(card, sourceSpan(s))), cardFace(kSourceColors[s], false), sourceCardClip()});
+            areas.push_back({body(sourceCard(card, sourceSpan(s))), kCardColor, sourceCardClip()});
         }
     // So is a switched-off effect's, in the effects graph's inspector or along the row.
     for (const auto &[slot, p, clip] : fxPanel_.offCards())
-        areas.push_back({body(p), cardFace(fxTypeColor(fx_.slotType(slot)), false), clip});
+        areas.push_back({body(p), kCardColor, clip});
     // And the inspector's page while its operator, filter or shaper is off, below the tabs, title and switch.
     if (!inspectorCovered() && !routing_.nodeOn(controller_.layout().selectedNode))
         areas.push_back({kInspectorPage, Color{0.0f, 0.0f, 0.0f, 0.0f}, kInspectorPage});
@@ -7226,6 +7215,7 @@ bool View::dragsOnTouch(const Widget &w) const {
 
 void View::touchDown(Point p, bool secondTap, float slop) {
     touchPress_.reset();
+    touched_ = true;
     hoverPoint_ = p;
     if (panAt(p)) { // what it does waits until it moves or lifts
         touchPress_ = TouchPress{p, secondTap, slop};

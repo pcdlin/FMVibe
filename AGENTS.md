@@ -881,6 +881,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
   - a card title's fold and x showing an action's face only under the mouse, in Midnight and Spectrum (read off the
     rendered pixels);
+  - a card's fold drawn only while the mouse is over the card and its x always, in Midnight and Spectrum, the hidden
+    fold still folding it, and showing with no mouse once a finger has touched the editor (read off the rendered
+    pixels);
   - in every theme, Porcelain among them, a filter's and a shaper's display on the inspector's lens standing apart from
     the lens's face (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn

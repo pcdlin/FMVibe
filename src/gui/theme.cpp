@@ -281,7 +281,7 @@ float follow(float shown, float target) {
     return std::abs(target - shown) < 1e-3f ? target : shown;
 }
 
-// A name in capitals, as card titles and the dashed cards' words are.
+// A name in capitals, as a folded card's strip has it.
 std::string upperCase(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
     return text;

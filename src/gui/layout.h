@@ -585,27 +585,35 @@ inline Rect modTitle() {
 }
 
 // Every card's title row, an effect's, a source's or a split's: its mark (the effect's icon or the source's handle) and
-// its name at the left; at the right the fold button, the power switch (a split has none) and the cross. Its name
-// stops short of the fold button (cardTitleRight()).
+// its name at the left; at the right, from the corner in, the cross, the power switch (a split has none), the buttons
+// beside it (`tools` of them: a Curve card's), all always shown, then the fold button, which shows while the mouse is
+// over the card: what always shows packs against the corner and never moves. Its name stops short of the fold button
+// (cardTitleRight()). An effect card in the effects graph's inspector has no fold or cross (its node's cross removes
+// it): its power switch takes the cross's corner (`cross` false), and its name goes up to it.
 // An effect card's (or a split container's) title: its box, 20 px tall, this far down the card, which centers its
-// capitals on the title row's icon and buttons (cardFold(), cardPower(), cardClose()).
+// name on the title row's icon and buttons (cardFold(), cardPower(), cardClose()).
 constexpr float kCardTitleY = 7.5f;
+constexpr float kCardToolW = 28.0f, kCardToolStep = 34.0f; // a title row's always-shown buttons, and their spacing
 inline Rect cardClose(Rect card) {
     return {card.right() - 22.0f, card.y + 8.0f, 14.0f, 21.0f};
 }
-inline Rect cardPower(Rect card) {
-    return {card.right() - 44.0f, card.y + 8.5f, 20.0f, 19.0f};
+// The power switch: 6 px clear of the cross beside it, or in the cross's corner where there is none.
+inline Rect cardPower(Rect card, bool cross = true) {
+    return {card.right() - (cross ? 48.0f : 28.0f), card.y + 8.5f, 20.0f, 19.0f};
 }
-// An effect card in the effects graph's inspector has no cross (its node's removes it): its power switch takes the
-// cross's corner, and its name goes up to it.
-inline Rect cardPowerInGraph(Rect card) {
-    return {card.right() - 28.0f, card.y + 8.5f, 20.0f, 19.0f};
+// The always-shown button `i` places left of the power switch, from the right.
+inline Rect cardTool(Rect card, int i) {
+    return {cardPower(card).x - 4.0f - kCardToolW - static_cast<float>(i) * kCardToolStep, card.y + 7.0f, kCardToolW,
+            22.0f};
 }
-inline Rect cardFold(Rect card, bool power = true) {
-    return {(power ? cardPower(card).x : cardClose(card).x) - 16.0f, card.y + 9.0f, 14.0f, 19.0f};
+inline Rect cardFold(Rect card, bool power = true, int tools = 0) {
+    const float edge = !power     ? cardClose(card).x
+                       : tools > 0 ? cardTool(card, tools - 1).x - 2.0f
+                                   : cardPower(card).x;
+    return {edge - 16.0f, card.y + 9.0f, 14.0f, 19.0f};
 }
-inline float cardTitleRight(Rect card, bool power = true) {
-    return cardFold(card, power).x - 3.0f;
+inline float cardTitleRight(Rect card, bool power = true, int tools = 0) {
+    return cardFold(card, power, tools).x - 3.0f;
 }
 
 // A card by its screen place: 0..3, fractions while it scrolls.
@@ -644,11 +652,11 @@ inline Rect lfoCardGridButton(float card, int axis, int part) {
     return {readout.x + 128.0f + axis * 76.0f + kX[part], readout.y + 2.0f, kW[part], 18.0f};
 }
 // Its title row's buttons, by what they do: back to a normal card (0), the shape's reset (1) and the full-size editor
-// (2). Left to right, set off from the fold button: the reset, back to a normal card, the full-size editor.
+// (2). Left to right, beside the power switch (cardTool()): the reset, back to a normal card, the full-size editor.
+constexpr int kWideSourceTools = 3;
 inline Rect lfoCardButton(float card, int button) {
-    constexpr float kFromRight[] = {1.0f, 2.0f, 0.0f};
-    const Rect p = sourceCard(card, kWideSource);
-    return {p.right() - 120.0f - kFromRight[button] * 34.0f, p.y + 7.0f, 28.0f, 22.0f};
+    constexpr int kFromRight[] = {1, 2, 0};
+    return cardTool(sourceCard(card, kWideSource), kFromRight[button]);
 }
 // The dashed card after the sources, as tall as a card and narrower: it opens the list of source types.
 constexpr float kSourceShadowGap = 10.0f;
@@ -813,7 +821,7 @@ inline Rect lfoModeButton(float card, int mode) {
 }
 
 // A source card's title row, as every card's is (cardClose()): handle and name (the row drags the card), then the fold
-// button, the power switch and the remove cross at the right; of a card `span` places wide.
+// button, any always-shown buttons, the power switch and the remove cross at the right; of a card `span` places wide.
 inline Rect sourceRemove(float card, float span = 1.0f) {
     return cardClose(sourceCard(card, span));
 }
@@ -821,9 +829,9 @@ inline Rect sourceRemove(float card, float span = 1.0f) {
 inline Rect sourcePower(float card, float span = 1.0f) {
     return cardPower(sourceCard(card, span));
 }
-// A Custom LFO's normal card: left of the fold button (which is left of the power switch), the button that widens it.
+// A Custom LFO's normal card: beside its power switch, the button that widens it (its one always-shown button).
 inline Rect lfoWidenButton(float card) {
-    return {cardFold(sourceCard(card)).x - 4.0f - 28.0f, sourceCard(card).y + 7.0f, 28.0f, 22.0f};
+    return cardTool(sourceCard(card), 0);
 }
 
 // An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes

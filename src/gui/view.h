@@ -641,6 +641,7 @@ private:
     void closeGoneLists() override;
     void shapeGone(int shape) override { shapes_.shapeGone(shape); }
     void noteCard(int id, Rect card, Rect shown) override;
+    bool cardFoldShown(int card) const override;
     void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge,
                        Rect shown) override;
     void cardWidgets(std::vector<Widget> &list, int card, Rect r) const override {
@@ -699,9 +700,10 @@ private:
     // outline outlines that one alone.
     std::vector<std::pair<int, Rect>> cardRects_;
     int hoverCard_ = -1;
+    bool touched_ = false;   // a finger has touched the editor: the cards' folds show without a mouse over them
+    bool mouseOver_ = false; // the mouse is over the editor (since it last moved there, until it left)
     int cardAt(Point p) const;
     bool cardOutlined(int id, bool dragged) const;
-    Color cardFaceUnder(const Widget &w) const;
     // The switched-off cards' bodies below their title rows, and the inspector's page of a switched-off node: what is in
     // them is dimmed. A card's displays under an overlay of its own face (`face`, within `clip`), which leaves its
     // face as it is; the page under a layer (paintInspector(), no face here); the widgets in both under a layer.

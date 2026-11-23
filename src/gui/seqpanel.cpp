@@ -28,13 +28,6 @@ std::string pitchName(int pitch) {
     return std::string(kPitchNames[((pitch % 12) + 12) % 12]) + std::to_string(pitch / 12 - 1);
 }
 
-std::string caps(std::string text) {
-    for (char &ch : text)
-        if (ch >= 'a' && ch <= 'z')
-            ch = static_cast<char>(ch - 'a' + 'A');
-    return text;
-}
-
 constexpr double kNewVelocity = 100.0 / 127.0;
 constexpr float kSeqScaleListW = 170.0f; // the scale's list, wider than its button: "Pentatonic Major" and the rest
 constexpr float kSeqBareMacroDot = 0.3f; // how strongly a macro's dot shows while it has no curve in the pattern
@@ -3046,7 +3039,7 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             const Str plays[] = {Str::SeqPlayHost, Str::SeqPlayKey, Str::SeqPlayLatch};
             const std::string text = w.param == paramIndex(SeqParam::Pattern)
                                          ? seqPatternName(w.b)
-                                         : caps(tr(plays[std::clamp(w.b, 0, 2)]));
+                                         : std::string(tr(plays[std::clamp(w.b, 0, 2)]));
             c.text(w.rect, text, kTextLabel, on ? litInk(kText) : kDim, Align::Center, on);
         }
         return true;

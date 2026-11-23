@@ -802,8 +802,13 @@ Point fxPower(const FakeController &model, int position) {
     return {fxCardX(model, position) + 19.0f, 197.0f};
 }
 
+// An effect card along the row, as the layout's title row functions take it (cardFold(), cardClose(), cardPower()).
+Rect fxCardRect(const FakeController &model, int position) {
+    return {fxCardX(model, position), 180.0f, fxCardW(model, position), 300.0f};
+}
+
 Point fxRemove(const FakeController &model, int position) {
-    return {fxCardX(model, position) + fxCardW(model, position) - 15.0f, 198.0f};
+    return detail::cardClose(fxCardRect(model, position)).center();
 }
 
 // Knob `index` of `count` across a card, in the row at `y` within it.
@@ -1103,8 +1108,7 @@ Point lfoDisplay(float card) {
     return {cardX(card) + 138.0f, 688.0f};
 }
 Point wideButton(float card, int button) {
-    constexpr float kFromRight[] = {1.0f, 2.0f, 0.0f};
-    return {cardX(card) + 2.0f * kCardW + 12.0f - 106.0f - kFromRight[button] * 34.0f, 582.0f};
+    return detail::lfoCardButton(card, button).center();
 }
 Point lfoTool(float card, int tool) {
     return {cardX(card) + 16.0f + tool * 41.5f + 18.75f, 673.0f};
@@ -2584,6 +2588,63 @@ void testTitleActionFace(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(away, {});
     model.themeName = "Midnight";
     check(shown, "a card title's fold and x show an action's face only under the mouse");
+}
+
+// A card title row's fold shows only while the mouse is over the card, and its x always: nothing drawn in the fold's
+// place with the mouse elsewhere, its chevron with it over the card's display, and gone again once it leaves, while the
+// x's cross shows throughout, in Midnight and in Spectrum; the fold still taking a click while hidden; and shown with
+// no mouse once a finger has touched the editor (read off the rendered pixels, against the card's face beside them).
+void testTitleActionsOnHover(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    const Rect card = detail::sourceCard(0.0f);
+    const Rect fold = detail::cardFold(card), cross = detail::cardClose(card);
+    const Point away{600.0f, 328.0f}, over{card.center().x, card.bottom() - 60.0f}; // over the card's display
+    // How many pixels inside a button (2 px in from its edges) differ from the card's face left of the fold.
+    auto inked = [&](Rect r) {
+        const uint32_t face = renderer.pixel({fold.x - 4.0f, fold.y + 3.0f});
+        int count = 0;
+        for (float y = r.y + 2.0f; y < r.bottom() - 2.0f; y += 1.0f)
+            for (float x = r.x + 2.0f; x < r.right() - 2.0f; x += 1.0f)
+                count += renderer.pixel({x, y}) != face;
+        return count;
+    };
+    bool hidden = true, shown = true, hiddenAgain = true, crossShown = true;
+    for (const char *theme : {"Midnight", "Spectrum"}) {
+        model.themeName = theme;
+        const std::string name = std::string("17s-card-fold-") + theme;
+        view.mouseMove(away, {});
+        const bool restShot = renderer.save(view, dir / (name + "-rest.png"));
+        const int rest = restShot ? inked(fold) : -1, crossRest = restShot ? inked(cross) : -1;
+        view.mouseMove(over, {});
+        const bool hoverShot = renderer.save(view, dir / (name + "-card-hover.png"));
+        const int hover = hoverShot ? inked(fold) : -1, crossHover = hoverShot ? inked(cross) : -1;
+        view.mouseMove(away, {});
+        const int left = renderer.save(view, dir / (name + "-left.png")) ? inked(fold) : -1;
+        std::printf("      %s: the fold's ink with the mouse away %d, over the card %d, away again %d; the x's %d and %d\n",
+                    theme, rest, hover, left, crossRest, crossHover);
+        hidden = hidden && rest == 0;
+        shown = shown && hover > 10;
+        hiddenAgain = hiddenAgain && left == 0;
+        crossShown = crossShown && crossRest > 10 && crossHover > 10;
+    }
+    model.themeName = "Midnight";
+    check(hidden && shown && hiddenAgain && crossShown,
+          "a card's fold shows only while the mouse is over the card, and its x always");
+    // Hidden, the fold still takes a click: the card folds, and unfolds again.
+    view.mouseMove(away, {});
+    click(view, fold.center());
+    const bool folded = model.ui.sourcesFolded == 1u << 0;
+    click(view, {detail::sourceCard(0.0f, detail::kFoldedSource).center().x, card.bottom() - 30.0f}); // the strip
+    check(folded && model.ui.sourcesFolded == 0u, "a hidden fold still folds its card");
+    // A finger on the editor (a phone in the browser demo), with no mouse to hover: it shows from then on.
+    view.touchDown(away, false, 6.0f);
+    view.touchUp(away);
+    view.mouseMove(away, {});
+    const int touched = renderer.save(view, dir / "17s-card-fold-touched.png") ? inked(fold) : -1;
+    std::printf("      after a touch, with the mouse away: %d\n", touched);
+    check(touched > 10, "once a finger has touched the editor, a card's fold shows without a mouse over it");
 }
 
 // A modulation ring whose reach runs past its knob's end, cut off there, ends in a line across it: at the knob's end
@@ -4248,9 +4309,7 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     auto roughly = [](double a, double b, double within = 0.01) { return std::abs(a - b) < within; };
     const int count = shapeCountIndex(0);
     // The power switch of the card at a place, and whose it is: LFO 2's card one place along while LFO 1's is wide.
-    auto powerAt = [&](float place, float span) {
-        return Point{cardX(place) + span * (kCardW + 12.0f) - 12.0f - 34.0f, 573.0f};
-    };
+    auto powerAt = [&](float place, float span) { return detail::sourcePower(place, span).center(); };
     auto switches = [&](Point at, int lfo) {
         click(view, at);
         const bool off = model.value(sourceEnabledIndex(lfo)) == 0.0;
@@ -4265,11 +4324,11 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool normal = switches(sourcePower(1), 1);
     click(view, lfoDisplay(0));
     const bool again = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
-    // Its normal card's widen button, left of the fold button, widens it too.
+    // Its normal card's widen button, beside its power switch, widens it too.
     click(view, wideButton(0, 0));
-    view.mouseMove({cardX(0) + kCardW - 78.0f, 574.0f}, {});
+    view.mouseMove(detail::lfoWidenButton(0.0f).center(), {});
     const bool button = renderer.save(view, dir / "10d0-lfo-card-widen-button.png") && switches(sourcePower(1), 1);
-    click(view, {cardX(0) + kCardW - 78.0f, 574.0f});
+    click(view, detail::lfoWidenButton(0.0f).center());
     const bool byButton = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
     check(widened && normal && again && button && byButton,
           "a click on a Curve source's display widens its card, and so does its widen button");
@@ -4419,7 +4478,7 @@ void testLaterSlots(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, kFxTab);
     const float cardTop = 179.5f; // an effect card's
-    click(view, {fxCardX(model, 0) + fxCardW(model, 0) - 53.0f, cardTop + 18.5f}); // its fold chevron
+    click(view, detail::cardFold(fxCardRect(model, 0)).center()); // its fold chevron
     const bool folded = model.ui.fxFolded == 0 && model.ui.fxFoldedLater == 1u << (later - kFirstFxSlots);
     const float strip = fxCardX(model, 0) + fxCardW(model, 0) * 0.5f;
     drag(view, {strip, cardTop + 38.0f}, {strip + 200.0f, cardTop + 38.0f}); // its grip, past the next card
@@ -4856,7 +4915,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, cell(2, 0));
         view.mouseMove({600.0f, 428.0f}, {});
         const bool powerShot = renderer.save(view, dir / "40f9-fx-inspector-power.png");
-        click(view, centerOf(detail::cardPowerInGraph(card)));
+        click(view, centerOf(detail::cardPower(card, false))); // in the cross's corner
         const bool off = model.value(paramIndex(1, FxParam::Enabled)) == 0.0 &&
                          model.value(paramIndex(1, FxParam::Type)) == static_cast<double>(FxType::Reverb);
         view.undo();
@@ -8014,9 +8073,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, kFxTab);
     const float cardTop = 179.5f; // an effect card's
-    auto fxFold = [&](int position) {
-        return Point{fxCardX(model, position) + fxCardW(model, position) - 53.0f, cardTop + 18.5f};
-    };
+    auto fxFold = [&](int position) { return detail::cardFold(fxCardRect(model, position)).center(); };
     // The power switch in its title row, as on a source card, switches the effect off and on; so does the icon.
     const Rect reverbCard{fxCardX(model, 1), cardTop, fxCardW(model, 1), 300.0f};
     click(view, detail::cardPower(reverbCard).center());
@@ -8059,13 +8116,13 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "28c-unfolded-handle.png");
     const std::vector<uint32_t> handleOpen = handlePixels();
-    click(view, {cardX(0) + kCardW - 53.0f, sourceTop + 17.5f}); // the LFO's chevron, left of its switch
+    click(view, detail::cardFold(detail::sourceCard(0.0f)).center()); // the LFO's chevron, left of its x and switch
     const bool sourceFolded = model.ui.sourcesFolded == 1u << 0;
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "28d-folded-handle.png");
     const bool handleStays = handlePixels() == handleOpen;
     const float envX = cardX(0) + 60.0f; // the envelope's card, closed up after the 48 px strip
-    click(view, {envX + kCardW - 34.0f, sourceTop + 17.5f}); // its switch
+    click(view, {envX + kCardW - 38.0f, sourceTop + 17.5f}); // its switch
     const bool envClosedUp = model.value(sourceEnabledIndex(1)) < 0.5;
     const float lfoStrip = cardX(0) + 24.0f;
     drag(view, {lfoStrip, sourceTop + 38.0f}, {lfoStrip + 300.0f, sourceTop + 38.0f}); // its grip, past the envelope
@@ -10510,7 +10567,7 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
               "+ SOURCE adds a Curve source, unipolar and widened to draw its shape, its polarity set by its switch");
         // Folded, its name down the strip is CRV and its number, four lines and nothing after them (read off the
         // rendered pixels), as a Random card's RND.
-        click(curveView, detail::cardFold(detail::sourceCard(0, detail::kWideSource)).center());
+        click(curveView, detail::cardFold(detail::sourceCard(0, detail::kWideSource), true, detail::kWideSourceTools).center());
         curveView.mouseMove({600.0f, 328.0f}, {});
         const bool foldShot = renderer.save(curveView, dir / "11m-curve-folded.png");
         const float strip = cardX(0), top = 564.0f;
@@ -15017,6 +15074,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
     testTitleActionFace(dir, renderer);
+    testTitleActionsOnHover(dir, renderer);
     testFlatModulatedKnob(dir, renderer);
     testModEndMarks(dir, renderer);
     testFlatThemes(dir, renderer);
