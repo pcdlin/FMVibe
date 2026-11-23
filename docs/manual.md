@@ -531,7 +531,8 @@ high-pass.
 - **Resonance**.
 - **Key Track**: how far the cutoff follows the note from C4; at 100 % the cutoff moves an octave for every octave the
   note moves (0 by default).
-- **Drive**: saturation before the filter. On the Ladder and Diode models, a loud sound driven hard also pulls the
+- **Drive**: saturation before the filter. It changes the tone, not the volume: a sound comes out about as loud as it
+  went in, however far Drive is turned. On the Ladder and Diode models, a loud sound driven hard also pulls the
   resonance down, as on an analog ladder. Projects made with earlier versions play their driven Ladder and Diode
   filters this way too, so they can sound a little louder, with less resonance.
 - **Mix**: blends the filter's input with its output (100 % = fully filtered).

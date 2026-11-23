@@ -3869,6 +3869,63 @@ void driveIntoLadderChecks() {
     check(pulled, "a loud sound driven into the ladder and the diode pulls their resonance down");
 }
 
+// Drive keeps the level a sound goes in at: its saturator's output is brought back by followers of the power going in
+// and coming out. A saw at C3 through a low-pass and a Sallen-Key low-pass, both open (at 20 kHz, without resonance), at
+// -24, -12, 0 and +6 dB and Drive 50 % and 100 %, comes out within 1 dB of its level undriven, where Drive taking its
+// output down by its square root put a full-level saw 5 dB under and a quiet one 9 dB over. And a note starting at full
+// level, full Drive, peaks no more than 2 dB over where it settles. (One starting with a jump to full level, as an
+// operator whose Phase starts it at its peak does, peaks about 4 dB over for its first cycle: the followers have heard
+// only its loudest part.)
+void driveLevelChecks() {
+    std::printf("drive keeps the level:\n");
+    const double rate = 96000.0; // the voices' at 2x
+    auto run = [&](FilterType type, double drive, double level, std::vector<double> &out) {
+        const FilterSettings s = filterSettings(type, 1, 20000.0, 0.0, drive, rate);
+        Filter filter;
+        std::vector<float> comb(16, 0.0f);
+        out.resize(static_cast<size_t>(rate * 0.4));
+        for (size_t i = 0; i < out.size(); ++i) { // from 0, as an operator's saw starts
+            const double phase = std::fmod(0.5 + i * keyHz(48) / rate, 1.0);
+            out[i] = filter.process(level * (2.0 * phase - 1.0), s, comb.data(), static_cast<int>(comb.size()));
+        }
+    };
+    auto rmsFrom = [](const std::vector<double> &x, size_t from) {
+        double sum = 0.0;
+        for (size_t i = from; i < x.size(); ++i)
+            sum += x[i] * x[i];
+        return std::sqrt(sum / static_cast<double>(x.size() - from));
+    };
+    const size_t settled = static_cast<size_t>(rate * 0.2);
+    bool kept = true;
+    double worst = 0.0;
+    for (FilterType type : {FilterType::LowPass, FilterType::SallenKeyLow})
+        for (double levelDb : {-24.0, -12.0, 0.0, 6.0}) {
+            const double level = std::pow(10.0, levelDb / 20.0);
+            std::vector<double> clean, out;
+            run(type, 0.0, level, clean);
+            const double undriven = rmsFrom(clean, settled);
+            for (double drive : {0.5, 1.0}) {
+                run(type, drive, level, out);
+                const double change = 20.0 * std::log10(rmsFrom(out, settled) / undriven);
+                worst = std::max(worst, std::abs(change));
+                kept = kept && std::abs(change) < 1.0;
+            }
+        }
+    std::vector<double> out;
+    run(FilterType::LowPass, 1.0, 1.0, out);
+    const size_t start = static_cast<size_t>(rate * 0.02);
+    double onset = 0.0, after = 0.0;
+    for (size_t i = 0; i < start; ++i)
+        onset = std::max(onset, std::abs(out[i]));
+    for (size_t i = settled; i < out.size(); ++i)
+        after = std::max(after, std::abs(out[i]));
+    std::printf("      saw at -24 to +6 dB, Drive 50 and 100 %%: level within %.2f dB of undriven; a note's first 20 ms "
+                "peaking %.2f dB over where it settles\n",
+                worst, 20.0 * std::log10(onset / after));
+    check(kept, "a sound driven into a filter keeps its level, quiet or loud");
+    check(onset < after * std::pow(10.0, 2.0 / 20.0), "a driven note starts at about the level it settles at");
+}
+
 // The scope: an operator's output, phase-locked to it, captured only while asked for.
 void scopeChecks() {
     std::printf("scope:\n");
@@ -6574,6 +6631,7 @@ int main() {
     newerEffectChecks();
     unisonModeChecks();
     driveIntoLadderChecks();
+    driveLevelChecks();
 
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should

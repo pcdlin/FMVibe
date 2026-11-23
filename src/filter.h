@@ -138,6 +138,16 @@ constexpr double kLadderSaturationScale = 1.5;
 // ceiling) would pull the resonance down hardly further and alias some 7 dB more. It was 1, as the other types' still
 // is, and the resonance rode on top of what Drive left.
 constexpr double kAnalogDriveCeiling = 2.0;
+// How long Drive's level followers average the power over (s): long beside a low note's cycle, so the gain they give
+// hardly ripples with it, short beside a note's swell and fade, which it follows.
+constexpr double kDriveLevelTime = 0.05;
+// How many samples the gain they give is held for before it is worked out again: in that long the followers move a
+// three-hundredth of the way to a new level at 48 kHz (less at the voices' oversampled rates), so the steps are far
+// under hearing, and the root and division it takes cost a fifth of what they would every sample.
+constexpr int kDriveMakeUpEvery = 8;
+// The power the followers add to what goes in before taking their ratio (-120 dB), and to what comes out as the drive
+// takes it up: so near silence, where the saturator is a straight line, they give its gain back, as they do above.
+constexpr double kDriveLevelFloor = 1e-12;
 // Whether a type takes Drive under kAnalogDriveCeiling: the ladder's types and the diode, whose saturation takes what
 // goes in. The Sallen-Key's clips only in its resonance's loop: what goes in passes it straight, so Drive held under
 // more than 1 would only make it louder.
@@ -231,7 +241,10 @@ struct FilterSettings {
     // a single peak.
     int slope = kDefaultSlope;
     double drive = 1.0; // input gain into the saturator; 1 = clean
-    double driveRoot = 1.0; // its square root, which the saturator's output is divided by
+    // The share of a sample's power the level followers around the saturator take in (see Filter::process()): they
+    // average over kDriveLevelTime. (It takes the place of the drive's square root, which the saturator's output was
+    // divided by, keeping the settings' size, which MSVC's voice loop is quick to feel.)
+    double driveFollow = 0.0;
     // The level the saturator holds what goes in under (kAnalogDriveCeiling into the ladder and the diode, else 1), and
     // the drive over it, which what goes in is scaled by into the saturator's curve.
     double driveCeiling = 1.0;
@@ -402,7 +415,7 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
     s.type = type;
     s.slope = playedSlope(type, slope);
     s.drive = 1.0 + 8.0 * std::clamp(drive, 0.0, 1.0);
-    s.driveRoot = std::sqrt(s.drive);
+    s.driveFollow = 1.0 - std::exp(-1.0 / (kDriveLevelTime * sampleRate));
     s.driveCeiling = drivesOwnSaturation(type) ? kAnalogDriveCeiling : 1.0;
     s.driveIn = s.drive / s.driveCeiling;
     // An integrator's or one-pole's rate for the cutoff, prewarped so it lands where the analog circuit's does: for the
@@ -527,12 +540,15 @@ public:
             }
         }
         uses_ = uses;
-        // Drive saturates what goes in, taken back down by the drive's square root, except into the analog types
-        // (the ladder's, the diode and the Sallen-Key's), which take it at full level, so their own saturation works
-        // on top of it, and take their output down instead. Into the ladder's types and the diode it holds what goes in
-        // under kAnalogDriveCeiling rather than 1 (a tanh that much larger, the same curve to begin with): a driven
-        // sound reaches their own saturation, which shares the loudest of it out with the feedback, as a driven
-        // transistor ladder does.
+        // Drive saturates what goes in, brought back to the level it went in at, except into the analog types (the
+        // ladder's, the diode and the Sallen-Key's), which take it at full level, so their own saturation works on top
+        // of it, and bring their output back instead. Into the ladder's types and the diode it holds what goes in under
+        // kAnalogDriveCeiling rather than 1 (a tanh that much larger, the same curve to begin with): a driven sound
+        // reaches their own saturation, which shares the loudest of it out with the feedback, as a driven transistor
+        // ladder does. The level is matched by two followers of the power, one of what goes in and one of what the
+        // saturator puts out, alike in time, so the gain they give is the saturator's own at the level the sound is at:
+        // a quiet sound and a loud one keep their levels however hard they are driven, Drive changing their tone alone.
+        // Following both at once, they rise together as a note starts, and their ratio is right from its first samples.
         if (s.drive > 1.0) {
             // The saturator averaged over the last sample step (antiderivative
             // anti-aliasing), so the harmonics it adds alias far less.
@@ -549,10 +565,25 @@ public:
                 y = (lastLogCosh_ - from) / dx;
             }
             lastDriven_ = driven;
-            in = selfOscillates(s.type) ? s.driveCeiling * y : y / s.driveRoot;
+            if (inLevel_ < 0.0) { // Drive just turned up: the followers start afresh
+                inLevel_ = outLevel_ = 0.0;
+                makeUpIn_ = 0;
+            }
+            inLevel_ += s.driveFollow * (in * in - inLevel_);
+            outLevel_ += s.driveFollow * (y * y - outLevel_);
+            // Their ratio moves slowly, so it is worked out every few samples (a root and a division each time).
+            if (--makeUpIn_ < 0) {
+                makeUpIn_ = kDriveMakeUpEvery - 1;
+                makeUp_ = std::sqrt((inLevel_ + kDriveLevelFloor) /
+                                    (outLevel_ + kDriveLevelFloor * s.driveIn * s.driveIn));
+                driveScale_ = makeUp_ / s.driveCeiling;
+            }
+            in = selfOscillates(s.type) ? s.driveCeiling * y : makeUp_ * y;
         } else { // as the saturator would take it, Drive at 0 (driveIn is 1 over the ceiling then)
             lastDriven_ = in * s.driveIn;
             lastKnown_ = false;
+            inLevel_ = -1.0;
+            driveScale_ = 1.0;
         }
         switch (s.type) {
         case FilterType::LowPass:
@@ -596,7 +627,7 @@ public:
                 if (i == s.slope)
                     out = y;
             }
-            return out / s.driveRoot;
+            return out * driveScale_;
         }
         case FilterType::LadderHigh:
         case FilterType::LadderBand:
@@ -622,7 +653,7 @@ public:
                 state_[i] = 2.0 * y - state_[i];
                 out = y; // the fourth's, the last
             }
-            return out / s.driveRoot;
+            return out * driveScale_;
         }
         case FilterType::SallenKeyLow:
         case FilterType::SallenKeyHigh: {
@@ -638,7 +669,7 @@ public:
             state_[0] = 2.0 * y1 - state_[0];
             state_[1] = 2.0 * y2 - state_[1];
             const double out = s.type == FilterType::SallenKeyLow ? y2 : in - 2.0 * (y1 - y2) + clipped - y2;
-            return out / s.driveRoot;
+            return out * driveScale_;
         }
         case FilterType::Formant: { // three band-passes, each at unity gain at its center, by its formant's level
             double out = 0.0;
@@ -685,7 +716,7 @@ private:
             if (i == s.slope)
                 out = y;
         }
-        return (band ? ladderBandGain(s.slope) * out : out) / s.driveRoot;
+        return (band ? ladderBandGain(s.slope) * out : out) * driveScale_;
     }
 
     // log(cosh(x)), the antiderivative of tanh, without overflowing for large x.
@@ -748,6 +779,13 @@ private:
     double lastDriven_ = 0.0; // the saturator's previous input
     double lastLogCosh_ = 0.0; // and logCosh() of it, when worked out already (lastKnown_)
     bool lastKnown_ = false;
+    // Drive's level followers: the power of what goes in (below 0 while Drive is at 0, so they start afresh as it
+    // turns up) and of what the saturator puts out; and what an analog type's output is scaled by for them.
+    double inLevel_ = -1.0;
+    double outLevel_ = 0.0;
+    double makeUp_ = 1.0; // the gain they give, worked out again in makeUpIn_ + 1 samples
+    int makeUpIn_ = 0;
+    double driveScale_ = 1.0;
 #ifdef __EMSCRIPTEN__
     double guard_ = 1e-20; // see process()
 #endif

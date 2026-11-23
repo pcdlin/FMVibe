@@ -183,8 +183,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     taps one to four of its stages (6 to 24 dB), the resonance coming from around all four. Each stage saturates
     what it takes in, on a curve close to tanh, as a transistor ladder's pairs do: an operator at its usual level
     comes out warmed (a sine's 3rd harmonic about 30 dB under it, where the low-pass leaves it clean), and Drive's
-    saturator feeds it at full level rather than taken back down, so its stages saturate on top of it (its output is
-    taken down instead). The saturator holds what it feeds in under twice the level it holds the other types' (the
+    saturator feeds it at full level rather than brought back to the level the sound went in at, so its stages
+    saturate on top of it (its output is brought back instead). The saturator holds what it feeds in under twice the level it holds the other types' (the
     same curve, larger), so a loud, driven sound reaches the stages' own saturation, whose first stage takes the input
     less the resonance's feedback: the louder the sound goes in, the less room is left for the feedback, and the
     resonance comes down, as in a driven transistor ladder. A full-level saw through 85 % resonance comes out of full
@@ -216,7 +216,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     down 9), and self-oscillates from about 93 % in the same way, held at 90 % once a released note has faded;
   - Sallen-Key LP and Sallen-Key HP: a two-pole Sallen-Key filter, as in Korg's MS-20, 12 dB only: soft without
     resonance (two poles at the cutoff), with its resonance's loop through a clipper set low, so that as Resonance
-    rises it screams and breaks up rather than ringing clean. It takes Drive at full level, its output taken down, as
+    rises it screams and breaks up rather than ringing clean. It takes Drive at full level, its output brought back, as
     the ladder does, but held under the other types' level: what goes in passes it unsaturated, all but its loop's
     share, so more would only make it louder. It self-oscillates from about 93 % in the same way, held at 90 % once a
     released note has faded;
@@ -238,7 +238,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   Every filter's Cutoff, the filter effect's too, starts (and resets) at its knob's middle, about 632 Hz: there,
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
   far the cutoff follows the note from C4 on, an octave per octave at 100 %; 0 to begin with, on every filter) and
-  Drive (saturation before the filter, anti-aliased like the shapers), and **Mix**, which blends what goes in (before
+  Drive (saturation before the filter, anti-aliased like the shapers, its output brought back to the level the sound
+  went in at: two followers of the power, of what goes in and of what the saturator puts out, averaged over 50 ms,
+  give the gain back, so a quiet sound and a loud one keep their levels at any Drive, within a dB once settled, and
+  Drive changes the tone alone; until 0.17 its output was divided by the drive's square root, taking a full-level
+  operator 5 dB down at full Drive and putting a quiet one 9 dB up), and **Mix**, which blends what goes in (before
   Drive) with what the filter makes of it, as the filter effect's does (100 % to begin with, all filter): everything
   the filter puts out, to the output, the operators, the filters and the shapers, is that blend. A voice only ends once its filters have
   rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings

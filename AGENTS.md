@@ -345,6 +345,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     resonance coming out of full Drive with its peak some 20 dB further under its fundamental than undriven (with
     Drive held under 1, as it was, 9 to 10 dB in a voice filter and 14 in the effect, which hears the voices 12 dB
     down);
+  - Drive keeping a sound's level: a saw at -24 to +6 dB through an open low-pass and Sallen-Key low-pass, at Drive
+    50 and 100 %, coming out within 1 dB of its level undriven, and a note starting at full Drive peaking no more than
+    2 dB over where it settles;
   - the Random source's steps and glides, and at 0 Hz a value for each note, anywhere, at once and held (a mono
     retrigger taking a new one), a freeform shape's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), a Curve source playing sample for sample as
