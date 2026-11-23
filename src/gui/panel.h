@@ -145,7 +145,8 @@ public:
     // and an effect's slot (or kMaxSources and a split's node, its container). Noting where one shows (as much of it as
     // `shown` shows), for the mouse to find, a theme whose cards go without an outline to outline it under the mouse
     // and its fold button to show then; a card's face, as every card's is painted (its shadow, its fill in the cards'
-    // plain color, and its outline in `color` at `edge` while it is on), noted; and what the View still lays out and
+    // plain color, or tinted with `color` as cardFace() says, and its outline in `color` at `edge` while it is on),
+    // noted; and what the View still lays out and
     // paints of an effect's card: its widgets below its title row, and the card itself (its face, its title and its
     // display; its widgets are painted with the others).
     virtual void noteCard(int card, Rect r, Rect shown) = 0;

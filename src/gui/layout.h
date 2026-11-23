@@ -1499,7 +1499,7 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 608.0f;
+constexpr float kSettingsH = 642.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
 constexpr float kSettingsLookY = 294.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -1549,6 +1549,11 @@ inline Rect settingsGrid(Rect panel) {
 inline Rect settingsHandles(Rect panel, int size) {
     constexpr float kStep = (kSettingsTrackW + 4.0f) / 3.0f;
     return {panel.x + kSettingsTrackX + size * kStep, panel.y + kSettingsLookY + 202.0f, kStep - 4.0f, 28.0f};
+}
+// Under them, CARDS and its Plain (0) and Tinted (1), as wide as two of the handles' sizes.
+inline Rect settingsCards(Rect panel, int tinted) {
+    constexpr float kStep = (kSettingsTrackW + 4.0f) / 3.0f;
+    return {panel.x + kSettingsTrackX + tinted * kStep, panel.y + kSettingsLookY + 236.0f, kStep - 4.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

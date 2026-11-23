@@ -149,6 +149,7 @@ public:
         settings.linkIntensity = userSettings.links;
         settings.gridIntensity = userSettings.grid;
         settings.seqFull = userSettings.seqFull;
+        settings.tintedCards = userSettings.tintedCards;
         return settings;
     }
     // In the user's web browser.
@@ -261,6 +262,7 @@ protected:
         userSettings.links = settings.linkIntensity;
         userSettings.grid = settings.gridIntensity;
         userSettings.seqFull = settings.seqFull;
+        userSettings.tintedCards = settings.tintedCards;
         writeUserSettings();
     }
     void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }

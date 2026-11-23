@@ -81,7 +81,7 @@ struct Palette {
     // filled with a tint of their color.
     bool flat = false;
     Color ops[kOps]{};         // A to F: its node, its tab and the routes it sends
-    float cardTint = 0.0f;     // how strongly a split's container shows the band it holds in the band's color
+    float cardTint = 0.0f;     // how strongly a split's container shows its band, and a card its color while tinted
     Color nodeTop{}, nodeBottom{};
     float capShadow = 0.0f;    // a shadow under each knob cap, this dark
     float panelShadow = 0.0f;  // a soft shadow under the panels and the tab shown, this dark, which then go unoutlined
@@ -293,6 +293,14 @@ inline Color ringColor(Color source, Color arc) {
     if (!look.flat || apart >= kRingClash)
         return source;
     return lightTheme() ? mix(source, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.45f) : mix(source, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f);
+}
+// Whether a flat theme's cards are tinted with their own color (EditorSettings::tintedCards), which View::paint() sets
+// from the controller, as it does `glowing`.
+extern bool tintedCards;
+// A card's face, as the View's paintCardFace() fills it: the cards' color, tinted with `color` (faintly while off) in a
+// flat theme while tinted cards are on.
+inline Color cardFace(Color color, bool on) {
+    return look.flat && tintedCards ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
 }
 // The disc behind a node's x or power symbol in the graphs: the cards' color, under the mouse the raised one's, or in a
 // flat theme the track's (Spectrum's cards are lighter than its raised controls, its track lighter than both).

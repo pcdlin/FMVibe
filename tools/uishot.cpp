@@ -258,8 +258,9 @@ public:
     void setMpeBendRange(int semitones) override { mpeRange = semitones; }
     EditorSettings editorSettings() const override {
         return {.theme = themeName, .accentHue = hue, .glow = glowLevel, .handleSize = handles, .linkIntensity = links,
-                .gridIntensity = grid, .seqFull = seqFull};
+                .gridIntensity = grid, .seqFull = seqFull, .tintedCards = tinted};
     }
+    bool tinted = false;
     double grid = EditorSettings::kDefaultGridIntensity;
     bool seqFull = true;
     bool hasTempo() const override { return offersTempo; }
@@ -296,6 +297,7 @@ protected:
         links = settings.linkIntensity;
         grid = settings.gridIntensity;
         seqFull = settings.seqFull;
+        tinted = settings.tintedCards;
     }
 
 public:
@@ -2590,10 +2592,6 @@ void testTitleActionFace(const std::filesystem::path &dir, Renderer &renderer) {
     check(shown, "a card title's fold and x show an action's face only under the mouse");
 }
 
-// A card title row's fold shows only while the mouse is over the card, and its x always: nothing drawn in the fold's
-// place with the mouse elsewhere, its chevron with it over the card's display, and gone again once it leaves, while the
-// x's cross shows throughout, in Midnight and in Spectrum; the fold still taking a click while hidden; and shown with
-// no mouse once a finger has touched the editor (read off the rendered pixels, against the card's face beside them).
 // The preset browser's names stand out from the rows' authors: a name at rest (not picked, the mouse away) further
 // from the row's background than its author is, in every theme (read off the rendered pixels: the inkiest pixel of
 // each, by its channels' distance from the background beside them).
@@ -2635,6 +2633,54 @@ void testBrowserNamesStandOut(const std::filesystem::path &dir, Renderer &render
     check(apart, "the preset browser's names stand out from their authors in every theme (read off the rendered pixels)");
 }
 
+// With tinted cards on, a Spectrum or Porcelain card's face takes its own color (an LFO's card nearer the theme's color
+// for its place than the plain face), and Midnight's and Light's stay as they are (read off the rendered pixels, on the card's
+// face below its title row, clear of what is on it).
+void testTintedCards(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    const Rect card = detail::sourceCard(0.0f);
+    const Point face{card.x + 4.0f, card.y + 44.0f};
+    const Point away{600.0f, 328.0f};
+    auto channels = [](uint32_t c) { return std::array<int, 3>{int(c >> 16 & 255), int(c >> 8 & 255), int(c & 255)}; };
+    bool tints = true, leaves = true;
+    for (const char *theme : {"Spectrum", "Porcelain", "Midnight", "Light"}) {
+        model.themeName = theme;
+        view.mouseMove(away, {});
+        model.tinted = false;
+        const uint32_t plain = renderer.save(view, dir / (std::string("17t-cards-plain-") + theme + ".png"))
+                                   ? renderer.pixel(face)
+                                   : 0u;
+        model.tinted = true;
+        const uint32_t tinted = renderer.save(view, dir / (std::string("17t-cards-tinted-") + theme + ".png"))
+                                    ? renderer.pixel(face)
+                                    : 0u;
+        // How far each is from the LFO's own color in the theme, the color the card would take.
+        const Color own = detail::kThemes[detail::themeIndex(theme)].sources[0];
+        auto apart = [&](uint32_t c) {
+            const auto a = channels(c);
+            return std::abs(a[0] - int(own.r * 255.0f)) + std::abs(a[1] - int(own.g * 255.0f)) +
+                   std::abs(a[2] - int(own.b * 255.0f));
+        };
+        std::printf("      %s: the card's face %06X plain, %06X tinted (%d and %d from its color)\n", theme,
+                    plain & 0xFFFFFFu, tinted & 0xFFFFFFu, apart(plain), apart(tinted));
+        const bool flat = std::string(theme) == "Spectrum" || std::string(theme) == "Porcelain";
+        if (flat)
+            tints = tints && plain != 0u && tinted != plain && apart(tinted) < apart(plain);
+        else
+            leaves = leaves && plain != 0u && tinted == plain;
+    }
+    model.tinted = false;
+    model.themeName = "Midnight";
+    check(tints && leaves, "tinted cards tint Spectrum's and Porcelain's cards with their color, and leave Midnight's "
+                           "and Light's (read off the rendered pixels)");
+}
+
+// A card title row's fold shows only while the mouse is over the card, and its x always: nothing drawn in the fold's
+// place with the mouse elsewhere, its chevron with it over the card's display, and gone again once it leaves, while the
+// x's cross shows throughout, in Midnight and in Spectrum; the fold still taking a click while hidden; and shown with
+// no mouse once a finger has touched the editor (read off the rendered pixels, against the card's face beside them).
 void testTitleActionsOnHover(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -15073,6 +15119,16 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, handlesButton(0));
     check(startsSmall && picksLarge && picksMedium && model.handles == 0 && handlesShot && model.values == handlesBefore,
           "the settings dialog's HANDLES picks the depth handles' size");
+    // CARDS: Plain to begin with, Tinted tinting a flat theme's cards, leaving the patch alone.
+    auto cardsButton = [&](int tinted) { return detail::settingsCards(dialog, tinted).center(); };
+    const bool startsPlain = !model.tinted;
+    click(view, cardsButton(1));
+    const bool picksTinted = model.tinted;
+    view.mouseMove(cardsButton(0), {});
+    const bool cardsShot = renderer.save(view, dir / "14h2-settings-cards.png");
+    click(view, cardsButton(0));
+    check(startsPlain && picksTinted && !model.tinted && cardsShot && model.values == handlesBefore,
+          "the settings dialog's CARDS switches tinted cards on and off");
     click(view, closeDialog);
     view.mouseMove(cog, {});
     check(renderer.save(view, dir / "14b-settings-closed.png"), "render the cog after the dialog closed");
@@ -15167,6 +15223,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testTitleActionFace(dir, renderer);
     testTitleActionsOnHover(dir, renderer);
     testBrowserNamesStandOut(dir, renderer);
+    testTintedCards(dir, renderer);
     testFlatModulatedKnob(dir, renderer);
     testModEndMarks(dir, renderer);
     testFlatThemes(dir, renderer);

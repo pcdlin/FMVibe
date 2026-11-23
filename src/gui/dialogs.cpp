@@ -49,6 +49,10 @@ std::vector<View::Widget> View::settingsWidgets() const {
     for (int size = 0; size < kModHandleSizeCount; ++size)
         add(Kind::SettingsHandles, settingsHandles(panel, size), -1, size);
     mergeButtons(list, row);
+    row = list.size();
+    for (int tinted = 0; tinted < 2; ++tinted)
+        add(Kind::SettingsCards, settingsCards(panel, tinted), -1, tinted);
+    mergeButtons(list, row);
     add(Kind::SettingsManual, settingsManual(panel));
     add(Kind::SettingsClose, settingsClose(panel));
     return list;
@@ -89,7 +93,7 @@ void View::paintSettings(Canvas &c) {
            Align::Left);
     c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
            Align::Left);
-    // LOOK: the themes, their main color's hue, the glow, the sources' lines and the depth handles' size.
+    // LOOK: the themes, their main color's hue, the glow, the sources' lines, the depth handles' size and the cards.
     const float lookY = panel.y + kSettingsLookY;
     c.line({panel.x + 24.0f, lookY + 0.5f}, {panel.right() - 24.0f, lookY + 0.5f}, kBorder, 1.0f);
     c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), kTextLabel, kFaint, Align::Left, true);
@@ -117,11 +121,15 @@ void View::paintSettings(Canvas &c) {
     const Rect handles = settingsHandles(panel, 0);
     c.text({panel.x + 24.0f, handles.y, kSettingsLabelW, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim,
            Align::Left, true);
-    c.text({panel.x + 24.0f, lookY + 244.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
+    // CARDS, faint in a theme that outlines its cards, where tinting does nothing (its buttons still take clicks).
+    const Rect cards = settingsCards(panel, 0);
+    c.text({panel.x + 24.0f, cards.y, kSettingsLabelW, cards.h}, tr(Str::SettingsCards), kTextLabel,
+           look.flat ? kDim : kFaint, Align::Left, true);
+    c.text({panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, lookY + 270.5f}, {panel.right() - 24.0f, lookY + 270.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f};
+    c.line({panel.x + 24.0f, lookY + 304.5f}, {panel.right() - 24.0f, lookY + 304.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, lookY + 312.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())

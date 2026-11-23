@@ -1507,6 +1507,8 @@ your web browser.
 - **Lines**: how strongly the dashed lines from a source's handle to its targets are drawn (75 % by default).
 - **Grid**: how strongly the sequencer's grid lines are drawn (50 % by default).
 - **Handles**: the size of the depth handles: Small (default), Medium or Large.
+- **Cards**: **Plain** (default) or **Tinted**. Tinted gives each effect and source card a faint wash of its own
+  color in Spectrum and Porcelain. Midnight and Light outline their cards in color instead, so it changes nothing there.
 
 Double-click a slider to reset it. The plugin window's size is also remembered, shrunk to fit the screen if it is
 larger, and so is whether the keyboard strip is collapsed: new instances open at the size you last resized a plugin

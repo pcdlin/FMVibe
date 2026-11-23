@@ -2406,6 +2406,7 @@ void View::paint(Canvas &c, Rect area) {
     hue_ = shownHue();
     look = withAccentHue(kThemes[theme_], hue_); // its main color turned to the hue the settings pick
     glow_ = glowing = shownGlow();
+    tintedCards = controller_.editorSettings().tintedCards;
     links_ = shownLinks();
     handles_ = controller_.editorSettings().handleSize;
     ++cardPaint_;
@@ -2887,7 +2888,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         paintAmpCab(c, cab, slot);
         // Dimmed as its controls are (switched off, the whole card's body is dimmed instead, see dimmedAreas()).
         if (on && value(paramIndex(slot, FxParam::AmpCabOn)) < 0.5)
-            c.fillRect(cab, kCardColor.alpha(1.0f - kDimOpacity), kRadiusCard);
+            c.fillRect(cab, cardFace(fx, on).alpha(1.0f - kDimOpacity), kRadiusCard);
         const float x = ampDivider(card);
         c.line({x, display.y}, {x, card.bottom() - 12.0f}, kBorder, 1.0f);
         break;
@@ -4837,14 +4838,18 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsOption:
     case Kind::SettingsMpe:
     case Kind::SettingsMpeRange:
-    case Kind::SettingsHandles: {
-        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks.
+    case Kind::SettingsHandles:
+    case Kind::SettingsCards: {
+        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, and the cards' look in a theme
+        // that outlines its cards, though they still take clicks.
         const bool on = w.kind == Kind::SettingsOption    ? controller_.oversampling() == w.b
+                        : w.kind == Kind::SettingsCards   ? controller_.editorSettings().tintedCards == (w.b != 0)
                         : w.kind == Kind::SettingsMpe     ? controller_.mpe() == (w.b != 0)
                         : w.kind == Kind::SettingsHandles ? std::clamp(controller_.editorSettings().handleSize, 0,
                                                                        kModHandleSizeCount - 1) == w.b
                                                           : controller_.mpeBendRange() == w.b;
-        const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
+        const bool faint = (w.kind == Kind::SettingsMpeRange && !controller_.mpe()) ||
+                           (w.kind == Kind::SettingsCards && !look.flat);
         const Color accent = faint ? kDim : kAccent;
         paintButtonFace(c, w, on, hovered, accent, 0.22f, kRadiusControl); // in its row's pill, or on its own
         char factor[16];
@@ -4855,6 +4860,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const std::string label = w.kind == Kind::SettingsOption    ? std::string(factor)
                                   : w.kind == Kind::SettingsMpe     ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
                                   : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
+                                  : w.kind == Kind::SettingsCards
+                                      ? std::string(tr(w.b ? Str::SettingsCardsTinted : Str::SettingsCardsPlain))
                                                                     : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
         c.text(w.rect, label, kTextBody, on ? (faint ? litInk(kDim) : litInk(kText)) : kDim, Align::Center, on);
         break;
@@ -6770,6 +6777,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.setEditorSettings(settings);
         break;
     }
+    case Kind::SettingsCards: {
+        EditorSettings settings = controller_.editorSettings();
+        settings.tintedCards = w.b != 0;
+        controller_.setEditorSettings(settings);
+        break;
+    }
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
     case Kind::SettingsLinks:
     case Kind::SettingsGrid:
@@ -7073,12 +7086,12 @@ bool View::cardOutlined(int id, bool dragged) const {
 }
 
 // An effect's or a source's card under what it holds: its shadow, its fill in the cards' plain color in every theme
-// (its own color goes on what is on it: its icon or handle, its knobs' arcs, its curves and its lit switches), and its
-// outline (in its color at `edge` while it is on), and noted as card `id`, as much of it as `shown` shows, for the
+// (its own color goes on what is on it: its icon or handle, its knobs' arcs, its curves and its lit switches), or with
+// tinted cards on in a flat theme tinted with its color, faintly while it is off (cardFace()), and its outline (in its color at `edge` while it is on), and noted as card `id`, as much of it as `shown` shows, for the
 // mouse to find.
 void View::paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown) {
     paintCardShadow(c, card);
-    c.fillRect(card, kCardColor, kRadiusCard);
+    c.fillRect(card, cardFace(color, on), kRadiusCard);
     noteCard(id, card, shown);
     if (cardOutlined(id, dragged))
         c.strokeRect(card, dragged ? color : (on ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
@@ -7093,11 +7106,11 @@ std::vector<View::DimArea> View::dimmedAreas() const {
             const float card = cardOf(s);
             if (card == kOffScreen || mods_.sourceOn(s) || sourceFolded(s))
                 continue;
-            areas.push_back({body(sourceCard(card, sourceSpan(s))), kCardColor, sourceCardClip()});
+            areas.push_back({body(sourceCard(card, sourceSpan(s))), cardFace(kSourceColors[s], false), sourceCardClip()});
         }
     // So is a switched-off effect's, in the effects graph's inspector or along the row.
     for (const auto &[slot, p, clip] : fxPanel_.offCards())
-        areas.push_back({body(p), kCardColor, clip});
+        areas.push_back({body(p), cardFace(fxTypeColor(fx_.slotType(slot)), false), clip});
     // And the inspector's page while its operator, filter or shaper is off, below the tabs, title and switch.
     if (!inspectorCovered() && !routing_.nodeOn(controller_.layout().selectedNode))
         areas.push_back({kInspectorPage, Color{0.0f, 0.0f, 0.0f, 0.0f}, kInspectorPage});

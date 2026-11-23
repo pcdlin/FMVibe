@@ -222,6 +222,7 @@ enum class WidgetKind {
     SettingsMpeRange, // b = the MPE bend range it picks, in semitones
     SettingsTheme,  // b = the theme it picks
     SettingsHandles, // b = the depth handles' size it picks
+    SettingsCards,  // b = 1 tints a flat theme's cards with their own color, 0 leaves them plain
     SettingsGlow,   // the slider for how strongly the graphs' curves glow
     SettingsHue,    // the slider for the theme's main color
     SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn

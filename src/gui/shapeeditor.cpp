@@ -1290,7 +1290,7 @@ void ShapeEditor::paintLfoCard(Canvas &c, float card, int lfo) {
     // widgets are dimmed as disabled ones are).
     if (shapeEditing() == lfo)
         c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h},
-                   kCardColor.alpha(1.0f - kDimOpacity), kRadiusMark);
+                   cardFace(kSourceColors[lfo], mods_.sourceOn(lfo)).alpha(1.0f - kDimOpacity), kRadiusMark);
 }
 
 // --- Its widgets.

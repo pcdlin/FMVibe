@@ -851,6 +851,9 @@ STR(SettingsHandles, "HANDLES") // the depth handles' size, beside its buttons
 STR(SettingsHandlesSmall, "Small")
 STR(SettingsHandlesMedium, "Medium")
 STR(SettingsHandlesLarge, "Large")
+STR(SettingsCards, "CARDS") // whether a flat theme's cards are tinted with their own color, beside its buttons
+STR(SettingsCardsPlain, "Plain")
+STR(SettingsCardsTinted, "Tinted")
 STR(SettingsLookSaved,"Applies to all instances.")
 STR(SettingsVersion, "FMVibe {1}") // the version number, at the bottom
 STR(SettingsLicense, "Released under the MIT license")

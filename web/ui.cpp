@@ -96,6 +96,7 @@ public:
         settings_.gridIntensity =
             grid.empty() ? EditorSettings::kDefaultGridIntensity : std::clamp(std::atof(grid.c_str()), 0.0, 1.0);
         settings_.seqFull = setting("seqFull") != "0";
+        settings_.tintedCards = setting("tintedCards") == "1";
         const std::string tempo = setting("tempo");
         tempo_ = tempo.empty() ? kDefaultTempo : clampTempo(std::atof(tempo.c_str()));
         layout_.keysCollapsed = setting("keysCollapsed") == "1";
@@ -249,6 +250,8 @@ protected:
             js_set_setting("gridIntensity", std::to_string(settings.gridIntensity).c_str());
         if (settings.seqFull != settings_.seqFull)
             js_set_setting("seqFull", settings.seqFull ? "1" : "0");
+        if (settings.tintedCards != settings_.tintedCards)
+            js_set_setting("tintedCards", settings.tintedCards ? "1" : "0");
         settings_ = settings;
     }
 

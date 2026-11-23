@@ -419,6 +419,9 @@ struct EditorSettings {
     // Whether the SEQ view shows at its full size, over the modulation panel too, or at its half size, over the panels'
     // row alone (see SeqPanel::full()); full to begin with.
     bool seqFull = true;
+    // Whether a theme whose cards go without an outline (Spectrum, Porcelain) tints each effect's and source's card with
+    // its own color, as it did before cards were plain; off (plain cards) to begin with.
+    bool tintedCards = false;
 
     // Each held to its range, as Controller::setEditorSettings() stores them. A hue below 0 stays as it is: any such
     // is the theme's own (the settings dialog sets -1), and one the user's settings file holds is written back as read.

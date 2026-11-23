@@ -2370,7 +2370,8 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   the editor alone, as large as the screen takes it in its shape, the button in the screen's top right corner to
   leave it (and a phone turned to landscape where the browser lets the page say so); where the browser can't put a
   page in full screen (an iPhone's Safari) the button isn't shown. Spectrum and Porcelain share a flat look: each
-  effect and source card in the cards' plain color, as in every theme, its own color on its icon or handle, its
+  effect and source card in the cards' plain color, as in every theme (or, with the settings' Cards on Tinted,
+  tinted with its own color, faintly while it is switched off), its own color on its icon or handle, its
   knobs, its curves and its lit switches, and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it
@@ -2414,8 +2415,11 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
   its grid lines: Off draws none, 100 % twice as strongly as 50 %. With the mouse resting on any of the four sliders
   (not while one is dragged), a tooltip under it says what it sets and that a double-click puts it back. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
-  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All six
-  are yours rather than the
+  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). **Cards**,
+  Plain (to begin with) or Tinted, tints each effect's and source card's face with its own color in Spectrum and
+  Porcelain, as those themes drew their cards before they were plain (switched off, faintly); Midnight and Light
+  outline their cards in their colors instead, so there it changes nothing, and its name and buttons are faint, still
+  taking a click. All seven are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license. A book before its x (its tooltip "Open the user manual") opens the user manual online, at the address the
