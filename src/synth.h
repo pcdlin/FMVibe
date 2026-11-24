@@ -306,9 +306,10 @@ public:
     int activeVoiceCount() const;
     // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
     bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
-    // The editor's Play button (see Sequencer::preview()): the sequencer plays its pattern whatever Play says, the keys
-    // playing notes meanwhile. The telemetry's seqPreview says whether it does.
-    void setSeqPreview(bool on) { seq_.preview(on); }
+    // The editor's Play button (see Sequencer::preview()): the sequencer plays its pattern whatever Play says, from its
+    // loop's start or the pattern's step `from`, the keys playing notes meanwhile. The telemetry's seqPreview says
+    // whether it does.
+    void setSeqPreview(bool on, double from = -1.0) { seq_.preview(on, from); }
     // Whether the sequencer's curves take the pitch bend, the mod wheel or a macro's knob anywhere now.
     bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0 || seqMacroHeld_ != 0; }
     // Whether a key or a sustain pedal holds a note whose end only a later event can bring: a key down (the sequencer's

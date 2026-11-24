@@ -401,9 +401,10 @@ void PluginCore::auditionBend(double semitones) {
 }
 
 // In the queue with the keys, so a key pressed after the button is played as it says.
-void PluginCore::playSeqPreview(bool on) {
+void PluginCore::playSeqPreview(bool on, double from) {
     KeyEvent ev{0, on};
     ev.preview = true;
+    ev.from = from;
     keys_.push(ev);
     hostRequestProcess();
 }
@@ -418,7 +419,7 @@ void PluginCore::playKeys() {
             continue;
         }
         if (ev.preview) {
-            synth_.setSeqPreview(ev.on);
+            synth_.setSeqPreview(ev.on, ev.from);
             continue;
         }
         const NoteRef note{-1, ev.audition ? kAuditionPort : int16_t{0}, 0, static_cast<int16_t>(ev.note)};

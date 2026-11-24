@@ -37,15 +37,18 @@ void Sequencer::reset() {
     keyRunning_ = keyStarted_ = false;
     keyClock_ = 0.0;
     previewing_ = false;
+    previewFrom_ = -1.0;
+    startFrom_ = 0.0;
     hostShift_ = 0.0;
     position_ = -1.0f;
     forgetCurves();
 }
 
-void Sequencer::preview(bool on) {
+void Sequencer::preview(bool on, double from) {
     if (on == previewing_ || (on && !enabled_))
         return;
     previewing_ = on;
+    previewFrom_ = on && std::isfinite(from) ? from : -1.0;
     // Either way it starts over: on, from the loop's start, its own clock; off, as Play says, which a key held to start
     // it must be pressed again for (the synth lets the keys it took go as they stop being taken).
     keyCount_ = 0;
@@ -350,6 +353,18 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
             keyClock_ = 0.0;
             running_ = false;
             restarted = true;
+            if (previewing_ && previewFrom_ >= 0.0) { // the button, from a step: the clock where its cycle plays it
+                const double at = previewFrom_;
+                previewFrom_ = -1.0;
+                const int length = std::max(loopLength(), 1);
+                if (at >= loopStart_ && at < loopEnd_ && order_ != SeqOrder::Random) {
+                    const int step = static_cast<int>(std::floor(at));
+                    const int into = step - loopStart_;
+                    const int index = order_ == SeqOrder::Reverse ? length - 1 - into : into;
+                    keyClock_ = swung(index + (at - step));
+                    startFrom_ = index + (at - step);
+                }
+            }
         }
         run = keyRunning_ || previewing_;
         from = keyClock_;
@@ -375,9 +390,10 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
         // the two stretches nor in both.
         from = next_;
     }
-    if (!running_) { // starting: the notes the playhead is in the middle of play from here
+    if (!running_) { // starting: the notes the playhead is in the middle of play from here (from a step, none before it)
         chase_ = true;
-        chaseFrom_ = 0.0;
+        chaseFrom_ = startFrom_;
+        startFrom_ = 0.0;
         if (hostClock) { // locked to the host's bars again
             from -= hostShift_;
             hostShift_ = 0.0;

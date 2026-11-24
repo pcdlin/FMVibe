@@ -87,11 +87,13 @@ public:
     }
     void auditionBend(double semitones) override { lastAuditionBend = semitones; }
     // The SEQ card's Play button, which the audio thread takes at once here: the telemetry says it plays.
-    void playSeqPreview(bool on) override {
+    void playSeqPreview(bool on, double from) override {
         previews.push_back(on);
+        previewFrom = from;
         live.seqPreview = on;
     }
     std::vector<bool> previews; // what the Play button asked, in order
+    double previewFrom = -2.0;  // and where it asked to start last
     double lastAuditionBend = 0.0; // how far the notes heard alone were bent last
     int lastAudition = -1; // the last note the SEQ view played to be heard alone
     int auditioning = 0;   // and how many of them it holds down
@@ -4298,8 +4300,10 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
 // The SEQ card's Play button, at the Pattern row's right end: with the sequencer off, it does nothing, and the whole
 // view but the card's power switch and size button is drawn dimmed (read off the rendered pixels: a picked pattern's
 // button, a note and the snap's button dimmer than with it on, the size button as it is); on, a click plays the pattern,
-// the button lit while the telemetry says it plays (read off the rendered pixels), and a second click stops it, neither editing a param nor leaving anything to undo. And a note's end dragged past the
-// pattern's end stops at it, as does the note dragged right and moved by the Right arrow.
+// the button lit while the telemetry says it plays (read off the rendered pixels), and a second click stops it, neither
+// editing a param nor leaving anything to undo; it starts at the first note picked within the loop, or with none, at the
+// loop's start. And a note's end dragged past the pattern's end stops at it, as does the note dragged right and moved
+// by the Right arrow.
 void testSeqPlay(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -4374,6 +4378,34 @@ void testSeqPlay(const std::filesystem::path &dir, Renderer &renderer) {
     check(playShot && model.previews.size() == 2 && model.previews[0] && !model.previews[1] && playing != resting &&
               stopped == resting && untouched,
           "the SEQ card's Play button plays the pattern and stops it, lit while it plays, editing nothing");
+
+    // From the notes picked: none, from the loop's start (-1); the note at step 8 clicked, from it; both picked (Ctrl+A),
+    // from the earlier, at 4; and with the loop from step 6, the note at 4 outside it left out, from 8.
+    put(1, 8.0, 2.0, 64);
+    view.poll();
+    auto playFrom = [&] {
+        click(view, button);
+        view.poll();
+        const double from = model.previewFrom;
+        click(view, button); // and stopped
+        view.poll();
+        return from;
+    };
+    const double fromNone = playFrom();
+    click(view, at(9.0, 64.0));
+    const double fromOne = playFrom();
+    view.seqKey(View::Key::SelectAll, false);
+    const double fromBoth = playFrom();
+    model.set(paramIndex(0, SeqPatternParam::LoopStart), 6.0);
+    view.poll();
+    const double fromLoop = playFrom();
+    model.set(paramIndex(0, SeqPatternParam::LoopStart), 0.0);
+    model.set(seqNoteIndex(0, 1, SeqNoteParam::Length), 0.0);
+    view.poll();
+    std::printf("      Play from: nothing picked %.0f, the note at 8 %.0f, both %.0f, the loop from 6 %.0f\n", fromNone, fromOne,
+                fromBoth, fromLoop);
+    check(fromNone == -1.0 && fromOne == 8.0 && fromBoth == 4.0 && fromLoop == 8.0,
+          "the SEQ card's Play button starts at the first note picked in the loop, or at the loop's start");
 
     // The pattern's end: a note at step 12, four long, has its end dragged two steps past the bar (at 16) and stays
     // ending there; dragged right by its middle, and moved by the Right arrow, it goes no further.

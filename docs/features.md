@@ -911,7 +911,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **The Play button** on the SEQ card plays it whatever Play says (`Sequencer::preview()`, through
     `Controller::playSeqPreview()` and the audio thread's key queue, the telemetry's `seqPreview` saying whether it
     plays): from the loop's start on a clock of its own at the tempo, as written but for Octave and Transpose (no key
-    transposing it), until it is clicked again, the sequencer is switched off or the plugin is reset. Meanwhile the
+    transposing it), until it is clicked again, the sequencer is switched off or the plugin is reset. With notes picked
+    in the roll, it starts at the earliest one's start within the loop (`SeqPanel::seqPreviewFrom()`; picked notes
+    outside the loop are passed over, and with none inside it, from the loop's start): its clock starts where its
+    cycle plays that step, going the way the Order goes (Random order from the loop's start), with that step's Swing
+    delay taken off so the note sounds at once, and no note from before it chased. Meanwhile the
     keys play notes as they would without the sequencer (in Key and Latch, those it held as it started are let go, the
     host told they have ended), and the host's transport leaves it be. Stopped, it plays as Play says again: in Host,
     from the transport's place, chasing; in Key and Latch, once a key is pressed. It does nothing while the sequencer is

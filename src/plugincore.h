@@ -83,7 +83,7 @@ public:
     void playNote(int note, bool on, int velocity) override;
     void auditionNote(int note, bool on) override;
     void auditionBend(double semitones) override;
-    void playSeqPreview(bool on) override;
+    void playSeqPreview(bool on, double from = -1.0) override;
     void setScope(int op, int cycles) override {
         scopeOp_.store(op, std::memory_order_relaxed);
         scopeCycles_.store(cycles, std::memory_order_relaxed);
@@ -349,7 +349,8 @@ private:
         int velocity = 100;    // MIDI's, 0-127
         bool bend = false;     // the notes heard on their own bent `semitones` (see Controller::auditionBend())
         double semitones = 0.0;
-        bool preview = false; // the Play button, `on` or off (see Controller::playSeqPreview())
+        bool preview = false; // the Play button, `on` or off, from the pattern's step `from` (Controller::playSeqPreview())
+        double from = -1.0;
     };
 
     Synth synth_;

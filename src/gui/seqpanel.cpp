@@ -453,6 +453,20 @@ bool SeqPanel::seqSelected(int slot) const {
            value(seqNoteIndex(seqPattern(), slot, SeqNoteParam::Start)) < seqSteps();
 }
 
+double SeqPanel::seqPreviewFrom() const {
+    const int pattern = seqPattern(), steps = seqSteps();
+    const int loopStart = stepped(value(paramIndex(pattern, SeqPatternParam::LoopStart)), 0, steps - 1);
+    const int storedEnd = stepped(value(paramIndex(pattern, SeqPatternParam::LoopEnd)), 0, kSeqMaxSteps);
+    const int loopEnd = storedEnd <= 0 ? steps : std::clamp(storedEnd, loopStart + 1, steps);
+    double from = -1.0;
+    for (int slot : seqPicked()) {
+        const double start = value(seqNoteIndex(pattern, slot, SeqNoteParam::Start));
+        if (start >= loopStart && start < loopEnd && (from < 0.0 || start < from))
+            from = start;
+    }
+    return from;
+}
+
 std::vector<int> SeqPanel::seqPicked() const {
     std::vector<int> picked;
     if (seqSelectionPattern_ != seqPattern())
@@ -2122,7 +2136,7 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
         return true;
     case Kind::SeqPreview: // played or stopped, as it shows; switched off, nothing
         if (seqOn())
-            controller().playSeqPreview(!host_.telemetry().seqPreview);
+            controller().playSeqPreview(!host_.telemetry().seqPreview, seqPreviewFrom());
         return true;
     case Kind::SeqTile: {
         // What the roll shows, in the shown pattern's tile: dragged, it scrolls the roll (see seqDrag()).
@@ -3140,6 +3154,7 @@ std::string SeqPanel::tooltip(const Widget &w) const {
     if (w.kind == Kind::SeqPreview)
         return tr(!seqOn()                       ? Str::TipSeqPreviewOff
                   : host_.telemetry().seqPreview ? Str::TipSeqPreviewStop
+                  : seqPreviewFrom() >= 0.0      ? Str::TipSeqPreviewPlayFrom
                                                  : Str::TipSeqPreviewPlay);
     switch (w.kind) {
     case Kind::SeqTool:

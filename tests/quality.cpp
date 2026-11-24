@@ -6065,6 +6065,37 @@ void sequencerChecks() {
         seq.configure(off);
         check(offIgnored && !seq.previewing(), "the Play button plays nothing while the sequencer is off, and stops with it");
 
+        // From a step (the first note picked): the note at 6 at once, the one at 4 only once the loop comes round; with
+        // Reverse, the note at 6 and two steps later the one at 4; with Swing at 75 %, a note on the odd step 5 at once
+        // too; from step 2, outside the loop, from its start.
+        auto from = [&](const ParamValues &q, double step, double steps) {
+            Sequencer f;
+            f.prepare(kSampleRate);
+            f.configure(q);
+            f.preview(true, step);
+            return planOn(f, 0.0, steps);
+        };
+        const std::vector<Event> at6 = from(p, 6.0, 3.0);
+        ParamValues reverse = p;
+        reverse[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Reverse);
+        const std::vector<Event> back6 = from(reverse, 6.0, 2.5);
+        ParamValues swung = p;
+        swung[paramIndex(SeqParam::Swing)] = 0.75;
+        note(swung, 2, 5.0, 1.0, 62);
+        const std::vector<Event> at5 = from(swung, 5.0, 0.5);
+        const std::vector<Event> outside = from(p, 2.0, 0.5);
+        std::printf("      played from a step: from 6, on %d at %.0f (%zu events); reversed, then on %d at %.0f; swung from "
+                    "5, on %d at %.0f; from 2, on %d\n",
+                    at6.empty() ? -1 : at6[0].key, at6.empty() ? -1.0 : at6[0].frame, at6.size(),
+                    back6.size() > 2 ? back6[2].key : -1, back6.size() > 2 ? back6[2].frame : -1.0,
+                    at5.empty() ? -1 : at5[0].key, at5.empty() ? -1.0 : at5[0].frame,
+                    outside.empty() ? -1 : outside[0].key);
+        check(at6.size() == 2 && at6[0].on && at6[0].key == 66 && near(at6[0].frame, 0.0) && back6.size() == 3 &&
+                  back6[0].key == 66 && near(back6[0].frame, 0.0) && back6[2].on && back6[2].key == 62 &&
+                  near(back6[2].frame, 2.0 * kStep) && !at5.empty() && at5[0].on && at5[0].key == 64 &&
+                  near(at5[0].frame, 0.0) && !outside.empty() && outside[0].key == 62 && near(outside[0].frame, 0.0),
+              "the Play button starts at a step of the loop, the way the Order goes, and else at the loop's start");
+
         ParamValues host = blank();
         note(host, 0, 0.0, 1.0, 60);
         note(host, 1, 5.0, 1.0, 64);

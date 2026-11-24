@@ -54,7 +54,7 @@ class FMVibeProcessor extends AudioWorkletProcessor {
         this.dsp.dsp_audition_bend(message.semitones);
         break;
       case 'seqPreview':
-        this.dsp.dsp_seq_preview(message.on ? 1 : 0);
+        this.dsp.dsp_seq_preview(message.on ? 1 : 0, message.from ?? -1);
         break;
       case 'tempo':
         this.dsp.dsp_tempo(message.bpm);

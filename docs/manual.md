@@ -1193,7 +1193,8 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   picks gets a ring (with nothing playing, the one the macros and mod wheel pick). Under the buttons, a line shows how far each modulation reaches, with depth handles
   you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
 - **Play** button, at the right of the Pattern row: plays the pattern from the start of its loop, whatever the Play
-  mode below is set to. You don't need the host's transport or a key. It plays the notes as written, with Octave and
+  mode below is set to. You don't need the host's transport or a key. If notes are selected in the roll, it starts at
+  the earliest selected note in the loop instead. It plays the notes as written, with Octave and
   Transpose but not moved by a key. While it plays, the keyboard plays notes as usual, and the button shows **Stop**:
   click it to stop. It only works while the sequencer is on, and switching the sequencer off stops it.
 - **Play**:

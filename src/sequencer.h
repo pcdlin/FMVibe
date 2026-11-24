@@ -71,8 +71,11 @@ public:
     // The editor's Play button: on, it plays the pattern from its loop's start on a clock of its own, as written but for
     // Octave and Transpose, whatever Play says (the host's transport and the keys leaving it be, the keys playing notes
     // as they would without it), until it is turned off, the sequencer is switched off or reset() comes. Off, it goes
-    // back to playing as Play says. Nothing while the sequencer is off.
-    void preview(bool on);
+    // back to playing as Play says. Nothing while the sequencer is off. `from`, a step of the pattern within its loop
+    // (fractions between; the start of the first note picked in the roll), starts it there instead, going the way the
+    // Order goes and the notes before it left out, Swing's delay of that step taken off so a note there starts at once;
+    // -1, or a step outside the loop, or Random order, from the loop's start.
+    void preview(bool on, double from = -1.0);
     bool previewing() const { return previewing_; }
     bool sounding() const { return soundingCount_ > 0; }
 
@@ -187,6 +190,8 @@ private:
     bool keyStarted_ = false; // a key started it since the last plan(): its clock starts over
     double keyClock_ = 0.0;   // the clock of a run from a key or the Play button
     bool previewing_ = false; // the Play button plays it (see preview())
+    double previewFrom_ = -1.0; // the pattern's step it starts at, -1 for the loop's start (see preview())
+    double startFrom_ = 0.0;    // and where in played steps, unswung: the notes before it aren't chased
     // Whole played steps the clock runs ahead of the host's transport since a loop moved under it (see keepPlace()); 0
     // as the transport starts or jumps, which locks the pattern to its bars again.
     double hostShift_ = 0.0;
