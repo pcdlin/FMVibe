@@ -1072,7 +1072,7 @@ void buildTable(ParamTable &t) {
         setting(SeqParam::Enabled, Str::ParamSeqOn, ParamKind::Toggle, 0.0, 1.0, 0.0);
         setting(SeqParam::Pattern, Str::ParamSeqPattern, ParamKind::SeqPattern, 0.0, kSeqPatterns - 1.0, 0.0);
         setting(SeqParam::Play, Str::ParamSeqPlay, ParamKind::SeqPlay, 0.0, static_cast<double>(SeqPlay::Count) - 1.0,
-                0.0);
+                static_cast<double>(SeqPlay::Key));
         setting(SeqParam::Rate, Str::ParamSeqSpeed, ParamKind::SeqRate, 0.0, static_cast<double>(SeqRate::Count) - 1.0,
                 static_cast<double>(SeqRate::Sixteenth));
         setting(SeqParam::Swing, Str::ParamSeqSwing, ParamKind::Percent, 0.5, 0.75, 0.5);

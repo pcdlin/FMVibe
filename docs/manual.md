@@ -1198,7 +1198,7 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you
     load it. To stop it, switch the sequencer off or pick **Key**.
-  - **Key**: plays while a key is held, from the pattern's start, transposed by the newest key relative to C4: C4
+  - **Key** (the default): plays while a key is held, from the pattern's start, transposed by the newest key relative to C4: C4
     plays the pattern as written, D4 two semitones higher. The scale's **Root** doesn't move it.
   - **Latch**: starts with a key and keeps playing after release; a new key transposes it. All Notes Off or All
     Sound Off (which hosts send when they stop) ends it.

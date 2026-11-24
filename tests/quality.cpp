@@ -38,6 +38,10 @@ void asBeforeUnisonPan(ParamValues &p) {
         p[paramIndex(op, OpParam::UnisonPan)] = static_cast<double>(UniPan::Ramp);
 }
 
+// The sequencer playing with the host's transport, its Play to begin with before version 17 made it Key: a patch saved
+// so, relabeled as an older version, loads as saved.
+void asBeforeKeyPlay(ParamValues &p) { p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host); }
+
 // The effects in `slots` one after another from the input to the output: a chain, as the effects graph wires it.
 void chain(ParamValues &p, const std::vector<int> &slots) {
     for (const auto &[index, value] : fxChainWires(slots))
@@ -2079,6 +2083,7 @@ void effectsChainChecks() {
         p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(mcThresholdIndex(3, 1))) + 1.0;
         p[slotAmountIndex(0, 0)] = 0.25;
         asBeforeUnisonPan(p);
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2238,6 +2243,7 @@ void effectsChainChecks() {
         set(4, SourceParam::Sync, 0.0);
         set(4, SourceParam::Rate, 0.0);
         asBeforeUnisonPan(p);
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2294,6 +2300,7 @@ void effectsChainChecks() {
         set(2, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(2, SourceParam::Shape, static_cast<double>(LfoShape::Triangle));
         asBeforeUnisonPan(p);
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2335,6 +2342,7 @@ void effectsChainChecks() {
         };
         put(0, SeqCurve::Bend, {{4.0, 0.5}, {12.0, -0.5}});
         put(1, SeqCurve::ModWheel, {{8.0, 0.25}, {24.0, 0.75}});
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2380,6 +2388,7 @@ void effectsChainChecks() {
         p[slotAmountIndex(0, 0)] = 0.3;
         p[slotTargetIndex(0, 1)] = slotTargetValue(squeeze);
         p[slotAmountIndex(0, 1)] = 0.3;
+        asBeforeKeyPlay(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -2405,13 +2414,15 @@ void effectsChainChecks() {
         // Before version 17, the keys transposed a pattern from Root rather than C4: a version 16 state in Key with
         // Root on D4 loads 2 semitones down in Transpose, and one on G1 with Transpose at +7 29 semitones up (Transpose at
         // +24, Octave an octave up), each key playing what it played; one with the host's transport, which Root
-        // never moved, as saved, and a version 17 state as saved.
+        // never moved, as saved, and a version 17 state as saved. (Each state holds every param, as the plugin saves
+        // one: Key is Play's default now, which a sparse one leaves out.) And Play to begin with was Host before version
+        // 17: a sparse version 16 state, holding no Play, loads Host, a version 17 one Key.
         const int play = paramIndex(SeqParam::Play), root = paramIndex(SeqParam::Root);
         const int octave = paramIndex(SeqParam::Octave), transpose = paramIndex(SeqParam::Transpose);
-        auto load = [](const ParamValues &p, uint32_t version) {
+        auto load = [](const ParamValues &p, uint32_t version, bool sparse = false) {
             std::vector<unsigned char> bytes;
             const clap_ostream_t out = memoryOut(bytes);
-            writePatch(&out, p, gui::UiLayout{}, true);
+            writePatch(&out, p, gui::UiLayout{}, sparse);
             std::memcpy(bytes.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
             MemoryReader reader{bytes.data(), bytes.size(), 0};
             const clap_istream_t in = memoryIn(reader);
@@ -2434,6 +2445,9 @@ void effectsChainChecks() {
                   g[octave] == 1.0 && shift(g) == 7.0 + 29.0 && host[transpose] == 7.0 && host[octave] == 0.0,
               "a state before version 17 playing from a key loads the Root it transposed from into Transpose");
         check(std::equal(now.begin(), now.end(), p.begin()), "a version 17 state loads its sequencer as saved");
+        const ParamValues unsaid = load(defaults(), 16, true), keyed = load(defaults(), 17, true);
+        check(unsaid[play] == static_cast<double>(SeqPlay::Host) && keyed[play] == static_cast<double>(SeqPlay::Key),
+              "a state before version 17 without the sequencer's Play loads Host, its default then, and a later one Key");
     }
     {
         // The places past the first 16: a patch with an LFO in the last place on operator A's level, the 17th place's
@@ -5054,6 +5068,7 @@ void noteBendChecks() {
     {
         ParamValues p = defaults();
         p[paramIndex(SeqParam::Enabled)] = 1.0;
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
         note(p, 0, 0.0, 8.0, 60);
         bend(p, 0, {{0.0, 0.0, 0.0}, {8.0, 8.0, 0.0}});
         struct Planned {
@@ -5226,6 +5241,7 @@ void sequencerChecks() {
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
         p[paramIndex(SeqParam::Enabled)] = 1.0;
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
         return p;
     };
     auto note = [](ParamValues &p, int slot, double start, double length, int pitch, int pattern = 0) {
@@ -5973,6 +5989,7 @@ void sequencerChecks() {
     {
         Engine e(1);
         e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
         note(e.p, 0, 0.0, 4.0, 69);
         e.synth().setTempo(120.0);
         e.synth().setTransport(true, 0.0, 0.0);
@@ -5990,6 +6007,7 @@ void sequencerChecks() {
     {
         Engine e(1);
         e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Host);
         note(e.p, 0, 1.0, 1.0, 69);
         e.synth().setTempo(120.0);
         e.synth().setTransport(true, 0.0, 0.0);

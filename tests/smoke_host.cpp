@@ -2550,6 +2550,7 @@ int main(int argc, char **argv) {
         };
         out.noteEnds.clear();
         setParams({{paramIndex(SeqParam::Enabled), 1.0},
+                   {paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Host)},
                    {seqNoteIndex(0, 0, SeqNoteParam::Start), 0.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Length), 2.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 69.0}});
@@ -2576,7 +2577,7 @@ int main(int argc, char **argv) {
         check(idle == 0.0f && keyed > 0.05f && heldNoEnd && keyEnded && after == 0.0f,
               "in Key, a key held plays the pattern, and its end is reported as it is let go");
         setParams({{paramIndex(SeqParam::Enabled), 0.0},
-                   {paramIndex(SeqParam::Play), 0.0},
+                   {paramIndex(SeqParam::Play), static_cast<double>(SeqPlay::Key)},
                    {seqNoteIndex(0, 0, SeqNoteParam::Length), 0.0},
                    {seqNoteIndex(0, 0, SeqNoteParam::Pitch), 60.0}});
         out.noteEnds.clear();
@@ -4952,6 +4953,10 @@ int main(int argc, char **argv) {
         check(volumeKept == volumeAfter, "a value from the host just after the plugin told it one is not taken");
         in.events.clear();
 
+        // Once that moment has passed, the host's values are taken again: those of the params the patch loaded back
+        // above changed too, which the SEQ tab's check switches the sequencer on by (and the checks below).
+        Sleep(600);
+
         // The SEQ tab: the wheel with Ctrl in its message's keys (and this thread's own idea of Ctrl up, as while the
         // host has the keyboard) zooms the roll in about its middle, so a double-click at its left edge puts a note
         // further on than step 0, where it put one before. (Coordinates in view units, scaled by 0.75.)
@@ -5000,7 +5005,6 @@ int main(int argc, char **argv) {
             check(put && ctrlUp && unzoomed == 0.0 && zoomed >= 2.0 && read(length) == 0.0,
                   "Ctrl in a wheel message's keys zooms the SEQ view's roll, whatever this thread thinks of Ctrl");
         }
-        Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
 
         // A shaper effect dragged along the line leaves it for a moment as its wires change one by one: no restart is
         // asked for, since the latency ends as it was. One taken out of the line does ask for one, once the edit is

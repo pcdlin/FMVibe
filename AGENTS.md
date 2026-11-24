@@ -288,7 +288,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     points that hold their ends as they played, a version 14 state's as saved, wrapping around; and a version 14
     state's Sync warp's amount and the depth on it loading 7/15 as large, as its reach grew from 8 times a cycle to
     16, a Squeeze's as saved, a version 15 state's as saved; and a version 16 state in Key with its Root off C4 loading
-    that difference into Transpose (and Octave past its reach), one in Host as saved, a version 17 state's as saved;
+    that difference into Transpose (and Octave past its reach), one in Host as saved, a version 17 state's as saved, and one without the sequencer's Play loading Host, a version 17 one Key;
   - the phase disperser's Key Track and Stretch against the chain they make, from the same coefficients: an impulse
     through Key Track with a C4, a C5 and (at 50 %) a C6 coming out as through the chain at Freq and an octave up, and
     through Stretch 4, 37 and 4 at 96 kHz (eight samples) as the plain chain's impulse response spread that far apart,
@@ -1585,7 +1585,8 @@ itself.
   version 17, a sequencer playing from a key (Key or Latch) with its Root off C4 loads that difference into Transpose,
   and Octave what Transpose can't hold (`transposeFromRoot()`), since the keys now transpose a pattern from C4
   (`kSeqTransposeFrom`) and Root sets the scale alone;
-  version 17's sequencer notes may also bend, an earlier state loading with none),
+  version 17's sequencer notes may also bend, an earlier state loading with none, and its Play is Key to begin with, an
+  earlier state without one loading Host, its default then),
   followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which

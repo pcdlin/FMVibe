@@ -164,7 +164,7 @@ private:
     double sampleRate_ = 48000.0;
     const ParamValues *params_ = nullptr;
     bool enabled_ = false;
-    SeqPlay play_ = SeqPlay::Host;
+    SeqPlay play_ = SeqPlay::Key;
     int patternWanted_ = 0;
     int pattern_ = 0;
     int rate_ = static_cast<int>(SeqRate::Sixteenth);

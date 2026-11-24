@@ -897,7 +897,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   with it rather than being chased again (`Sequencer::keepPlace()`, whole steps, an even number of them where the loop's
   length allows, so Swing's pairs stay); with the host's transport it locks to the bars again once the transport
   starts or jumps. Random order follows no place in the loop and goes on picking as it was.
-  - **Play**: **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
+  - **Play** (Key to begin with; a patch saved at state version 16 or earlier that doesn't say loads Host, which it was to
+    begin with then): **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
     play the synth on top). In the browser demo, whose transport always plays and starts again from the song's start
     as a preset loads, a preset set to Host plays its pattern from its start as it loads, with no key held. Each block it plays on from where the last one ended while the host's position is within
     a thousandth of a step of it (a position rounds, one handed in seconds most of all, as `fmvibe-uihost`'s is), so a
