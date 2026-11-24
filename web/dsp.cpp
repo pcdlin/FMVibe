@@ -82,6 +82,11 @@ EMSCRIPTEN_KEEPALIVE void dsp_audition_bend(double semitones) {
         synth.noteExpression({-1, kAuditionPort, -1, -1}, CLAP_NOTE_EXPRESSION_TUNING, semitones);
 }
 
+// The SEQ view's Play button (see Synth::setSeqPreview()).
+EMSCRIPTEN_KEEPALIVE void dsp_seq_preview(int on) {
+    synth.setSeqPreview(on != 0);
+}
+
 // The page's tempo (BPM), standing in for a host's transport: synced LFOs, delays and sweeps follow it.
 EMSCRIPTEN_KEEPALIVE void dsp_tempo(double bpm) {
     synth.setTempo(bpm);

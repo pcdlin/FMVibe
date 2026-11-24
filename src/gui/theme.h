@@ -358,11 +358,17 @@ void paintPill(Canvas &c, Rect r, bool lit);
 // - A button that opens a list or a menu (+ SOURCE, ALGORITHM, a list's button, the snap's): its name, after an icon
 //   where it has one, then a chevron pointing down (paintChevron()).
 // - A tab: its name, the one shown marked.
+// - A card's one main action (the SEQ card's Play): its icon and word in the accent, on the accent's tint, lit as a
+//   switch is while what it starts goes on (paintMainActionFace()).
 // - A link to what another view shows (a source card's to its modulations in MODS): its words without a face, the
 //   link's in the accent, then a chevron pointing right, lit under the mouse.
 // An action's face: raised, the track's under the mouse (`hot`) while it can act, outlined where controls are. Gives its
 // icon's ink: faint while it can't act, the text's while hot, else dim.
 Color paintActionFace(Canvas &c, Rect r, bool hot, bool can = true, float radius = kRadiusControl);
+// A card's main action's face: the accent's tint, more of it under the mouse (`hot`), outlined where controls are; `lit`
+// while what it started goes on, as a switch is (filled with the accent in a flat theme). Gives its icon's and word's
+// ink.
+Color paintMainActionFace(Canvas &c, Rect r, bool hot, bool lit, float radius = kRadiusControl);
 // A card title row's small action (its fold, its x): the face of the power switch beside it, under the mouse only.
 void paintTitleActionFace(Canvas &c, Rect r, bool hovered);
 // A chevron about `m`, pointing `way`: a button's that opens a list or a menu, or a fold's; `inRow`, a smaller one inside

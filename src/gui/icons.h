@@ -85,6 +85,8 @@ inline std::vector<double> curveKey(Curve curve, Rect r) {
 }
 
 void powerIcon(Canvas &c, Point center, Color color);
+// A transport's play triangle, about 9 x 9, or its stop square while `stop`: the SEQ card's Play button.
+void transportIcon(Canvas &c, Point center, Color color, bool stop);
 void keyboardIcon(Canvas &c, Point center, Color color, bool crossed);
 void resetIcon(Canvas &c, Point center, Color color);
 // A die showing five, about 12 x 12: the partial editor's random button.

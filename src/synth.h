@@ -149,6 +149,7 @@ struct Telemetry {
     // Where the sequencer plays, in its pattern's steps, and which pattern; -1 while it doesn't (see Sequencer).
     float seqPosition = -1.0f;
     int seqPattern = 0;
+    bool seqPreview = false; // the Play button plays the pattern (see Synth::setSeqPreview())
     std::array<uint32_t, 4> seqKeys{}; // the pitches the notes the sequencer holds on are written at, as `keys` has keys
     // What the sequencer's mod wheel curve adds to the Mod Wheel param as it plays, 0 while it doesn't: the mod wheel
     // shows the param as the editor has it with this on top. (What its bend curve adds is in `bend`.)
@@ -305,6 +306,9 @@ public:
     int activeVoiceCount() const;
     // Whether the sequencer may start notes of its own (see Sequencer::wantsProcessing()), or holds some on.
     bool sequencerAwake() const { return seq_.wantsProcessing() || seq_.sounding(); }
+    // The editor's Play button (see Sequencer::preview()): the sequencer plays its pattern whatever Play says, the keys
+    // playing notes meanwhile. The telemetry's seqPreview says whether it does.
+    void setSeqPreview(bool on) { seq_.preview(on); }
     // Whether the sequencer's curves take the pitch bend, the mod wheel or a macro's knob anywhere now.
     bool seqCurvesApplied() const { return seqBend_ != 0.0 || seqWheel_ != 0.0 || seqMacroHeld_ != 0; }
     // Whether a key or a sustain pedal holds a note whose end only a later event can bring: a key down (the sequencer's

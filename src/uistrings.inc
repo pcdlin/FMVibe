@@ -1109,6 +1109,11 @@ STR(TipSeqLaneMacro, "Pattern macro curves")
 STR(TipSeqLaneMacroPick, "Choose macro") // the arrow at the macros' tab's right end, which opens their list
 STR(TipSeqRoot, "The scale's root")
 STR(TipSeqPower, "Sequencer on/off")
+STR(SeqPreviewPlay, "Play") // the SEQ card's Play button, which plays the pattern whatever its Play row says
+STR(SeqPreviewStop, "Stop") // and while it plays
+STR(TipSeqPreviewPlay, "Play the pattern from the loop start, as written. Keys play notes meanwhile")
+STR(TipSeqPreviewStop, "Stop the pattern")
+STR(TipSeqPreviewOff, "Switch the sequencer on to play the pattern")
 STR(TipSeqFull, "Full size") // the SEQ view's size button, at its half size: over the modulation panel too
 STR(TipSeqHalf, "Half size") // and at its full size: back over the panels' row alone
 STR(TipSeqZoomOutX, "Zoom out horizontally (Ctrl+wheel)")

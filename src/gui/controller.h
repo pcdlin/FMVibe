@@ -592,6 +592,10 @@ public:
     // The notes heard so, bent `semitones` from their pitch (a note bend's point dragged in the SEQ view), until the next
     // is heard. A Controller that can't bend them plays them unbent.
     virtual void auditionBend(double) {}
+    // The SEQ view's Play button: the sequencer plays its pattern from the loop's start, as written but for Octave and
+    // Transpose, whatever Play says, until turned off (the keys playing notes meanwhile, as without it). The telemetry's
+    // seqPreview says whether it plays: the sequencer switched off or the plugin reset stops it.
+    virtual void playSeqPreview(bool) {}
     // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
     // over how many of its cycles.
     virtual void setScope(int op, int cycles) = 0;

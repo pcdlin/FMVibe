@@ -462,6 +462,8 @@ inline Rect seqPatternReach() {
     return {row.x + 14.0f, row.bottom() + 3.0f, 90.0f, 1.5f};
 }
 constexpr float kSeqPatternHandlesY = kSeqPatternY + 22.0f + 11.0f; // the depth handles' centers
+// The Play button, at the Pattern row's right end, clear of the buttons and their modulation's reach.
+constexpr Rect kSeqPreviewButton{kSeqCard.x + kSeqCard.w - 12.0f - 64.0f, kSeqPatternY, 64.0f, 22.0f};
 // The card's switch between the view's full and half size, left of its power switch: the Curve card's expand and
 // collapse button.
 constexpr Rect kSeqSizeButton{kSeqCard.x + kSeqCard.w - 12.0f - 26.0f - 4.0f - 26.0f, kSeqTitleY, 26.0f, 22.0f};

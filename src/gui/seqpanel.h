@@ -45,6 +45,10 @@ public:
     bool full() const;
     const detail::SeqRoll &roll() const;
     void toggleSize(); // the full size or the half, kept in the user's settings
+    bool seqOn() const; // the sequencer's power switch
+    // While it is off, where the View draws the widgets dimmed: all of the view but the card's title row, whose power
+    // switch and size button stay as they are (what it paints there it dims itself, see paintBack()).
+    std::vector<Rect> offAreas() const;
 
     void widgets(std::vector<Widget> &list) const override;
     void popups(std::vector<Widget> &list) const override; // the scale's and the snap's lists, over everything

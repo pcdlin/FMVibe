@@ -890,7 +890,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   likely it plays each time round, drawn the same way each time a step comes round again, so a render plays alike),
   **Slide** (it holds on into the next note, a step at most, so mono legato and glide join them; a next note starting
   before its end leaves it ending there, as written) and **Mute** (kept,
-  silent). A pattern's **loop**, from step to step within its length (all of it to begin with), is what plays.
+  silent). A pattern's **loop**, from step to step within its length (all of it to begin with), is what plays. The
+  loop moved or resized while it plays, it plays on from the step it is at, going the same way (where that step is
+  now outside the loop, from where it falls in it, as many steps from the loop's start as the cycle had it), rather
+  than where the new loop's cycles counted from the song's start or the key would put it, and the notes playing move
+  with it rather than being chased again (`Sequencer::keepPlace()`, whole steps, an even number of them where the loop's
+  length allows, so Swing's pairs stay); with the host's transport it locks to the bars again once the transport
+  starts or jumps. Random order follows no place in the loop and goes on as it was.
   - **Play**: **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
     play the synth on top). In the browser demo, whose transport always plays and starts again from the song's start
     as a preset loads, a preset set to Host plays its pattern from its start as it loads, with no key held. Each block it plays on from where the last one ended while the host's position is within
@@ -902,6 +908,14 @@ What the plugin does and how its editor works, in full. Building and installing 
     its root off C4 loads that difference into Transpose, and Octave what Transpose can't hold, playing as it did); **Latch** starts with a key and plays on once they are let go, a
     new key transposing it, until All Notes Off or All Sound Off (MIDI CC 123 or 120, as a host sends as it stops). In Key and Latch the keys play no notes of their own: the host is told each one has ended
     as it is let go.
+  - **The Play button** on the SEQ card plays it whatever Play says (`Sequencer::preview()`, through
+    `Controller::playSeqPreview()` and the audio thread's key queue, the telemetry's `seqPreview` saying whether it
+    plays): from the loop's start on a clock of its own at the tempo, as written but for Octave and Transpose (no key
+    transposing it), until it is clicked again, the sequencer is switched off or the plugin is reset. Meanwhile the
+    keys play notes as they would without the sequencer (in Key and Latch, those it held as it started are let go, the
+    host told they have ended), and the host's transport leaves it be. Stopped, it plays as Play says again: in Host,
+    from the transport's place, chasing; in Key and Latch, once a key is pressed. It does nothing while the sequencer is
+    off. It is the editor's, not a param: hosts don't see it, and presets and the host's state don't keep it.
   - **Speed** sets a step's length as a multiple of a 1/16 step's speed, at the host's tempo (the roll's snap names
     its grids for a step of a 1/16): ×1/4, ×1/3, ×1/2, ×2/3, ×3/4, ×1 (to begin with), ×1.5 or ×2, a step of a 1/4,
     1/8 dotted, 1/8, 1/16 dotted, 1/8 triplet, 1/16, 1/16 triplet or 1/32. (Its param, `SeqParam::Rate`, kept its id and
@@ -947,7 +961,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     key it starts at the pattern's start, with the host from the song's start, and another pattern taking over as
     the loop comes round chases none of its notes ringing across the loop's end from before.
   - While it may start notes (in Host while
-    it is on; in Key and Latch while it runs), the plugin doesn't let the host put processing to sleep.
+    it is on; in Key and Latch while it runs; while the Play button plays it), the plugin doesn't let the host put
+    processing to sleep.
   - Its settings but Root and Scale are given to hosts, for automation (not modulation); a pattern's length, loop,
     notes, their bends and curves are the editor's alone.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
@@ -1002,7 +1017,9 @@ ones in a card's title row, its fold and its x, show that face only under the mo
 beside them, and the fold shows at all only while the mouse is over the card (an effect's, a source's or a split's
 container, the effects in its bands counting as over it, and from a finger's first touch on, always), still taking a click while hidden. A switch or a choice of a param is set in a well and lit in its color, a row of them all icons or all words. A
 button that opens a list or a menu shows its name, after an icon where it has one, then a chevron pointing down, one
-chevron alike on every such button (a smaller one inside a row). A tab is its name, the one shown marked.
+chevron alike on every such button (a smaller one inside a row). A tab is its name, the one shown marked. A card's one
+main action (the Seq card's Play) is its icon and word in the accent, on the accent's tint, lit as a switch is while
+what it started goes on.
 
 - **Routing / Matrix / FX / Seq / Mods** tabs, under the header, pick what the panel below them shows: the routing
   graph or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or
@@ -1030,7 +1047,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     a host may modulate it, and the button modulation picks, while it isn't the one set, is ringed, as the dot on its
     reach shows it (with nothing playing, where the macros and the mod wheel take it); under the row, as under a knob, its modulations' reach (a line from A's middle to D's, with the set
     pattern's tick and the live dot) and their depth handles, centered, Play sitting lower to leave them room; the sequencer takes a pattern modulation picks as it takes one clicked, at once while nothing plays
-    and else where the loop comes round; **Play** Host | Key | Latch; the
+    and else where the loop comes round; at the row's right end the **Play** button (see Sequencer), the card's main
+    action: a play icon and its word in the accent, on the accent's tint, saying Stop with a stop icon and lit as a
+    switch is (filled with the accent in a flat theme) while the telemetry says the pattern plays, a click playing or
+    stopping it, editing no param and leaving nothing to undo; **Play** Host | Key | Latch; the
     controls in two rows of four, Speed and Length (the pattern's, in bars) over Octave and Transpose at the left, as
     steppers, and the knobs Swing and Gate over Humanize and Velocity at the right (those four modulation targets, as an effect's knobs
     are: the sources' handles drop on them, the Mods view's target menu lists them under Sequencer, and the host may
@@ -1045,6 +1065,10 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     those of notes off it all the same, their names faint. The rows' ground follows the keys alone, whatever the scale:
     a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
     hatched across, folded or not. Its switches say what they do in their tooltips (Play's what each mode does).
+  - **Switched off**, the whole view but the card's power switch and size button is drawn dimmed, as a switched-off
+    node's page is (`SeqPanel::offAreas()` for its widgets, a layer at the dimmed opacity for what it paints itself,
+    the cards' and the roll's faces left as they are): everything still edits, but the Play button does nothing and
+    says, in its tooltip, to switch the sequencer on.
   - **PATTERNS**, a card like it under it, down to the panel's bottom: a tile a pattern, A to D, one under another,
     its letter at its left (lit, and the tile tinted and ringed, while it is the pattern picked) and its notes drawn
     small after it: across, the longest pattern's length (a shorter one's tile ends short, a line at each bar, outside
@@ -1090,7 +1114,7 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     and the wheel turned sideways do; the middle button (or two fingers, outside the browser demo) drags the roll
     across and up and down. The
     zoom and what is scrolled across belong to the editor and aren't saved. Notes are brighter as they are louder (at full velocity
-    at full strength, and a little dimmer while the sequencer is off), dashed with their chance at less than full,
+    at full strength), dashed with their chance at less than full,
     hollow while muted, a hook off their end with Slide; those picked are ringed, a handle at their end. As the
     sequencer plays, a note glows as the playhead reaches it, fading over as long as the note lasts at the tempo, as
     strongly as the glow setting says (not at all with it off).
@@ -1106,7 +1130,9 @@ chevron alike on every such button (a smaller one inside a row). A tab is its na
     turning it). **Draw**: a click puts a note
     down (the cursor a pen), and held, the mouse up or down sets its velocity, a step a pixel from 100; with Shift, a
     drag paints a note in each grid step it crosses that has none; a note clicked is moved or stretched as in Select
-    (the cursor saying which over it). Each edit is one undo step.
+    (the cursor saying which over it). Each edit is one undo step. No note is moved, stretched or drawn past the
+    pattern's end: a drag or the arrows move the notes picked only as far as every one of them still ends within it,
+    an end dragged or a note lengthened as it is drawn stops at it, and a note put down near it is cut short there.
   - **Note bends** (see Sequencer): each bent note's bend is a line from its start along its points to its end, across
     the rows (a row a semitone; folded to the scale, between the rows it falls between, in proportion), lighter than
     the notes and faint behind them unless Bend is picked, a faint ribbon down to the note's own row, dashed for a note muted or at a chance below full, and past

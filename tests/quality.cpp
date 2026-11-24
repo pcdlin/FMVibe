@@ -6002,6 +6002,169 @@ void sequencerChecks() {
         check(first >= static_cast<size_t>(kStep) && first < static_cast<size_t>(kStep) + 64,
               "the sequencer's note sounds from its sample, however the blocks are split");
     }
+    // Plans `steps` more from `seq`, the transport playing from `fromStep` (Host's clock; the others ignore it), in
+    // stretches of `piece`; `each` called before each stretch with the step it starts at, `positions` taking where it
+    // plays after each.
+    auto planOn = [&](Sequencer &seq, double fromStep, double steps, uint32_t piece = 512,
+                      const std::function<void(double)> &each = {}, std::vector<float> *positions = nullptr) {
+        std::vector<Event> events;
+        std::array<SeqEvent, Sequencer::kMaxEvents> out;
+        for (double done = 0.0; done < steps * kStep;) {
+            if (each)
+                each(fromStep + done / kStep);
+            uint32_t covered = 0;
+            const int n = seq.plan(piece, 120.0, true, (fromStep + done / kStep) / 4.0, out, covered);
+            for (int i = 0; i < n; ++i)
+                events.push_back({done + out[i].frame, out[i].on, out[i].key});
+            if (positions)
+                positions->push_back(seq.position());
+            done += covered;
+        }
+        return events;
+    };
+    // The Play button (Sequencer::preview()): whatever Play says, the pattern from its loop's start on a clock of its
+    // own, as written but for Octave and Transpose, the keys left to play notes; off, back to Play's way. In Key with no
+    // key held and the loop from step 4: the note there at once, with Transpose's 2 semitones and no key's, the next two
+    // steps on; turned off in that one, it ends, and the keys go to the sequencer again. Nothing while the sequencer is
+    // off, and switched off, it stops. In Host, from the loop's start though the transport stands at step 37.5, and once
+    // off, with the transport again, its next note where the bar comes round.
+    {
+        ParamValues p = blank();
+        p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        p[paramIndex(SeqParam::Transpose)] = 2.0;
+        p[paramIndex(0, SeqPatternParam::LoopStart)] = 4.0;
+        note(p, 0, 4.0, 1.0, 60);
+        note(p, 1, 6.0, 1.0, 64);
+        Sequencer seq;
+        seq.prepare(kSampleRate);
+        seq.configure(p);
+        const bool keysBefore = seq.takesKeys(), awakeBefore = seq.wantsProcessing();
+        seq.preview(true);
+        const bool keysDuring = seq.takesKeys(), awake = seq.wantsProcessing();
+        const std::vector<Event> e = planOn(seq, 0.0, 2.5);
+        seq.preview(false);
+        const std::vector<Event> after = planOn(seq, 0.0, 2.0);
+        std::printf("      played by the button in Key: %zu events, the first on %d at %.0f, the second on %d at %.0f; "
+                    "stopped, %zu\n",
+                    e.size(), e.empty() ? -1 : e[0].key, e.empty() ? -1.0 : e[0].frame, e.size() > 2 ? e[2].key : -1,
+                    e.size() > 2 ? e[2].frame : -1.0, after.size());
+        check(keysBefore && !awakeBefore && !keysDuring && awake && e.size() == 3 && e[0].on && e[0].key == 62 &&
+                  near(e[0].frame, 0.0) && !e[1].on && near(e[1].frame, kStep) && e[2].on && e[2].key == 66 &&
+                  near(e[2].frame, 2.0 * kStep) && after.size() == 1 && !after[0].on && after[0].key == 66 &&
+                  near(after[0].frame, 0.0) && seq.takesKeys() && !seq.previewing(),
+              "the Play button plays the pattern from its loop's start, as written but for Transpose, the keys left be");
+        ParamValues off = p;
+        off[paramIndex(SeqParam::Enabled)] = 0.0;
+        Sequencer idle;
+        idle.prepare(kSampleRate);
+        idle.configure(off);
+        idle.preview(true);
+        const bool offIgnored = !idle.previewing();
+        seq.preview(true);
+        planOn(seq, 0.0, 0.5);
+        seq.configure(off);
+        check(offIgnored && !seq.previewing(), "the Play button plays nothing while the sequencer is off, and stops with it");
+
+        ParamValues host = blank();
+        note(host, 0, 0.0, 1.0, 60);
+        note(host, 1, 5.0, 1.0, 64);
+        Sequencer h;
+        h.prepare(kSampleRate);
+        h.configure(host);
+        h.preview(true);
+        const std::vector<Event> fromStart = planOn(h, 37.5, 1.5);
+        h.preview(false);
+        const std::vector<Event> back = planOn(h, 39.0, 10.0);
+        std::printf("      played by the button in Host at step 37.5: first on %d at %.0f; off again, the next on %d at step "
+                    "%.2f\n",
+                    fromStart.empty() ? -1 : fromStart[0].key, fromStart.empty() ? -1.0 : fromStart[0].frame,
+                    back.empty() ? -1 : back[0].key, back.empty() ? -1.0 : 39.0 + back[0].frame / kStep);
+        check(fromStart.size() == 2 && fromStart[0].on && fromStart[0].key == 60 && near(fromStart[0].frame, 0.0) &&
+                  !back.empty() && back[0].on && back[0].key == 60 && near(back[0].frame, 9.0 * kStep),
+              "in Host, the Play button plays from the loop's start, then the transport takes it back");
+    }
+    // Through the synth, in Key: the Play button plays the pattern, a key pressed meanwhile plays a note of its own beside
+    // it, and the telemetry says it plays until it is turned off.
+    {
+        auto t = std::make_unique<Telemetry>();
+        Engine e(1);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        note(e.p, 0, 0.0, 16.0, 69); // the whole bar long
+        e.synth().setTempo(120.0);
+        e.render(256);
+        e.synth().setSeqPreview(true);
+        e.render(512);
+        const int patternOnly = e.synth().activeVoiceCount();
+        e.noteOn(50);
+        e.render(512);
+        e.synth().telemetry(*t);
+        const int withKey = e.synth().activeVoiceCount();
+        const bool shown = t->seqPreview;
+        e.synth().setSeqPreview(false);
+        e.render(512);
+        e.synth().telemetry(*t);
+        std::printf("      the Play button through the synth in Key: %d voice, %d with a key pressed\n", patternOnly, withKey);
+        check(patternOnly == 1 && withKey == 2 && shown && !t->seqPreview && e.synth().isActive({-1, 0, 0, 50}),
+              "with the Play button on, keys play notes beside the pattern, and the telemetry says it plays");
+    }
+    // The loop shortened step by step under the playhead in its second time round (Key, from a key; Host, with the
+    // transport; and the Play button), a note on every step: it plays on from where it is, one note a step, up to the new
+    // loop's end and round from its start, rather than jumping about and starting the notes it lands in the middle of;
+    // and in Host, the transport jumping locks it to the bars again.
+    {
+        ParamValues p = blank();
+        for (int s = 0; s < 16; ++s)
+            note(p, s, s, 1.0, 60 + s);
+        for (int mode = 0; mode < 3; ++mode) {
+            ParamValues q = p;
+            if (mode != 1)
+                q[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(q);
+            if (mode == 0)
+                seq.keyDown(60);
+            else if (mode == 2)
+                seq.preview(true);
+            // In stretches of 250 samples, which a step's 6000 hold whole: the transport goes on from where it was.
+            planOn(seq, 0.0, 26.25, 250);
+            int end = 16;
+            std::vector<float> positions;
+            const std::vector<Event> e = planOn(
+                seq, 26.25, 2.5, 250,
+                [&](double) {
+                    if (end > 12) { // the loop's end dragged a step a stretch
+                        q[paramIndex(0, SeqPatternParam::LoopEnd)] = --end;
+                        seq.configure(q);
+                    }
+                },
+                &positions);
+            std::vector<int> ons;
+            for (const Event &ev : e)
+                if (ev.on)
+                    ons.push_back(ev.key);
+            bool steady = true;
+            for (size_t i = 1; i < positions.size(); ++i)
+                if (positions[i] < positions[i - 1] && !(positions[i - 1] > 11.0f && positions[i] < 1.0f))
+                    steady = false;
+            const char *names[] = {"Key", "Host", "the Play button"};
+            std::printf("      the loop shortened from 16 to 12 at step 10.25 (%s): %zu notes on (%d, %d), the playhead "
+                        "%.2f to %.2f%s\n",
+                        names[mode], ons.size(), ons.empty() ? -1 : ons[0], ons.size() > 1 ? ons[1] : -1,
+                        positions.empty() ? -1.0f : positions.front(), positions.empty() ? -1.0f : positions.back(),
+                        steady ? "" : ", jumping back");
+            check(steady && ons.size() == 2 && ons[0] == 71 && ons[1] == 60,
+                  "the loop shortened under the playhead: it plays on from where it is, each note once");
+            if (mode == 1) {
+                // (After the note it held ends.)
+                const std::vector<Event> jumped = planOn(seq, 48.0, 0.5);
+                const auto on = std::find_if(jumped.begin(), jumped.end(), [](const Event &ev) { return ev.on; });
+                check(on != jumped.end() && on->key == 60 && near(on->frame, 0.0),
+                      "the transport jumping locks the pattern to the bars again");
+            }
+        }
+    }
 }
 
 // The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds, and

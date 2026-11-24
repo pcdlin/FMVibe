@@ -461,7 +461,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     bending what it plays by Bend Range and a mod wheel curve moving the mod wheel's slot, the telemetry telling the
     wheels what both add as they play and nothing once the key is let go or the sequencer is switched off; and a macro's
     curve taking the place of its knob wherever the knob is set, moving what the macro modulates and no other macro, the
-    telemetry saying how far it moves the knob from where it is set and nothing once it stops; and a note's own bend
+    telemetry saying how far it moves the knob from where it is set and nothing once it stops; the Play button playing
+    the pattern from its loop's start whatever Play says, as written but for Transpose, the keys left to play notes
+    beside it (through the synth too, the telemetry saying it plays), nothing while the sequencer is off, and in Host
+    from the loop's start, the transport taking it back once it stops; and the loop shortened a step at a time under the
+    playhead in its second time round (in Key, in Host and by the Play button) playing on from where it is, each note
+    once, the transport jumping then locking it to the bars again; and a note's own bend
     planned from where the note starts, stretch after stretch, a note chased in its middle starting bent as far as it
     is there and one Gate shortens holding what it reached, and through the synth an A4 bending along its points, a
     sweep of two octaves in a step following its line within 0.3 semitones (not in stairs a stretch long), a chord's
@@ -947,6 +952,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     taken, text that isn't a tempo and Escape leaving it), none of it touching the patch, its undo history or the
     host's tempo;
   - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
+  - the SEQ card's Play button: with the sequencer off doing nothing, and the whole view dimmed but the power switch
+    and the size button (read off the rendered pixels); on, a click playing the pattern and a second stopping it, lit
+    while the telemetry says it plays (read off the rendered pixels), editing no param and leaving nothing to undo; and
+    a note's end dragged past the pattern's end, the note dragged right and moved by the Right arrow stopping at it;
   - the SEQ card's size button and a double-click on its tab (while the view shows) switching the view to its half size,
     the modulation panel back under it (read off the rendered pixels) and the overview gone, and back, kept in the user's
     settings with no param edited and nothing to undo, and a double-click whose first click shows the view leaving it;

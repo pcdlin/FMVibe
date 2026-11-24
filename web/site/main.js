@@ -160,6 +160,11 @@ const host = {
   auditionBend(semitones) {
     send({type: 'auditionBend', semitones});
   },
+  // The SEQ view's Play button: the sequencer plays its pattern whatever Play says, or stops.
+  seqPreview(on) {
+    flush(); // after the edits made before it
+    send({type: 'seqPreview', on});
+  },
   scope(op, cycles) {
     scopeAsked = {type: 'scope', op, cycles};
     send(scopeAsked);

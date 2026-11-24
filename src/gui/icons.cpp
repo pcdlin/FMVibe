@@ -32,6 +32,16 @@ void powerIcon(Canvas &c, Point center, Color color) {
     c.line({center.x, center.y - kRadius - 1.5f}, {center.x, center.y - 0.5f}, color, 1.6f);
 }
 
+void transportIcon(Canvas &c, Point center, Color color, bool stop) {
+    if (stop) {
+        c.fillRect({center.x - 4.0f, center.y - 4.0f, 8.0f, 8.0f}, color, 1.5f);
+        return;
+    }
+    // Its middle a little left of its tip, so it looks centered.
+    const Point triangle[] = {{center.x - 3.5f, center.y - 4.5f}, {center.x + 5.0f, center.y}, {center.x - 3.5f, center.y + 4.5f}};
+    c.fillPolygon(triangle, 3, color);
+}
+
 // A few piano keys, crossed out for an operator that doesn't follow them (its Fixed switch).
 void keyboardIcon(Canvas &c, Point center, Color color, bool crossed) {
     const Rect keys{center.x - 8.0f, center.y - 5.0f, 16.0f, 10.0f};

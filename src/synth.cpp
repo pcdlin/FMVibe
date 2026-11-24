@@ -953,11 +953,12 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
     // again only when its params may have changed.
     seq_.configure(params, seqStale_ || !sameParams);
     seqStale_ = false;
+    // Switched off, set to Host or played by the Play button: the keys it took are over.
+    if (keysTakenCount_ > 0 && !seq_.takesKeys())
+        releaseKeys({-1, -1, -1, -1});
     if (!seq_.enabled()) {
         if (seq_.sounding())
             applySeqEvents(seq_.stopAll(seqEvents_));
-        if (keysTakenCount_ > 0 && !seq_.takesKeys()) // switched off: the keys it took are over
-            releaseKeys({-1, -1, -1, -1});
         feedSeqFeel(params); // for the editor, which shows where modulation takes them
         followSeqCurves();
         renderSpan(left, right, frames, params, sameParams);
@@ -1648,6 +1649,7 @@ void Synth::telemetry(Telemetry &out) const {
     std::construct_at(&out);
     out.seqPosition = seq_.position();
     out.seqPattern = seq_.pattern();
+    out.seqPreview = seq_.previewing();
     out.seqKeys = seq_.soundingPitches();
     out.seqWheel = static_cast<float>(seqWheel_);
     for (int m = 0; m < kMacros; ++m)

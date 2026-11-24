@@ -53,6 +53,7 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kOutScopeBins> outScope{};
     std::atomic<float> seqPosition{-1.0f};
     std::atomic<int> seqPattern{0};
+    std::atomic<bool> seqPreview{false};
     std::array<std::atomic<uint32_t>, 4> seqKeys{};
     std::atomic<float> seqWheel{0.0f};
     std::array<std::atomic<float>, kMacros> seqMacro{};
@@ -113,6 +114,7 @@ struct SharedTelemetry {
             outScope[i].store(t.outScope[i], std::memory_order_relaxed);
         seqPosition.store(t.seqPosition, std::memory_order_relaxed);
         seqPattern.store(t.seqPattern, std::memory_order_relaxed);
+        seqPreview.store(t.seqPreview, std::memory_order_relaxed);
         for (size_t i = 0; i < seqKeys.size(); ++i)
             seqKeys[i].store(t.seqKeys[i], std::memory_order_relaxed);
         seqWheel.store(t.seqWheel, std::memory_order_relaxed);
@@ -178,6 +180,7 @@ struct SharedTelemetry {
             t.outScope[i] = outScope[i].load(std::memory_order_relaxed);
         t.seqPosition = seqPosition.load(std::memory_order_relaxed);
         t.seqPattern = seqPattern.load(std::memory_order_relaxed);
+        t.seqPreview = seqPreview.load(std::memory_order_relaxed);
         for (size_t i = 0; i < seqKeys.size(); ++i)
             t.seqKeys[i] = seqKeys[i].load(std::memory_order_relaxed);
         t.seqWheel = seqWheel.load(std::memory_order_relaxed);

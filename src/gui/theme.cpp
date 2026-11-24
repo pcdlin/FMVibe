@@ -220,6 +220,17 @@ Color paintActionFace(Canvas &c, Rect r, bool hot, bool can, float radius) {
     return !can ? kFaint : hot ? kText : kDim;
 }
 
+Color paintMainActionFace(Canvas &c, Rect r, bool hot, bool lit, float radius) {
+    if (lit && look.flat) {
+        c.fillRect(r, kAccent, radius);
+        return litInk(kAccent);
+    }
+    c.fillRect(r, kAccent.alpha(lit ? 0.3f : hot ? 0.24f : 0.14f), radius);
+    if (!look.flat)
+        c.strokeRect(r.inset(0.5f), kAccent.alpha(lit || hot ? 1.0f : 0.7f), 1.0f, radius);
+    return hot && !lit ? kText : kAccent;
+}
+
 // As tall as the power switch beside it (cardPower() in layout.h), about the same middle.
 void paintTitleActionFace(Canvas &c, Rect r, bool hovered) {
     if (hovered)

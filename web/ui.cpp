@@ -35,6 +35,7 @@ EM_JS(void, js_all_params, (const double *values, int count),
 EM_JS(void, js_note, (int key, int on, int velocity), { Module.fmvHost.note(key, on != 0, velocity); });
 EM_JS(void, js_audition, (int key, int on), { Module.fmvHost.note(key, on != 0, 100, true); });
 EM_JS(void, js_audition_bend, (double semitones), { Module.fmvHost.auditionBend(semitones); });
+EM_JS(void, js_seq_preview, (int on), { Module.fmvHost.seqPreview(on != 0); });
 EM_JS(void, js_scope, (int op, int cycles), { Module.fmvHost.scope(op, cycles); });
 EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor); });
 EM_JS(void, js_tempo, (double bpm), { Module.fmvHost.tempo(bpm); });
@@ -127,6 +128,7 @@ public:
     void playNote(int note, bool on, int velocity) override { js_note(note, on, velocity); }
     void auditionNote(int note, bool on) override { js_audition(note, on); }
     void auditionBend(double semitones) override { js_audition_bend(semitones); }
+    void playSeqPreview(bool on) override { js_seq_preview(on ? 1 : 0); }
     // The view asks every poll; only a change goes to the worklet.
     void setScope(int op, int cycles) override {
         if (op == scopeOp_ && cycles == scopeCycles_)

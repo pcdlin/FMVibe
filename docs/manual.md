@@ -1165,7 +1165,8 @@ The display shows the stereo field over frequency, with handles for each control
 ## 12. Sequencer
 
 FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **Seq** view; switch it on with the
-power switch on its settings card. At full size the view also takes the space of the modulation panel, for a taller
+power switch on its settings card. While it is off, the whole view is dimmed, but you can still edit it. At full
+size the view also takes the space of the modulation panel, for a taller
 piano roll and the patterns overview. The button next to the power switch, or a double-click on the **Seq** tab,
 switches it to half size, with the modulation panel in view, and back.
 
@@ -1191,6 +1192,10 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   modulate it too: drag a source's handle onto the buttons. Modulation moves it in whole patterns, and the pattern it
   picks gets a ring (with nothing playing, the one the macros and mod wheel pick). Under the buttons, a line shows how far each modulation reaches, with depth handles
   you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
+- **Play** button, at the right of the Pattern row: plays the pattern from the start of its loop, whatever the Play
+  mode below is set to. You don't need the host's transport or a key. It plays the notes as written, with Octave and
+  Transpose but not moved by a key. While it plays, the keyboard plays notes as usual, and the button shows **Stop**:
+  click it to stop. It only works while the sequencer is on, and switching the sequencer off stops it.
 - **Play**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you
@@ -1250,6 +1255,7 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
 - Drag a note to move the selected notes by grid steps and rows. Hold Shift or Alt to move off the grid; hold Ctrl
   to drag copies.
 - Drag a note's right or left end to change the length or start of the selected notes.
+- Notes stay inside the pattern: you can't move or lengthen a note past the pattern's end.
 - Drag from empty space to select notes with a box.
 - Double-click to add a note one grid step long (hold and drag up or down for velocity, sideways to lengthen; the
   cursor shows which way you are dragging); double-click a note to delete it.
@@ -1283,7 +1289,8 @@ A note placed on another note's start and pitch replaces it. Notes you click, dr
 button is held.
 
 **The loop**: drag its ends to resize it, its middle to move it, or across the bars outside it to draw a new one.
-Double-click the ruler to loop the whole pattern.
+Double-click the ruler to loop the whole pattern. If you change the loop while the pattern plays, it keeps playing from
+where it is. If the playhead ends up outside the new loop, it continues inside it.
 
 **Navigation**:
 

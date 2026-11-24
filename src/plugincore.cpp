@@ -400,6 +400,14 @@ void PluginCore::auditionBend(double semitones) {
     hostRequestProcess();
 }
 
+// In the queue with the keys, so a key pressed after the button is played as it says.
+void PluginCore::playSeqPreview(bool on) {
+    KeyEvent ev{0, on};
+    ev.preview = true;
+    keys_.push(ev);
+    hostRequestProcess();
+}
+
 // Audio thread: notes from the virtual keyboard play like MIDI notes without a note id, at their velocity; those the SEQ view plays to be
 // heard on a port of their own, which the sequencer leaves be.
 void PluginCore::playKeys() {
@@ -407,6 +415,10 @@ void PluginCore::playKeys() {
     while (keys_.pop(ev)) {
         if (ev.bend) { // every note heard on its own, bent
             synth_.noteExpression({-1, kAuditionPort, -1, -1}, CLAP_NOTE_EXPRESSION_TUNING, ev.semitones);
+            continue;
+        }
+        if (ev.preview) {
+            synth_.setSeqPreview(ev.on);
             continue;
         }
         const NoteRef note{-1, ev.audition ? kAuditionPort : int16_t{0}, 0, static_cast<int16_t>(ev.note)};

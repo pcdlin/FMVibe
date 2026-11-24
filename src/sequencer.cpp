@@ -36,8 +36,22 @@ void Sequencer::reset() {
     transposeKey_ = -1;
     keyRunning_ = keyStarted_ = false;
     keyClock_ = 0.0;
+    previewing_ = false;
+    hostShift_ = 0.0;
     position_ = -1.0f;
     forgetCurves();
+}
+
+void Sequencer::preview(bool on) {
+    if (on == previewing_ || (on && !enabled_))
+        return;
+    previewing_ = on;
+    // Either way it starts over: on, from the loop's start, its own clock; off, as Play says, which a key held to start
+    // it must be pressed again for (the synth lets the keys it took go as they stop being taken).
+    keyCount_ = 0;
+    transposeKey_ = -1;
+    keyRunning_ = false;
+    keyStarted_ = on;
 }
 
 void Sequencer::configure(const ParamValues &params, bool changed) {
@@ -45,6 +59,7 @@ void Sequencer::configure(const ParamValues &params, bool changed) {
     enabled_ = params[paramIndex(SeqParam::Enabled)] >= 0.5;
     if (!enabled_) { // nothing more to read: render() only ends what it holds
         keyRunning_ = false;
+        previewing_ = false;
         running_ = false;
         noteCount_ = 0;
         read_ = -1; // read again once it is on
@@ -87,15 +102,19 @@ void Sequencer::setFeel(const std::array<double, kSeqFeelCount> &feel) {
 
 void Sequencer::readPattern(int pattern) {
     noteCount_ = 0;
+    const bool same = read_ == pattern;
     read_ = params_ ? pattern : -1;
     if (!params_)
         return;
     const ParamValues &p = *params_;
     const int steps = kSeqStepsPerBar * std::clamp(stepped(p[paramIndex(pattern, SeqPatternParam::Length)], kSeqBars), 1, kSeqBars);
     curvePeriod_ = steps;
+    const int oldStart = loopStart_, oldEnd = loopEnd_;
     loopStart_ = std::clamp(stepped(p[paramIndex(pattern, SeqPatternParam::LoopStart)], kSeqMaxSteps), 0, steps - 1);
     const int end = stepped(p[paramIndex(pattern, SeqPatternParam::LoopEnd)], kSeqMaxSteps);
     loopEnd_ = end <= 0 ? steps : std::clamp(end, loopStart_ + 1, steps);
+    if (running_ && same && (loopStart_ != oldStart || loopEnd_ != oldEnd))
+        keepPlace(oldStart, oldEnd);
     for (int n = 0; n < kSeqNotes; ++n) {
         const double length = p[seqNoteIndex(pattern, n, SeqNoteParam::Length)];
         if (!(length > 0.0) || p[seqNoteIndex(pattern, n, SeqNoteParam::Mute)] >= 0.5)
@@ -153,6 +172,48 @@ void Sequencer::readPattern(int pattern) {
                 last, field(PointField::Y, curve == SeqCurve::Bend ? -1.0 : 0.0, 1.0), field(PointField::Curve, -1.0, 1.0)};
         }
         curveCount_[static_cast<size_t>(c)] = count;
+    }
+}
+
+void Sequencer::keepPlace(int oldStart, int oldEnd) {
+    if (order_ == SeqOrder::Random) // its steps follow no place in the loop
+        return;
+    // The step the next stretch starts in, and the pattern's step it played there, the old loop's way.
+    const int64_t k = floorStep(next_);
+    const int newStart = loopStart_, newEnd = loopEnd_;
+    loopStart_ = oldStart;
+    loopEnd_ = oldEnd;
+    const int step = sourceStep(k);
+    const bool back = backward(k);
+    loopStart_ = newStart;
+    loopEnd_ = newEnd;
+    // Where in the new loop's cycle that step comes (out of the loop, where it falls in it), going the same way.
+    const int64_t length = std::max(loopLength(), 1);
+    const int64_t into = wrap(step - loopStart_, length);
+    int64_t period = length, target = into;
+    if (order_ == SeqOrder::Reverse) {
+        target = length - 1 - into;
+    } else if (order_ == SeqOrder::PingPong && length > 1) {
+        period = 2 * length;
+        target = back ? period - 1 - into : into;
+    }
+    int64_t d = target - wrap(k, period);
+    // An even shift where an odd period allows one, the shorter way: Swing's pairs of steps stay where they were.
+    if (d % 2 != 0 && period % 2 != 0)
+        d += d < 0 ? period : -period;
+    if (d == 0)
+        return;
+    const double shift = static_cast<double>(d);
+    next_ += shift;
+    keyClock_ += shift;
+    hostShift_ += shift;
+    chaseFrom_ += shift;
+    for (int i = 0; i < soundingCount_; ++i) {
+        Sounding &n = sounding_[i];
+        n.step += d;
+        n.begin += shift;
+        n.end += shift;
+        n.off += shift;
     }
 }
 
@@ -279,17 +340,18 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     bool run;
     bool restarted = false;
     double from;
-    if (play_ == SeqPlay::Host) {
+    const bool hostClock = play_ == SeqPlay::Host && !previewing_;
+    if (hostClock) {
         run = playing && std::isfinite(songBeats);
-        from = run ? songBeats * kSeqStepsPerBeat[rate_] : 0.0;
+        from = run ? songBeats * kSeqStepsPerBeat[rate_] + hostShift_ : 0.0;
     } else {
-        if (keyStarted_) { // a key started it again: its clock from the start, and what it played ends
+        if (keyStarted_) { // a key or the Play button started it again: its clock from the start, and what it played ends
             keyStarted_ = false;
             keyClock_ = 0.0;
             running_ = false;
             restarted = true;
         }
-        run = keyRunning_;
+        run = keyRunning_ || previewing_;
         from = keyClock_;
     }
     int count = restarted ? stopAll(out) : 0;
@@ -316,6 +378,10 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     if (!running_) { // starting: the notes the playhead is in the middle of play from here
         chase_ = true;
         chaseFrom_ = 0.0;
+        if (hostClock) { // locked to the host's bars again
+            from -= hostShift_;
+            hostShift_ = 0.0;
+        }
     }
     // Another pattern picked: it takes over where the loop comes round (at once, if it wasn't running), planning stopping
     // there so the next call plans the new one.
@@ -354,7 +420,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
     const bool chase = chase_ && soundingCount_ < kMaxSounding; // full, it would only take a note's place
     chase_ = false;
     if (length > 0 && noteCount_ > 0) {
-        const int shift = shift_ + (play_ != SeqPlay::Host && transposeKey_ >= 0 ? transposeKey_ - kSeqTransposeFrom : 0);
+        const int shift = shift_ + (!hostClock && !previewing_ && transposeKey_ >= 0 ? transposeKey_ - kSeqTransposeFrom : 0);
         auto sounding = [&](int64_t k, int index) {
             for (int i = 0; i < soundingCount_; ++i)
                 if (sounding_[i].step == k && sounding_[i].index == index)
@@ -466,7 +532,7 @@ int Sequencer::plan(uint32_t frames, double tempo, bool playing, double songBeat
 
     next_ = to;
     running_ = true;
-    if (play_ != SeqPlay::Host)
+    if (!hostClock)
         keyClock_ = to;
     // The playhead along the step played, from its end back to its start where the pattern runs backward (Reverse, and
     // Ping-Pong on its way back), so it moves on smoothly either way.
