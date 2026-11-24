@@ -387,8 +387,10 @@ constexpr float kSeqMacroRowH = 22.0f;
 constexpr float kSeqToolW = 28.0f;
 constexpr int kSeqToolCount = 3;
 constexpr Rect seqToolButton(int b) { return {kSeqTools.x + static_cast<float>(b) * kSeqToolW, kSeqTools.y, kSeqToolW, kSeqTools.h}; }
-constexpr float kSeqSnapLabelX = kSeqTools.x + kSeqToolCount * kSeqToolW + 6.0f;
 constexpr Rect seqSnapButton() { return {kSeqTools.x + 126.0f, kSeqTools.y, 76.0f, kSeqTools.h}; }
+// SNAP's label, between the tools and its list's button, against the button (right-aligned, 6 px before it).
+constexpr Rect kSeqSnapLabel{kSeqTools.x + kSeqToolCount * kSeqToolW + 4.0f, kSeqTools.y + 1.0f,
+                             seqSnapButton().x - 6.0f - (kSeqTools.x + kSeqToolCount * kSeqToolW + 4.0f), 22.0f};
 constexpr Rect seqStretchButton(int b) { return {kSeqTools.x + 208.0f + (b > 0 ? 0.0f : 30.0f), kSeqTools.y, 28.0f, kSeqTools.h}; }
 constexpr Rect seqClearButton() { return {kSeqTools.x + kSeqTools.w - 26.0f, kSeqTools.y, 26.0f, kSeqTools.h}; }
 constexpr Rect seqFlagButton(int flag) { // Slide, then Mute, left of the bin

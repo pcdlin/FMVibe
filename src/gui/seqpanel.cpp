@@ -3411,7 +3411,7 @@ void SeqPanel::paintBack(Canvas &c) {
     label(kSeqPlayY, Str::LabelSeqPlay);
     label(kSeqOrderY, Str::LabelSeqOrder);
     label(kSeqScaleY, Str::LabelSeqScale);
-    label(kSeqTools.y + 1.0f, Str::LabelSeqSnap, kSeqSnapLabelX, 36.0f);
+    c.text(kSeqSnapLabel, tr(Str::LabelSeqSnap), kTextLabel, kDim, Align::Right, true);
     // The overview's title; its tiles are widgets (see paintSeqTile()).
     if (full())
         c.text({kSeqCardX, kSeqOverviewTitleY, 200.0f, 22.0f}, tr(Str::HeadingSeqPatterns), kTextBody, kText,
