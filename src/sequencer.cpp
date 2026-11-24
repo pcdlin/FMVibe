@@ -158,7 +158,22 @@ void Sequencer::readPattern(int pattern) {
             longest_ = std::max(longest_, notes_[i++].length);
         stepFirst_[static_cast<size_t>(s)] = i;
     }
+    // Random's steps to pick among: those notes start in, each running on to the next (the last round the loop's end).
+    noteStepCount_ = 0;
+    for (int i = 0; i < noteCount_; ++i) {
+        const int step = static_cast<int>(std::floor(notes_[i].start));
+        if (noteStepCount_ == 0 || noteStep_[static_cast<size_t>(noteStepCount_ - 1)] != step)
+            noteStep_[static_cast<size_t>(noteStepCount_++)] = step;
+    }
+    for (int i = 0; i < noteStepCount_; ++i)
+        noteStepLength_[static_cast<size_t>(i)] =
+            i + 1 < noteStepCount_ ? noteStep_[static_cast<size_t>(i + 1)] - noteStep_[static_cast<size_t>(i)]
+                                   : loopEnd_ - noteStep_[static_cast<size_t>(i)] + noteStep_[0] - loopStart_;
     chase_ = true;
+    // Random picks again from what is read now, the playhead landing elsewhere: none of the notes before chased, so a
+    // note dragged or the loop resized while it plays doesn't start note after note.
+    if (running_ && same && order_ == SeqOrder::Random)
+        chaseFrom_ = std::max(chaseFrom_, next_);
     // Its curves, their points held to their ranges and in order.
     auto get = [&](int index) { return p[index]; };
     for (int c = 0; c < kSeqCurves; ++c) {
@@ -281,10 +296,26 @@ int Sequencer::sourceStep(int64_t step) const {
         return loopStart_ + static_cast<int>(i < length ? i : period - 1 - i);
     }
     case SeqOrder::Random:
-        return loopStart_ + std::min(static_cast<int>(unit(step, -1, 3) * static_cast<double>(length)),
-                                     static_cast<int>(length) - 1);
+        return randomStep(step);
     default:
         return loopStart_ + static_cast<int>(wrap(step, length));
+    }
+}
+
+int Sequencer::randomStep(int64_t step) const {
+    const int64_t length = std::max(loopLength(), 1);
+    const int64_t into = wrap(step, length);
+    if (noteStepCount_ == 0)
+        return loopStart_ + static_cast<int>(into);
+    const int64_t round = (step - into) / length; // which time round the loop, its picks its own
+    int64_t at = 0;                                 // where the pick starts in it
+    for (int pick = 0;; ++pick) {
+        const int which =
+            std::min(static_cast<int>(unit(round, pick, 3) * noteStepCount_), noteStepCount_ - 1);
+        const int64_t span = noteStepLength_[static_cast<size_t>(which)];
+        if (into < at + span)
+            return loopStart_ + static_cast<int>(wrap(noteStep_[static_cast<size_t>(which)] - loopStart_ + into - at, length));
+        at += span; // each pick a step at least, so the loop's length ends it
     }
 }
 

@@ -896,7 +896,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   than where the new loop's cycles counted from the song's start or the key would put it, and the notes playing move
   with it rather than being chased again (`Sequencer::keepPlace()`, whole steps, an even number of them where the loop's
   length allows, so Swing's pairs stay); with the host's transport it locks to the bars again once the transport
-  starts or jumps. Random order follows no place in the loop and goes on as it was.
+  starts or jumps. Random order follows no place in the loop and goes on picking as it was.
   - **Play**: **Host** plays with the host's transport, locked to its bars (and silent while it is stopped; keys still
     play the synth on top). In the browser demo, whose transport always plays and starts again from the song's start
     as a preset loads, a preset set to Host plays its pattern from its start as it loads, with no key held. Each block it plays on from where the last one ended while the host's position is within
@@ -928,7 +928,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     up to a quarter of a step and moves their velocity up to 30 % either way, the same way every time round;
     **Octave** (±3) and **Transpose** (±24 semitones) move the whole pattern. **Order** runs the loop's steps forward,
     backward, to and fro (the first and last steps play twice at each turn, so a loop of 16 steps takes 32 and stays
-    in its meter), or each one at random (the same way each time round), the notes starting in a step at the
+    in its meter), or at random among the steps notes start in (`Sequencer::randomStep()`): from a step a note
+    starts in it plays on to the next such step (round the loop's end to the first), then picks another, any of them,
+    repeats too, so the notes come in a random order each in time and the playhead moves on steadily between the
+    jumps; each time round the loop it picks again from the loop's start, the last pick cut short at the loop's end so
+    the loop keeps its length and its bars, and the same picks come for the same place each time it plays (with no
+    note in the loop it runs as Forward; muted notes are left out; a pattern read again as it plays chases no note
+    from before, as the picks may land elsewhere then), the notes starting in a step at the
     same place in it.
   - **Curves**: each pattern also has a **bend** curve, a **mod wheel** curve and a curve for each of the eight
     **macros**, drawn in the lane under the roll:

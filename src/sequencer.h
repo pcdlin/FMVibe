@@ -34,7 +34,8 @@ constexpr int16_t kAuditionPort = -3;
 // from a key (Key and Latch, transposed by the key from C4), or, whatever Play says, from the editor's Play button
 // (preview(): from the loop's start, untransposed by a key). Time runs in played steps, counted from the song's
 // start (Host) or from the key or the button that started it; each played step plays a step of the pattern's loop as
-// the Order says (forward, back, to and fro, or at random), the notes starting in that step at the same place in it.
+// the Order says (forward, back, to and fro, or at random among the steps notes start in, randomStep()), the notes
+// starting in that step at the same place in it.
 // Swing delays every other played step, Gate scales the notes' lengths, Humanize delays them and moves their velocity a
 // little, the same way every time a step comes round again. A note's chance is drawn the same way. It chases notes: as
 // it starts playing (or the transport jumps), and as the pattern changes, a note the playhead is in the middle of that
@@ -147,6 +148,10 @@ private:
     int loopLength() const { return loopEnd_ - loopStart_; }
     // The pattern step a played step plays.
     int sourceStep(int64_t step) const;
+    // Random's: each time round the loop, picks among the steps notes start in, each played on to the next one's (round
+    // the loop's end to the first), one after another, repeats too, until the loop's length is filled, the last cut
+    // short there; the same picks for the same played steps each time. With no note in the loop, as Forward.
+    int randomStep(int64_t step) const;
     bool backward(int64_t step) const; // whether a played step runs through its pattern step backward
     double swung(double t) const;
     // Where played step `t` (fractions between) is in the pattern: as position() says, back through a step played
@@ -170,6 +175,10 @@ private:
     std::array<Note, kSeqNotes> notes_{};
     int noteCount_ = 0;
     std::array<int, kSeqMaxSteps + 1> stepFirst_{}; // notes_ in order of their starts: the first in each step and on
+    // The steps of the loop notes start in, in order, and how many steps each runs on to the next (the last round the
+    // loop's end to the first): what Random picks among (randomStep()).
+    std::array<int, kSeqMaxSteps> noteStep_{}, noteStepLength_{};
+    int noteStepCount_ = 0;
     double longest_ = 0.0;                          // the longest note's length, in steps
     int read_ = -1; // the pattern notes_ and curves_ were read from, -1 for none
     std::array<std::array<SeqCurvePoint, kSeqCurvePoints>, kSeqCurves> curves_{}; // the playing pattern's

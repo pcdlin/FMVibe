@@ -1214,7 +1214,10 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
   variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
   four: drag a source's handle onto the knob, as with any other control.
-- **Order**: forward, backward, ping-pong or random.
+- **Order**: forward, backward, ping-pong or random. **Random** jumps between the steps where notes start: it plays
+  a note, carries on until the next note's step, then jumps to a random one, so it plays the pattern's notes in a
+  random order, keeping their timing. The same note can come up twice in a row. Each time round the loop it starts
+  picking again, so the loop keeps its length.
 - **Scale**: the **Root** (drag or scroll; double-click for C), the scale (Chromatic, Major, Minor, Dorian,
   Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **Fold**,
   which shows only the scale's rows. Notes off the scale are hatched.

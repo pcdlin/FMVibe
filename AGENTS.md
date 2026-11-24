@@ -466,7 +466,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     beside it (through the synth too, the telemetry saying it plays), nothing while the sequencer is off, and in Host
     from the loop's start, the transport taking it back once it stops; and from a step, its note at once and the one
     before it only as the loop comes round, reversed the way Reverse goes, swung its note at once too, and from a step
-    outside the loop from the loop's start; and the loop shortened a step at a time under the
+    outside the loop from the loop's start; Random picking among the steps notes start in, quarter notes playing one
+    on every beat (several of them, alike each time), the playhead steady within a beat, and with notes at steps 0, 3
+    and 8 each time round the loop starting on a note; and the loop shortened a step at a time under the
     playhead in its second time round (in Key, in Host and by the Play button) playing on from where it is, each note
     once, the transport jumping then locking it to the bars again; and a note's own bend
     planned from where the note starts, stretch after stretch, a note chased in its middle starting bent as far as it

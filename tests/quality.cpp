@@ -6139,6 +6139,68 @@ void sequencerChecks() {
         check(patternOnly == 1 && withKey == 2 && shown && !t->seqPreview && e.synth().isActive({-1, 0, 0, 50}),
               "with the Play button on, keys play notes beside the pattern, and the telemetry says it plays");
     }
+    // Random picks among the steps notes start in, each played on to the next note's: four quarter notes play one on
+    // every beat and none between (several of them, the same picks each time it plays), the playhead moving on
+    // steadily within a beat; and with notes at steps 0, 3 and 8, each time round the loop starts on a note, the picks
+    // filling its 16 steps.
+    {
+        ParamValues p = blank();
+        p[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Random);
+        for (int i = 0; i < 4; ++i)
+            note(p, i, 4.0 * i, 4.0, 60 + 2 * i);
+        auto run = [&](const ParamValues &q, std::vector<float> *positions = nullptr) {
+            Sequencer seq;
+            seq.prepare(kSampleRate);
+            seq.configure(q);
+            return planOn(seq, 0.0, 64.0, 250, {}, positions);
+        };
+        std::vector<float> positions;
+        const std::vector<Event> e = run(p, &positions);
+        int ons = 0, offBeat = 0;
+        std::vector<bool> heard(128, false);
+        for (const Event &ev : e) {
+            if (!ev.on)
+                continue;
+            ++ons;
+            heard[static_cast<size_t>(ev.key)] = true;
+            const double beat = ev.frame / kStep / 4.0;
+            if (std::abs(beat - std::round(beat)) > 1e-3)
+                ++offBeat;
+        }
+        const int kinds = static_cast<int>(std::count(heard.begin(), heard.end(), true));
+        const std::vector<Event> again = run(p);
+        bool same = again.size() == e.size();
+        for (size_t i = 0; same && i < e.size(); ++i)
+            same = again[i].on == e[i].on && again[i].key == e[i].key && near(again[i].frame, e[i].frame);
+        const double share = 250.0 / kStep;
+        int strayJumps = 0;
+        // (A stretch ending on a beat ends a hair before it, as its frames add up: the jump shows a stretch later.)
+        auto byBeat = [&](double t) { return std::abs(t - 4.0 * std::round(t / 4.0)) <= share * 1.01; };
+        for (size_t i = 1; i < positions.size(); ++i) {
+            const double moved = positions[i] - positions[i - 1];
+            const double t0 = i * share, t1 = (i + 1) * share; // where the two stretches ended, in steps
+            if ((moved < -1e-4 || moved > share + 1e-3) && !byBeat(t0) && !byBeat(t1))
+                ++strayJumps;
+        }
+        ParamValues uneven = blank();
+        uneven[paramIndex(SeqParam::Order)] = static_cast<double>(SeqOrder::Random);
+        note(uneven, 0, 0.0, 1.0, 60);
+        note(uneven, 1, 3.0, 1.0, 64);
+        note(uneven, 2, 8.0, 1.0, 67);
+        const std::vector<Event> u = run(uneven);
+        int roundsOnNote = 0, unevenOns = 0;
+        for (int round = 0; round < 4; ++round)
+            roundsOnNote += std::any_of(u.begin(), u.end(), [&](const Event &ev) {
+                return ev.on && near(ev.frame, 16.0 * round * kStep);
+            });
+        for (const Event &ev : u)
+            unevenOns += ev.on;
+        std::printf("      Random over quarter notes: %d notes on in 16 beats, %d off the beat, %d pitches, %s; the playhead "
+                    "jumping %d times within a beat; notes at 0, 3 and 8: %d of 4 rounds starting on a note, %d notes on\n",
+                    ons, offBeat, kinds, same ? "alike again" : "otherwise again", strayJumps, roundsOnNote, unevenOns);
+        check(ons == 16 && offBeat == 0 && kinds >= 3 && same && strayJumps == 0 && roundsOnNote == 4 && unevenOns >= 8,
+              "Random picks among the steps notes start in, playing on to the next note's, the loop keeping its length");
+    }
     // The loop shortened step by step under the playhead in its second time round (Key, from a key; Host, with the
     // transport; and the Play button), a note on every step: it plays on from where it is, one note a step, up to the new
     // loop's end and round from its start, rather than jumping about and starting the notes it lands in the middle of;
