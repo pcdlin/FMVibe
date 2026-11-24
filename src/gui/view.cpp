@@ -7144,9 +7144,6 @@ std::vector<View::DimArea> View::dimmedAreas() const {
     // So is a switched-off effect's, in the effects graph's inspector or along the row.
     for (const auto &[slot, p, clip] : fxPanel_.offCards())
         areas.push_back({body(p), cardFace(fxTypeColor(fx_.slotType(slot)), false), clip});
-    // The SEQ view while the sequencer is off, but its power switch and size button (it dims what it paints itself).
-    for (const Rect &r : seq_.offAreas())
-        areas.push_back({r, Color{0.0f, 0.0f, 0.0f, 0.0f}, r});
     // And the inspector's page while its operator, filter or shaper is off, below the tabs, title and switch.
     if (!inspectorCovered() && !routing_.nodeOn(controller_.layout().selectedNode))
         areas.push_back({kInspectorPage, Color{0.0f, 0.0f, 0.0f, 0.0f}, kInspectorPage});

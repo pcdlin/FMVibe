@@ -2078,6 +2078,7 @@ void testDialogKeys(const std::filesystem::path &dir, Renderer &renderer) {
 // page, the list of source types, the list of effects and the SEQ view's snap list; with none open, it takes nothing.
 void testPopupEscape(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
+    model.set(paramIndex(SeqParam::Enabled), 1.0); // on: the SEQ view takes input only then
     View view(model);
     view.poll();
     auto escaped = [&](const char *shot) {
@@ -4169,6 +4170,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
 // shaper's page, the middle point picked with another staying in the middle as they move.
 void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
+    model.set(paramIndex(SeqParam::Enabled), 1.0); // on: the SEQ view takes input only then
     View view(model);
     model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Curve)); // the only card, the first
     view.poll();
@@ -4299,7 +4301,9 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
 
 // The SEQ card's Play button, at the Pattern row's right end: with the sequencer off, it does nothing, and the whole
 // view but the card's power switch and size button is drawn dimmed (read off the rendered pixels: a picked pattern's
-// button, a note and the snap's button dimmer than with it on, the size button as it is); on, a click plays the pattern,
+// button, a note and the snap's button dimmer than with it on, the size button as it is) and takes no input (a
+// double-click on the roll, a drag, a pattern button, Ctrl+A and the roll's menu), the size button and the power switch
+// still working; on, a click plays the pattern,
 // the button lit while the telemetry says it plays (read off the rendered pixels), and a second click stops it, neither
 // editing a param nor leaving anything to undo; it starts at the first note picked within the loop, or with none, at the
 // loop's start. And a note's end dragged past the pattern's end stops at it, as does the note dragged right and moved
@@ -4343,6 +4347,33 @@ void testSeqPlay(const std::filesystem::path &dir, Renderer &renderer) {
     const int offSnap = lit(renderer.pixel(snapAt)), offSize = sizeInk();
     click(view, button);
     const bool offIgnored = model.previews.empty();
+    // Nor does anything else but the power switch and the size button: a double-click on the roll puts no note down, a
+    // drag moves the note nowhere, Pattern B's button picks nothing, Ctrl+A goes on to the host and the roll's
+    // right-click menu offers nothing; the size button switches the view's size, and the power switch turns it on.
+    auto notes = [&] {
+        int n = 0;
+        for (int slot = 0; slot < kSeqNotes; ++slot)
+            n += model.value(seqNoteIndex(0, slot, SeqNoteParam::Length)) > 0.0;
+        return n;
+    };
+    doubleClick(view, at(11.0, 64.0));
+    drag(view, at(5.0, 60.0), at(7.0, 60.0));
+    const Rect patterns = detail::seqPatternRow();
+    click(view, {patterns.x + 30.0f + 14.0f, patterns.center().y});
+    const bool offInert = notes() == 1 && model.value(seqNoteIndex(0, 0, SeqNoteParam::Start)) == 4.0 &&
+                          model.value(paramIndex(SeqParam::Pattern)) == 0.0 &&
+                          !view.seqKey(View::Key::SelectAll, false) && view.contextMenu(at(5.0, 60.0)).empty();
+    const bool sizeBefore = model.seqFull;
+    click(view, rectCenter(detail::kSeqSizeButton));
+    const bool sized = model.seqFull != sizeBefore;
+    click(view, rectCenter(detail::kSeqSizeButton));
+    click(view, rectCenter(Rect{detail::kSeqCard.x + detail::kSeqCard.w - 12.0f - 26.0f, detail::kSeqTitleY, 26.0f, 22.0f}));
+    const bool powered = model.value(paramIndex(SeqParam::Enabled)) == 1.0;
+    view.undo(); // off again, the history as it was for what follows
+    std::printf("      off: %s; the size button %s, the power switch %s\n", offInert ? "nothing taken" : "something taken",
+                sized ? "working" : "not working", powered ? "turning it on" : "not working");
+    check(offInert && sized && powered,
+          "with the sequencer off, the SEQ view takes no input but at its power switch and size button");
     // On: as bright as ever.
     model.set(paramIndex(SeqParam::Enabled), 1.0);
     view.poll();
@@ -4803,6 +4834,7 @@ void testFxEmptyMods(const std::filesystem::path &, Renderer &) {
 
 void testSeqPicks(const std::filesystem::path &, Renderer &) {
     FakeController model;
+    model.set(paramIndex(SeqParam::Enabled), 1.0); // on: the SEQ view takes input only then
     View view(model);
     view.poll();
     click(view, {308.0f, 116.0f}); // the SEQ tab
@@ -7057,9 +7089,8 @@ void testSeq(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({600.0f, 600.0f}, {});
         renderer.save(view, dir / "36-seq-on.png");
         const uint32_t on = renderer.pixel(dot);
-        model.set(paramIndex(SeqParam::Enabled), 0.0);
-        view.poll();
         check(on != off, "the SEQ tab shows a dot while the sequencer is on");
+        // (Left on: the view takes input only then.)
     }
     check(model.ui.view == RoutingView::Seq && emptyShot, "the SEQ tab shows the sequencer's card and an empty roll");
     // The card's size button, left of its power switch: at the half size the view covers the panels' row alone, the

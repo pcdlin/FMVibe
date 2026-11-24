@@ -83,16 +83,6 @@ void SeqPanel::toggleSize() {
 
 bool SeqPanel::seqOn() const { return value(paramIndex(SeqParam::Enabled)) >= 0.5; }
 
-std::vector<Rect> SeqPanel::offAreas() const {
-    if (!wide() || seqOn())
-        return {};
-    const float below = kSeqTitleY + 22.0f + 2.0f; // under the title row
-    std::vector<Rect> areas{{kSeqCard.x, below, kSeqCard.w, kSeqCard.bottom() - below}, kSeqTools.inset(-2.0f), roll().box};
-    if (full())
-        areas.push_back(kSeqOverview);
-    return areas;
-}
-
 bool SeqPanel::wide() const {
     return controller().layout().view == RoutingView::Seq && !host_.shapeEditorOpen() && !host_.partialEditorOpen();
 }
@@ -280,6 +270,10 @@ bool SeqPanel::seqEdgeScroll() {
 // The playhead, while the view shows, and the notes it plays glowing; the keys easing whether shown or not, so they
 // show where they are.
 void SeqPanel::poll(const Telemetry &t, std::vector<Rect> &repaint) {
+    if (!seqOn() && (seqSnapMenu_ || seqMacroMenu_)) { // switched off (by the host, say) with a list of its open
+        closePopups();
+        repaint.push_back(kSeqBand);
+    }
     if (!seqBlipPitches_.empty() && host_.now() >= seqBlipUntil_)
         seqBlipEnd();
     const Telemetry &was = host_.telemetry();
@@ -481,6 +475,7 @@ std::vector<int> SeqPanel::seqPicked() const {
 // --- Widgets.
 
 void SeqPanel::widgets(std::vector<Widget> &list) const {
+    const size_t first = list.size();
     const WidgetAdder add{list};
     const int pattern = seqPattern();
     // The card: its switch, the patterns and copying one, when it plays, the knobs, the order and root, the scale.
@@ -547,6 +542,13 @@ void SeqPanel::widgets(std::vector<Widget> &list) const {
     if (seqShownSteps() < static_cast<float>(seqSteps()))
         add(Kind::SeqScroll, seqScrollTrack().inset(-4.0f));
     add(Kind::SeqScrollY, {roll().scrollY.x - 3.0f, roll().scrollY.y, roll().scrollY.w + 5.0f, roll().scrollY.h});
+    // Switched off, the view takes no input but at its power switch and its size button: the mouse passes the rest
+    // by, and the View draws them dimmed (as the rest of it is, see paintBack()).
+    if (!seqOn())
+        for (size_t i = first; i < list.size(); ++i)
+            if (list[i].kind != Kind::SeqSize &&
+                !(list[i].kind == Kind::Toggle && list[i].param == paramIndex(SeqParam::Enabled)))
+                list[i].disabled = true;
 }
 
 Rect SeqPanel::seqList(Rect button, int count, float width) const {
@@ -1705,6 +1707,8 @@ enum SeqMenu {
 } // namespace
 
 bool SeqPanel::contextMenu(const std::optional<Widget> &hit, Point p, std::vector<MenuItem> &items) {
+    if (!seqOn())
+        return false;
     if (hit && wide() && hit->kind == Kind::SeqTile) { // a pattern's tile: copying, pasting over and clearing it
         seqMenuTile_ = hit->b;
         items.push_back({kMenuCommands + kSeqCopyPattern, tr(Str::MenuSeqCopyPattern)});
@@ -1865,7 +1869,7 @@ void SeqPanel::closePopups() {
 }
 
 bool SeqPanel::key(Key key, bool shift) {
-    if (!wide())
+    if (!wide() || !seqOn()) // switched off, the keys go on to the host
         return false;
     // With Bend, Delete removes the bend points picked, and Ctrl+A over the roll picks every one.
     if (seqBendTool() && key == Key::Delete && !seqBendPicked().empty()) {
@@ -2134,9 +2138,8 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
     case Kind::SeqSize:
         toggleSize();
         return true;
-    case Kind::SeqPreview: // played or stopped, as it shows; switched off, nothing
-        if (seqOn())
-            controller().playSeqPreview(!host_.telemetry().seqPreview, seqPreviewFrom());
+    case Kind::SeqPreview: // played or stopped, as it shows (switched off, it takes no clicks)
+        controller().playSeqPreview(!host_.telemetry().seqPreview, seqPreviewFrom());
         return true;
     case Kind::SeqTile: {
         // What the roll shows, in the shown pattern's tile: dragged, it scrolls the roll (see seqDrag()).
@@ -3107,7 +3110,7 @@ bool SeqPanel::wheelOn(const Widget &w, Point p, float steps, Modifiers mods) {
 }
 
 bool SeqPanel::wheelAcross(Point p, float steps) {
-    if (!(wide() && roll().box.contains(p)))
+    if (!(wide() && seqOn() && roll().box.contains(p)))
         return false;
     seqScrollX_ = seqScroll() + steps * seqShownSteps() * 0.125f; // the roll, an eighth of what it shows a notch
     seqScrollX_ = seqScroll();
@@ -3116,7 +3119,8 @@ bool SeqPanel::wheelAcross(Point p, float steps) {
 
 // The roll, across and up and down (one part, 0): what was under the mouse follows it, never held at an end.
 std::optional<std::pair<int, float>> SeqPanel::panAt(Point p) const {
-    if (wide() && Rect{roll().box.x, roll().ruler.y, roll().box.w, roll().laneArea.y + roll().laneArea.h - roll().ruler.y}.contains(p))
+    if (wide() && seqOn() &&
+        Rect{roll().box.x, roll().ruler.y, roll().box.w, roll().laneArea.y + roll().laneArea.h - roll().ruler.y}.contains(p))
         return std::pair{0, seqScroll()};
     return std::nullopt;
 }
@@ -3152,10 +3156,9 @@ std::string SeqPanel::tooltip(const Widget &w) const {
     if (w.kind == Kind::SeqSize)
         return tr(full() ? Str::TipSeqHalf : Str::TipSeqFull);
     if (w.kind == Kind::SeqPreview)
-        return tr(!seqOn()                       ? Str::TipSeqPreviewOff
-                  : host_.telemetry().seqPreview ? Str::TipSeqPreviewStop
-                  : seqPreviewFrom() >= 0.0      ? Str::TipSeqPreviewPlayFrom
-                                                 : Str::TipSeqPreviewPlay);
+        return tr(host_.telemetry().seqPreview ? Str::TipSeqPreviewStop
+                  : seqPreviewFrom() >= 0.0    ? Str::TipSeqPreviewPlayFrom
+                                               : Str::TipSeqPreviewPlay);
     switch (w.kind) {
     case Kind::SeqTool:
         return tr(w.b == kToolBend ? Str::TipSeqBend : w.b == 1 ? Str::TipSeqDraw : Str::TipSeqSelect);
@@ -3213,7 +3216,7 @@ Rect patternButtons() { return seqPatternRow(); } // the four, merged into one r
 } // namespace
 
 bool SeqPanel::takesSource(const Widget &w, int source) const {
-    return wide() && patternButton(w) && host_.modulationModel().canModulate(source, w.param);
+    return wide() && seqOn() && patternButton(w) && host_.modulationModel().canModulate(source, w.param);
 }
 
 void SeqPanel::paintSourceRing(Canvas &c, const Widget &w, bool over, Color color) {
@@ -3390,7 +3393,7 @@ void SeqPanel::paintBack(Canvas &c) {
         face(kSeqOverview);
     c.fillRect(roll().box, wellColor(), kRadiusCard);
     // Switched off, all that is on them is drawn dimmed, but the power switch and the size button (whose widgets the
-    // View draws as they are; the others it dims, see offAreas()).
+    // View draws as they are; the others are disabled, and it dims them, see widgets()).
     struct Dim {
         Canvas &c;
         bool on;
@@ -3894,10 +3897,10 @@ bool SeqPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         paintSeqTile(c, w.b, w.rect, hovered, false);
         return true;
     case Kind::SeqPreview: {
-        // The card's main action; while the pattern plays, Stop, lit. Switched off, the View draws it dimmed with the
-        // card, and it does nothing.
+        // The card's main action; while the pattern plays, Stop, lit. Switched off, the View draws it dimmed and the
+        // mouse passes it by.
         const bool playing = host_.telemetry().seqPreview;
-        const Color ink = paintMainActionFace(c, w.rect, hovered && seqOn(), playing);
+        const Color ink = paintMainActionFace(c, w.rect, hovered, playing);
         transportIcon(c, {w.rect.x + 15.0f, w.rect.center().y}, ink, playing);
         c.text({w.rect.x + 25.0f, w.rect.y, w.rect.w - 29.0f, w.rect.h}, tr(playing ? Str::SeqPreviewStop : Str::SeqPreviewPlay),
                kTextLabel, ink, Align::Left, true);

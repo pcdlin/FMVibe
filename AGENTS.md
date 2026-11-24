@@ -957,7 +957,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     host's tempo;
   - the SEQ view covering the modulation panel, as tall as the editor was, its source cards and title taking no clicks;
   - the SEQ card's Play button: with the sequencer off doing nothing, and the whole view dimmed but the power switch
-    and the size button (read off the rendered pixels); on, a click playing the pattern and a second stopping it, lit
+    and the size button (read off the rendered pixels) and taking no input (a double-click on the roll, a drag, a
+    pattern button, Ctrl+A, the roll's menu), the size button and the power switch still working; on, a click playing the pattern and a second stopping it, lit
     while the telemetry says it plays (read off the rendered pixels), editing no param and leaving nothing to undo,
     starting at the first note picked within the loop (none, the loop's start; two, the earlier); and
     a note's end dragged past the pattern's end, the note dragged right and moved by the Right arrow stopping at it;

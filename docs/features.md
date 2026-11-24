@@ -1076,9 +1076,11 @@ what it started goes on.
     a black key's row darker and a white key's a little lighter, and folded, all of them plain. Notes off the scale are
     hatched across, folded or not. Its switches say what they do in their tooltips (Play's what each mode does).
   - **Switched off**, the whole view but the card's power switch and size button is drawn dimmed, as a switched-off
-    node's page is (`SeqPanel::offAreas()` for its widgets, a layer at the dimmed opacity for what it paints itself,
-    the cards' and the roll's faces left as they are): everything still edits, but the Play button does nothing and
-    says, in its tooltip, to switch the sequencer on.
+    node's page is, and takes no input: its widgets are disabled (the mouse passes them by, and the View draws them
+    dimmed), what it paints itself is drawn in a layer at the dimmed opacity (the cards' and the roll's faces left as
+    they are), and its keys (Ctrl+A, the arrows, Delete, copy and paste), the wheel across, the middle button's and
+    two fingers' pan, the roll's and the tiles' right-click menus and a source's handle dropped on PATTERN do nothing,
+    the keys going on to the host. A list of its own open as it is switched off (by the host, say) closes.
   - **PATTERNS**, a card like it under it, down to the panel's bottom: a tile a pattern, A to D, one under another,
     its letter at its left (lit, and the tile tinted and ringed, while it is the pattern picked) and its notes drawn
     small after it: across, the longest pattern's length (a shorter one's tile ends short, a line at each bar, outside

@@ -1165,7 +1165,8 @@ The display shows the stereo field over frequency, with handles for each control
 ## 12. Sequencer
 
 FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **Seq** view; switch it on with the
-power switch on its settings card. While it is off, the whole view is dimmed, but you can still edit it. At full
+power switch on its settings card. While it is off, the whole view is dimmed and takes no input, except the power
+switch and the size button. At full
 size the view also takes the space of the modulation panel, for a taller
 piano roll and the patterns overview. The button next to the power switch, or a double-click on the **Seq** tab,
 switches it to half size, with the modulation panel in view, and back.
@@ -1196,7 +1197,7 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   mode below is set to. You don't need the host's transport or a key. If notes are selected in the roll, it starts at
   the earliest selected note in the loop instead. It plays the notes as written, with Octave and
   Transpose but not moved by a key. While it plays, the keyboard plays notes as usual, and the button shows **Stop**:
-  click it to stop. It only works while the sequencer is on, and switching the sequencer off stops it.
+  click it to stop. Switching the sequencer off stops it.
 - **Play**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you

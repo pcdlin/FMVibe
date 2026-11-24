@@ -1114,7 +1114,6 @@ STR(SeqPreviewStop, "Stop") // and while it plays
 STR(TipSeqPreviewPlay, "Play the pattern from the loop start, as written. Keys play notes meanwhile")
 STR(TipSeqPreviewPlayFrom, "Play the pattern from the first note selected, as written. Keys play notes meanwhile")
 STR(TipSeqPreviewStop, "Stop the pattern")
-STR(TipSeqPreviewOff, "Switch the sequencer on to play the pattern")
 STR(TipSeqFull, "Full size") // the SEQ view's size button, at its half size: over the modulation panel too
 STR(TipSeqHalf, "Half size") // and at its full size: back over the panels' row alone
 STR(TipSeqZoomOutX, "Zoom out horizontally (Ctrl+wheel)")

@@ -45,12 +45,9 @@ public:
     bool full() const;
     const detail::SeqRoll &roll() const;
     void toggleSize(); // the full size or the half, kept in the user's settings
-    bool seqOn() const; // the sequencer's power switch
+    bool seqOn() const; // the sequencer's power switch: off, the view takes no input but at it and the size button
     // Where the Play button starts the pattern: the start of the first note picked in the loop, or -1 (its start).
     double seqPreviewFrom() const;
-    // While it is off, where the View draws the widgets dimmed: all of the view but the card's title row, whose power
-    // switch and size button stay as they are (what it paints there it dims itself, see paintBack()).
-    std::vector<Rect> offAreas() const;
 
     void widgets(std::vector<Widget> &list) const override;
     void popups(std::vector<Widget> &list) const override; // the scale's and the snap's lists, over everything
