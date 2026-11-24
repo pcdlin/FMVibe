@@ -1111,8 +1111,8 @@ STR(TipSeqRoot, "The scale's root")
 STR(TipSeqPower, "Sequencer on/off")
 STR(SeqPreviewPlay, "Play") // the SEQ card's Play button, which plays the pattern whatever its Play row says
 STR(SeqPreviewStop, "Stop") // and while it plays
-STR(TipSeqPreviewPlay, "Play the pattern from the loop start, as written. Keys play notes meanwhile")
-STR(TipSeqPreviewPlayFrom, "Play the pattern from the first note selected, as written. Keys play notes meanwhile")
+STR(TipSeqPreviewPlay, "Play the pattern from the loop start.")
+STR(TipSeqPreviewPlayFrom, "Play the pattern from the first selected note")
 STR(TipSeqPreviewStop, "Stop the pattern")
 STR(TipSeqFull, "Full size") // the SEQ view's size button, at its half size: over the modulation panel too
 STR(TipSeqHalf, "Half size") // and at its full size: back over the panels' row alone
@@ -1335,7 +1335,7 @@ STR(MsgSplitsFull, "Only supports up to {1} splits")
 STR(MsgShapeFull, "Only supports up to {1} points per shape")
 STR(MsgSeqFull, "Pattern full: {1} notes max")
 STR(MsgSeqCurveFull, "Curve full: {1} points max")
-STR(MsgSeqBendFull, "A note bends through {1} points at most")
+STR(MsgSeqBendFull, "A note can have at most {1} bend points")
 STR(MsgSeqCopied, "Pattern {1} copied to {2}")
 STR(MsgSeqPatternCopied, "Pattern {1} copied")
 STR(MsgSeqPatternPasted, "Pattern pasted into {1}")

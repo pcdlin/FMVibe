@@ -1165,9 +1165,7 @@ The display shows the stereo field over frequency, with handles for each control
 ## 12. Sequencer
 
 FMVibe has a built-in sequencer that plays the synth's own notes. Edit it in the **Seq** view; switch it on with the
-power switch on its settings card. While it is off, the whole view is dimmed and takes no input, except the power
-switch and the size button. At full
-size the view also takes the space of the modulation panel, for a taller
+power switch on its settings card. At full size the view also takes the space of the modulation panel, for a taller
 piano roll and the patterns overview. The button next to the power switch, or a double-click on the **Seq** tab,
 switches it to half size, with the modulation panel in view, and back.
 
@@ -1194,10 +1192,8 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
   picks gets a ring (with nothing playing, the one the macros and mod wheel pick). Under the buttons, a line shows how far each modulation reaches, with depth handles
   you can drag, as under a knob. A pattern picked this way takes over at the end of the loop, as a click does.
 - **Play** button, at the right of the Pattern row: plays the pattern from the start of its loop, whatever the Play
-  mode below is set to. You don't need the host's transport or a key. If notes are selected in the roll, it starts at
-  the earliest selected note in the loop instead. It plays the notes as written, with Octave and
-  Transpose but not moved by a key. While it plays, the keyboard plays notes as usual, and the button shows **Stop**:
-  click it to stop. Switching the sequencer off stops it.
+  mode below is set to. If notes are selected in the roll, it starts at the earliest selected note in the loop
+  instead. While it plays, the keyboard plays notes as usual, and the button shows **Stop**: click it to stop.
 - **Play**:
   - **Host**: plays with the host's transport, locked to its bars. You can still play the synth from the keyboard
     on top. The browser demo's transport always runs, so there a preset set to Host starts playing as soon as you
@@ -1215,10 +1211,9 @@ Each pattern has a **loop** (the whole pattern by default), which is what plays.
 - **Swing** (50–75 %), **Gate** (5–200 % of each note's length), **Humanize** (repeatable timing and velocity
   variation) and **Velocity** (scales the notes' velocities; at 0 % every note plays at 100). You can modulate these
   four: drag a source's handle onto the knob, as with any other control.
-- **Order**: forward, backward, ping-pong or random. **Random** jumps between the steps where notes start: it plays
-  a note, carries on until the next note's step, then jumps to a random one, so it plays the pattern's notes in a
-  random order, keeping their timing. The same note can come up twice in a row. Each time round the loop it starts
-  picking again, so the loop keeps its length.
+- **Order**: forward, backward, ping-pong or random. **Random** jumps between the steps where notes start: it plays a
+  note, carries on until the next note's step, then jumps to a random one, so it plays the pattern's notes in a
+  random order, keeping their timing. The same note can come up twice in a row.
 - **Scale**: the **Root** (drag or scroll; double-click for C), the scale (Chromatic, Major, Minor, Dorian,
   Phrygian, Lydian, Mixolydian, Harmonic Minor, Melodic Minor, Pentatonic Major and Minor, Blues) and **Fold**,
   which shows only the scale's rows. Notes off the scale are hatched.
@@ -1260,7 +1255,6 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
 - Drag a note to move the selected notes by grid steps and rows. Hold Shift or Alt to move off the grid; hold Ctrl
   to drag copies.
 - Drag a note's right or left end to change the length or start of the selected notes.
-- Notes stay inside the pattern: you can't move or lengthen a note past the pattern's end.
 - Drag from empty space to select notes with a box.
 - Double-click to add a note one grid step long (hold and drag up or down for velocity, sideways to lengthen; the
   cursor shows which way you are dragging); double-click a note to delete it.
@@ -1275,17 +1269,15 @@ hook marks Slide. While the sequencer plays, the playhead moves and notes glow a
 voice bends; the other notes of a chord stay where they are.
 
 - Press a note and drag up or down to bend it there. The bend starts from the note's pitch at its start. Each row is
-  a semitone (a scale degree with FOLD). Where a bend has left the note's bar, pressing the bar does nothing.
+  a semitone (a scale degree with FOLD).
 - Hold Alt, or Shift while dragging, to bend off the grid, to the cent.
 - Drag a point to move it; drag the middle of a rising or falling segment to curve it.
 - Point at a bend's line to see a faint point there; press to add a point on the line and drag it.
-- While Bend is on, notes are faint so the bends stand out. The bend of the note under the mouse is highlighted. With
-  the other tools, the bends are faint behind the notes.
 - Drag a box from empty space to select points, or Shift+click or Ctrl+click points to add or remove them. Drag one
   of the selected points to move them all together. Ctrl+A selects every point; Delete removes the selected points.
 - Double-click a point to delete it, or a segment's middle to straighten it.
 - Shift+drag across a note to draw its bend, a point on every grid line.
-- A note bends through up to 8 points, up to two octaves either way. You hear the note at the pitch you drag to.
+- A note bends through up to 8 points, up to two octaves either way.
 
 The bend is drawn as a line across the rows. It moves, copies and pastes with its note. A note shortened by Gate
 holds the pitch it reached when it ends.
@@ -1345,9 +1337,8 @@ With the mouse over the plugin window:
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste (at the mouse position on the roll) |
 | Ctrl+D | Duplicate the selected notes and place the copies right after them |
 
-Notes moved up or down are heard for 300 ms at their new pitch. With no notes selected, these keys go to your
-host. The roll's right-click menu offers Cut, Copy, Paste, Duplicate,
-Delete, Select All, Slide, Mute and **Quantize** (moves the selected notes onto the snap grid).
+The roll's right-click menu offers Cut, Copy, Paste, Duplicate, Delete, Select All, Slide, Mute and **Quantize**
+(moves the selected notes onto the snap grid).
 
 ### Sequencer behavior
 
