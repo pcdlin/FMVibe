@@ -1150,7 +1150,8 @@ what it started goes on.
     the rows (a row a semitone; folded to the scale, between the rows it falls between, in proportion), lighter than
     the notes and faint behind them unless Bend is picked, a faint ribbon down to the note's own row, dashed for a note muted or at a chance below full, and past
     the note's end (where a note made shorter leaves a point, which doesn't play) faint and dashed. **Bend** edits
-    them: the notes go faint and the bends stand out over them, every bent note showing its points and the handles at
+    them: the notes go faint and the bends stand out over them, a note without a bend showing its line flat along its
+    pitch (which takes the mouse as a bend's line does), every bent note showing its points and the handles at
     the middles of its segments that rise or fall, and the bend of the note under the mouse (or whose line, point or
     handle is) lit, as is the one being edited: a note pressed where its bend runs over its bar (or one without a
     bend) puts a point down where the mouse is and drags it (where the bend has left the bar, the bar takes nothing), on the rows (only the scale's while folded) and the
@@ -1160,7 +1161,8 @@ what it started goes on.
     line, under the arrow, and a press there puts a point down on the line as it runs and drags it; a double-click on a point takes it away (a lone
     point at 0 left going with it)
     and on a segment's middle straightens it, but leaves a point its own first click put down; with Shift, a drag
-    across a note draws its bend, a point on every line of the grid it crosses, in place of the points there. A note
+    across a note draws its bend, a point on every line of the grid it crosses, in place of the points there (pressed
+    on its bar, even where its line runs). A note
     bends through 8 points at most (a message says so). While a point is dragged, a readout by it says how far it
     bends, and the note sounds alone at that pitch (in the browser demo too). The note is picked as it is pressed.
     Points are picked as notes are: a point clicked is picked alone (on one of several picked, once it is let go

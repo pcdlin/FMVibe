@@ -4639,15 +4639,17 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     check(folded, "folded to a scale, a bend's point goes up a degree of it a row");
 
     // With Bend, the mouse over a bend's line: a faint point there (read off the rendered pixels), following the mouse
-    // along it (the editor told to paint again as it moves), and the arrow, where over a note without a bend the cursor
-    // goes up and down; over a bar its bend has left, the arrow too, and a press there putting nothing down; a press on
-    // the line puts a point down on it as it runs. The notes are faint with Bend, and the bend of the note under the
-    // mouse lit (read off the rendered pixels).
+    // along it (the editor told to paint again as it moves), and the arrow; a note without a bend showing its line flat
+    // along its pitch (read off the rendered pixels), which takes the mouse as a bend's line does; over a bar its bend
+    // has left, the arrow too, and a press there putting nothing down; a press on the line puts a point down on it as it
+    // runs, a flat one's too. The notes are faint with Bend, and the bend of the note under the mouse lit (read off the
+    // rendered pixels).
     const Point onLine = at(7.0, 62.0), alongLine = at(7.5, 62.0), onNote = at(5.0, 60.0), plain = at(12.0, 55.0);
+    const Point offFlat{plain.x, plain.y + 3.0f}; // on the bar, clear of its flat line
     view.mouseMove({600.0f, 40.0f}, {});
     renderer.save(view, dir / "36v-seq-bend-line.png");
     const int lineBare = lit(renderer.pixel(onLine)), alongBare = lit(renderer.pixel(alongLine));
-    const int noteFaint = lit(renderer.pixel(plain));
+    const int noteFaint = lit(renderer.pixel(offFlat)), flatBare = lit(renderer.pixel(plain));
     const bool entered = view.mouseMove(onLine, {});
     const bool arrow = view.cursor() == CursorKind::Arrow;
     const bool hoverShot = renderer.save(view, dir / "36v-seq-bend-line-hover.png");
@@ -4655,8 +4657,10 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     const bool followed = view.mouseMove(alongLine, {});
     renderer.save(view, dir / "36v-seq-bend-line-along.png");
     const int alongHovered = lit(renderer.pixel(alongLine)), leftBehind = lit(renderer.pixel(onLine));
-    view.mouseMove(plain, {});
-    const bool upDown = view.cursor() == CursorKind::Vertical;
+    const bool flatEntered = view.mouseMove(plain, {});
+    const bool flatArrow = view.cursor() == CursorKind::Arrow;
+    renderer.save(view, dir / "36v-seq-bend-flat-hover.png");
+    const int flatHovered = lit(renderer.pixel(plain));
     view.mouseMove(onNote, {});
     const bool offBar = view.cursor() == CursorKind::Arrow;
     renderer.save(view, dir / "36v-seq-bend-lit.png");
@@ -4666,19 +4670,26 @@ void testSeqNoteBend(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, onLine);
     const bool onIt = count(0) == 3.0 && nearly(px(0, 2), 3.0, 0.05) && nearly(py(0, 2), 2.0, 0.05);
     view.undo();
+    click(view, plain);
+    const bool onFlat = count(1) == 2.0 && nearly(px(1, 0), 0.0) && nearly(py(1, 0), 0.0) &&
+                        nearly(px(1, 1), 2.0, 0.05) && nearly(py(1, 1), 0.0);
+    view.undo();
     click(view, rectCenter(detail::seqToolButton(0)));
     view.mouseMove({600.0f, 40.0f}, {});
     renderer.save(view, dir / "36v-seq-bend-select.png");
-    const int noteFull = lit(renderer.pixel(plain));
+    const int noteFull = lit(renderer.pixel(offFlat));
     std::printf("      over a bend's line: %d there, %d without the mouse; moved along, %d there (%d bare), %d behind; "
-                "lit %d; a note %d with Bend, %d with Select\n",
-                lineHovered, lineBare, alongHovered, alongBare, leftBehind, lineLit, noteFaint, noteFull);
-    check(entered && followed && arrow && upDown && offBar && nothingThere && hoverShot &&
-              std::abs(lineHovered - lineBare) > 20 &&
-              std::abs(alongHovered - alongBare) > 20 && leftBehind > lineHovered + 50 && onIt &&
-              count(0) == 2.0,
+                "lit %d; a note %d with Bend, %d with Select; a flat line %d, %d under the mouse\n",
+                lineHovered, lineBare, alongHovered, alongBare, leftBehind, lineLit, noteFaint, noteFull, flatBare,
+                flatHovered);
+    check(entered && followed && arrow && offBar && nothingThere && hoverShot && std::abs(lineHovered - lineBare) > 20 &&
+              std::abs(alongHovered - alongBare) > 20 && leftBehind > lineHovered + 50 && onIt && count(0) == 2.0,
           "with Bend, the mouse over a bend's line shows a faint point following it and the arrow, and a press puts one "
           "down there, but not on a bar its bend has left");
+    check(flatBare > noteFaint + 30 && flatEntered && flatArrow && std::abs(flatHovered - flatBare) > 20 && onFlat &&
+              count(1) == 0.0,
+          "with Bend, a note without a bend shows its line flat along its pitch, which shows a faint point and the arrow "
+          "under the mouse, and a press puts one down there");
     check(noteFull > noteFaint + 30 && lineLit > alongBare + 20,
           "with Bend, the notes are faint, and the bend of the note under the mouse is lit");
 

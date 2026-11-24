@@ -1272,7 +1272,7 @@ voice bends; the other notes of a chord stay where they are.
   a semitone (a scale degree with FOLD).
 - Hold Alt, or Shift while dragging, to bend off the grid, to the cent.
 - Drag a point to move it; drag the middle of a rising or falling segment to curve it.
-- Point at a bend's line to see a faint point there; press to add a point on the line and drag it.
+- Click on a bend's line to add a point on the line and drag it.
 - Drag a box from empty space to select points, or Shift+click or Ctrl+click points to add or remove them. Drag one
   of the selected points to move them all together. Ctrl+A selects every point; Delete removes the selected points.
 - Double-click a point to delete it, or a segment's middle to straighten it.

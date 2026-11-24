@@ -1205,9 +1205,7 @@ std::optional<SeqPanel::BendLineHit> SeqPanel::seqBendLineAt(Point p) const {
         const double t = step - it->start;
         if (t < 0.0 || t > it->length)
             continue;
-        const std::vector<SeqCurvePoint> points = seqBendPoints(it->slot);
-        if (points.empty())
-            continue;
+        const std::vector<SeqCurvePoint> points = seqBendPoints(it->slot); // none: the line runs along its pitch
         const double v = seqNoteBendAt(static_cast<int>(points.size()),
                                        [&](int i) { return points[static_cast<size_t>(i)]; }, t);
         const float y = seqBendY(*it, v);
@@ -1413,7 +1411,7 @@ void SeqPanel::paintSeqBend(int slot, double from, double fromValue, double step
 // Each bent note's bend, at its pitch: a line from its start along its points to its end, in the notes' color
 // lightened, a faint ribbon down to the note's own row, dashed where the note is muted or plays at a chance, and past
 // its end (a point left there by a note made shorter, which doesn't play) faint and dashed. With Bend, the bends stand
-// out over the faded notes, every bent note shows its points and its segments' handles, the bend of the note under the
+// out over the faded notes, a note not bent yet showing its line flat along its pitch, every bent note shows its points and its segments' handles, the bend of the note under the
 // mouse (or whose line, point or handle is) is lit, and the mouse over a line shows a faint point where a press puts
 // one down.
 void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes) {
@@ -1436,7 +1434,7 @@ void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes) {
                                                                   : BendHit{};
     for (const SeqNote &n : notes) {
         const std::vector<SeqCurvePoint> points = seqBendPoints(n.slot);
-        if (points.empty())
+        if (points.empty() && !tool) // with Bend, a note not bent yet has its line too, along its pitch
             continue;
         const bool picked = seqSelected(n.slot);
         const bool hot = tool && n.slot == lit;
@@ -1457,13 +1455,15 @@ void SeqPanel::paintSeqBends(Canvas &c, const std::vector<SeqNote> &notes) {
         };
         std::vector<Point> line = trace(0.0, n.length);
         const float base = seqBendY(n, 0.0);
-        std::vector<Point> area = line;
-        area.push_back({line.back().x, base});
-        area.push_back({line.front().x, base});
-        c.fillPolygon(area.data(), area.size(), lineInk.alpha((hot ? 0.24f : tool ? 0.18f : 0.2f) * level));
+        if (count > 0) {
+            std::vector<Point> area = line;
+            area.push_back({line.back().x, base});
+            area.push_back({line.front().x, base});
+            c.fillPolygon(area.data(), area.size(), lineInk.alpha((hot ? 0.24f : tool ? 0.18f : 0.2f) * level));
+        }
         c.polyline(line.data(), line.size(), (n.mute ? kFaint : lineInk).alpha(level),
                    hot ? 2.6f : tool || picked ? 2.0f : 1.5f, n.mute || n.chance < 1.0);
-        if (points.back().x > n.length + 1e-9) {
+        if (count > 0 && points.back().x > n.length + 1e-9) {
             const std::vector<Point> tail = trace(n.length, points.back().x);
             c.polyline(tail.data(), tail.size(), lineInk.alpha(0.35f * level), 1.2f, true);
         }
@@ -2386,7 +2386,8 @@ bool SeqPanel::pressAs(const Widget &w, Point p, Modifiers mods, const Widget &h
                 pick(h.slot);
                 return true;
             }
-            if (const std::optional<BendLineHit> line = seqBendLineAt(p)) { // a point put down on the line, as it runs
+            // A point put down on the line, as it runs (with Shift over a bar, its bend drawn below).
+            if (const std::optional<BendLineHit> line = mods.shift && seqBendNoteAt(p) >= 0 ? std::nullopt : seqBendLineAt(p)) {
                 startDrag(SeqDrag::Mode::BendPoint, true);
                 seqDrag_.anchor = line->slot;
                 seqDrag_.free = mods.alt;

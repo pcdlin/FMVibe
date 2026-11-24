@@ -977,7 +977,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the field's Bend scaling and clearing the picked notes' bends; a bend copied, pasted, stretched by x2 and removed
     with its note; folded to a scale, a row up a degree of it; and the mouse over a bend's line showing a faint point
     there and following it along the line, the editor told to paint again as it moves (read off the rendered pixels),
-    and the arrow (over the note, up and down), a press there putting a point down on the line, the notes faint with
+    and the arrow, a press there putting a point down on the line, a note without a bend showing its line flat along
+    its pitch (read off the rendered pixels), which takes the mouse and a press as a bend's line does, the notes faint with
     Bend and the bend of the note under the mouse lit (read off the rendered pixels), a bar its bend has left taking no
     press and showing the arrow; and bend points picked by a box (ringed, read off the rendered pixels), moved
     together, Shift+click letting one go, Ctrl+A and Delete removing them, each an undo step, and a point dragged past
