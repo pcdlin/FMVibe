@@ -1474,6 +1474,7 @@ does not contain the instance settings (oversampling and MPE).
 | Preset | Category | Description |
 | --- | --- | --- |
 | Acid Rubber | Seq | Squelchy, rubbery acid bass line with slides. |
+| Bender | Seq | Soft pad chords whose voices bend one by one into the next chords while you hold a key. |
 | Chip Pluck | Pluck | Crisp video-game arpeggio while you hold a key. The Bite macro adds edge. |
 | Classic Synlead | Lead | Classic analog-style lead with a bite and a delayed vibrato. |
 | Clubbing | Seq | Huge, wide saw chords with airy noise, made for the club. |
