@@ -4969,6 +4969,12 @@ int main(int argc, char **argv) {
                 params->get_value(plugin, idOfIndex(index), &v);
                 return v;
             };
+            // The view takes no input while the sequencer is off, as it is in a new instance: the host switches it on.
+            const int seqEnabled = paramIndex(SeqParam::Enabled);
+            const clap_event_param_value_t seqOn = paramEvent(seqEnabled, 1.0);
+            in.events = {&seqOn.header};
+            params->flush(plugin, &in.list, &out.list);
+            in.events.clear();
             SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(308.0f, 116.0f)); // the SEQ tab
             SendMessageW(editor, WM_LBUTTONUP, 0, at(308.0f, 116.0f));
             const LPARAM edge = at(382.0f, 290.0f); // the grid's left edge, on C4's row
@@ -4985,6 +4991,10 @@ int main(int argc, char **argv) {
             doubleClick(edge);
             SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, at(64.0f, 116.0f)); // back to ROUTING
             SendMessageW(editor, WM_LBUTTONUP, 0, at(64.0f, 116.0f));
+            const clap_event_param_value_t seqOff = paramEvent(seqEnabled, 0.0);
+            in.events = {&seqOff.header};
+            params->flush(plugin, &in.list, &out.list);
+            in.events.clear();
             std::printf("      a note at the roll's left edge: step %.2f, zoomed in by Ctrl+wheel step %.2f\n", unzoomed,
                         zoomed);
             check(put && ctrlUp && unzoomed == 0.0 && zoomed >= 2.0 && read(length) == 0.0,
