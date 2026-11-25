@@ -496,6 +496,7 @@ void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool
 }
 
 void Synth::noteOn(const NoteRef &note, double velocity) {
+    globalRestart_ = true; // every note starts the global LFOs again (see lfoGlobal())
     if (note.key < 0 || note.key > 127 || voices_.empty())
         return;
     // In Key and Latch, the sequencer takes the host's keys: they start and transpose its pattern, and no voice plays
@@ -1298,6 +1299,8 @@ void Synth::shareAll(const ParamValues &params) {
     for (int from = 0; from < kRouteSources; ++from)
         for (int to = 0; to < kOps; ++to)
             routeModes_[from][to] = from == to ? RouteMode::Phase : routeMode(params[routeModeIndex(from, to)]);
+    for (int op = 0; op < kOps; ++op)
+        dx7Feedback_[op] = feedbackMode(params[feedbackModeIndex(op)]) == FeedbackMode::Dx7;
     voiceBaseReady_ = false; // what the voices share is summed again for these params, once a voice needs it
     for (int op = 0; op < kOps; ++op) // the Custom waves take their partials, built again once played (renderBlock())
         customWaves_[op].update(
@@ -1512,6 +1515,16 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
         Lfo &lfo = freeLfos_[s];
         const double chaos = shared(paramIndex(s, SourceParam::RandomChaos));
         const LfoLoop loop = lfoLoop(shared, s); // a Curve's cycles only its loop region
+        // A global one, as a note starts: at its Phase again (Random its next step), for every voice.
+        if (globalRestart_ && lfoGlobal(shared, s)) {
+            if (lfoShape(shared, s) == LfoShape::Random) {
+                lfo.held = randomStep(lfo.from, chaos, freeRng_);
+                lfo.phase = 0.0;
+            } else {
+                const double start = shared(paramIndex(s, SourceParam::Phase));
+                lfo.phase = start - std::floor(start);
+            }
+        }
         if (!playing_ || !lfoAnchored(shared, s)) {
             if (frames > 0)
                 advanceLfo(lfo, lfoHz(shared, s, tempo_), frames, freeRng_, false, chaos, loop);
@@ -1528,6 +1541,7 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
         lfo.hz = lfoHz(shared, s, tempo_);
         lfo.phase = anchoredPhase(cycles, shared(paramIndex(s, SourceParam::Phase)), loop);
     }
+    globalRestart_ = false;
 }
 
 void Synth::meterOutput(const float *left, const float *right, uint32_t frames) {
@@ -2332,13 +2346,13 @@ FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pit
             if (live)
                 pitchReach[a] *= ratioFromNorm(std::clamp(high, 0.0, kRatioModNorm)) / lane.from;
             break;
-        case AudioKind::OpTranspose:
-            live = pitchedOp(a) && !run.fixed[a];
+        case AudioKind::OpTranspose: // a fixed operator's too
+            live = pitchedOp(a);
             if (live)
                 pitchReach[a] *= std::exp2((high - lane.set) / 12.0);
             break;
         case AudioKind::OpDetune:
-            live = pitchedOp(a) && !run.fixed[a];
+            live = pitchedOp(a);
             if (live)
                 pitchReach[a] *= std::exp2((high - lane.set) / 1200.0);
             break;
@@ -3427,6 +3441,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // nothing (its targets stay at 0), so there is nothing more to work out for it.
             op.out = 0.0;
             op.prevOut = 0.0;
+            op.dx7Tick = op.dx7Last = op.dx7Feedback = 0.0;
             op.incKnown = false;
             op.syncOn = false;
             op.syncKnown = false;
@@ -3440,14 +3455,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             v.levels.index[i].fill(0.0);
             continue;
         }
-        // Fixed, it plays at its Freq x Mult: the note, bend, glide and tuning, its ratio, Pitch and Detune don't move
-        // it; its unison copies still spread about it.
+        // Fixed, it plays at its Freq x Mult: the note, bend, glide, tuning and the global Pitch and its ratio don't move
+        // it, its own Pitch and Detune and their modulation do (a pitch envelope or vibrato of its own); its unison
+        // copies still spread about it.
         double hz = fixedHz(p[paramIndex(i, OpParam::FixedFreq)], p[paramIndex(i, OpParam::FixedMult)]);
+        const double cents = p[paramIndex(i, OpParam::Detune)];
+        const double semitones = p[paramIndex(i, OpParam::Transpose)];
         if (p[paramIndex(i, OpParam::Fixed)] < 0.5) {
             const double ratio = ratioFromNorm(std::clamp(p[paramIndex(i, OpParam::Ratio)], 0.0, kRatioModNorm));
-            const double cents = p[paramIndex(i, OpParam::Detune)];
-            const double semitones = p[paramIndex(i, OpParam::Transpose)];
             hz = noteHz * ratio * std::exp2(semitones / 12.0 + cents / 1200.0);
+        } else if (semitones != 0.0 || cents != 0.0) {
+            hz *= std::exp2(semitones / 12.0 + cents / 1200.0);
         }
         const double inc = std::min(hz / rate_, 0.5);
         const auto shape = static_cast<OpWave>(
@@ -3945,6 +3963,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     }
 
     Levels &level = v.levels;
+    // The operators whose feedback runs as the DX7's (see FeedbackMode), and its samples a sample.
+    uint32_t dx7Fed = 0;
+    for (int i = 0; i < kOps; ++i)
+        if (dx7Feedback_[i] && opOn[i])
+            dx7Fed |= 1u << i;
+    const double dx7Step = kDx7Rate / rate_;
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
@@ -4118,6 +4142,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;
+            // DX7 feedback (see FeedbackMode): at each of the DX7's samples, what its feedback hears next, its last two's
+            // average, held between them; kept as the prevOut that, with its output, averages to it, so that its
+            // feedback is read as any other's (a branch there cost the voices' loop more than its work).
+            if (dx7Fed >> i & 1u) {
+                op.dx7Tick += dx7Step;
+                if (op.dx7Tick >= 1.0) {
+                    op.dx7Tick -= std::floor(op.dx7Tick);
+                    op.dx7Feedback = 0.5 * (op.out + op.dx7Last);
+                    op.dx7Last = op.out;
+                }
+                op.prevOut = 2.0 * op.dx7Feedback - op.out;
+            }
             if (tapped >> i & 1u) {
                 if (i == scopeOp) {
                     const double wavePhase = op.syncOn ? scopePhase : scopePhase + level.phase[i]; // where its wave stands

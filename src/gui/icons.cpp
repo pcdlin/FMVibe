@@ -326,7 +326,7 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) 
                 for (int i = 0; i <= 12; ++i)
                     points.push_back(at(-10.0f + half * 10.0f + i * (10.0f / 12.0f),
                                         4.0f - 8.0f * std::sin(i / 12.0f * 0.5f * kPi)));
-        } else if (clock == LfoClock::Free) {
+        } else if (clock == LfoClock::Free || clock == LfoClock::Global) {
             for (int i = 0; i <= 48; ++i) {
                 const float t = i / 48.0f * 2.0f * kPi, d = 1.0f + std::sin(t) * std::sin(t);
                 points.push_back(at(10.0f * std::cos(t) / d, 11.0f * std::sin(t) * std::cos(t) / d));
@@ -355,6 +355,8 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) 
         c.line(at(-2.8f, -0.8f), at(2.8f, -0.8f), color, 1.4f);
     } else if (clock == LfoClock::OneShot) {
         c.fillCircle(points.back(), 1.7f * scale, color);
+    } else if (clock == LfoClock::Global) { // the one loop, with the note that starts it again at its crossing
+        c.fillCircle(at(0.0f, 0.0f), 2.0f * scale, color);
     } else if (clock == LfoClock::Sustain) { // where its loop starts and ends, over the level
         for (const float x : {-3.0f, 3.0f})
             c.line(at(x, -6.0f), at(x, -0.5f), color, 1.1f);
@@ -498,6 +500,25 @@ void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale)
         c.line(at(0.0f, -5.5f), at(0.0f, 5.5f), color, width - 0.1f);
         break;
     }
+}
+
+void feedbackModeIcon(Canvas &c, Point m, FeedbackMode mode, Color color, float scale) {
+    auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
+    const float width = scale < 0.9f ? 1.1f : 1.4f;
+    std::vector<Point> points;
+    if (mode == FeedbackMode::Dx7) { // a rising wave held in steps
+        constexpr float kSteps[] = {3.5f, 1.0f, -2.0f, -4.0f, -2.0f};
+        for (int k = 0; k < 5; ++k) {
+            points.push_back(at(-5.0f + 2.0f * k, kSteps[k]));
+            points.push_back(at(-3.0f + 2.0f * k, kSteps[k]));
+        }
+    } else {
+        for (int i = 0; i <= 16; ++i) {
+            const float t = i / 16.0f;
+            points.push_back(at(-5.0f + 10.0f * t, -4.0f * std::sin(t * std::numbers::pi_v<float> * 1.5f)));
+        }
+    }
+    c.polyline(points.data(), points.size(), color, width);
 }
 
 // A small picture of each effect, for its card's title and the ADD EFFECT list.

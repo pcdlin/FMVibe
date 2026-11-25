@@ -384,6 +384,9 @@ private:
         std::array<double, kMaxUnison> phases{}; // in cycles, one per unison copy
         double out = 0.0;     // latest mono output sample (what other operators hear)
         double prevOut = 0.0; // the one before, for feedback smoothing
+        // DX7 feedback (see FeedbackMode): how far it is to the next of the DX7's samples, its output at the last of
+        // them, and what its feedback hears until the next, the average of the last two.
+        double dx7Tick = 0.0, dx7Last = 0.0, dx7Feedback = 0.0;
         std::array<double, kMaxUnison> incNow{}; // the copies' phase increments, moving to each block's
         int incCopies = 0;     // how many copies incNow holds
         bool incKnown = false; // incNow holds the last block's, not stale: false for a new note and after being off
@@ -664,6 +667,7 @@ private:
     // How each route into an operator acts on it (see RouteMode), [from node][to operator], read once a render: these
     // params are stepped, past the ones voices read, and feedback is always Phase.
     std::array<std::array<RouteMode, kOps>, kRouteSources> routeModes_{};
+    std::array<bool, kOps> dx7Feedback_{}; // the operators whose feedback runs as the DX7's (see FeedbackMode)
     // Each shaper's drawn curve as a table, built again when its points change (see render()).
     std::array<ClipTable, kShapers> shaperTables_;
     NoiseColor noiseColor_;
@@ -704,6 +708,7 @@ private:
     double tempo_ = 120.0;     // what plays: ownTempo_, or while that is 0, hostTempo_
     double hostTempo_ = 120.0;
     double ownTempo_ = 0.0;    // see setOwnTempo()
+    bool globalRestart_ = false; // a note started since the shared LFOs last moved: the global ones start again
     bool playing_ = false;     // the host's transport, as of the start of the next render() (see setTransport())
     double songBeats_ = 0.0;   // where, in beats
     double songSeconds_ = 0.0; // and in seconds

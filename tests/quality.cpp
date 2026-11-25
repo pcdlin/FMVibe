@@ -2450,6 +2450,23 @@ void effectsChainChecks() {
         const ParamValues unsaid = load(defaults(), 16, true), keyed = load(defaults(), 17, true);
         check(unsaid[play] == static_cast<double>(SeqPlay::Host) && keyed[play] == static_cast<double>(SeqPlay::Key),
               "a state before version 17 without the sequencer's Play loads Host, its default then, and a later one Key");
+        // Before version 18, a fixed operator's Pitch and Detune did nothing: a version 17 state's fixed A loads with
+        // them at 0 and LFO 1's slot on its Pitch modulating nothing, operator B's (not fixed) as saved; a version 18
+        // state as saved.
+        ParamValues f = defaults();
+        f[paramIndex(0, OpParam::Fixed)] = 1.0;
+        for (int op : {0, 1}) {
+            f[paramIndex(op, OpParam::Transpose)] = 7.0;
+            f[paramIndex(op, OpParam::Detune)] = 20.0;
+            f[slotTargetIndex(0, op)] = slotTargetValue(paramIndex(op, OpParam::Transpose));
+            f[slotAmountIndex(0, op)] = 0.3;
+        }
+        const ParamValues before = load(f, 17), after = load(f, 18);
+        check(before[paramIndex(0, OpParam::Transpose)] == 0.0 && before[paramIndex(0, OpParam::Detune)] == 0.0 &&
+                  before[slotTargetIndex(0, 0)] == 0.0 && before[slotAmountIndex(0, 0)] == 0.0 &&
+                  before[paramIndex(1, OpParam::Transpose)] == 7.0 && before[slotAmountIndex(0, 1)] == 0.3,
+              "a state before version 18 loads a fixed operator's Pitch and Detune, which did nothing, at 0");
+        check(std::equal(after.begin(), after.end(), f.begin()), "a version 18 state loads a fixed operator as saved");
     }
     {
         // The places past the first 16: a patch with an LFO in the last place on operator A's level, the 17th place's
@@ -6424,6 +6441,33 @@ void savedTempoChecks() {
           "a preset's saved tempo reads back as written, and as none below 20 BPM or from before it was kept");
 }
 
+// --- A Global LFO (see lfoGlobal()): one clock for every voice, which every note starts again. A square at 2 Hz,
+// unipolar, takes A's level down to nothing for the first half of each cycle: an A4 held, sounding 0.3 s in, goes
+// silent with an E5 struck then, both starting the LFO's cycle again, where a free LFO leaves the A4 sounding.
+void globalLfoChecks() {
+    std::printf("global LFO:\n");
+    auto struck = [](bool global) {
+        Engine e(2);
+        lfoOn(e.p, paramIndex(0, OpParam::Out), -1.0, 2.0);
+        e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Square);
+        e.p[paramIndex(0, SourceParam::Unipolar)] = 1.0;
+        e.p[paramIndex(0, global ? SourceParam::Global : SourceParam::Free)] = 1.0;
+        e.noteOn(69);
+        e.render(static_cast<size_t>(0.3 * kSampleRate));
+        e.noteOn(76);
+        e.render(static_cast<size_t>(0.02 * kSampleRate)); // the Out ramping down
+        const std::vector<float> after = e.render(static_cast<size_t>(0.15 * kSampleRate));
+        double sum = 0.0;
+        for (float x : after)
+            sum += static_cast<double>(x) * x;
+        return 10.0 * std::log10(sum / after.size() + 1e-30);
+    };
+    const double global = struck(true), free = struck(false);
+    std::printf("      after a second note: %.1f dB global, %.1f dB free\n", global, free);
+    check(global < -40.0 && free > -30.0,
+          "a Global LFO starts again for every voice as each note starts, where a free one runs on");
+}
+
 // --- Keyboard level scaling: an operator's level across the keys by its breakpoint, depths and curves (the Exp
 // curve's as the DX7's), a modulator's index with it, and nothing changed while it is off.
 void keyScaleChecks() {
@@ -6666,6 +6710,36 @@ void dx7Checks() {
         const double got = at(fb, 880.0) - at(fb, 440.0);
         std::printf("      feedback 5: 2nd harmonic %.1f dB under the 1st, %.1f wanted\n", got, want);
         check(std::abs(got - want) < 1.5, "DX7 feedback moves an operator's phase as far as the DX7's does");
+    }
+
+    // DX7 feedback runs at the DX7's rate whatever the voices' is: feedback 6 (pi at its peak, past where a saw's
+    // harmonics are) giving its harmonics within 0.5 dB at 2x and 4x oversampling.
+    {
+        auto harmonicsAt = [&](int oversampling) {
+            const dx7::Voice v = patch(32, [&](dx7::Voice &voice) {
+                set(voice, 1, dx7::OutputLevel, 0);
+                set(voice, 6, dx7::OutputLevel, 99);
+                voice.data[dx7::kVoiceFields + dx7::Feedback] = 6;
+            });
+            Engine e(oversampling);
+            gui::UiLayout layout;
+            dx7::toPatch(v, e.p, layout);
+            e.noteOn(69);
+            e.render(9600);
+            const std::vector<float> out = e.render(kFftSize);
+            std::array<double, 4> h{};
+            for (int k = 0; k < 4; ++k)
+                h[k] = at(out, 440.0 * (k + 2)) - at(out, 440.0);
+            return h;
+        };
+        const auto two = harmonicsAt(2), four = harmonicsAt(4);
+        double most = 0.0;
+        for (int k = 0; k < 4; ++k)
+            most = std::max(most, std::abs(two[k] - four[k]));
+        std::printf("      DX7 feedback 6: harmonics 2-5 at 2x %.1f %.1f %.1f %.1f dB, at 4x %.1f %.1f %.1f %.1f "
+                    "(%.2f dB apart at most)\n",
+                    two[0], two[1], two[2], two[3], four[0], four[1], four[2], four[3], most);
+        check(most < 0.5, "DX7 feedback runs as the DX7's whatever the oversampling");
     }
 
     // A decay at rate 50 falls 0.75 dB a step... 2756 units, 64.8 dB a second: 40 dB down in 0.62 s.
@@ -7469,6 +7543,7 @@ int main() {
     sequencerChecks();
     savedTempoChecks();
     presetInfoChecks();
+    globalLfoChecks();
     keyScaleChecks();
     dx7Checks();
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.

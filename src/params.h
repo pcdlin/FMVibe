@@ -259,6 +259,7 @@ enum class SourceParam {
     LoopStart,
     LoopEnd,
     CurveSlew, // a Curve's: what it puts out lags behind its curve, Off at 0 (see Synth::curveSlew())
+    Global,    // an LFO's, a Random's and a Curve's: one clock all voices share, every note restarting it (see lfoGlobal())
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -475,9 +476,18 @@ inline MorphMode morphMode(double value) {
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
 // the source to where the operator reads its wave (phase modulation, what FM synths call FM); Linear FM adds it to the
 // operator's frequency, through zero once deep enough; Exp FM moves its pitch by octaves; Ring multiplies its output
-// by the source, all the way at 100 % and as classic AM at 50 %. Feedback is always Phase. Stored in projects by
-// number: only append.
+// by the source, all the way at 100 % and as classic AM at 50 %. Feedback is always Phase: its mode param is a
+// FeedbackMode instead. Stored in projects by number: only append.
 enum class RouteMode { Phase, LinearFm, ExpFm, Ring, Count };
+// How an operator's feedback hears it (its route into itself, whose mode param holds this; see feedbackModeIndex()):
+// Smooth (as it always did) the average of its last two samples, at the voices' oversampled rate; DX7 the average of its
+// last two samples at the DX7's rate (kDx7Rate), held between them, so the loop runs as the DX7's runs whatever the
+// rate, high feedback breaking up as it does there. Stored in projects by number: only append.
+enum class FeedbackMode { Smooth, Dx7, Count };
+inline FeedbackMode feedbackMode(double value) {
+    return static_cast<FeedbackMode>(std::clamp(std::lround(value), 0L, static_cast<long>(FeedbackMode::Count) - 1L));
+}
+constexpr double kDx7Rate = 49096.0; // the DX7's sample rate, Hz
 inline RouteMode routeMode(double value) {
     return static_cast<RouteMode>(std::clamp(std::lround(value), 0L, static_cast<long>(RouteMode::Count) - 1L));
 }
@@ -1238,6 +1248,7 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::Sync:
     case SourceParam::Division:
     case SourceParam::Free:
+    case SourceParam::Global:
         return runsLfo(t);
     case SourceParam::OneShot:
     case SourceParam::Anchor: // Random only retriggers or runs free (see lfoClock())
@@ -1290,34 +1301,45 @@ bool lfoSustain(const Get &get, int source) {
 // neither, nor is a Curve in Sustain. A random one (Random, or the retired Random shape) is never anchored nor
 // one-shot: its values can't be told ahead, so neither means anything to it. Anchored, it runs free; one-shot, it
 // retriggers (as lfoShared() says).
+// Global, as the DX7's LFO runs (added later, so it wins over Free, Anchor and One-Shot, and a Curve's Sustain over it):
+// one clock all voices share, as a free one's, which every note (a key struck, legato or not) starts again at its
+// Phase for every voice playing.
+template <class Get>
+bool lfoGlobal(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::Global)) >= 0.5 && !lfoSustain(get, source);
+}
 template <class Get>
 bool lfoAnchored(const Get &get, int source) {
     return get(paramIndex(source, SourceParam::Anchor)) >= 0.5 &&
            get(paramIndex(source, SourceParam::OneShot)) < 0.5 && lfoShape(get, source) != LfoShape::Random &&
-           !lfoSustain(get, source);
+           !lfoSustain(get, source) && !lfoGlobal(get, source);
 }
 template <class Get>
 bool lfoOneShot(const Get &get, int source) {
     return get(paramIndex(source, SourceParam::OneShot)) >= 0.5 && lfoShape(get, source) != LfoShape::Random &&
-           !lfoSustain(get, source);
+           !lfoSustain(get, source) && !lfoGlobal(get, source);
 }
 template <class Get>
 bool lfoShared(const Get &get, int source) {
-    return get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
-           (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
-            get(paramIndex(source, SourceParam::Anchor)) >= 0.5) &&
-           !lfoSustain(get, source);
+    return lfoGlobal(get, source) ||
+           (get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
+            (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
+             get(paramIndex(source, SourceParam::Anchor)) >= 0.5) &&
+            !lfoSustain(get, source));
 }
-// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free), and a
-// Curve's Sustain (over them all): the editor picks one, setting the switches for it. A random one only retriggers or
-// runs free (kRandomClocks).
-enum class LfoClock { Retrigger, Free, Anchor, OneShot, Sustain, Count };
+// What an LFO's Free, Global, Anchor and One-Shot make of it, as the engine reads them (Global over One-Shot over
+// Anchor over Free), and a Curve's Sustain (over them all): the editor picks one, setting the switches for it, in this
+// order (not stored: the switches are). A random one only retriggers, runs free or global (kRandomClocks).
+enum class LfoClock { Retrigger, Free, Global, Anchor, OneShot, Sustain, Count };
 constexpr int kRandomClocks = static_cast<int>(LfoClock::Anchor);
 template <class Get>
 LfoClock lfoClock(const Get &get, int source) {
     if (lfoShape(get, source) == LfoShape::Random)
-        return lfoShared(get, source) ? LfoClock::Free : LfoClock::Retrigger;
+        return lfoGlobal(get, source)   ? LfoClock::Global
+               : lfoShared(get, source) ? LfoClock::Free
+                                        : LfoClock::Retrigger;
     return lfoSustain(get, source)                               ? LfoClock::Sustain
+           : lfoGlobal(get, source)                              ? LfoClock::Global
            : get(paramIndex(source, SourceParam::OneShot)) >= 0.5 ? LfoClock::OneShot
            : get(paramIndex(source, SourceParam::Anchor)) >= 0.5 ? LfoClock::Anchor
            : get(paramIndex(source, SourceParam::Free)) >= 0.5   ? LfoClock::Free
@@ -1618,6 +1640,11 @@ constexpr int routeModeFrom(int index) {
 }
 constexpr int routeModeTo(int index) {
     return index >= kRouteModeBase && index < kFxPositionBase ? (index - kRouteModeBase) % kOps : -1;
+}
+// An operator's feedback's mode (see FeedbackMode): its route into itself's mode param, hidden as it always was.
+constexpr int feedbackModeIndex(int op) { return routeModeIndex(op, op); }
+constexpr bool isFeedbackModeParam(int index) {
+    return routeModeFrom(index) >= 0 && routeModeFrom(index) == routeModeTo(index);
 }
 // The source an Aux param's value names, or -1 for none.
 inline int slotAuxSource(double value) {
@@ -2268,6 +2295,8 @@ static_assert(numberedInOrder({RouteMode::Phase, RouteMode::LinearFm, RouteMode:
               "RouteMode is stored by number: only append");
 static_assert(numberedInOrder({KeyCurve::Linear, KeyCurve::Exp, KeyCurve::Count}),
               "KeyCurve is stored by number: only append");
+static_assert(numberedInOrder({FeedbackMode::Smooth, FeedbackMode::Dx7, FeedbackMode::Count}),
+              "FeedbackMode is stored by number: only append");
 
 // The highest id in use; sections aren't in id order.
 constexpr clap_id maxParamId() {
@@ -2981,7 +3010,10 @@ enum class ParamKind {
     SeqBars,      // stepped: a pattern's length in bars, set in the editor and hidden from hosts
     KeyDepth,     // bipolar dB: a keyboard scaling depth, an octave from the breakpoint (see keyScaleDb())
     KeyCurve,     // stepped: a keyboard scaling side's curve (see KeyCurve)
+    FeedbackMode, // stepped: how an operator's feedback hears it (see FeedbackMode)
 };
+// The name of a feedback's mode (see FeedbackMode).
+std::string feedbackModeName(FeedbackMode mode);
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
 

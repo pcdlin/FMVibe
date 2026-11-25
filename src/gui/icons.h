@@ -129,6 +129,8 @@ void noteIcon(Canvas &c, Point m, Color color);
 // How a route acts on the operator it goes into, about 10 x 10 around `m` (times `scale`): Phase a phi (a ring with a stroke through
 // it), Linear FM a straight rising line, Exp FM a curve rising ever faster, Ring a ring with a cross in it.
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale = 1.0f);
+// A feedback's mode (see FeedbackMode), about `m`: Smooth a smooth wave, DX7 one in steps, as the DX7's samples hold it.
+void feedbackModeIcon(Canvas &c, Point m, FeedbackMode mode, Color color, float scale = 1.0f);
 // An operator's warp: a cycle of a sine across `r` as the warp reads it at three quarters of its amount (Steps at
 // its full amount; Off: the sine).
 void warpIcon(Canvas &c, Rect r, OpWarp warp, Color color);

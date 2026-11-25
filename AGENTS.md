@@ -102,8 +102,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     or a self-oscillating ladder, diode or Sallen-Key still ends;
   - an operator's Ratio taking modulation on its log curve, continuously (a seventh of its range an octave), and one
     set to 64 modulated on to 128 and no further;
-  - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
-    Pitch and Detune turned and modulated;
+  - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, and its Pitch
+    and Detune, turned and modulated, moving it from there;
   - a new instance has only operator A on, no filter key tracking or going out, its shaper effects linked, its
     frequency shifters' range at 100 Hz, its flangers stereo and its Custom waves at 32 partials; a switched-off
     operator is silent, and a switched-off filter passes nothing; a filter routed nowhere isn't heard, and goes out
@@ -292,7 +292,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     points that hold their ends as they played, a version 14 state's as saved, wrapping around; and a version 14
     state's Sync warp's amount and the depth on it loading 7/15 as large, as its reach grew from 8 times a cycle to
     16, a Squeeze's as saved, a version 15 state's as saved; and a version 16 state in Key with its Root off C4 loading
-    that difference into Transpose (and Octave past its reach), one in Host as saved, a version 17 state's as saved, and one without the sequencer's Play loading Host, a version 17 one Key;
+    that difference into Transpose (and Octave past its reach), one in Host as saved, a version 17 state's as saved, and one without the sequencer's Play loading Host, a version 17 one Key; and a version 17 state's fixed operator loading with its Pitch and Detune, which did nothing, at 0 and their modulation gone, a version 18 state's as saved;
   - the phase disperser's Key Track and Stretch against the chain they make, from the same coefficients: an impulse
     through Key Track with a C4, a C5 and (at 50 %) a C6 coming out as through the chain at Freq and an octave up, and
     through Stretch 4, 37 and 4 at 96 kHz (eight samples) as the plain chain's impulse response spread that far apart,
@@ -516,6 +516,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the flanger through zero, held at its sweep's middle and negative, cancelling noise to nothing; the phaser's
     Spread moving its notches; and the Lo-Fi holding Bits' levels at Rate, Smooth taking the steps' edges off and Mix
     at 0 dry;
+  - a Global LFO starting again for every voice as each note starts: a held note gated by a square at 2 Hz going
+    silent as a second note is struck, where a free one leaves it sounding;
   - keyboard level scaling: an operator's level moving by its depth an octave from the breakpoint either side, evenly
     on the way, a linear side adding it every octave and an exponential one doubling all it moved every octave past the
     first (within 0.1 dB), held at its -96 dB floor; on a modulator taking its index down; off (no depth) leaving the
@@ -525,7 +527,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     back as written and packed as the DX7 packs them, junk giving none; and a voice played: INIT VOICE a sine at the
     note and an octave up transposed, its attack ramping in over the DX7's envelope step rather than clicking, a modulator at output levels 60 and 75 putting its first sidebands as far under
     the carrier as J1 against J0 at the DX7's index (within 1 dB), feedback 5's 2nd harmonic where feedback FM puts it,
-    a decay at rate 50 falling 40 dB in the DX7's 0.62 s, velocity sensitivity 7 taking a note at 64 16 dB under one at
+    DX7 feedback 6's harmonics within 0.5 dB at 2x and 4x oversampling, a decay at rate 50 falling 40 dB in the DX7's
+    0.62 s, velocity sensitivity 7 taking a note at 64 16 dB under one at
     127, keyboard level scaling at depth 99 (-LIN an octave out, -EXP two and three) within 1 dB of the DX7's and +LIN
     on an operator at full level lifting nothing, the pitch envelope at 74 playing 9 semitones up, the LFO at speed 35 at 5.6 Hz, and a bank's presets named
     for their voices in order and reading back as made;
@@ -682,6 +685,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
     lighting none of them (read off the rendered pixels); a source card's button showing its modulations in MODS, or with none adding an empty one
     from it;
+  - a feedback's label opening into a pill whose mode part picks Smooth or DX7, undoably, a label in DX7 showing its
+    glyph at rest (read off the rendered pixels);
   - a wire label under the mouse opening into a pill (read off the rendered pixels): its mode part's list picking
     the route's mode and the wheel stepping it, undoably, its × removing the route (and an OUT label's its node's
     output), the open pill taking clicks and the wheel over the wire ends under it, which take them beside the label
@@ -788,8 +793,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     warp button's tooltip, the display synced, and a noise operator showing its envelope in the tab's place;
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the
     ratio was in one undo step and taking Ratio's and Fine's places, Mult stepping (and typed into, its × taken
-    whole), and Pitch and Detune dimmed (read off the rendered pixels), not turning and not ringed for a dragged
-    handle (read off the rendered pixels);
+    whole), and Pitch and Detune not dimmed, turning and ringed for a dragged handle (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the KEYS tab: its breakpoint dragged across onto whole notes and its depths up and down, each drag closing its
@@ -808,8 +812,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes a
     list under its shape list, a pick undoable, the mode in force picked again leaving it, the wheel over it stepping
-    along them and held at One-Shot, and its Unipolar switch beside its shape list, apart; a Random source's list, where an LFO's shape list is, Retrigger and Free
-    alone;
+    along them and held at One-Shot, and its Unipolar switch beside its shape list, apart; a Random source's list, where an LFO's shape list is, Retrigger, Free
+    and Global alone;
   - the three-band dynamics' card: a band's row picking the band its knobs set, its threshold lines dragged
     across (Above stopping at Below) undoably, Alt-dragged for the ratio and double-clicked back, a line on another
     band picking that band, its zones dragged for their ratios (the upward one up for more, the downward one down, undoably, picking their
@@ -1552,7 +1556,8 @@ itself.
   then Bipolar), the operators as sources 57000 + 40·op (their slots, then Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the routes' modes
   700 + 10·from + to (from by the routing graph's node order: the operators, the filters, the shapers; to an
-  operator; an operator's own field, its feedback, hidden and always Phase), the voice shapers'
+  operator; an operator's own field, its feedback, hidden and always Phase, holding its `FeedbackMode` instead), the
+  voice shapers'
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' stored number, see below: the first 16 places, the macros, the
   note source, the mod wheel, velocity, the pitch bend, the operators, then the places past the 16th; the blocks fill
@@ -1578,7 +1583,7 @@ itself.
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
   warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`), morph mode (`MorphMode`) and the sequencer's play
   mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, keyboard
-  scaling's curve (`KeyCurve`), the routing views and the operator page's tabs,
+  scaling's curve (`KeyCurve`), the feedback's mode (`FeedbackMode`), the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile (and
   `src/params.cpp` checks that every param's id leads back to it: a check that costs MSVC seconds goes in a `.cpp`,
@@ -1653,7 +1658,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 17: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 18: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1688,7 +1693,9 @@ itself.
   and Octave what Transpose can't hold (`transposeFromRoot()`), since the keys now transpose a pattern from C4
   (`kSeqTransposeFrom`) and Root sets the scale alone;
   version 17's sequencer notes may also bend, an earlier state loading with none, and its Play is Key to begin with, an
-  earlier state without one loading Host, its default then),
+  earlier state without one loading Host, its default then; before version 18, a fixed operator's Pitch and Detune,
+  which did nothing on it and now move it, load at 0 and what modulated them modulates nothing (`fixedIgnoredPitch()`),
+  and an operator's feedback, whose mode param held nothing, has a mode (`FeedbackMode`), Smooth to begin with),
   followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which

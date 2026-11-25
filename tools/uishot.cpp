@@ -684,7 +684,7 @@ Point shapeItem(float card, LfoShape shape) {
 // A Curve card's list of clock modes, where an LFO's shape list is: a mode in the list it opens, its arrows (-1 the left
 // one), and a pick from it.
 Point clockItem(float card, LfoClock clock) {
-    return {shapeButton(card).x, 647.0f + static_cast<float>(clock) * 22.0f};
+    return detail::listMenuItem(detail::lfoShapeButton(card), detail::kCurveModes, static_cast<int>(clock)).center();
 }
 Point clockArrow(float card, int dir) {
     return detail::listStepButton(detail::lfoShapeButton(card), dir).center();
@@ -692,11 +692,11 @@ Point clockArrow(float card, int dir) {
 void pickClock(View &view, float card, LfoClock clock);
 
 // An LFO card's clock modes, a list under its shape list (a Random card's under its polarity), and a pick from it: an
-// LFO's four modes, a Random's two.
+// LFO's five modes, a Random's three.
 Point lfoClockPoint(float card) {
     return detail::lfoClockButton(card).center();
 }
-void pickLfoClock(View &view, float card, LfoClock clock, int modes = 4);
+void pickLfoClock(View &view, float card, LfoClock clock, int modes = detail::kLfoModes);
 
 // The Unipolar switch beside an LFO's shape list.
 Point unipolarToggle(float card) {
@@ -1340,33 +1340,36 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
-    // Its clock modes are Retrigger and Free alone, in a list where an LFO's shape list is, as a Curve card's: the
-    // wheel over its list stops at Free, and the list holds the two (a click where a third would be picks nothing),
-    // each picked with Anchor and One-Shot left off.
+    // Its clock modes are Retrigger, Free and Global alone, in a list where an LFO's shape list is, as a Curve card's:
+    // the wheel over its list stops at Global, and the list holds the three (a click where a fourth would be picks
+    // nothing), each picked with Anchor and One-Shot left off.
     {
         auto clocks = [&] {
             return std::array{model.value(paramIndex(1, SourceParam::Free)),
+                              model.value(paramIndex(1, SourceParam::Global)),
                               model.value(paramIndex(1, SourceParam::Anchor)),
                               model.value(paramIndex(1, SourceParam::OneShot))};
         };
-        using Clocks = std::array<double, 3>;
+        using Clocks = std::array<double, 4>;
         const Rect clockList = detail::lfoShapeButton(1.0f);
         auto pickRandomClock = [&](LfoClock clock) {
             click(view, clockList.center());
-            click(view, detail::listMenuItem(clockList, 2, static_cast<int>(clock)).center());
+            click(view, detail::listMenuItem(clockList, kRandomClocks, static_cast<int>(clock)).center());
         };
-        view.wheel(clockList.center(), 3.0f, {});
-        const bool wheeled = clocks() == Clocks{1.0, 0.0, 0.0};
+        view.wheel(clockList.center(), 4.0f, {});
+        const bool wheeled = clocks() == Clocks{0.0, 1.0, 0.0, 0.0};
         pickRandomClock(LfoClock::Retrigger);
         const bool retriggered = clocks() == Clocks{};
         pickRandomClock(LfoClock::Free);
-        const bool freed = clocks() == Clocks{1.0, 0.0, 0.0};
+        const bool freed = clocks() == Clocks{1.0, 0.0, 0.0, 0.0};
+        pickRandomClock(LfoClock::Global);
+        const bool global = clocks() == Clocks{0.0, 1.0, 0.0, 0.0};
         click(view, clockList.center());
-        click(view, detail::listMenuItem(clockList, 2, 2).center());
-        const bool freeAgain = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, detail::listMenuItem(clockList, kRandomClocks, kRandomClocks).center());
+        const bool globalAgain = clocks() == Clocks{0.0, 1.0, 0.0, 0.0};
         pickRandomClock(LfoClock::Retrigger);
-        check(wheeled && retriggered && freed && freeAgain && clocks() == Clocks{},
-              "a Random source's clock modes are Retrigger and Free alone");
+        check(wheeled && retriggered && freed && global && globalAgain && clocks() == Clocks{},
+              "a Random source's clock modes are Retrigger, Free and Global alone");
     }
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed Random source");
@@ -5342,17 +5345,17 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     const Rect titleList = kTitleList; // after its name
     auto titleClock = [&](int mode) {
         click(view, titleList.center());
-        click(view, detail::listMenuItem(titleList, 5, mode).center());
+        click(view, detail::listMenuItem(titleList, detail::kCurveModes, mode).center());
         view.mouseMove({600.0f, 500.0f}, {});
     };
-    titleClock(4);
+    titleClock(static_cast<int>(LfoClock::Sustain));
     const bool titleSustain = model.value(sustain) == 1.0;
-    titleClock(0);
+    titleClock(static_cast<int>(LfoClock::Retrigger));
     const bool titleRetrigger = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
     // Its list alone opens, not its card's too: One-Shot's place in the card's list takes nothing.
     click(view, titleList.center());
     const Rect cardList = detail::lfoShapeButton(0);
-    click(view, detail::listMenuItem(cardList, 5, static_cast<int>(LfoClock::OneShot)).center());
+    click(view, detail::listMenuItem(cardList, detail::kCurveModes, static_cast<int>(LfoClock::OneShot)).center());
     const bool titleOwn = model.value(oneShot) == 0.0;
     const int titlePolarity = paramIndex(0, SourceParam::Unipolar);
     const double wasUnipolar = model.value(titlePolarity);
@@ -5501,13 +5504,13 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "10h-curve-loop-retrigger.png");
     const uint32_t retriggerAfter = renderer.pixel(after), retriggerBefore = renderer.pixel(before),
                    retriggerBar = renderer.pixel(bar);
-    titleClock(1);
+    titleClock(static_cast<int>(LfoClock::Free));
     renderer.save(view, dir / "10h-curve-loop-free.png");
     const uint32_t freeBefore = renderer.pixel(before);
-    titleClock(4);
+    titleClock(static_cast<int>(LfoClock::Sustain));
     renderer.save(view, dir / "10h-curve-loop-sustain.png");
     const uint32_t sustainAfter = renderer.pixel(after), sustainBefore = renderer.pixel(before);
-    titleClock(3);
+    titleClock(static_cast<int>(LfoClock::OneShot));
     renderer.save(view, dir / "10h-curve-loop-one-shot.png");
     const uint32_t oneShotAfter = renderer.pixel(after), oneShotBar = renderer.pixel(bar);
     drag(view, stripAt(0.5), stripAt(0.75));
@@ -5519,7 +5522,7 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
 
     // A point's menu: Set as Loop Start and End, exactly at the point (off the grid too), each one undo step, left out
     // where that end would cross the other; Delete point as before.
-    titleClock(4); // Sustain
+    titleClock(static_cast<int>(LfoClock::Sustain));
     view.doubleClick(shapeAt(0.37, 0.0), {}); // a point off the grid, the second of three
     const double pointX = model.value(shapePointIndex(0, 1, PointField::X));
     auto labels = [&](Point at) {
@@ -12253,6 +12256,68 @@ void testLabelsClearOfEachOther(const std::filesystem::path &dir, Renderer &rend
           "wire labels that would overlap slide apart along their wires, the first placed staying at its middle");
 }
 
+// A feedback's mode (FeedbackMode): its loop's label, under the mouse, opens into a pill whose mode part lists Smooth
+// and DX7, a pick an undo step, and resting, a label in DX7 shows its glyph (read off the rendered pixels). The label
+// is found by its right-click menu, as below.
+void testFeedbackMode(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    const int feedback = matrixIndex(1, 1), mode = feedbackModeIndex(1);
+    model.set(feedback, 0.4);
+    layout.nodeX[1] = 0.5f;
+    layout.nodeY[1] = 0.6f;
+    view.poll();
+    const Point b = nodeCenter(layout, 1);
+    // Where the loop's label is: the points around B's loop whose right-click menu offers Reset to Default, the middle
+    // of their span across.
+    float leftmost = 1e9f, rightmost = -1e9f, row = 0.0f;
+    for (float y = b.y - 70.0f; y <= b.y - 10.0f; y += 2.0f)
+        for (float x = b.x - 90.0f; x <= b.x + 90.0f; x += 1.0f) {
+            bool label = false;
+            for (const MenuItem &item : view.contextMenu({x, y}))
+                label = label || item.label == tr(Str::MenuResetDefault);
+            if (label && (row == 0.0f || std::abs(y - row) < 0.5f)) {
+                row = y;
+                leftmost = std::min(leftmost, x);
+                rightmost = std::max(rightmost, x);
+            }
+        }
+    const Point label{0.5f * (leftmost + rightmost), row};
+    const Point modePart{label.x - 0.5f * detail::kWireLabelW - 0.5f * detail::kLabelModeW, label.y};
+    const Point glyph{label.x - 0.5f * detail::kWireLabelW - 0.5f * detail::kLabelGlyphW + 16.0f, label.y};
+    auto pixelsAround = [&](Point at) {
+        std::vector<uint32_t> pixels;
+        for (float y = at.y - 5.0f; y <= at.y + 5.0f; y += 1.0f)
+            for (float x = at.x - 5.0f; x <= at.x + 5.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 468.0f}, {});
+    renderer.save(view, dir / "2k3-feedback-smooth.png");
+    const std::vector<uint32_t> smooth = pixelsAround(glyph);
+    view.mouseMove(label, {});
+    view.mouseMove(modePart, {});
+    click(view, modePart);
+    const float listTop = label.y + 0.5f * detail::kWireLabelH + 4.0f;
+    const Point dx7Item{modePart.x - 0.5f * detail::kLabelModeW + 56.0f, listTop + 4.0f + 22.0f + 11.0f};
+    view.mouseMove(dx7Item, {});
+    const bool listShot = renderer.save(view, dir / "2k3-feedback-mode-list.png");
+    click(view, dx7Item);
+    const bool picked = model.value(mode) == static_cast<double>(FeedbackMode::Dx7);
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool restShot = renderer.save(view, dir / "2k3-feedback-dx7.png");
+    const bool shows = pixelsAround(glyph) != smooth;
+    view.undo();
+    const bool undone = model.value(mode) == static_cast<double>(FeedbackMode::Smooth);
+    std::printf("      feedback's label at (%.0f, %.0f): DX7 picked %d, its glyph shown %d, undone %d\n", label.x, label.y,
+                picked, shows, undone);
+    check(row > 0.0f && listShot && picked && restShot && shows && undone && model.value(feedback) == 0.4,
+          "a feedback's pill picks its mode, Smooth or DX7, and resting in DX7 shows its glyph (read off the rendered "
+          "pixels)");
+}
+
 // A feedback loop's label moves off a wire's label: B feeds itself back, and A -> C runs straight above B, its label
 // resting up and to the right of B's loop, where the loop's label would sit. The loop's label goes to the loop's left;
 // the wire's stays at its middle. Labels are found and told apart by their right-click menus, as above.
@@ -15293,7 +15358,8 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Fixed pitch: the keyboard on A's summary line switches it, setting Freq and Mult to where the ratio put A4 in
     // one undo step. Freq and Mult take the Ratio readout's place (Mult stepping, 10 px up a step), and Pitch and
-    // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).
+    // Detune, which move it from there, still turn, not dimmed (read off the rendered pixels: the Pitch knob's column
+    // as bright).
     {
         const Point kFixedSwitch = detail::kFixedSwitch.center();
         const Point pitchColumn{kPitchKnob.x, kPitchKnob.y - 0.5f * detail::kOpKnobD};
@@ -15367,9 +15433,8 @@ void run(const std::filesystem::path &dir, float scale) {
             checkFont(shot && byPlus < 140 && byMinus < 140,
                       "a stepper's number too long for - and + both moves off the one under the mouse");
         }
-        // A source's handle held meanwhile rings the knobs it can be dropped on, Freq among them, but not the dimmed
-        // Pitch, which takes no drop (read off the rendered pixels: a strip across the top of each ring, with the
-        // handle held and after the drag was called off).
+        // A source's handle held meanwhile rings the knobs it can be dropped on, Freq and Pitch among them (read off the
+        // rendered pixels: a strip across the top of each ring, with the handle held and after the drag was called off).
         {
             const Point freqKnob{kMultKnob.x - 45.0f, kMultKnob.y};
             auto strip = [&](Point knob) {
@@ -15387,8 +15452,8 @@ void run(const std::filesystem::path &dir, float scale) {
             view.cancelDrag();
             view.mouseMove({600.0f, 328.0f}, {});
             const bool freeShot = renderer.save(view, dir / "3f-fixed-no-drag.png");
-            check(heldShot && freeShot && freqHeld != strip(freqKnob) && pitchHeld == strip(kPitchKnob),
-                  "a dimmed knob isn't ringed as a drop target");
+            check(heldShot && freeShot && freqHeld != strip(freqKnob) && pitchHeld != strip(kPitchKnob),
+                  "a fixed operator's Freq and Pitch are ringed as drop targets");
         }
         drag(view, kMultKnob, {kMultKnob.x, kMultKnob.y - 10.0f}); // Mult, in the readout's right half: x1 to x10
         const double pitch = model.value(paramIndex(0, OpParam::Transpose));
@@ -15399,14 +15464,15 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove(kFixedSwitch, {});
         check(renderer.save(view, dir / "3f-fixed-tooltip.png"), "render the fixed switch's tooltip");
         const bool stepped = model.value(mult) == 4.0;
-        const bool still = model.value(paramIndex(0, OpParam::Transpose)) == pitch;
+        const bool turned = model.value(paramIndex(0, OpParam::Transpose)) != pitch;
+        view.undo(); // Pitch
         view.undo();
         const bool multBack = model.value(mult) == 3.0 && model.value(fixed) == 1.0;
         view.undo();
         std::printf("      A fixed at %.1f Hz (its ratio's at A4: %.1f); Pitch knob's column %d tracking, %d fixed\n",
                     fixedAt, tracked, lit, dim);
-        check(trackingShot && fixedShot && set && stepped && still && multBack && model.value(fixed) == 0.0 &&
-                  dim * 10 < lit * 7,
+        check(trackingShot && fixedShot && set && stepped && turned && multBack && model.value(fixed) == 0.0 &&
+                  dim * 10 > lit * 8,
               "the keyboard switch fixes an operator's pitch where its ratio was, its knobs becoming Freq and Mult");
         // The wheel over the switch does what a click does: up, it fixes the operator where its ratio was; up again,
         // nothing more; down, it follows the keyboard again.
@@ -17224,6 +17290,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testLabelClearOfNode(dir, renderer);
     testLabelsClearOfEachOther(dir, renderer);
     testLoopLabelClear(dir, renderer);
+    testFeedbackMode(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     testOutScope(dir, renderer);

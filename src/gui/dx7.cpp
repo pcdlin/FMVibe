@@ -541,8 +541,10 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
             const int fb = voice.voice(Feedback);
             const bool feedback = op == algorithm.feedbackFrom && to == algorithm.feedbackTo;
             double amount = 0.0;
-            if (feedback && to == op) // phase from the average of its last two samples, 2^(fb - 8) of it
+            if (feedback && to == op) { // phase from the average of its last two samples, 2^(fb - 8) of it
                 amount = fb > 0 ? std::sqrt(std::exp2(fb - 7.0) * full[op] / kFmAmount) : 0.0;
+                p[feedbackModeIndex(op)] = static_cast<double>(FeedbackMode::Dx7); // at the DX7's rate, as it runs
+            }
             else if (feedback) // the same, into an operator up its stack
                 amount = fb > 0 ? std::sqrt(2.0 * std::numbers::pi * std::exp2(fb - 8.0) * full[op] / (8.0 * kFmAmount))
                                 : 0.0;
@@ -678,14 +680,20 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
     if (const auto [wait, fade] = lfoDelay(voice.voice(LfoDelay)); (pitch > 0.0 || amp) && wait + fade > 0.0) {
         delay = modulation.addSource(SourceType::Curve);
         if (delay >= 0) {
+            // Silent, fading in and then holding in a loop at its end (the last tenth): one for every voice, every key
+            // starting it again, as the DX7's delay is.
             p[paramIndex(delay, SourceParam::Sync)] = 0.0;
-            p[paramIndex(delay, SourceParam::OneShot)] = 1.0;
-            p[paramIndex(delay, SourceParam::Rate)] = std::clamp(normFromRate(1.0 / (wait + fade)), 0.0, 1.0);
+            p[paramIndex(delay, SourceParam::Global)] = 1.0;
+            const double cycle = (wait + fade) / 0.9;
+            p[paramIndex(delay, SourceParam::Rate)] = std::clamp(normFromRate(1.0 / cycle), 0.0, 1.0);
+            p[paramIndex(delay, SourceParam::LoopStart)] = 0.9;
+            p[paramIndex(delay, SourceParam::LoopEnd)] = 1.0;
             const int shape = shapeCountIndex(delay);
-            p[shape] = 3.0;
+            p[shape] = 4.0;
             setPoint(p, shape, 0, 0.0, -1.0, 0.0);
-            setPoint(p, shape, 1, wait / (wait + fade), -1.0, 0.0);
-            setPoint(p, shape, 2, 1.0, 1.0, 0.0);
+            setPoint(p, shape, 1, 0.9 * wait / (wait + fade), -1.0, 0.0);
+            setPoint(p, shape, 2, 0.9, 1.0, 0.0);
+            setPoint(p, shape, 3, 1.0, 1.0, 0.0);
         }
     }
     auto lfo = [&](bool bipolar) {
@@ -697,7 +705,8 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
                                                 LfoShape::Sine};
         p[paramIndex(s, SourceParam::Sync)] = 0.0;
         p[paramIndex(s, SourceParam::Rate)] = std::clamp(normFromRate(hz), 0.0, 1.0);
-        p[paramIndex(s, SourceParam::Free)] = free ? 1.0 : 0.0;
+        // Key sync on, every note starts it again for every voice, as the DX7's one LFO is; off, it runs free.
+        p[paramIndex(s, free ? SourceParam::Free : SourceParam::Global)] = 1.0;
         if (random) {
             p[paramIndex(s, SourceParam::RandomChaos)] = 1.0;
             p[paramIndex(s, SourceParam::RandomSmooth)] = 0.0;
@@ -711,9 +720,19 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
         }
         return s;
     };
+    // What bends the pitch bends the fixed operators too, as on the DX7: their own Pitch, which the global one leaves
+    // alone (as wide, 96 semitones, so the same depth).
+    std::vector<int> pitches{paramIndex(GlobalParam::Pitch)};
+    for (int op = 0; op < kOps; ++op)
+        if (voice.op(op + 1, OscMode) == 1)
+            pitches.push_back(paramIndex(op, OpParam::Transpose));
     if (pitch > 0.0)
         if (const int s = lfo(true); s >= 0) // the whole swing, half each way, on Pitch's 96 semitones
-            modulate(p, s, paramIndex(GlobalParam::Pitch), (wave == 1 ? -2.0 : 2.0) * pitch / 96.0, 0.0, delay);
+            for (int target : pitches)
+                modulate(p, s, target, (wave == 1 ? -2.0 : 2.0) * pitch / 96.0, 0.0, delay);
+    // The pitch bend, by Bend Range, on the fixed operators, which it doesn't bend by itself.
+    for (size_t k = 1; k < pitches.size(); ++k)
+        modulate(p, kBendSource, pitches[k], 2.0 * p[paramIndex(GlobalParam::BendRange)] / 96.0);
     if (amp)
         if (const int s = lfo(false); s >= 0)
             for (int op = 0; op < kOps; ++op) {
@@ -754,7 +773,8 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
             p[paramIndex(s, SourceParam::CurveSustain)] = 1.0;
             p[paramIndex(s, SourceParam::LoopStart)] = hold;
             p[paramIndex(s, SourceParam::LoopEnd)] = hold;
-            modulate(p, s, paramIndex(GlobalParam::Pitch), 1.0);
+            for (int target : pitches)
+                modulate(p, s, target, 1.0);
         }
     }
     controller.clearHistory();

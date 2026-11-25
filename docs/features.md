@@ -53,9 +53,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     modulated, at the control rate. An operator on its AHDSR costs what it did;
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
-    global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
-    its unison copies still spread about it. Freq can be modulated (a pitch sweep on a fixed operator is a mod
-    envelope on it); Mult, a few steps, can't. Below about 20 Hz a fixed modulator gives a wobble that ignores
+    global Pitch and the note's tuning don't move it, nor does its ratio; its own **Pitch** and **Detune** do, and the
+    modulation on them, so a pitch envelope, vibrato or bend of its own moves it from its Freq x Mult (a DX7 voice's
+    pitch envelope, LFO and bend reach its fixed operators so). Its unison copies still spread about it. Freq can be
+    modulated too (a sweep across its range); Mult, a few steps, can't. Patches saved while Pitch and Detune did
+    nothing on a fixed operator (state version 17 and earlier) load with them at 0 and their modulation modulating
+    nothing, playing as they played. Below about 20 Hz a fixed modulator gives a wobble that ignores
     the note;
   - **Hold**: every envelope (operators and mod envelopes alike) can stay at full level for a while after its
     attack, before the decay starts (off by default);
@@ -173,7 +176,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     sound, at 50 % the operator stays at half its level with them beside it, as amplitude modulation.
 
   Like Phase, Linear and Exp FM take their amounts squared, and all four are scaled by FM Amount. An operator's
-  feedback is always Phase. An operator that Linear or Exp FM can take higher reads a wavetable with fewer
+  feedback is always Phase, and has a mode of its own instead (`FeedbackMode`, held in its route's mode param, hidden
+  from hosts and the editor's alone, as that was), picked from its label's pill as a route's mode is (its list, or the
+  wheel over it, each pick an undo step; resting, a label in DX7 shows its glyph, a wave in steps): **Smooth** (to begin
+  with, as feedback always played) hears the average of its last two samples at the voices' oversampled rate; **DX7**
+  hears the average of its last two at the DX7's rate, 49,096 Hz, held between them, so its loop runs as the DX7's does
+  whatever the voices' rate (its harmonics within 0.1 dB at 2x and 4x), and high feedback breaks up into noise as it does
+  there. An operator that Linear or Exp FM can take higher reads a wavetable with fewer
   harmonics, so it stays below Nyquist at the top of its swing. The mode is a param of its own for hosts (`B → A
   Mode`), stepped and automatable, and changes at once.
 - **Filters F1 and F2**, per voice, each switchable on and off (a new instance starts with both off). Any
@@ -305,7 +314,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
     in quarter notes, as an LFO does), and takes a new value every cycle. Of the clock modes it has only
     **Retrigger** and **Free**: its values can't be told ahead, so standing where the transport puts it or running
-    one cycle means nothing to it (a patch or host that sets its Anchor runs it free, and its One-Shot retriggers it). **Chaos** sets
+    one cycle means nothing to it (a patch or host that sets its Anchor runs it free, and its One-Shot retriggers
+    it); Global restarts its clock with each note, taking a new value. **Chaos** sets
     how far it may move from the last one: up to a tenth of the range either way at 0 %, so it wanders, rising to
     anywhere at all at 100 % (the default), like sample and hold. **Smooth** glides to each new value instead of
     jumping: over that share of the cycle, easing in and out, then it holds (0 %, the default, steps). Unsynced at
@@ -449,13 +459,18 @@ What the plugin does and how its editor works, in full. Building and installing 
     all the voices together, follows the newest voice's operator, as the effects' other modulation does, and takes
     over from one note to the next over about 5 ms, so a new note doesn't click; an operator at a fixed frequency
     moves it alike whichever note is newest. The filter effect's Formant type's cutoff stays with the 32-sample blocks.
-  - An LFO runs in one of four clock modes, picked from a list: **Retrigger** (the default), **Free**, **Anchor** or
-    **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
-    hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
-    wins, then Anchor. A Random source has only Retrigger and Free (see Random above). A Curve source has a fifth,
-    **Sustain** (below), which wins over the other three.
+  - An LFO runs in one of five clock modes, picked from a list: **Retrigger** (the default), **Free**, **Global**,
+    **Anchor** or **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the others is a
+    switch of its own (Free, Anchor and One-Shot hosts see; Global, added later, is the editor's); the editor turns the
+    others off as it picks one. Should a host or a state turn on more than one, Global wins, then One-Shot, then
+    Anchor. A Random source has only Retrigger, Free and Global (see Random above). A Curve source has a sixth,
+    **Sustain** (below), which wins over the others.
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes.
+  - **Global** runs on that shared clock too, as the DX7's one LFO does, but every note (a key struck, legato or not)
+    starts it again from its Phase, for every voice playing: a held note's vibrato starts over with each new one. A
+    Random source takes its next value there; a Curve plays from its Phase into its loop, as retriggered. (`SourceParam::
+    Global`, after the fields there were, off to begin with, so a patch from before plays as it did.)
   - **Anchor** ties an LFO to the host's transport: while it plays, the LFO stands where it would had it started at
     its Phase at the very start of the song and run ever since, so it lands on the same spot of its cycle at the same
     place in the song however playback started (a synced LFO counts in beats, so a quarter-note one is at its Phase
@@ -2218,8 +2233,9 @@ what it started goes on.
     button shows the mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the
     wheel over it steps along it too; its list shows the modes with their icons, the one in force checked (the button
     shows no tooltip, as the shape list doesn't). Its icons: a rise that starts again at each dot for **Retrigger**,
-    an infinity sign for **Free**, an anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. An
-    LFO has those four, a Random source the first two and a Curve card five, with **Sustain** last (a rise, a level
+    an infinity sign for **Free**, one with a dot at its crossing for **Global**, an anchor for **Anchor** and a single
+    cycle that ends in a dot for **One-Shot**. An LFO has those five, a Random source the first three and a Curve card
+    six, with **Sustain** last (a rise, a level
     between two ticks and a fall); a Random's and a Curve's list is where an LFO's shape list is. Each pick, step or
     wheel notch is one undo step. Right of the two rows, centered on them, are an LFO's Rate and Phase knobs.
     Between an LFO's shape list and Rate, level with the list, is the
@@ -2660,11 +2676,12 @@ what it started goes on.
       Amount** at 200 % so that a modulator at the DX7's full level, two cycles (4 pi) of phase into its carrier, fits
       a route's 8 radians; a route's amount is then the square root of its share, from the operator's output level on
       the DX7's level curve (0.75 dB a step from 20 up, steeper below). **Feedback** 1-7 moves an operator's phase by
-      2^(feedback - 8) of its last two samples' average, as the DX7's does (the feedback up a stack in algorithms 4 and
-      6 a route from D into F); a carrier's Out is its gain at full envelope, and Volume comes down by as much as its
+      2^(feedback - 8) of its last two samples' average, as the DX7's does, its feedback in DX7 mode, at the DX7's rate
+      (the feedback up a stack in algorithms 4 and 6 a route from D into F); a carrier's Out is its gain at full envelope, and Volume comes down by as much as its
       carriers add up past one at full level;
     - each operator's **pitch**: its coarse (0 for 0.5) and fine ratio, or a fixed Freq of 10^(coarse mod 4 + fine /
-      100) Hz (on Mult x10 above 2 kHz), its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
+      100) Hz (on Mult x10 above 2 kHz), the pitch envelope, the LFO's pitch modulation and the pitch bend (by Bend
+      Range) on a fixed operator's own Pitch too, as they bend the DX7's, its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
       Pitch (24 in tune); with oscillator key sync off, Rnd Phase at 100 %;
     - each operator's **envelope** as a drawn envelope in Sustain, traced step by step as the DX7 runs it (from
       silence to L1, L2 and L3, held there by a loop of no length, then on to L4 once let go): a decay falling evenly
@@ -2679,9 +2696,11 @@ what it started goes on.
       scaled operator's envelope Length, shortening it by 2^(-scaling x 31/32) at the top as the DX7 speeds its
       rates;
     - the **LFO** as an LFO (or, for sample and hold, a Random source) at the DX7's speed (0.06 Hz at 0, 5.6 Hz at 35,
-      49 Hz at 99), free unless its key sync is on: one, bipolar, on Pitch by the pitch mod depth and sensitivity (up
+      49 Hz at 99), Global while its key sync is on (every note starting it again for every voice, as the DX7's one
+      LFO), else Free: one, bipolar, on Pitch by the pitch mod depth and sensitivity (up
       to an octave), and one, unipolar, turning each operator with amp mod sensitivity down at the LFO's trough by a
-      model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down to silence at 3); its delay a one-shot Curve source, silent and then fading in, as the aux of
+      model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down to silence at 3); its delay a Global Curve source, silent, fading in and then holding (looping its last tenth), which every
+      note starts again, as the DX7's delay, as the aux of
       both;
     - the **pitch envelope** as a Curve source in Sustain on Pitch (bipolar), its levels on the DX7's curve (3/8 of a
       semitone a step about 50, out to four octaves either way) and its segments straight at its rates' speeds.

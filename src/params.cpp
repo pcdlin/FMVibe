@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 52172 && kParamCount <= 35 * 1500);
+static_assert(kParamCount == 52204 && kParamCount <= 35 * 1500);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -154,6 +154,8 @@ static_assert(std::size(kAmpMicNames) == static_cast<size_t>(AmpMic::Count));
 constexpr Str kRouteModeNames[] = {Str::RoutePhase, Str::RouteLinearFm, Str::RouteExpFm, Str::RouteRing};
 static_assert(std::size(kRouteModeNames) == static_cast<size_t>(RouteMode::Count));
 constexpr Str kKeyCurveNames[] = {Str::KeyCurveLinear, Str::KeyCurveExp};
+constexpr Str kFeedbackModeNames[] = {Str::FeedbackSmooth, Str::FeedbackDx7};
+static_assert(std::size(kFeedbackModeNames) == static_cast<size_t>(FeedbackMode::Count));
 static_assert(std::size(kKeyCurveNames) == static_cast<size_t>(KeyCurve::Count));
 constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
@@ -267,7 +269,7 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp ||
             kind == ParamKind::UniCurve || kind == ParamKind::UniPan || kind == ParamKind::MorphMode ||
             kind == ParamKind::SeqPattern || kind == ParamKind::SeqPlay || kind == ParamKind::SeqRate ||
-            kind == ParamKind::SeqOrder || kind == ParamKind::KeyCurve)
+            kind == ParamKind::SeqOrder || kind == ParamKind::KeyCurve || kind == ParamKind::FeedbackMode)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -756,16 +758,21 @@ void buildTable(ParamTable &t) {
         }
     }
 
-    // Every route into an operator starts as phase modulation. Feedback is always that: its field is hidden.
+    // Every route into an operator starts as phase modulation. Feedback is always that: its field (hidden, the editor's
+    // alone, as it always was) is its FeedbackMode instead, Smooth to begin with, as it always played.
     for (int from = 0; from < kRouteSources; ++from) {
         const std::string tag = from < kOps                ? letter(from)
                                 : from < kOps + kFilters ? "F" + std::to_string(from - kOps + 1)
                                                           : "S" + std::to_string(from - kOps - kFilters + 1);
         for (int to = 0; to < kOps; ++to) {
+            if (from == to) {
+                add(routeModeIndex(from, to), trf(Str::ParamFeedbackMode, {letter(from)}), tr(Str::ModuleMatrix),
+                    ParamKind::FeedbackMode, 0.0, static_cast<double>(FeedbackMode::Count) - 1.0, 0.0);
+                t[routeModeIndex(from, to)].flags = CLAP_PARAM_IS_HIDDEN;
+                continue;
+            }
             add(routeModeIndex(from, to), trf(Str::ParamRouteMode, {tag + " → " + letter(to)}), tr(Str::ModuleMatrix),
                 ParamKind::RouteMode, 0.0, static_cast<double>(RouteMode::Count) - 1.0, 0.0);
-            if (from == to)
-                t[routeModeIndex(from, to)].flags = CLAP_PARAM_IS_HIDDEN;
         }
     }
 
@@ -1092,6 +1099,7 @@ void buildTable(ParamTable &t) {
         field(SourceParam::LoopStart, tr(Str::ParamCurveLoopStart), ParamKind::ShapePoint, 0.0, 1.0, 0.0);
         field(SourceParam::LoopEnd, tr(Str::ParamCurveLoopEnd), ParamKind::ShapePoint, 0.0, 1.0, 1.0);
         field(SourceParam::CurveSlew, tr(Str::ParamSlew), ParamKind::TimeOrOff, 0.0, kMaxSlewNorm, 0.0); // Off
+        field(SourceParam::Global, tr(Str::ParamGlobal), ParamKind::Toggle, 0.0, 1.0, 0.0); // off: as it ran
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.
@@ -1433,7 +1441,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan ||
            kind == ParamKind::MorphMode || kind == ParamKind::SeqPattern || kind == ParamKind::SeqPlay ||
            kind == ParamKind::SeqRate || kind == ParamKind::SeqOrder || kind == ParamKind::SeqBars ||
-           kind == ParamKind::KeyCurve;
+           kind == ParamKind::KeyCurve || kind == ParamKind::FeedbackMode;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1581,6 +1589,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     case ParamKind::KeyCurve:
         std::snprintf(out, capacity, "%s", nameAt(kKeyCurveNames, value));
+        break;
+    case ParamKind::FeedbackMode:
+        std::snprintf(out, capacity, "%s", nameAt(kFeedbackModeNames, value));
         break;
     case ParamKind::KeyDepth: // never "-0.0"
         std::snprintf(out, capacity, "%+.1f dB", std::abs(value) < 0.05 ? 0.0 : value);
@@ -1745,6 +1756,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::UniCurve     ? findName(kUniCurveNames, text)
                       : def.kind == ParamKind::UniPan       ? findName(kUniPanNames, text)
                       : def.kind == ParamKind::KeyCurve     ? findName(kKeyCurveNames, text)
+                      : def.kind == ParamKind::FeedbackMode ? findName(kFeedbackModeNames, text)
                       : def.kind == ParamKind::SeqPattern   ? findName(kSeqPatternNames, text)
                       : def.kind == ParamKind::SeqPlay      ? findName(kSeqPlayNames, text)
                       : def.kind == ParamKind::SeqRate      ? findName(kSeqRateNames, text)
@@ -1986,6 +1998,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::UniCurve:
     case ParamKind::UniPan:
     case ParamKind::KeyCurve:
+    case ParamKind::FeedbackMode:
     case ParamKind::MorphMode:
     case ParamKind::SeqPattern:
     case ParamKind::SeqPlay:
@@ -2088,6 +2101,10 @@ bool parseParam(int index, const char *text, double *out) {
     }
     *out = std::clamp(value, def.min, def.max);
     return true;
+}
+
+std::string feedbackModeName(FeedbackMode mode) {
+    return nameAt(kFeedbackModeNames, static_cast<double>(mode));
 }
 
 } // namespace fmvibe

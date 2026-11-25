@@ -159,6 +159,8 @@ STR(RoutePhase, "Phase")
 STR(RouteLinearFm, "Linear FM")
 STR(RouteExpFm, "Exp FM")
 STR(RouteRing, "Ring")
+STR(FeedbackSmooth, "Smooth") // how an operator's feedback hears it: as it always did
+STR(FeedbackDx7, "DX7") // at the DX7's rate, as its feedback runs
 STR(KeyCurveLinear, "Linear") // a keyboard scaling side's curve
 STR(KeyCurveExp, "Exp")
 
@@ -230,6 +232,7 @@ STR(ParamFmAmount, "FM Amount")
 STR(ParamBendRange, "Bend Range")
 STR(ParamPitch, "Pitch")
 STR(ParamPan, "Pan")
+STR(ParamGlobal, "Global") // an LFO's clock: one for every voice, restarted by each note
 STR(ParamKeyBreak, "Key Break") // keyboard scaling's breakpoint
 STR(ParamKeyLeftDepth, "Key L Depth")
 STR(ParamKeyRightDepth, "Key R Depth")
@@ -309,6 +312,7 @@ STR(ParamPhase, "Phase")
 STR(ParamSlew, "Slew")
 STR(ParamCc, "CC")
 STR(ParamInput, "Input")
+STR(ParamFeedbackMode, "{1} Feedback Mode") // an operator's feedback's, hidden
 STR(ParamRouteMode, "{1} Mode") // a route into an operator ("B → A"), how it acts on it
 STR(ParamOpFeedback, "{1} Feedback") // a node (an operator, a filter, a shaper) into itself, in the matrix
 
@@ -815,6 +819,7 @@ STR(SwitchSteps, "Steps")
 STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
 STR(SwitchRetrigger, "Retrigger") // a Curve's clock modes, named beside their icons in its full-size editor
 STR(SwitchFree, "Free")
+STR(SwitchGlobal, "Global") // an LFO's clock: one for all voices, every note restarting it
 STR(SwitchAnchor, "Anchor")
 STR(SwitchOneShot, "One-Shot")
 STR(SwitchSustain, "Sustain")
@@ -1159,6 +1164,7 @@ STR(TipSeqPattern, "Pattern {1}")
 STR(TipSeqTile, "Pattern {1}: click to edit, drag onto another pattern to copy it there")
 STR(TipRemoveSplit, "Remove split")
 STR(TipRemoveJoin, "Remove join")
+STR(TipFeedbackMode, "{1} feedback. Click to pick how it runs") // the mode part of a feedback's pill
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
 STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
 STR(TipRoutePhase, "Phase: adds to where the wave is read")
@@ -1265,6 +1271,7 @@ STR(TipPrevAlgorithm, "Previous algorithm")
 STR(TipNextAlgorithm, "Next algorithm")
 STR(TipRetrigger, "Restart with each note") // an LFO's clock modes
 STR(TipFree, "Free")
+STR(TipGlobal, "Global: one LFO for every voice, each new note restarting it")
 STR(TipOneShot, "One shot")
 STR(TipAnchor, "Anchor to song position") // an LFO's switch: its phase follows the host's transport
 STR(TipSustain, "Loop while the key is down, then play on") // a Curve's fifth clock mode

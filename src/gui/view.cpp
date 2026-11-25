@@ -978,9 +978,10 @@ void View::pickEnvMode(int op, bool curve) {
     edit(param, 0.0);
 }
 
-// Free, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
+// Free, Global, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
 void View::setLfoClock(int lfo, LfoClock clock) {
     const std::pair<SourceParam, LfoClock> modes[] = {{SourceParam::Free, LfoClock::Free},
+                                                      {SourceParam::Global, LfoClock::Global},
                                                       {SourceParam::Anchor, LfoClock::Anchor},
                                                       {SourceParam::OneShot, LfoClock::OneShot},
                                                       {SourceParam::CurveSustain, LfoClock::Sustain}};
@@ -1016,7 +1017,8 @@ bool View::lfoInTail(const Telemetry &t, int lfo) {
 bool View::lfoPhaseUsed(int lfo) const {
     // An anchored LFO stood at its Phase at the song's start.
     auto get = [this](int i) { return value(i); };
-    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo)) && mods_.lfoShapeOf(lfo) != LfoShape::Random;
+    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo) || lfoGlobal(get, lfo)) &&
+           mods_.lfoShapeOf(lfo) != LfoShape::Random;
 }
 
 double View::lfoValueNow(int lfo) const {
@@ -4886,7 +4888,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             filterIcon(c, filterTypeIconRect(w.rect),
                        isModelList(w) ? filterTypeAt(w.b) : filterFamilyTypes(filterTypeAt(w.b)).types[0],
                        selected ? listColor(w.param) : kDim);
-        if (modeChoice)
+        if (modeChoice && isFeedbackModeParam(w.param))
+            feedbackModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<FeedbackMode>(w.b),
+                             selected ? listColor(w.param) : kDim);
+        else if (modeChoice)
             routeModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<RouteMode>(w.b),
                           selected ? listColor(w.param) : kDim);
         c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h},
@@ -5804,7 +5809,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0) ? Str::TipSlope
                                                                                                   : Str::TipSlopeBand);
     else if (isLfoClockChoice(*hover_)) {
-        const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot, Str::TipSustain};
+        const Str tips[] = {Str::TipRetrigger, Str::TipFree,    Str::TipGlobal,
+                            Str::TipAnchor,    Str::TipOneShot, Str::TipSustain};
         static_assert(std::size(tips) == static_cast<size_t>(kCurveModes));
         text = tr(tips[std::clamp(hover_->b, 0, kCurveModes - 1)]);
     }

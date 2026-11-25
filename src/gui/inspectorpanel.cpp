@@ -194,8 +194,8 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                                           nullptr,             nullptr,              tr(Str::LabelPan)};
             opKnobRow(params, labels);
         } else {
-            // The Ratio readout takes the first two places; fixed, Freq and Mult take its place, and Pitch and Detune,
-            // which it ignores, are dimmed.
+            // The Ratio readout takes the first two places; fixed, Freq and Mult take its place, Pitch and Detune moving
+            // it from there.
             const bool fixed = isFixed(op);
             const int params[] = {fixed ? paramIndex(op, OpParam::FixedFreq) : -1,
                                   fixed ? paramIndex(op, OpParam::FixedMult) : -1,
@@ -207,10 +207,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                                           tr(Str::LabelDetune),
                                           tr(Str::LabelPhase),
                                           tr(Str::LabelPan)};
-            const size_t row = list.size();
             opKnobRow(params, labels);
-            for (size_t i = row; i < list.size(); ++i)
-                list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
             if (!fixed) {
                 add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kRatioLabelY + 17.0f - kRatioBox.y},
                     paramIndex(op, OpParam::Ratio));

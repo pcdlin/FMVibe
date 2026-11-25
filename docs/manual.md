@@ -240,8 +240,9 @@ The small **keyboard icon** on the summary line switches the operator to a **fix
 note. **Freq** (1 Hz–2 kHz) and **Mult** (×0.001, ×0.01, ×0.1, ×1 or ×10) then replace the Ratio readout.
 
 When you switch it on, Freq and Mult are set to the frequency the operator was playing for an A4. A fixed operator
-ignores the note, pitch bend, glide, the global Pitch, and its own Ratio, Pitch and Detune (which are dimmed). Freq can
-be modulated.
+ignores the note, pitch bend, glide, the global Pitch and its own Ratio. Its own **Pitch** and **Detune** still move
+it, and so does modulation on them, so you can give a fixed operator its own pitch envelope or vibrato. Freq can be
+modulated too.
 
 ### Pitch, Detune, Phase and Pan
 
@@ -473,6 +474,12 @@ is always Phase. Route amounts give finer control at low settings, and **FM Amou
 Feedback (a node into itself) and loops between nodes are allowed everywhere: operators, filters and shapers alike.
 Loops can get loud but never grow without limit, and they fade out after a note is released.
 
+An operator's feedback has two modes. Hover its label in the graph and click the mode part at the label's left:
+
+- **Smooth** (the default) is FMVibe's own feedback.
+- **DX7** runs the feedback the way the DX7 does. High feedback then breaks up into noise as it does on the DX7, and
+  sounds the same whatever the oversampling. Imported DX7 voices use it.
+
 ### The matrix
 
 The **Matrix** view is a grid: each row is a source (operator, filter or shaper) and each column a destination (the
@@ -695,9 +702,11 @@ An LFO produces a repeating shape.
   Modulating a synced rate steps it through the note values.
 - **Phase**: where each note starts the LFO in its cycle (25 % starts a sine at its peak).
 - **Unipolar**: swings 0 to 1 instead of −1 to 1.
-- **Clock mode**, picked from the list under the shape list, one of four:
+- **Clock mode**, picked from the list under the shape list, one of five:
   - **Retrigger** (default): restarts from Phase with every note.
   - **Free**: runs continuously, all voices sharing one clock.
+  - **Global**: one LFO for all voices, like the DX7's. Every new note restarts it from Phase, so notes you are
+    already holding restart their vibrato too.
   - **Anchor**: locked to the host's song position, so it is at the same point of its cycle at the same place in
     the song. While the transport is stopped, it runs freely.
   - **One-Shot**: runs one cycle from each note, then holds its end value.
@@ -746,6 +755,7 @@ A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works lik
 The **loop** is a part of the curve. A new Curve source loops the whole curve. In the other clock modes:
 
 - **Retrigger** plays from Phase into the loop, then repeats the loop.
+- **Global** plays like Retrigger, but every new note restarts it for all voices.
 - **Free** and **Anchor** repeat only the loop.
 - **One-Shot** ignores the loop and plays the whole curve once.
 
@@ -771,7 +781,7 @@ A Random source is a random LFO: it takes a new value every cycle.
 - **Chaos**: how far each new value may move from the last; at 0 % it wanders, at 100 % (default) it jumps
   anywhere, like sample and hold.
 - **Smooth**: glides to each new value over that share of the cycle instead of jumping (0 % steps).
-- **Retrigger** or **Free** clock modes only.
+- **Retrigger**, **Free** or **Global** clock modes only.
 - **Unipolar**: swings 0 to 1 instead of −1 to 1 (off by default).
 
 At **0 Hz** (unsynced, Rate at its bottom) a Random source stands still: each note takes a random value as it starts

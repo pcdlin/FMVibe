@@ -1307,7 +1307,8 @@ int main(int argc, char **argv) {
     };
 
     // A fixed operator plays at its Freq x Mult whatever the note: A at 300 Hz x1 for a C3 and an A4, under a full
-    // bend, with its Pitch and Detune turned and modulated; at 1 kHz x0.1 it plays 100 Hz, at 50 Hz x10 500 Hz.
+    // bend; its Pitch and Detune, turned and modulated, moving it from there (7 semitones and 12 more modulated, and
+    // 40 cents, 19.4 semitones up); at 1 kHz x0.1 it plays 100 Hz, at 50 Hz x10 500 Hz.
     {
         auto playFixed = [&](int key, double freq, int mult, bool moved) {
             const clap_event_param_value_t settings[] = {
@@ -1341,7 +1342,7 @@ int main(int argc, char **argv) {
         };
         const double c3 = lead(playFixed(48, 300.0, 3, false), 300.0, 130.81);
         const double a4 = lead(playFixed(69, 300.0, 3, false), 300.0, 440.0);
-        const double moved = lead(playFixed(69, 300.0, 3, true), 300.0, 440.0 * std::exp2(19.0 / 12.0 + 0.4 / 12.0));
+        const double moved = lead(playFixed(69, 300.0, 3, true), 300.0 * std::exp2(19.4 / 12.0), 300.0);
         const double tenth = lead(playFixed(69, 1000.0, 2, false), 100.0, 1000.0);
         const double tenfold = lead(playFixed(69, 50.0, 4, false), 500.0, 50.0);
         std::printf("      fixed A, at its frequency against elsewhere: C3 %.0fx, A4 %.0fx, bent and pitched %.0fx, "
@@ -1359,7 +1360,7 @@ int main(int argc, char **argv) {
         runBlock({&unfix[0].header, &unfix[1].header, &unfix[2].header, &unfix[3].header, &unfix[4].header,
                   &unmod.header, &unbend.header});
         check(c3 > 30.0 && a4 > 30.0 && moved > 30.0 && tenth > 30.0 && tenfold > 30.0,
-              "a fixed operator plays its Freq x Mult whatever the note, bend, Pitch and Detune");
+              "a fixed operator plays its Freq x Mult whatever the note and bend, its Pitch and Detune moving it");
     }
 
     // Operator A's Ratio takes modulation on its log curve, continuously: a seventh of its range (0.5 to 64 is seven
@@ -1417,14 +1418,15 @@ int main(int argc, char **argv) {
 
     // How a route acts on the operator it goes into (see RouteMode): B at 220 Hz into A at 440 Hz.
     {
-        auto playMode = [&](RouteMode mode, double amount, int blocks, double feedback = 0.0) {
+        auto playMode = [&](RouteMode mode, double amount, int blocks, double feedback = 0.0,
+                            FeedbackMode fbMode = FeedbackMode::Smooth) {
             const clap_event_param_value_t settings[] = {
                 paramEvent(paramIndex(1, OpParam::Enabled), 1.0),
                 paramEvent(paramIndex(1, OpParam::Ratio), normFromRatio(0.5)),
                 paramEvent(matrixIndex(1, 0), amount),
                 paramEvent(routeModeIndex(1, 0), static_cast<double>(mode)),
                 paramEvent(matrixIndex(0, 0), feedback),
-                paramEvent(routeModeIndex(0, 0), static_cast<double>(mode)), // feedback's mode, which does nothing
+                paramEvent(feedbackModeIndex(0), static_cast<double>(fbMode)), // how its feedback hears it
                 paramEvent(paramIndex(0, OpParam::Out), 1.0),
             };
             const clap_event_note_t a4 = noteEvent(CLAP_EVENT_NOTE_ON, 23, 69);
@@ -1461,9 +1463,13 @@ int main(int argc, char **argv) {
         const auto phase = playMode(RouteMode::Phase, 0.4, 64), linear = playMode(RouteMode::LinearFm, 0.4, 64),
                    expo = playMode(RouteMode::ExpFm, 0.5, 64), zero = playMode(RouteMode::LinearFm, 0.75, 16);
         const double linearSides = magnitude(linear, 660.0) / std::max(magnitude(linear, 440.0), 1e-9);
-        // Feedback is always Phase: its mode param changes nothing.
+        // Feedback is always Phase, its mode only how it hears itself: the route's mode leaves it alone, and DX7, at the
+        // DX7's rate, keeps its pitch as Smooth does, sounding otherwise.
         const auto fbPhase = playMode(RouteMode::Phase, 0.0, 8, 0.4), fbRing = playMode(RouteMode::Ring, 0.0, 8, 0.4);
-        const bool feedbackPhase = !fbPhase.empty() && fbPhase == fbRing;
+        const auto fbDx7 = playMode(RouteMode::Phase, 0.0, 64, 0.4, FeedbackMode::Dx7),
+                   fbSmooth = playMode(RouteMode::Phase, 0.0, 64, 0.4);
+        const bool feedbackPhase = !fbPhase.empty() && fbPhase == fbRing && !fbDx7.empty() && fbDx7 != fbSmooth &&
+                                   std::abs(meanHz(fbDx7) - meanHz(fbSmooth)) < 3.0;
         std::printf("      route modes: ring carrier %.4f of 660 Hz (220 Hz %.2f), AM carrier %.2fx 660 Hz; mean Hz phase "
                     "%.1f, linear %.1f (660 Hz %.2f of 440), exp %.1f; through zero peak %.2f\n",
                     ringCarrier, ringSides, amCarrier, meanHz(phase), meanHz(linear), linearSides, meanHz(expo),
@@ -1478,7 +1484,7 @@ int main(int argc, char **argv) {
         check(std::abs(meanHz(phase) - 440.0) < 3.0 && std::abs(meanHz(linear) - 440.0) < 3.0 && linearSides > 0.1 &&
                   std::abs(meanHz(expo) - 494.5) < 6.0 && peakOf(zero) > 0.05,
               "Linear FM keeps an operator's mean pitch, through zero too, and Exp FM lifts it by its octaves");
-        check(feedbackPhase, "feedback is always phase modulation, whatever its mode param says");
+        check(feedbackPhase, "feedback is always phase modulation, whatever the route's mode, its own mode DX7 or Smooth");
     }
 
     // A filter's output modulates an operator the same way: B through an open
@@ -2331,12 +2337,12 @@ int main(int argc, char **argv) {
             const Take scaled = run({{rightDepth, -6.0}});
             const Take scaledExp = run({{rightCurve, 1.0}});
             run({{rightDepth, 0.0}, {rightCurve, 0.0}, {brk, 60.0}});
-            const float half = std::pow(10.0f, -6.0f / 20.0f);
+            const float halfLevel = std::pow(10.0f, -6.0f / 20.0f);
             std::printf("      keyboard scaling: an A4 at %.3f, x%.3f an octave over its breakpoint (%.3f exponential)\n",
                         plain.left, scaled.left / plain.left, scaledExp.left / plain.left);
             check(plain.left > 0.05f && moved.samples == plain.samples &&
-                      std::abs(scaled.left / plain.left - half) < 0.01f &&
-                      std::abs(scaledExp.left / plain.left - half) < 0.01f,
+                      std::abs(scaled.left / plain.left - halfLevel) < 0.01f &&
+                      std::abs(scaledExp.left / plain.left - halfLevel) < 0.01f,
                   "keyboard scaling set by the host takes an operator's level down above its breakpoint");
         }
         const clap_event_param_value_t back[] = {paramEvent(bPan, 0.0), paramEvent(matrixIndex(1, 0), 0.0),
