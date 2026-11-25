@@ -6617,6 +6617,26 @@ void dx7Checks() {
     check(sineOff < -60.0 && at(octave, 880.0) - at(octave, 440.0) > 60.0,
           "a DX7 voice plays its operators at their ratios, transposed");
 
+    // INIT VOICE's attack at rate 99, a step of the DX7's envelope (1.45 ms) long: ramping in through it, as the DX7's
+    // gain ramps across each step, no sample stepping much further than the sine's own do (2 pi 440 / 48000 of its
+    // peak) rather than jumping in at once.
+    {
+        Engine e(2);
+        gui::UiLayout layout;
+        dx7::toPatch(dx7::initVoice(), e.p, layout);
+        e.noteOn(69);
+        const std::vector<float> start = e.render(960);
+        float peak = 0.0f, step = 0.0f;
+        for (size_t i = 0; i < start.size(); ++i) {
+            peak = std::max(peak, std::abs(start[i]));
+            if (i > 0)
+                step = std::max(step, std::abs(start[i] - start[i - 1]));
+        }
+        const float sineStep = peak * 2.0f * std::numbers::pi_v<float> * 440.0f / 48000.0f;
+        std::printf("      INIT VOICE's attack: largest step %.4f, the sine's own %.4f\n", step, sineStep);
+        check(peak > 0.01f && step < 1.5f * sineStep, "a DX7 voice's fast attack ramps in rather than clicking");
+    }
+
     // A modulator at 3 times the carrier, at output levels 60 and 75: its first sidebands (4 and 2 times the note)
     // against the carrier as J1 against J0 at the index the DX7 gives it, 4 pi times 2^(level's units / 256 - 15).
     for (int level : {60, 75}) {

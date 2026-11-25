@@ -154,17 +154,21 @@ struct DrawnEnv {
     double length = 0.0;
 };
 
-// The level at `t` along a segment's trace of (seconds, units), straight between its steps.
-double traceAt(const std::vector<std::pair<double, double>> &trace, double t) {
+// The gain at `t` along a segment's trace of (seconds, units), `gain` of each step's units: straight in gain between
+// the steps, as the DX7 ramps an operator's gain across each step of its envelope (in its log units, a fast attack's
+// one step would stay near nothing and then leap up at its end, a click).
+template <class Gain>
+double traceAt(const std::vector<std::pair<double, double>> &trace, double t, const Gain &gain) {
     if (t <= trace.front().first)
-        return trace.front().second;
+        return gain(trace.front().second);
     for (size_t i = 1; i < trace.size(); ++i)
         if (t <= trace[i].first) {
             const auto &[t0, u0] = trace[i - 1];
             const auto &[t1, u1] = trace[i];
-            return t1 - t0 <= 0.0 ? u1 : u0 + (u1 - u0) * (t - t0) / (t1 - t0);
+            const double g0 = gain(u0), g1 = gain(u1);
+            return t1 - t0 <= 0.0 ? g1 : g0 + (g1 - g0) * (t - t0) / (t1 - t0);
         }
-    return trace.back().second;
+    return gain(trace.back().second);
 }
 
 // The envelope of DX7 operator `dxOp` of `voice`, at its output level: from silence up to L1, L2 and L3, held there,
@@ -226,8 +230,8 @@ DrawnEnv traceEnvelope(const Voice &voice, int dxOp) {
         }
         for (int k = 0; k < pieces; ++k) {
             const double ta = length * k / pieces, tb = length * (k + 1) / pieces;
-            const double ya = level(traceAt(trace, ta)), yb = k + 1 == pieces ? end : level(traceAt(trace, tb));
-            const double ym = level(traceAt(trace, 0.5 * (ta + tb)));
+            const double ya = traceAt(trace, ta, level), yb = k + 1 == pieces ? end : traceAt(trace, tb, level);
+            const double ym = traceAt(trace, 0.5 * (ta + tb), level);
             double curve = 0.0;
             if (!still && std::abs(yb - ya) > 1e-6) {
                 // shapeBend() is halfway along at 1 / (exp(a / 2) + 1), for a = 8 curve.

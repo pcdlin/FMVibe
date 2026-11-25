@@ -523,7 +523,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     reading back as written;
   - DX7 voices (`src/gui/dx7.h`): a bank dump, a single voice, both in one file and a bank without its header read
     back as written and packed as the DX7 packs them, junk giving none; and a voice played: INIT VOICE a sine at the
-    note and an octave up transposed, a modulator at output levels 60 and 75 putting its first sidebands as far under
+    note and an octave up transposed, its attack ramping in over the DX7's envelope step rather than clicking, a modulator at output levels 60 and 75 putting its first sidebands as far under
     the carrier as J1 against J0 at the DX7's index (within 1 dB), feedback 5's 2nd harmonic where feedback FM puts it,
     a decay at rate 50 falling 40 dB in the DX7's 0.62 s, velocity sensitivity 7 taking a note at 64 16 dB under one at
     127, keyboard level scaling at depth 99 (-LIN an octave out, -EXP two and three) within 1 dB of the DX7's and +LIN
