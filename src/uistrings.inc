@@ -866,6 +866,8 @@ STR(MatrixClickThen, "Click again to toggle.")
 
 // The settings dialog.
 STR(SettingsTitle, "Settings")
+STR(SettingsTabEngine, "Engine") // the settings dialog's tabs: the sound engine's settings (oversampling, MPE)
+STR(SettingsTabVisual, "Visual") // and the editor's look (theme, hue, glow, lines, grid, handles, cards)
 STR(SettingsOversampling, "OVERSAMPLING")
 STR(SettingsOversamplingWhat, "Runs the voices at a multiple of the sample rate.")
 STR(SettingsOversamplingWhy, "Higher values reduce aliasing but use more CPU.")
@@ -875,7 +877,7 @@ STR(SettingsMpeBend, "BEND") // the member channels' bend range, beside its butt
 STR(SettingsMpeRange, "{1} st") // a bend range in semitones, on its button
 STR(SettingsMpeWhat, "Requires MPE in the host, unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
-STR(SettingsLook, "LOOK")
+STR(SettingsTheme, "THEME") // the heading over the settings dialog's theme buttons
 STR(SettingsHue, "HUE") // the theme's main color, beside its slider
 STR(SettingsHueDefault, "Default") // the hue slider left at the theme's own color, after it
 STR(SettingsGlow, "GLOW")

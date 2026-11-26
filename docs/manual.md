@@ -1568,15 +1568,9 @@ does not contain the instance settings (oversampling and MPE).
 ## 15. Settings
 
 The cog in the title bar opens the settings dialog. The book at its top right, beside the x, opens this manual in
-your web browser.
+your web browser. The dialog has two tabs: **Visual** and **Engine**.
 
-**Instance settings**, saved with your project but not with presets:
-
-- **Oversampling**: 1x, 2x (default), 4x or 8x for the voices. Higher values reduce aliasing in bright FM and driven
-  filters at the cost of CPU. Changing it restarts the plugin briefly.
-- **MPE**: Off or On, and the **Bend** range for MPE member channels (12, 24, 48 or 96 semitones).
-
-**Personal settings**, shared by every FMVibe instance (see [What is saved where](#what-is-saved-where)):
+**Visual**: personal settings, shared by every FMVibe instance (see [What is saved where](#what-is-saved-where)):
 
 - **Theme**: **Spectrum** (deep indigo, default), **Porcelain** (Spectrum's light counterpart), **Midnight** or
   **Light**.
@@ -1587,6 +1581,12 @@ your web browser.
 - **Handles**: the size of the depth handles: Small (default), Medium or Large.
 - **Cards**: **Plain** (default) or **Tinted**. Tinted gives each effect and source card a faint wash of its own
   color in Spectrum and Porcelain. Midnight and Light outline their cards in color instead, so it is greyed out there.
+
+**Engine**: instance settings, saved with your project but not with presets:
+
+- **Oversampling**: 1x, 2x (default), 4x or 8x for the voices. Higher values reduce aliasing in bright FM and driven
+  filters at the cost of CPU. Changing it restarts the plugin briefly.
+- **MPE**: Off or On, and the **Bend** range for MPE member channels (12, 24, 48 or 96 semitones).
 
 Double-click a slider to reset it. Enter or Escape closes the dialog.
 

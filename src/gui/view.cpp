@@ -5151,6 +5151,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsManual:
         bookIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered));
         break;
+    case Kind::SettingsTab: { // as the operator page's tabs: names on the line, the shown one's accent over it
+        const bool shown = settingsTab_ == w.b;
+        c.text(w.rect, tr(w.b == kSettingsEngineTab ? Str::SettingsTabEngine : Str::SettingsTabVisual), kTextLabel,
+               shown || hovered ? kText : kDim, Align::Center, true);
+        if (shown)
+            c.line({w.rect.x + 4.0f, w.rect.bottom() - 1.0f}, {w.rect.right() - 4.0f, w.rect.bottom() - 1.0f}, kAccent,
+                   2.0f);
+        break;
+    }
     case Kind::ModDot: {
         // Compact: on a wire label, matrix cell or depth bar.
         // A bypassed modulation's dot is hollow.
@@ -6967,6 +6976,9 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::SettingsManual: // the dialog stays open behind the browser
         controller_.openManual();
+        break;
+    case Kind::SettingsTab:
+        settingsTab_ = w.b;
         break;
     case Kind::ModWheel:
         drag_.kind = DragKind::ModWheel;

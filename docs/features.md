@@ -2631,7 +2631,10 @@ what it started goes on.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
     since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.
-- **Settings** (the cog after Save As): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
+- **Settings** (the cog after Save As), in two tabs: **Visual**, the editor's look (Theme, under its heading, then
+  Hue, Glow, Lines, Grid, Handles and Cards), and **Engine**, the instance's settings (Oversampling and MPE). The
+  dialog opens on Visual and then on the tab shown last while the editor is open, one height for both, the version
+  and the license at the bottom of each. **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,

@@ -16835,17 +16835,28 @@ void run(const std::filesystem::path &dir, float scale) {
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
     const Rect dialog = detail::settingsPanel(view.height());
-    auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
-    auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
-    auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
+    auto option = [&](int i) { return detail::settingsOption(dialog, i).center(); };
+    auto mpeSwitch = [&](int on) { return detail::settingsMpe(dialog, on).center(); };
+    auto mpeRange = [&](int i) { return detail::settingsMpeRange(dialog, i).center(); };
+    auto settingsTab = [&](int tab) { return detail::settingsTab(dialog, tab).center(); };
     auto theme = [&](int i) {
         const float w = (dialog.w - 48.0f + 6.0f) / View::themeCount();
         return Point{dialog.x + 24.0f + i * w + (w - 6.0f) * 0.5f, dialog.y + detail::kSettingsLookY + 45.0f};
     };
     const Point closeDialog{dialog.right() - 26.0f, dialog.y + 26.0f};
+    // It opens on its Visual tab, the first, its THEME heading over the themes; Engine, after it, shows the
+    // oversampling and MPE in its place.
+    constexpr int kVisual = detail::kSettingsVisualTab, kEngine = detail::kSettingsEngineTab;
     click(view, cog);
+    view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+    const bool opensVisual = view.settingsTabShown() == kVisual && renderer.save(view, dir / "14l-settings-visual.png");
+    view.mouseMove(settingsTab(kEngine), {});
+    const bool tabHoverShot = renderer.save(view, dir / "14l-settings-tab-hover.png");
+    click(view, settingsTab(kEngine));
     view.mouseMove(mpeRange(1), {});
-    check(renderer.save(view, dir / "14g-settings-mpe-off.png"), "render the settings dialog with MPE off");
+    check(opensVisual && tabHoverShot && view.settingsTabShown() == kEngine &&
+              renderer.save(view, dir / "14g-settings-mpe-off.png"),
+          "the settings dialog opens on its Visual tab, and its Engine tab shows the engine's settings");
     click(view, option(2));
     check(model.oversamplingFactor == 4, "the settings dialog picks the oversampling");
     // MPE: On and Off switch it, and the bend range's buttons pick how far its member channels bend, none of it
@@ -16869,6 +16880,26 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, manualButton);
     check(manualShot && model.manualOpens == 1 && view.dialogOpen(),
           "the settings dialog's book opens the user manual and leaves the dialog open");
+    // Back on Visual, a click where Engine's last bend range was (by the GRID slider's amount) picks nothing, the
+    // tab's accent under VISUAL and none under ENGINE (read off the rendered pixels); and the tab shown is kept as the
+    // dialog closes and opens again.
+    click(view, settingsTab(kVisual));
+    view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+    const Rect engineTab = detail::settingsTab(dialog, kEngine), visualTab = detail::settingsTab(dialog, kVisual);
+    const bool visualShot = renderer.save(view, dir / "14l-settings-visual-again.png");
+    const uint32_t visualLine = renderer.pixel({visualTab.center().x, visualTab.bottom() - 1.0f});
+    const uint32_t engineLine = renderer.pixel({engineTab.center().x, engineTab.bottom() - 1.0f});
+    const int rangeBefore = model.mpeRange;
+    click(view, mpeRange(3));
+    const bool rangeLeft = model.mpeRange == rangeBefore;
+    click(view, settingsTab(kEngine));
+    click(view, closeDialog);
+    click(view, cog);
+    const bool engineKept = view.settingsTabShown() == kEngine;
+    click(view, settingsTab(kVisual));
+    check(visualShot && visualLine != engineLine && rangeLeft && engineKept && view.settingsTabShown() == kVisual &&
+              view.dialogOpen() && model.values == patchBefore,
+          "the settings dialog's Visual and Engine tabs each show their own settings, the tab kept as it closes");
     // Its theme buttons repaint the whole editor in another theme. The first is the default.
     const int midnight = detail::themeIndex("Midnight");
     bool themed = detail::themeIndex("") == 0 && std::string_view(View::themeName(0)) == "Spectrum" &&

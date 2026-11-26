@@ -143,6 +143,7 @@ public:
     bool infoCardShown() const { return presets_.infoCardShown(); }
     bool confirmShown() const { return confirm_ >= 0; }
     bool settingsShown() const { return settingsOpen_; }
+    int settingsTabShown() const { return settingsTab_; } // detail::kSettingsVisualTab or kSettingsEngineTab
     bool saveShown() const { return presets_.saveShown(); }
     bool saveFolderListShown() const { return presets_.saveFolderListShown(); }
     bool nameMenuShown() const { return presets_.nameMenuShown(); }
@@ -787,6 +788,7 @@ private:
     float modListScroll_ = 0.0f;             // rows a pill's open list is scrolled to, before clamping
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
+    int settingsTab_ = 0;                    // the settings dialog's tab shown: 0 VISUAL, 1 ENGINE (see layout.h)
     int theme_ = 0;                          // the theme painted last
     // A running random LFO's last cycles, for its display: each one's glide (from, to) at its place in a
     // round of kRandomGlides, and how many have come since it started running (the newest is the last). The
