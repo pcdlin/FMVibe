@@ -1947,7 +1947,7 @@ std::vector<View::Widget> View::widgets() const {
     }
     for (int redo = 0; redo < 2; ++redo)
         add(Kind::UndoButton, undoButton(redo), -1, redo);
-    if (tuning_.source != TuningSource::Standard)
+    if (tuning_.source == TuningSource::Master || tuning_.source == TuningSource::Patch)
         add(Kind::TuningMark, kTuningMark);
     // A host that lets the editor set its tempo has the synth play its own always: no H there.
     if (!controller_.hasTempo())
@@ -5116,16 +5116,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::SearchField: // the panels' own: the browser's and the MODS view's drawn by them
         break;
-    case Kind::TuningMark: { // the tuning's name: in the accent for a master, the text's color for the patch's own
-                             // tuning, dimmed for MTS SysEx; brighter under the mouse or with the menu it opens open
-        const bool master = tuning_.source == TuningSource::Master;
-        const bool patch = tuning_.source == TuningSource::Patch;
-        const Color color = master ? kAccent : patch ? kText : kDim;
-        const bool lit = hovered || moreMenuOpen_;
-        c.fillRect(w.rect, color.alpha((master ? 0.16f : patch ? 0.13f : 0.1f) + (lit ? 0.08f : 0.0f)), kRadiusControl);
-        c.strokeRect(w.rect.inset(0.5f), color.alpha(master ? 0.6f : 0.4f), 1.0f, kRadiusControl);
-        const std::string scale = tuning_.scale.empty() ? std::string(tr(Str::SettingsMtsUnnamed)) : tuning_.scale;
-        c.text({w.rect.x + 5.0f, w.rect.y, w.rect.w - 10.0f, w.rect.h}, scale, kTextLabel, color, Align::Center, true);
+    case Kind::TuningMark: { // a tuning fork on a tint of its color: the accent for a master, the text's for the patch's
+                             // own tuning; a mark, not a button, so unlit by the mouse
+        const Color color = tuning_.source == TuningSource::Master ? kAccent : kText;
+        c.fillRect(w.rect, color.alpha(0.14f), kRadiusControl);
+        c.strokeRect(w.rect.inset(0.5f), color.alpha(0.5f), 1.0f, kRadiusControl);
+        tuningForkIcon(c, w.rect.center(), color);
         break;
     }
     case Kind::TempoSync: { // a switch, lit while the synth follows the host's tempo
@@ -5798,10 +5794,7 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipTempoSync);
     else if (hover_->kind == Kind::TuningMark) {
         const std::string scale = tuning_.scale.empty() ? std::string(tr(Str::SettingsMtsUnnamed)) : tuning_.scale;
-        text = trf(tuning_.source == TuningSource::Master  ? Str::TipTuningMaster
-                   : tuning_.source == TuningSource::SysEx ? Str::TipTuningSysEx
-                                                           : Str::TipTuningPatch,
-                   {scale});
+        text = trf(tuning_.source == TuningSource::Master ? Str::TipTuningMaster : Str::TipTuningPatch, {scale});
     }
     else if (hover_->kind == Kind::PresetButton)
         switch (static_cast<PresetAction>(hover_->a)) {
@@ -6970,13 +6963,6 @@ void View::mouseDown(Point p, Modifiers mods) {
             resetTuning(controller_, w.a == kMoreResetMapping);
         else
             pressPreset(static_cast<PresetAction>(w.a));
-        break;
-    case Kind::TuningMark: // MTS-ESP's tuning: switching MTS-ESP off; the patch's own: the menu it is loaded and reset from
-        closeMenus();
-        if (tuning_.source == TuningSource::Master || tuning_.source == TuningSource::SysEx)
-            controller_.setMtsOn(false);
-        else
-            moreMenuOpen_ = true;
         break;
     case Kind::PresetStep:
         stepPreset(w.a);
@@ -8478,6 +8464,7 @@ CursorKind View::cursor() const {
     case Kind::SaveBackdrop:
     case Kind::NameMenu:
     case Kind::TempoHost: // the host's tempo, which takes no edits
+    case Kind::TuningMark: // a mark, its tooltip alone
     // An open list's own panel and what is around it, where a click picks nothing (though around it, it closes it),
     // and a pill's list's rows, which only take a source's handle dropped on them.
     case Kind::SourceMenu:

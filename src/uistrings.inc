@@ -1200,8 +1200,7 @@ STR(TipPresetName, "Browse Presets")
 STR(TipTempo, "Tempo for synced LFOs and effects. Drag, scroll or double-click to type")
 STR(TipTempoHost, "Host tempo, for synced LFOs and effects")
 STR(TipTempoSync, "Sync to host tempo")
-STR(TipTuningMaster, "Tuned by MTS-ESP: {1}. Click to turn MTS-ESP off.") // the title bar's tuning mark, which shows the scale's name
-STR(TipTuningSysEx, "Tuned by MTS SysEx: {1}. Click to turn MTS-ESP off.")
+STR(TipTuningMaster, "Tuned by MTS-ESP: {1}") // the title bar's tuning fork, {1} the scale's name
 STR(TipTuningPatch, "Tuning from the patch: {1}")
 STR(TipInit, "Initialize patch")
 STR(TipLoad, "Load preset")

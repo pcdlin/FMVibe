@@ -140,9 +140,9 @@ Tabs use two small marks in their top-right corner, with the same meaning everyw
 
 From left to right:
 
-- **The tuning's name**, only while a microtuning is in use: lit when an MTS-ESP master tunes FMVibe, in plain text
-  for the patch's own tuning, dimmed when MTS SysEx tunes it. Hover it to see where the tuning comes from. While MTS-ESP or MTS SysEx tunes FMVibe,
-  click it to switch **Tuning (MTS-ESP)** off; for the patch's own tuning, click it to open the **...** menu. See [Microtuning (MTS-ESP)](#microtuning-mts-esp) and [Tuning files](#tuning-files).
+- **A tuning fork**, only while an MTS-ESP master or the patch's own tuning tunes FMVibe: lit for a master, plain for
+  the patch's tuning. Hover it to see the scale's name and where the tuning comes from. See
+  [Microtuning (MTS-ESP)](#microtuning-mts-esp) and [Tuning files](#tuning-files).
 - **Tempo**, with its **H** button: see [Tempo](#tempo).
 - **Play** (a triangle), right of the tempo, only while the sequencer is on: plays the sequencer's pattern from the
   start of its loop, from any view. It is the SEQ card's Play button: while the pattern plays it shows a lit square,
@@ -1450,11 +1450,11 @@ Scala (`.scl`, `.kbm`) and `.tun` files. To use one:
 2. In FMVibe's settings, switch **Tuning (MTS-ESP)** on. It is off in a new instance.
 3. Load a scale in the master. Every FMVibe instance with MTS-ESP on plays in it at once.
 
-While a master tunes FMVibe, the title bar shows the scale's name, lit. Hover it to see where the tuning comes from.
-Click it to switch MTS-ESP off in this instance.
+While a master tunes FMVibe, the title bar shows a tuning fork, lit. Hover it to see the scale's name and where the
+tuning comes from.
 
 Without a master, and with MTS-ESP on, FMVibe also follows **MTS SysEx** (MIDI Tuning Standard messages) sent to it on its MIDI input.
-The name is then dimmed. A master always wins over SysEx, and over a tuning loaded into the patch (see
+The title bar shows no tuning fork for it. A master always wins over SysEx, and over a tuning loaded into the patch (see
 [Tuning files](#tuning-files)).
 
 How a tuning plays:
@@ -1488,8 +1488,8 @@ entry (**Reset tuning** or **Reset keyboard mapping**) takes it out again. Undo 
 Without a keyboard mapping, a Scala scale starts on middle C, at its usual pitch. An `.ascl` file and a `.tun` file
 set their own pitches.
 
-The title bar shows the scale's name while the patch's tuning plays. A connected MTS-ESP master wins over it, so
-the whole project can follow one tuning. To hear the patch's own tuning then, click the scale's name in the title bar, or switch
+The title bar shows a tuning fork while the patch's tuning plays: hover it to see the scale's name. A connected
+MTS-ESP master wins over it, so the whole project can follow one tuning. To hear the patch's own tuning then, switch
 **Tuning (MTS-ESP)** off in the settings.
 
 ## 14. Presets

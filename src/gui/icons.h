@@ -96,6 +96,8 @@ void folderIcon(Canvas &c, Point center, Color color);
 void saveIcon(Canvas &c, Point center, Color color, bool plus);
 void cogIcon(Canvas &c, Point center, Color color);
 void moreIcon(Canvas &c, Point center, Color color);
+// A tuning fork, about 8 x 15: its two prongs joined at the bottom and its stem below; the title bar's tuning mark.
+void tuningForkIcon(Canvas &c, Point center, Color color);
 // A die showing five, about 12 x 12: the partial editor's random button.
 void diceIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);

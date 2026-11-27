@@ -877,16 +877,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
     leaving it open, closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - the settings' TUNING, on the Engine tab: its Off | On and Note On | Continuous setting MTS-ESP and its retuning,
-    leaving the patch and its undo alone, and disabled in a host without MTS-ESP; the title bar's tuning mark showing
-    while a master, MTS SysEx or the patch's own tuning tunes the synth, each its own way, a master's and SysEx's not
+    leaving the patch and its undo alone, and disabled in a host without MTS-ESP; the title bar's tuning fork showing
+    while a master or the patch's own tuning tunes the synth, each in its color, none for MTS SysEx nor for a master
     while MTS-ESP is off, the patch's then (read off the rendered pixels), its tooltip under the mouse, and its coming
     and changing repainting the title bar alone, as a whole paint would; a scale's text loaded into the patch
     (`gui::loadTuningText()`), one undo step with its name, and a file that isn't a scale, a mapping or a tuning file
     loading nothing, saying why; the overflow menu's tuning entries: each load's reset button at its row's right end
     shown only while there is one, taking it out (and with none, a click there the load row's), a line naming the
     file under each load while there is one, the load entries asking for a file, each closing the menu, and a click on the
-    mark switching MTS-ESP off while a master tunes, leaving the patch and its undo alone, and on the patch's own tuning
-    opening the menu (`fmvibe-uishot <dir> 1 --tuning` renders the section, the
+    fork doing nothing, MTS-ESP, the patch and its undo left alone and no menu opening (`fmvibe-uishot <dir> 1 --tuning` renders the section, the
     mark and the menu in each state in three themes);
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;

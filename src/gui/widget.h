@@ -178,8 +178,8 @@ enum class WidgetKind {
     PresetNameBox, // the current preset's name: opens the preset browser
     TempoBox,     // the synth's own tempo (see Controller::ownTempo()): drag up and down, scroll, or double-click to type
     TempoHost,    // the tempo where TempoBox is while the synth follows the host's: shown dimmed, taking no edits
-    TuningMark,   // left of the H: the tuning's name while the synth plays one other than 12-TET (its tooltip says where
-                  // it comes from); switches MTS-ESP off while it tunes, else opens the overflow menu
+    TuningMark,   // left of the H: a tuning fork while an MTS-ESP master or the patch's own tuning tunes the synth (its
+                  // tooltip says which, and the scale's name); a click does nothing
     TempoSync,    // the H left of the tempo: whether the synth follows the host's tempo (see Controller::tempoSync()),
                   // in a plugin host alone (see Controller::hasTempo())
     PresetInfoButton, // the (i) in the preset bar: opens the preset's info card

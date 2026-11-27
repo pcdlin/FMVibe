@@ -14027,17 +14027,17 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
 // factory one, the browser (and filtered by category), the New Folder and New Category forms, the Save sheet (and its
 // list of folders) and Edit Info, into presets-<theme>-<part>.png.
 // MTS-ESP: the settings' TUNING switches setting MTS-ESP and its retuning, each a setting of the project and no edit of
-// the patch; the title bar's MTS mark showing while a master (in the accent) or MTS SysEx (dimmed) tunes the synth,
-// not while MTS-ESP is off, its tooltip naming the scale, and the title bar alone repainted as it comes and goes,
-// as a whole paint would; the patch's own tuning shown its own way; the overflow menu's tuning entries asking to load
-// a tuning or a mapping and to reset it, greyed out while they can't act; the mark switching MTS-ESP off while it
-// tunes, and else opening the menu; and in a host without MTS-ESP (the browser demo) the switches doing nothing.
+// the patch; the title bar's tuning fork showing while a master (in the accent) tunes the synth, not for MTS SysEx
+// nor while MTS-ESP is off, its tooltip naming the scale, and the title bar alone repainted as it comes and goes, as a
+// whole paint would; the patch's own tuning shown in a color of its own; the overflow menu's tuning entries asking to
+// load a tuning or a mapping and to reset it, greyed out while they can't act; the fork taking no click and showing
+// the arrow; and in a host without MTS-ESP (the browser demo) the switches doing nothing.
 void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     model.mtsOnSet = true; // off to begin with
     View view(model);
     view.poll();
-    const Point inMark{detail::kTuningMark.x + 3.0f, detail::kTuningMark.center().y}; // its face, clear of its text
+    const Point inMark{detail::kTuningMark.x + 3.0f, detail::kTuningMark.center().y}; // its face, clear of the fork
     const bool plainShot = renderer.save(view, dir / "tuning-1-standard.png");
     const uint32_t plain = renderer.pixel(inMark);
     // Compares a repaint of the areas the last poll found changed, over the last frame, with a whole paint of the same
@@ -14063,9 +14063,11 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
     const uint32_t sysEx = renderer.pixel(inMark);
     std::printf("      the mark's face: 0x%06x with nothing tuning, 0x%06x for a master, 0x%06x for MTS SysEx\n", plain,
                 master, sysEx);
-    check(plainShot && master != plain && sysEx != plain && sysEx != master,
-          "the title bar's MTS mark shows while a master or MTS SysEx tunes the synth, each its own way");
-    check(masterCame && sysExCame, "the mark coming and changing repaints the title bar alone, as a whole paint would");
+    check(plainShot && master != plain && sysEx == plain,
+          "the title bar's tuning fork shows while a master tunes the synth, and not for MTS SysEx");
+    check(masterCame && sysExCame, "the fork coming and going repaints the title bar alone, as a whole paint would");
+    model.tuning = {TuningSource::Master, "19-EDO"};
+    view.poll();
     // Its tooltip: under it, where nothing was drawn before.
     const Point underMark{detail::kTuningMark.center().x, detail::kTuningMark.bottom() + 16.0f};
     renderer.save(view, dir / "tuning-4-untipped.png");
@@ -14074,10 +14076,10 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
     const bool tipShot = renderer.save(view, dir / "tuning-5-tooltip.png");
     const bool tipped = tipShot && renderer.pixel(underMark) != untipped;
     view.mouseMove({600.0f, 960.0f}, {});
-    check(tipped, "the MTS mark shows its tooltip under the mouse");
+    check(tipped, "the tuning fork shows its tooltip under the mouse");
 
-    // The patch's own tuning, loaded from a scale's text: the mark in the text's color, apart from a master's and
-    // SysEx's, and one undo step taking it out again with its name.
+    // The patch's own tuning, loaded from a scale's text: the fork in the text's color, apart from a master's, and one
+    // undo step taking it out again with its name.
     std::string edo19 = "! 19-EDO.scl\n19 equal divisions of 2/1\n 19\n!\n";
     for (int degree = 1; degree <= 19; ++degree) {
         char line[32];
@@ -14094,8 +14096,8 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
     const bool patchCame = view.poll() && samePixels("tuning-8-patch.png");
     const uint32_t patch = renderer.pixel(inMark);
     std::printf("      the mark's face for the patch's tuning: 0x%06x\n", patch);
-    check(loaded && patchCame && patch != plain && patch != master && patch != sysEx,
-          "a scale's text loads into the patch, and the mark shows the patch's own tuning in a way of its own");
+    check(loaded && patchCame && patch != plain && patch != master,
+          "a scale's text loads into the patch, and the fork shows the patch's own tuning in a color of its own");
     model.undo();
     const bool undone = !patchHasScale(model) && model.ui.tuningName.empty();
     model.redo();
@@ -14111,9 +14113,9 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The overflow menu's tuning entries: with a scale, Load tuning... names it and Reset tuning shows, taking it out;
     // with a mapping, likewise Load keyboard mapping... and Reset keyboard mapping; the loads asking the controller
-    // for a file, each closing the menu; and the mark opening the menu.
-    click(view, detail::kTuningMark.center());
-    const bool markOpens = view.moreMenuShown();
+    // for a file, each closing the menu.
+    click(view, kMoreButton);
+    const bool menuOpens = view.moreMenuShown();
     view.mouseMove(detail::moreMenuItem(detail::kMoreResetTuning).center(), {});
     const bool scaleShot = renderer.save(view, dir / "tuning-9-menu-scale.png");
     click(view, detail::moreMenuItem(detail::kMoreResetTuning).center());
@@ -14126,7 +14128,7 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
     const bool bothShot = renderer.save(view, dir / "tuning-10-menu-both.png");
     click(view, detail::moreMenuItem(detail::kMoreResetMapping, true, true).center());
     const bool unmapped = !patchHasMapping(model) && model.ui.mappingName.empty() && patchHasScale(model);
-    check(markOpens && scaleShot && reset && mapped && bothShot && unmapped,
+    check(menuOpens && scaleShot && reset && mapped && bothShot && unmapped,
           "the menu names the patch's scale and keyboard mapping, and the reset buttons at their rows' right ends take "
           "them out");
     resetTuning(model, false);
@@ -14142,32 +14144,35 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
     check(standardShot && model.tuningChoices == 2 && model.mappingChoices == 2 && !view.moreMenuShown(),
           "the menu's load entries ask for a tuning file and a keyboard mapping, each closing it, with no reset's "
           "button at their right end while there is nothing to take out");
-    // A master over the patch's tuning: the mark's tooltip tells both.
+    // A master over the patch's tuning: the fork's tooltip names the master's.
     loadTuningText(model, edo19, TuningFile::Scala, "19-EDO");
     model.tuning = {TuningSource::Master, "Bohlen-Pierce"};
     view.poll();
     view.mouseMove(detail::kTuningMark.center(), {});
     const bool overTip = renderer.save(view, dir / "tuning-12-over-tooltip.png");
     view.mouseMove({600.0f, 960.0f}, {});
-    // A click on the mark switches MTS-ESP off, opening no menu and leaving the patch and its undo alone: the patch's
-    // tuning plays, and the mark shows it. A second click, on the patch's tuning, opens the menu.
+    // A click on the fork does nothing: MTS-ESP stays on, no menu opens and the patch and its undo are left alone, the
+    // arrow showing over it. With MTS-ESP off, the patch's tuning plays and the fork shows it, its click doing nothing
+    // too.
     const UndoStep *lastStep = model.nextUndo();
+    view.mouseMove(detail::kTuningMark.center(), {});
+    const bool arrow = view.cursor() == CursorKind::Arrow;
     click(view, detail::kTuningMark.center());
-    const bool clickedOff = !model.mtsOnSet && !view.moreMenuShown() && model.nextUndo() == lastStep;
+    const bool masterInert = model.mtsOnSet && !view.moreMenuShown() && model.nextUndo() == lastStep;
+    model.mtsOnSet = false;
     view.mouseMove({600.0f, 960.0f}, {});
     view.poll();
     const bool offPatch = renderer.save(view, dir / "tuning-13-off-patch.png") && renderer.pixel(inMark) == patch;
     click(view, detail::kTuningMark.center());
-    const bool patchMenu = !model.mtsOnSet && view.moreMenuShown();
-    view.dialogKey(View::Key::Escape);
+    const bool patchInert = !model.mtsOnSet && !view.moreMenuShown() && model.nextUndo() == lastStep;
     model.mtsOnSet = true;
     model.tuning = {};
     resetTuning(model, false);
     view.poll();
-    check(overTip && offPatch, "a master over the patch's tuning renders in the mark's tooltip, and with MTS-ESP off "
-                               "the mark shows the patch's own tuning");
-    check(clickedOff && patchMenu, "a click on the mark switches MTS-ESP off while it tunes, leaving the patch and its "
-                                   "undo alone, and opens the menu on the patch's own tuning");
+    check(overTip && offPatch, "a master over the patch's tuning renders in the fork's tooltip, and with MTS-ESP off "
+                               "the fork shows the patch's own tuning");
+    check(arrow && masterInert && patchInert, "a click on the tuning fork does nothing, a master's or the patch's, the "
+                                              "arrow showing over it");
     model.clearHistory(); // the tuning's edits, which the settings below are to leave alone
 
     // The settings' switches.
@@ -14186,12 +14191,12 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
     const bool back = model.mtsOnSet && model.mtsContinuousSet;
     check(switchedOff && noteOn && back && offShot && model.nextUndo() == nullptr && view.dialogOpen(),
           "the settings' TUNING switches set MTS-ESP and its retuning, leaving the patch and its undo alone");
-    // Off, the mark goes, though a master still tunes.
+    // Off, the fork goes, though a master still tunes.
     click(view, at(detail::settingsMts(panel, 0)));
     view.dialogKey(View::Key::Escape);
     view.poll();
     const bool offShot2 = renderer.save(view, dir / "tuning-6b-off.png");
-    check(offShot2 && renderer.pixel(inMark) == plain, "with MTS-ESP off, the title bar shows no MTS mark");
+    check(offShot2 && renderer.pixel(inMark) == plain, "with MTS-ESP off, the title bar shows no tuning fork");
     model.mtsOnSet = true;
 
     // A host without MTS-ESP: the switches disabled, their clicks setting nothing.
@@ -14207,7 +14212,7 @@ void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
           "in a host without MTS-ESP, the TUNING switches are disabled");
 }
 
-// The tuning's settings and the title bar's MTS mark, in each state the plugin tells of, in three themes.
+// The tuning's settings and the title bar's tuning fork, in each state the plugin tells of, in three themes.
 void renderTuning(const std::filesystem::path &dir, Renderer &renderer) {
     bool all = true;
     for (const char *themeName : {"Midnight", "Spectrum", "Porcelain"}) {
@@ -14253,7 +14258,7 @@ void renderTuning(const std::filesystem::path &dir, Renderer &renderer) {
             view.mouseMove(away, {});
             view.poll();
             all = renderer.save(view, dir / ("tuning-" + theme + "-bar-" + state.name + ".png"), &bar) && all;
-            if (state.on && state.status.source != TuningSource::Standard) {
+            if ((state.on && state.status.source == TuningSource::Master) || state.patch) { // the fork shown
                 view.mouseMove(detail::kTuningMark.center(), {});
                 all = renderer.save(view, dir / ("tuning-" + theme + "-bar-" + state.name + "-tip.png"), &barTip) && all;
                 view.mouseMove(away, {});

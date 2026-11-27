@@ -1541,9 +1541,9 @@ constexpr Rect kTempoBox{kTempoSync.x + kTempoSync.w + 4.0f, kTitleRowY, 76.0f, 
 // shows.
 constexpr Rect kTitleSeqPreview{kTempoBox.x + kTempoBox.w + 4.0f, kTitleRowY, 26.0f, kTopRowH};
 static_assert(kTitleSeqPreview.x + kTitleSeqPreview.w + 4.0f <= kPresetName.x - 30.0f); // clear of the back arrow
-// Left of the H, while the synth plays in a tuning other than 12-TET (an MTS-ESP master's, MTS SysEx's or the patch's
-// own): a mark with the tuning's name, cut to fit, which opens the overflow menu.
-constexpr Rect kTuningMark{kTempoSync.x - 69.0f, kTitleRowY + 3.0f, 64.0f, kTopRowH - 6.0f};
+// Left of the H, while an MTS-ESP master or the patch's own tuning tunes the synth: a tuning fork, as large as the H,
+// its tooltip naming the tuning.
+constexpr Rect kTuningMark{kTempoSync.x - 28.0f, kTitleRowY, 24.0f, kTopRowH};
 // The octave shift: two small buttons under the keys' right end, the keys' range between them.
 inline Rect octaveButton(int dir, float top) {
     return {dir < 0 ? 1094.0f : 1162.0f, top + kKeys.y + kKeys.h + 2.0f, 14.0f, 12.0f};

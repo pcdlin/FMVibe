@@ -118,6 +118,16 @@ void moreIcon(Canvas &c, Point center, Color color) {
         c.fillCircle({center.x + dx, center.y}, 1.6f, color);
 }
 
+// A tuning fork: two prongs down to a round bottom (an arc from the right through the bottom to the left), its stem
+// under it.
+void tuningForkIcon(Canvas &c, Point m, Color color) {
+    constexpr float kPi = 3.14159265f, kHalf = 3.0f, kTop = -7.0f, kBend = -0.5f, kFoot = 7.5f;
+    for (const float side : {-1.0f, 1.0f})
+        c.line({m.x + side * kHalf, m.y + kTop}, {m.x + side * kHalf, m.y + kBend}, color, 1.4f);
+    c.arc({m.x, m.y + kBend}, kHalf, kPi * 0.5f, kPi * 1.5f, color, 1.4f);
+    c.line({m.x, m.y + kBend + kHalf}, {m.x, m.y + kFoot}, color, 1.6f);
+}
+
 // A die showing five: a rounded square with a pip in each corner and one in the middle.
 void diceIcon(Canvas &c, Point center, Color color) {
     c.strokeRect({center.x - 6.0f, center.y - 6.0f, 12.0f, 12.0f}, color, 1.3f, kRadiusMark);

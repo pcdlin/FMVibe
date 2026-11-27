@@ -911,8 +911,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   note's MIDI channel (so a master's tables for each channel apply), the sequencer's and the editor's own notes with
   the first, but every note with none while MPE is on. Switched off, a master and MTS SysEx are ignored. Both are
   settings of the instance, in the settings dialog (see Settings): a project keeps them (one saved before them has
-  MTS-ESP off, retuning continuously), presets don't, and undo leaves them alone. The title bar shows the tuning's name
-  while a master, MTS SysEx or the patch's own tuning tunes the synth (see Header). Each instance registers with MTS-ESP as it is made, through ODDSound's client library,
+  MTS-ESP off, retuning continuously), presets don't, and undo leaves them alone. The title bar shows a tuning fork
+  while a master or the patch's own tuning tunes the synth (see Header). Each instance registers with MTS-ESP as it is made, through ODDSound's client library,
   which finds the master's library (`LIBMTS.dll` in `Common Files\MTS-ESP`, `libMTS.so` in `/usr/local/lib`) where
   the master installed it; without it, MTS SysEx still tunes the synth. The CLAP plugin takes SysEx as CLAP's SysEx
   events, the VST3 plugin as SysEx data events. The browser demo has no MTS-ESP: its settings show TUNING disabled.
@@ -1961,11 +1961,11 @@ what it started goes on.
     same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
   redo, Init, Save and the overflow menu's **...** at its right (see Presets and Settings, below). Left of the
-  tempo, while an MTS-ESP master, MTS SysEx or the patch's own tuning tunes the synth (see Microtuning and Tuning
-  files), a small mark with the tuning's name, cut to fit: in the accent for a master, the text's color for the patch's
-  tuning, dimmed for SysEx, its tooltip saying which ("Tuned by MTS-ESP: 19-EDO", "Tuned by MTS SysEx: 19-EDO" or
-  "Tuning from the patch: 19-EDO", a master's and SysEx's adding "Click to turn MTS-ESP off."), a click on a master's or SysEx's switching MTS-ESP off for the instance (as the settings do, no undo step) and on the patch's opening the overflow menu; with nothing tuning
-  it, none (a master and SysEx not while MTS-ESP is off). Between the name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
+  tempo, while an MTS-ESP master or the patch's own tuning tunes the synth (see Microtuning and Tuning files), a
+  tuning fork as large as the H, in the accent for a master and the text's color for the patch's tuning, its tooltip
+  saying which and naming the scale ("Tuned by MTS-ESP: 19-EDO" or "Tuning from the patch: 19-EDO"). It is a mark
+  alone: a click on it does nothing. With nothing tuning the synth, none; nor for MTS SysEx, nor for a master while
+  MTS-ESP is off. Between the name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
   host tempo"), then a field with the tempo in BPM (20–999). With the H on, as it starts, the synth plays at the
   host's tempo, which the field shows dimmed (as the synth last played it) and which takes no edits there. With the
   H off, the synth plays at a
