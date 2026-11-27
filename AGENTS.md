@@ -857,11 +857,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels; the sources' closing
     at a click around it, and shutting for good as the SEQ view covers their panel), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list), Cards' Plain | Tinted (disabled in Midnight) and the depth handles'
-    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), its book opening the user manual and
+    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), opening on its Visual tab (a THEME heading over the themes), its Engine tab showing the oversampling and MPE in its place, back on Visual a click where a bend range was picking nothing (the tab's accent under it, read off the rendered pixels), the tab shown kept as the dialog closes and opens again, its book opening the user manual and
     leaving it open, closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
+  - the title bar's overflow menu (... after Init and Save): its button lit while it is open, its rows lit under the
+    mouse (read off the rendered pixels), closing at a click around it, Escape and its button again, a separator before
+    its User manual and Settings standing out from its face (read off the rendered pixels), its User manual opening the
+    manual, its Init asking first as Init's button does, and its Save greyed out beside Save As while the preset is unchanged (read off the
+    rendered pixels); Save on a changed Init, on the bar and in the menu, saving it as a new preset as Save As does;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file loads);
     its category's dot at its left, its name in the middle and its author at its right (read off the rendered pixels),
     and its tooltip; its info card's star making the preset a favorite, Edit Info, Show in Browser, Escape

@@ -629,12 +629,13 @@ constexpr Point kRoutingTab{64.0f, 116.0f};
 constexpr Point kMatrixTab{160.0f, 116.0f};
 constexpr Point kFxTab{240.0f, 116.0f};
 const Point kF1Tab = detail::nodeTabRect(kOps).center();
-// Init, Load, Save and the settings cog at the right end of the title bar.
-constexpr Point kInitButton{1034.0f, 18.0f};
-constexpr Point kLoadButton{1068.0f, 18.0f};
-constexpr Point kSaveButton{1102.0f, 18.0f};
-constexpr Point kSaveAsButton{1136.0f, 18.0f};
-constexpr Point kSettingsButton{1170.0f, 18.0f};
+// Init and Save at the right end of the title bar, then the overflow menu's button. The menu holds Init, Load, Save,
+// Save As and Settings (see clickMenu()).
+const Point kInitButton = detail::toolbarButton(detail::kToolbarInit).center();
+const Point kSaveButton = detail::toolbarButton(detail::kToolbarSave).center();
+const Point kMoreButton = detail::toolbarButton(detail::kToolbarMore).center();
+constexpr int kMenuInit = 0, kMenuLoad = 1, kMenuSave = 2, kMenuSaveAs = 3, kMenuManual = detail::kMoreManual,
+              kMenuSettings = detail::kMoreSettings;
 const Point kOpFTab = detail::nodeTabRect(kOps - 1).center();
 constexpr Point kModTitle{60.0f, 541.0f}; // the modulation panel's title, which takes no click
 const Point kKeysToggle = detail::keysToggle(detail::keyboardTop()).center();
@@ -1144,8 +1145,8 @@ void drag(View &view, Point from, Point to) {
 }
 
 // Undo and redo at the left of the toolbar.
-constexpr Point kUndoButton{952.0f, 18.0f};
-constexpr Point kRedoButton{986.0f, 18.0f};
+const Point kUndoButton = detail::undoButton(0).center();
+const Point kRedoButton = detail::undoButton(1).center();
 // The LFO shape editor's reset button (the note curve's further left), and its grid's buttons: per axis (0 across)
 // a step down (part 0), the count, a step up.
 constexpr Point kShapeReset{kShapeDone.x - 34.0f, 152.0f};
@@ -1180,6 +1181,17 @@ Point cardShapeAt(float card, double x, double y) {
 // A Random card's Smooth (0) and Chaos (1) knobs, beside its Rate, where a Curve card's Phase and Slew are.
 Point randomKnob(float card, int knob) {
     return detail::curveKnob(card, knob + 1);
+}
+
+// An entry of the overflow menu, opened by its button: nothing when a dialog takes the button's click instead (its
+// backdrop cancelling it), and the menu closed again after a greyed-out entry, which passes the click by.
+void clickMenu(View &view, int item) {
+    click(view, kMoreButton);
+    if (!view.moreMenuShown())
+        return;
+    click(view, detail::moreMenuItem(item).center());
+    if (view.moreMenuShown())
+        click(view, kModTitle); // around the menu
 }
 
 void doubleClick(View &view, Point p) {
@@ -2077,10 +2089,10 @@ void testDialogKeys(const std::filesystem::path &dir, Renderer &renderer) {
           "Escape cancels the bin's dialog and Enter goes ahead");
 
     // The settings dialog: Escape closes it, and Enter too, nothing in it waiting to be confirmed.
-    click(view, kSettingsButton);
+    clickMenu(view, kMenuSettings);
     const bool settingsOpen = view.dialogOpen() && renderer.save(view, dir / "14h-settings-keys.png");
     const bool settingsEscaped = view.dialogKey(View::Key::Escape) && !view.dialogOpen();
-    click(view, kSettingsButton);
+    clickMenu(view, kMenuSettings);
     const bool settingsEntered = view.dialogKey(View::Key::Enter) && !view.dialogOpen();
     check(settingsOpen && settingsEscaped && settingsEntered, "Escape and Enter close the settings dialog");
 
@@ -2377,7 +2389,7 @@ void testTouchPan(const std::filesystem::path &dir, Renderer &renderer) {
     check(onePanned && firstShown() == sources[0], "one finger pans the source cards");
 
     // Over a dialog, nothing pans.
-    click(view, kSettingsButton);
+    clickMenu(view, kMenuSettings);
     const bool refused = !view.touchPanBegin(grab);
     view.dialogKey(View::Key::Escape);
     check(refused && !view.dialogOpen(), "two fingers pan nothing over a dialog");
@@ -13496,12 +13508,12 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         saving.browserPlace = "folder:F3";
         View savingView(saving);
         saving.loadPresetAt(1); // Bell, a factory preset
-        click(savingView, detail::toolbarButton(3).center()); // Save As
+        clickMenu(savingView, kMenuSaveAs); // Save As
         type(savingView, "Sketch");
         savingView.typeKey(View::Key::Enter);
         const bool wasLeft = saving.savedIn == "F3";
         const SaveSheetAt sheet = saveSheet(2); // no categories of the user's: two rows of chips
-        click(savingView, detail::toolbarButton(3).center());
+        clickMenu(savingView, kMenuSaveAs);
         click(savingView, sheet.folder().center());
         savingView.mouseMove(away, {});
         const bool listShot = renderer.save(savingView, dir / "23e-save-folder-list.png");
@@ -13514,7 +13526,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         type(savingView, "Sketch 2"); // over the name, still all selected
         savingView.typeKey(View::Key::Enter);
         const bool savedThere = saving.savedIn == "F9" && !savingView.saveShown();
-        click(savingView, detail::toolbarButton(3).center());
+        clickMenu(savingView, kMenuSaveAs);
         click(savingView, sheet.folder().center());
         savingView.typeKey(View::Key::Escape);
         const bool folderEscaped = !savingView.saveFolderListShown() && savingView.saveShown();
@@ -13624,7 +13636,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     const bool made = std::find(model.folders.begin(), model.folders.end(), "Drafts") != model.folders.end() &&
                       !view.nameMenuShown() && view.browserListed().empty();
     view.dialogKey(View::Key::Escape); // the browser closes
-    click(view, detail::toolbarButton(3).center()); // Save As, under the preset bar
+    clickMenu(view, kMenuSaveAs); // Save As, under the preset bar
     // Its chips five a row: the eight built-in categories, Texture and None, then + New first on the third row.
     click(view, saveSheet(3).chip(10));
     const bool categoryAsked = view.nameMenuShown();
@@ -13704,7 +13716,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
     // Save As: the Save sheet, the name, author, category and line of the preset, in its folder; a name taken there
     // replaces it, a new one saves a new preset, which the patch then is.
     model.loadPresetAt(opener);
-    click(view, detail::toolbarButton(3).center());
+    clickMenu(view, kMenuSaveAs);
     view.mouseMove(away, {});
     const bool saveShot = renderer.save(view, dir / "23j-save.png");
     const bool asOpener = view.saveShown();
@@ -13800,7 +13812,7 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
         tabbing.library = {{"Grain", "", false, {}}};
         tabbing.loadPresetAt(0);
         View tabView(tabbing);
-        click(tabView, detail::toolbarButton(3).center());
+        clickMenu(tabView, kMenuSaveAs);
         const Rect name = saveSheet(2).name();
         const Point nameText{name.x + 14.0f, name.y + 6.0f}; // over the letters
         auto nameFace = [&] {
@@ -13912,17 +13924,17 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
             return authorView.copyText(false);
         };
         authoring.loadPresetAt(libraryIndex(authoring, "Test Patch 3")); // no author
-        click(authorView, detail::toolbarButton(3).center());
+        clickMenu(authorView, kMenuSaveAs);
         const bool noneYet = authorShown().empty();
         type(authorView, "Kim");
         authorView.typeKey(View::Key::Enter); // replacing Test Patch 3
         const bool remembered = authoring.author == "Kim" && !authorView.saveShown();
         authoring.loadPresetAt(libraryIndex(authoring, "Screamer")); // a factory preset, FMVibe's
-        click(authorView, detail::toolbarButton(3).center());
+        clickMenu(authorView, kMenuSaveAs);
         const bool factoryCopy = authorShown() == "FMVibe";
         authorView.typeKey(View::Key::Escape);
         authoring.loadPresetAt(libraryIndex(authoring, "Night Drift")); // Mira K.'s
-        click(authorView, detail::toolbarButton(3).center());
+        clickMenu(authorView, kMenuSaveAs);
         const bool ownKept = authorShown() == "Mira K.";
         authorView.typeKey(View::Key::Enter);
         const bool notTyped = authoring.author == "Kim";
@@ -14048,7 +14060,7 @@ void renderPresetThemes(const std::filesystem::path &dir, Renderer &renderer) {
         view.typeKey(View::Key::Escape);
         view.dialogKey(View::Key::Escape); // the browser closes
         const Rect middle{180.0f, 30.0f, 840.0f, 520.0f}; // the Save sheet, under the preset bar
-        click(view, detail::toolbarButton(3).center()); // Save As
+        clickMenu(view, kMenuSaveAs); // Save As
         view.mouseMove(away, {});
         shot("8-save", &middle);
         const SaveSheetAt sheet = saveSheet(3);
@@ -14081,7 +14093,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(shown(model).empty(), "a new patch has no LFOs or envelopes");
     check(renderer.save(view, dir / "1-default.png"), "render default patch");
     click(view, kInitButton);
-    click(view, kLoadButton);
+    clickMenu(view, kMenuLoad);
     check(model.resets == 1 && model.loads == 1, "Init and Load go ahead at once while the patch is the default");
 
     // ADD LFO and ADD ENV fill the first free places, shown in the order they came.
@@ -16605,7 +16617,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "11b-sources-between.png"), "render the source cards between places");
     view.wheel({60.0f, 541.0f}, 10.0f, {});
     // While a dialog is open, the wheel scrolls nothing behind it: closed again, the first card is where it was.
-    click(view, kSettingsButton);
+    clickMenu(view, kMenuSettings);
     view.wheel({60.0f, 541.0f}, -10.0f, {});
     click(view, {20.0f, 328.0f}); // around the dialog, which only closes it
     click(view, sourcePower(0));
@@ -16756,6 +16768,50 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kInitButton);
     click(view, ok);
     check(model.resets == 2, "the dialog's Init button resets the changed patch");
+    // The overflow menu after Init and Save: its button lit while it is open, its rows Init, Load, Save and Save As
+    // with their icons, then Settings after a line; the mouse lighting a row; a click around it and Escape closing it,
+    // a click on its button again too; and its Init asking first as Init's button does.
+    model.setPreset(model.presetFile(), true); // changed again
+    click(view, kMoreButton);
+    view.mouseMove(detail::moreMenuItem(kMenuLoad).center(), {});
+    const bool menuShot = view.moreMenuShown() && renderer.save(view, dir / "15f-more-menu.png");
+    const uint32_t rowLit = renderer.pixel({detail::moreMenuItem(kMenuLoad).right() - 8.0f,
+                                            detail::moreMenuItem(kMenuLoad).center().y});
+    const uint32_t rowPlain = renderer.pixel({detail::moreMenuItem(kMenuSettings).right() - 8.0f,
+                                              detail::moreMenuItem(kMenuSettings).center().y});
+    // The separator before the user manual and Settings stands out from the menu's face (read off the rendered pixels: its channels
+    // together at least 36 apart from the face's 3 px above it, three times the border's 12 it had).
+    const float separatorY = detail::moreMenuItem(kMenuManual).y - detail::kMoreLineH * 0.5f - 0.5f;
+    const float separatorX = detail::moreMenu().center().x;
+    const uint32_t separator = renderer.pixel({separatorX, separatorY});
+    const uint32_t menuFace = renderer.pixel({separatorX, separatorY - 3.0f});
+    int separatorContrast = 0;
+    for (int shift : {0, 8, 16})
+        separatorContrast += std::abs(static_cast<int>(separator >> shift & 255) - static_cast<int>(menuFace >> shift & 255));
+    std::printf("      the overflow menu's separator %d apart from its face\n", separatorContrast);
+    click(view, kModTitle);
+    const bool aroundCloses = !view.moreMenuShown();
+    click(view, kMoreButton);
+    const bool escapeCloses = view.moreMenuShown() && view.dialogKey(View::Key::Escape) && !view.moreMenuShown();
+    click(view, kMoreButton);
+    click(view, kMoreButton);
+    const bool buttonCloses = !view.moreMenuShown();
+    // Its User manual opens the manual in the web browser, the menu closing, the patch left alone.
+    const int manualsBefore = model.manualOpens;
+    clickMenu(view, kMenuManual);
+    const bool manualOpened = model.manualOpens == manualsBefore + 1 && !view.moreMenuShown() && !view.dialogOpen();
+    model.manualOpens = manualsBefore;
+    clickMenu(view, kMenuInit);
+    const bool menuAsks = view.confirmShown() && model.resets == 2;
+    click(view, cancel);
+    check(menuShot && rowLit != rowPlain && separatorContrast >= 36 && aroundCloses && escapeCloses && buttonCloses &&
+              manualOpened && menuAsks && model.resets == 2 && !view.moreMenuShown(),
+          "the overflow menu opens and closes by its button, a click around it and Escape, a separator before its "
+          "User manual and Settings, its User manual opening the manual, and its Init asks first");
+    clickMenu(view, kMenuInit);
+    click(view, ok);
+    check(model.resets == 3, "the overflow menu's Init resets the changed patch once asked");
+    model.resets = 2;
     // Save As, and Save on a preset it can't write over, open the Save dialog (counted as a save here, and closed
     // again), where the plugin has files.
     auto presetClick = [&](Point p) {
@@ -16765,34 +16821,55 @@ void run(const std::filesystem::path &dir, float scale) {
             view.typeKey(View::Key::Escape);
         }
     };
+    auto presetMenu = [&](int item) { // as presetClick(), from the overflow menu
+        clickMenu(view, item);
+        if (view.saveShown()) {
+            ++model.saves;
+            view.typeKey(View::Key::Escape);
+        }
+    };
     // A file still to be picked goes unsaid, so the dialog before one loads is a line shorter: a click just above
     // where the longer one ends falls outside it and cancels, and Save then gets its click.
     const Rect shorter{420.0f, std::round((view.height() - 132.0f) * 0.5f), 360.0f, 132.0f};
-    click(view, kLoadButton);
+    clickMenu(view, kMenuLoad);
     view.mouseMove({shorter.right() - 64.0f, shorter.bottom() - 38.0f}, {});
     const bool fileConfirm = renderer.save(view, dir / "15a-confirm-file.png");
     click(view, {confirm.x + 40.0f, confirm.bottom() - 4.0f});
-    presetClick(kSaveAsButton);
+    presetMenu(kMenuSaveAs);
     check(fileConfirm && model.loads == 1 && model.saves == 1, "the dialog before a file loads is a line shorter");
-    click(view, kLoadButton);
+    clickMenu(view, kMenuLoad);
     click(view, {shorter.right() - 64.0f, shorter.bottom() - 38.0f});
     check(model.loads == 2 && model.saves == 1, "Load asks first, Save As goes ahead");
-    view.mouseMove(kSaveAsButton, {});
+    view.mouseMove(kMoreButton, {});
     check(renderer.save(view, dir / "15b-toolbar.png"), "render the preset icons with a tooltip");
 
     // Save writes the patch over its preset's file, asking first, and only while the patch has changed. A Save As
     // clicked after it shows whether a dialog took the click instead (its backdrop cancelling it).
     const std::wstring presetBefore = model.presetFile();
     const bool editedBefore = model.patchEdited();
-    model.setPreset(L"Bell"); // unchanged: Save is greyed out and does nothing
+    model.setPreset(L"Bell"); // unchanged: Save is greyed out, on the bar and in the menu, and does nothing
     presetClick(kSaveButton);
-    presetClick(kSaveAsButton);
+    presetMenu(kMenuSave);
+    presetMenu(kMenuSaveAs);
     view.mouseMove(kSaveButton, {});
     const bool unchangedShot = renderer.save(view, dir / "15c-save-unchanged.png");
     const uint32_t greyed = renderer.pixel({kSaveButton.x - 6.5f, kSaveButton.y}); // the disk's left edge
-    const uint32_t lit = renderer.pixel({kSaveAsButton.x - 6.5f, kSaveAsButton.y});
-    check(unchangedShot && model.writes == 0 && model.saves == 2 && greyed != lit,
-          "Save is greyed out and does nothing while the preset is unchanged");
+    // In the menu, the Save row greyed out next to Save As's (their disks' left edges, read off the rendered pixels).
+    click(view, kMoreButton);
+    view.mouseMove({0.0f, 0.0f}, {});
+    const Point saveRowDisk{detail::moreMenuItem(kMenuSave).x + 17.0f - 6.5f, detail::moreMenuItem(kMenuSave).center().y};
+    const Point saveAsRowDisk{detail::moreMenuItem(kMenuSaveAs).x + 17.0f - 6.5f,
+                              detail::moreMenuItem(kMenuSaveAs).center().y};
+    const bool menuGreyShot = renderer.save(view, dir / "15c-menu-save-unchanged.png");
+    const bool rowGreyed = renderer.pixel(saveRowDisk) != renderer.pixel(saveAsRowDisk);
+    click(view, kModTitle);
+    model.setPreset(L"Bell", true);
+    view.mouseMove({0.0f, 0.0f}, {});
+    renderer.save(view, dir / "15c-save-changed.png");
+    const uint32_t lit = renderer.pixel({kSaveButton.x - 6.5f, kSaveButton.y});
+    model.setPreset(L"Bell");
+    check(unchangedShot && menuGreyShot && rowGreyed && model.writes == 0 && model.saves == 2 && greyed != lit,
+          "Save is greyed out, on the bar and in the overflow menu, and does nothing while the preset is unchanged");
     // Its dialog has one line, so it is the shorter one.
     const Point overwriteOk{shorter.right() - 64.0f, shorter.bottom() - 38.0f};
     const Point overwriteCancel{shorter.x + 170.0f + 40.0f, shorter.bottom() - 38.0f};
@@ -16802,7 +16879,7 @@ void run(const std::filesystem::path &dir, float scale) {
     const bool overwriteShot = renderer.save(view, dir / "15d-confirm-overwrite.png");
     click(view, overwriteCancel);
     check(overwriteShot && model.writes == 0 && model.patchEdited(), "Save asks before overwriting, and Cancel keeps it");
-    presetClick(kSaveButton);
+    presetMenu(kMenuSave); // the menu's Save asks too
     click(view, overwriteOk);
     check(model.writes == 1 && model.written == L"Bell" && !model.patchEdited() && model.saves == 2,
           "Overwrite writes the patch over the preset's file, which is then unchanged");
@@ -16815,37 +16892,50 @@ void run(const std::filesystem::path &dir, float scale) {
     // A factory preset is built in: Save, asking nothing, opens Save As's dialog (the Save As after it taken too).
     model.setPreset(L"factory:Bell", true);
     presetClick(kSaveButton);
-    presetClick(kSaveAsButton);
+    presetMenu(kMenuSaveAs);
     check(model.writes == 2 && model.saves == 4 && model.patchEdited(),
           "Save on a changed factory preset saves it as a new one, asking nothing");
     model.saves = 2;
     model.setPreset(L""); // Init, unchanged: neither saves
     presetClick(kSaveButton);
-    presetClick(kSaveAsButton);
+    presetMenu(kMenuSave);
+    presetMenu(kMenuSaveAs);
     check(model.writes == 2 && model.saves == 2, "Save and Save As do nothing on an unchanged Init");
-    model.setPreset(L"", true); // Init, changed: only Save As, which asks nothing
+    // Init, changed: Save, on the bar and in the menu, saves it as a new preset as Save As does, asking nothing.
+    model.setPreset(L"", true);
     presetClick(kSaveButton);
-    presetClick(kSaveAsButton);
+    presetMenu(kMenuSave);
     view.mouseMove(kSaveButton, {});
     const bool initShot = renderer.save(view, dir / "15e-save-init.png");
-    presetClick(kSaveAsButton);
-    check(initShot && model.writes == 2 && model.saves == 4, "Save does nothing on a changed Init, and Save As goes ahead");
+    presetMenu(kMenuSaveAs);
+    check(initShot && model.writes == 2 && model.saves == 5 && !view.confirmShown(),
+          "Save on a changed Init saves it as a new preset, as Save As does, from the bar and the menu");
     model.setPreset(presetBefore, editedBefore);
 
-    // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
-    const Point cog = kSettingsButton;
+    // The overflow menu's Settings opens the settings dialog, which takes every click until it closes.
     const Rect dialog = detail::settingsPanel(view.height());
-    auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
-    auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
-    auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
+    auto option = [&](int i) { return detail::settingsOption(dialog, i).center(); };
+    auto mpeSwitch = [&](int on) { return detail::settingsMpe(dialog, on).center(); };
+    auto mpeRange = [&](int i) { return detail::settingsMpeRange(dialog, i).center(); };
+    auto settingsTab = [&](int tab) { return detail::settingsTab(dialog, tab).center(); };
     auto theme = [&](int i) {
         const float w = (dialog.w - 48.0f + 6.0f) / View::themeCount();
         return Point{dialog.x + 24.0f + i * w + (w - 6.0f) * 0.5f, dialog.y + detail::kSettingsLookY + 45.0f};
     };
     const Point closeDialog{dialog.right() - 26.0f, dialog.y + 26.0f};
-    click(view, cog);
+    // It opens on its Visual tab, the first, its THEME heading over the themes; Engine, after it, shows the
+    // oversampling and MPE in its place.
+    constexpr int kVisual = detail::kSettingsVisualTab, kEngine = detail::kSettingsEngineTab;
+    clickMenu(view, kMenuSettings);
+    view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+    const bool opensVisual = view.settingsTabShown() == kVisual && renderer.save(view, dir / "14l-settings-visual.png");
+    view.mouseMove(settingsTab(kEngine), {});
+    const bool tabHoverShot = renderer.save(view, dir / "14l-settings-tab-hover.png");
+    click(view, settingsTab(kEngine));
     view.mouseMove(mpeRange(1), {});
-    check(renderer.save(view, dir / "14g-settings-mpe-off.png"), "render the settings dialog with MPE off");
+    check(opensVisual && tabHoverShot && view.settingsTabShown() == kEngine &&
+              renderer.save(view, dir / "14g-settings-mpe-off.png"),
+          "the settings dialog opens on its Visual tab, and its Engine tab shows the engine's settings");
     click(view, option(2));
     check(model.oversamplingFactor == 4, "the settings dialog picks the oversampling");
     // MPE: On and Off switch it, and the bend range's buttons pick how far its member channels bend, none of it
@@ -16869,6 +16959,26 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, manualButton);
     check(manualShot && model.manualOpens == 1 && view.dialogOpen(),
           "the settings dialog's book opens the user manual and leaves the dialog open");
+    // Back on Visual, a click where Engine's last bend range was (by the GRID slider's amount) picks nothing, the
+    // tab's accent under VISUAL and none under ENGINE (read off the rendered pixels); and the tab shown is kept as the
+    // dialog closes and opens again.
+    click(view, settingsTab(kVisual));
+    view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+    const Rect engineTab = detail::settingsTab(dialog, kEngine), visualTab = detail::settingsTab(dialog, kVisual);
+    const bool visualShot = renderer.save(view, dir / "14l-settings-visual-again.png");
+    const uint32_t visualLine = renderer.pixel({visualTab.center().x, visualTab.bottom() - 1.0f});
+    const uint32_t engineLine = renderer.pixel({engineTab.center().x, engineTab.bottom() - 1.0f});
+    const int rangeBefore = model.mpeRange;
+    click(view, mpeRange(3));
+    const bool rangeLeft = model.mpeRange == rangeBefore;
+    click(view, settingsTab(kEngine));
+    click(view, closeDialog);
+    clickMenu(view, kMenuSettings);
+    const bool engineKept = view.settingsTabShown() == kEngine;
+    click(view, settingsTab(kVisual));
+    check(visualShot && visualLine != engineLine && rangeLeft && engineKept && view.settingsTabShown() == kVisual &&
+              view.dialogOpen() && model.values == patchBefore,
+          "the settings dialog's Visual and Engine tabs each show their own settings, the tab kept as it closes");
     // Its theme buttons repaint the whole editor in another theme. The first is the default.
     const int midnight = detail::themeIndex("Midnight");
     bool themed = detail::themeIndex("") == 0 && std::string_view(View::themeName(0)) == "Spectrum" &&
@@ -16898,7 +17008,7 @@ void run(const std::filesystem::path &dir, float scale) {
             click(view, detail::fxModeButton(0).center());
         }
         click(view, kFxTab);
-        click(view, cog);
+        clickMenu(view, kMenuSettings);
     }
     click(view, theme(midnight));
     check(themed && model.themeName == "Midnight",
@@ -16923,7 +17033,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(glowing && glowShots && renderer.save(view, dir / "14e-glow-routing.png"),
           "the settings dialog's GLOW slider sets how strongly the curves glow");
     click(view, kFxTab);
-    click(view, cog);
+    clickMenu(view, kMenuSettings);
     view.mouseDown(glowAt(0.3f), {});
     view.mouseMove({glowAt(0.0f).x - 40.0f, glowAt(0.0f).y}, {});
     view.mouseUp({glowAt(0.0f).x - 40.0f, glowAt(0.0f).y}, {});
@@ -17068,9 +17178,9 @@ void run(const std::filesystem::path &dir, float scale) {
           "the settings dialog's CARDS is disabled and dimmed in Midnight, a click on it changing nothing");
     model.themeName = themeBefore;
     click(view, closeDialog);
-    view.mouseMove(cog, {});
-    check(renderer.save(view, dir / "14b-settings-closed.png"), "render the cog after the dialog closed");
-    click(view, cog);
+    view.mouseMove(kMoreButton, {});
+    check(renderer.save(view, dir / "14b-settings-closed.png"), "render the overflow menu's button after the dialog closed");
+    clickMenu(view, kMenuSettings);
     click(view, kKeysToggle);
     check(!layout.keysCollapsed && model.oversamplingFactor == 4,
           "a click around the dialog only closes it");

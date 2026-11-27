@@ -148,8 +148,9 @@ From left to right:
 - The **preset bar**: the current preset's category, name and author, arrows to step through presets and an
   **(i)** button for the preset's info card. See [Presets](#14-presets).
 - **Undo** and **Redo** (curved arrows). Hovering one shows what it would undo or redo.
-- **Init**, **Load**, **Save** (a disk) and **Save As** (a disk with a plus).
-- The **settings** cog. See [Settings](#15-settings).
+- **Init** and **Save** (a disk).
+- The **...** button, which opens a menu with **Init preset**, **Load preset...**, **Save preset**,
+  **Save preset as...**, **User manual** (opens this manual in your web browser) and **Settings**. See [Presets](#14-presets) and [Settings](#15-settings).
 
 ### Tempo
 
@@ -1483,9 +1484,10 @@ are shared by all FMVibe instances.
 
 ### Saving presets
 
-- **Save** (the disk icon) overwrites the current preset's file, after asking. It is available only when the
-  loaded preset has changed. On a factory preset it opens the Save dialog instead.
-- **Save As** (the disk with a plus) opens the **Save dialog**:
+- **Save** (the disk icon, also **Save preset** in the **...** menu) overwrites the current preset's file, after
+  asking. It is available only when the patch has changed. On a factory preset, or on Init, it opens the Save dialog
+  instead.
+- **Save preset as...** in the **...** menu opens the **Save dialog**:
   - **Name**, **Author**, **Category** (a chip per category, None, or **+ New** to create one with a name of up to 6
     characters and a color) and **Description** (one line, up to 80 characters).
   - **Author** shows the preset's author. For a preset without one, it shows the name you typed last.
@@ -1495,8 +1497,8 @@ are shared by all FMVibe instances.
     anywhere via the standard file dialog.
 - **Edit Info…** on the info card opens the same dialog to change a preset's author, category and description
   without changing its sound. Choose another **Folder** there to move the preset.
-- **Load** opens a `.fmv` file through the standard file dialog.
-- **Init** resets the patch to its defaults.
+- **Load preset...** in the **...** menu opens a `.fmv` file through the standard file dialog.
+- **Init** (also **Init preset** in the **...** menu) resets the patch to its defaults.
 
 A preset file contains the whole patch, including the plugin window's layout, macro names and sequencer patterns. It
 does not contain the instance settings (oversampling and MPE).
@@ -1567,16 +1569,10 @@ does not contain the instance settings (oversampling and MPE).
 
 ## 15. Settings
 
-The cog in the title bar opens the settings dialog. The book at its top right, beside the x, opens this manual in
-your web browser.
+**Settings** in the title bar's **...** menu opens the settings dialog. The book at its top right, beside the x, opens this manual in
+your web browser. The dialog has two tabs: **Visual** and **Engine**.
 
-**Instance settings**, saved with your project but not with presets:
-
-- **Oversampling**: 1x, 2x (default), 4x or 8x for the voices. Higher values reduce aliasing in bright FM and driven
-  filters at the cost of CPU. Changing it restarts the plugin briefly.
-- **MPE**: Off or On, and the **Bend** range for MPE member channels (12, 24, 48 or 96 semitones).
-
-**Personal settings**, shared by every FMVibe instance (see [What is saved where](#what-is-saved-where)):
+**Visual**: personal settings, shared by every FMVibe instance (see [What is saved where](#what-is-saved-where)):
 
 - **Theme**: **Spectrum** (deep indigo, default), **Porcelain** (Spectrum's light counterpart), **Midnight** or
   **Light**.
@@ -1587,6 +1583,12 @@ your web browser.
 - **Handles**: the size of the depth handles: Small (default), Medium or Large.
 - **Cards**: **Plain** (default) or **Tinted**. Tinted gives each effect and source card a faint wash of its own
   color in Spectrum and Porcelain. Midnight and Light outline their cards in color instead, so it is greyed out there.
+
+**Engine**: instance settings, saved with your project but not with presets:
+
+- **Oversampling**: 1x, 2x (default), 4x or 8x for the voices. Higher values reduce aliasing in bright FM and driven
+  filters at the cost of CPU. Changing it restarts the plugin briefly.
+- **MPE**: Off or On, and the **Bend** range for MPE member channels (12, 24, 48 or 96 semitones).
 
 Double-click a slider to reset it. Enter or Escape closes the dialog.
 

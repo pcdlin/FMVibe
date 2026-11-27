@@ -1478,10 +1478,25 @@ constexpr float kWhiteW = kKeys.w / kWhiteKeys;
 constexpr float kBlackW = kWhiteW * 0.6f;
 constexpr float kBlackH = kKeys.h * 0.6f;
 constexpr int kBaseNote = 24; // C1, where the keyboard starts before any octave shift
-// Init, Load, Save, Save As and the settings cog: icons at the right end of the title bar.
+// Init, Save and the overflow menu's button: icons at the right end of the title bar.
+constexpr int kToolbarInit = 0, kToolbarSave = 1, kToolbarMore = 2, kToolbarButtons = 3;
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
-    return {kFxPanel.right() - (5 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
+    return {kFxPanel.right() - (kToolbarButtons - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
+}
+// The overflow menu, under its button, its right edge on the button's: Init, Load, Save and Save As (by
+// View::PresetAction), then, after a line, the user manual (kMoreManual) and Settings (kMoreSettings).
+constexpr int kMoreManual = 4, kMoreSettings = 5, kMoreItems = 6;
+constexpr float kMoreRowH = 26.0f, kMoreLineH = 9.0f;
+inline Rect moreMenu() {
+    const Rect button = toolbarButton(kToolbarMore);
+    constexpr float kW = 190.0f;
+    return {button.right() - kW, button.bottom() + 4.0f, kW, 8.0f + kMoreItems * kMoreRowH + kMoreLineH};
+}
+inline Rect moreMenuItem(int item) {
+    const Rect menu = moreMenu();
+    return {menu.x + 4.0f, menu.y + 4.0f + item * kMoreRowH + (item >= kMoreManual ? kMoreLineH : 0.0f), menu.w - 8.0f,
+            kMoreRowH - 2.0f};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {
@@ -1577,19 +1592,30 @@ inline double partialBarFromLevel(double level) {
     return level <= 0.0 ? 0.0 : std::clamp(1.0 - 20.0 * std::log10(level) / kPartialFloorDb, 0.0, 1.0);
 }
 
-// The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
-// (kSettingsLookY down), each with its heading, its buttons and its lines under them.
+// The settings dialog, centered over the editor: its title, then its tabs, VISUAL and ENGINE, on a line across it
+// (kSettingsBodyY down), and under them what the tab shown holds: VISUAL's THEME heading and themes, then its sliders
+// and buttons (from kSettingsLookY), ENGINE's OVERSAMPLING, then MPE (kSettingsMpeY down), and on both the version
+// and the license at the bottom. One height for both tabs, VISUAL's.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 642.0f;
-constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
-constexpr float kSettingsLookY = 294.0f; // and above LOOK
+constexpr float kSettingsH = 431.0f;
+constexpr float kSettingsBodyY = 81.0f;                   // the line under the tabs
+constexpr float kSettingsMpeY = kSettingsBodyY + 134.0f;  // the divider above MPE
+constexpr float kSettingsLookY = kSettingsBodyY + 2.0f;   // VISUAL's rows are placed from here
+constexpr float kSettingsFootY = kSettingsH - 44.0f;      // the line above the version and the license
+constexpr int kSettingsVisualTab = 0;                     // the tabs, left to right; the dialog opens on the first
+constexpr int kSettingsEngineTab = 1;
+constexpr int kSettingsTabCount = 2;
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
 constexpr int kMpeBendRanges[] = {12, 24, 48, 96}; // semitones
 inline Rect settingsPanel(float viewHeight) {
     return {(View::kWidth - kSettingsW) * 0.5f, std::round((viewHeight - kSettingsH) * 0.5f), kSettingsW, kSettingsH};
 }
+// The tabs, VISUAL and ENGINE (kSettingsVisualTab, kSettingsEngineTab), along the line under the title, their names starting where the headings do.
+inline Rect settingsTab(Rect panel, int tab) {
+    return {panel.x + 14.0f + tab * 76.0f, panel.y + 51.0f, 72.0f, kSettingsBodyY - 51.0f};
+}
 inline Rect settingsOption(Rect panel, int i) {
-    return {panel.x + 24.0f + i * 64.0f, panel.y + 82.0f, 58.0f, 28.0f};
+    return {panel.x + 24.0f + i * 64.0f, panel.y + kSettingsBodyY + 32.0f, 58.0f, 28.0f};
 }
 // MPE's Off (0) and On (1), then BEND and its ranges on the same row.
 inline Rect settingsMpe(Rect panel, int on) {

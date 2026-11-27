@@ -866,6 +866,8 @@ STR(MatrixClickThen, "Click again to toggle.")
 
 // The settings dialog.
 STR(SettingsTitle, "Settings")
+STR(SettingsTabEngine, "Engine") // the settings dialog's tabs: the sound engine's settings (oversampling, MPE)
+STR(SettingsTabVisual, "Visual") // and the editor's look (theme, hue, glow, lines, grid, handles, cards)
 STR(SettingsOversampling, "OVERSAMPLING")
 STR(SettingsOversamplingWhat, "Runs the voices at a multiple of the sample rate.")
 STR(SettingsOversamplingWhy, "Higher values reduce aliasing but use more CPU.")
@@ -875,7 +877,7 @@ STR(SettingsMpeBend, "BEND") // the member channels' bend range, beside its butt
 STR(SettingsMpeRange, "{1} st") // a bend range in semitones, on its button
 STR(SettingsMpeWhat, "Requires MPE in the host, unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
-STR(SettingsLook, "LOOK")
+STR(SettingsTheme, "THEME") // the heading over the settings dialog's theme buttons
 STR(SettingsHue, "HUE") // the theme's main color, beside its slider
 STR(SettingsHueDefault, "Default") // the hue slider left at the theme's own color, after it
 STR(SettingsGlow, "GLOW")
@@ -1175,9 +1177,14 @@ STR(TipInit, "Initialize patch")
 STR(TipLoad, "Load preset")
 STR(TipSave, "Save changes to {1}")
 STR(TipSaveUnchanged, "No changes to save")
-STR(TipSaveNoFile, "No preset loaded. Use Save As...")
 STR(TipSaveAs, "Save as a new preset")
-STR(TipSettings, "Settings")
+STR(TipMore, "More: load, save, settings") // the overflow menu's button after Init and Save
+STR(MenuInitPreset, "Init preset") // the overflow menu's entries, each beside its icon
+STR(MenuLoadPreset, "Load preset...")
+STR(MenuSavePreset, "Save preset")
+STR(MenuSavePresetAs, "Save preset as...")
+STR(MenuUserManual, "User manual") // opens the user manual in the web browser
+STR(MenuSettings, "Settings")
 STR(TipManual, "Open the user manual") // the book in the settings dialog's title row, which opens it online
 STR(TipSettingsHue, "Accent color. Double-click resets") // the settings dialog's sliders, under them
 STR(TipSettingsGlow, "Glow effect strength. Double-click resets")

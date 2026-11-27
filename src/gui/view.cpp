@@ -1943,9 +1943,19 @@ std::vector<View::Widget> View::widgets() const {
     if (controller_.presetHasFile())
         add(Kind::PresetInfoButton, {kPresetName.right() - 48.0f, kPresetName.center().y - 10.0f, 20.0f, 20.0f});
     add(Kind::PresetStep, presetStep(1), -1, 1);
-    for (int action = 0; action < 4; ++action)
-        add(Kind::PresetButton, toolbarButton(action), -1, action);
-    add(Kind::SettingsButton, toolbarButton(4));
+    add(Kind::PresetButton, toolbarButton(kToolbarInit), -1, static_cast<int>(PresetAction::Init));
+    add(Kind::PresetButton, toolbarButton(kToolbarSave), -1, static_cast<int>(PresetAction::Save));
+    add(Kind::MoreButton, toolbarButton(kToolbarMore));
+    // The overflow menu under it: Init, Load, Save and Save As (Save and Save As greyed out, and passed by, while they
+    // have nothing to save), then Settings.
+    if (moreMenuOpen_) {
+        add(Kind::MoreMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
+        add(Kind::MoreMenu, moreMenu(), -1, 1);
+        for (int item = 0; item < kMoreItems; ++item) {
+            add(Kind::MoreMenuItem, moreMenuItem(item), -1, item);
+            list.back().disabled = item < kMoreManual && !presetActionOn(static_cast<PresetAction>(item));
+        }
+    }
 
     // The list of source types, under + SOURCE or where the dashed card was clicked, while that is on screen.
     if (sourceMenuOpen_ && sourceMenuShown()) {
@@ -2554,7 +2564,8 @@ void View::paint(Canvas &c, Rect area) {
         for (const Widget &w : list) {
             const bool open = w.kind == Kind::FxMenu || w.kind == Kind::FxAdd || w.kind == Kind::FxAddNode ||
                               w.kind == Kind::SourceMenu ||
-                              w.kind == Kind::SourceMenuItem || w.kind == Kind::ListMenu ||
+                              w.kind == Kind::SourceMenuItem || w.kind == Kind::MoreMenu ||
+                              w.kind == Kind::MoreMenuItem || w.kind == Kind::ListMenu ||
                               w.kind == Kind::ListItem || w.kind == Kind::PeqTypeMenu ||
                               w.kind == Kind::PeqTypeItem || w.kind == Kind::WaveMenu ||
                               w.kind == Kind::WaveMenuItem || w.popup;
@@ -4907,44 +4918,52 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintWheel(c, w, hovered, active);
         break;
     case Kind::PresetButton: {
-        // Save and Save As greyed out while they have nothing to save.
+        // Save greyed out while it has nothing to save.
         const Color color = paintActionFace(c, w.rect, hovered, presetActionOn(static_cast<PresetAction>(w.a)));
-        const Point m = w.rect.center();
-        switch (static_cast<PresetAction>(w.a)) {
-        case PresetAction::Init:
-            resetIcon(c, m, color);
+        if (static_cast<PresetAction>(w.a) == PresetAction::Init)
+            resetIcon(c, w.rect.center(), color);
+        else
+            saveIcon(c, w.rect.center(), color, false);
+        break;
+    }
+    case Kind::MoreButton:
+        moreIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered || moreMenuOpen_));
+        break;
+    case Kind::MoreMenu:
+        if (w.a == 1) { // the menu's panel, a separator across it before the user manual and Settings: in the faint
+                        // text's color, as the border's barely parts from a popup's face in the dark themes
+            paintMenuPanel(c, w.rect);
+            const float y = moreMenuItem(kMoreManual).y - kMoreLineH * 0.5f - 1.0f;
+            c.line({w.rect.x + 10.0f, y + 0.5f}, {w.rect.right() - 10.0f, y + 0.5f}, kFaint.alpha(0.7f), 1.0f);
+        }
+        break;
+    case Kind::MoreMenuItem: { // the icon its button has (had, for Load, Save As and Settings; the user manual's the
+                               // settings dialog's book), then its name
+        paintMenuRow(c, w.rect, hovered, false);
+        const Color ink = hovered ? kText : kDim;
+        const Point icon{w.rect.x + 17.0f, w.rect.center().y};
+        static constexpr Str kNames[] = {Str::MenuInitPreset, Str::MenuLoadPreset, Str::MenuSavePreset,
+                                         Str::MenuSavePresetAs, Str::MenuUserManual, Str::MenuSettings};
+        static_assert(std::size(kNames) == kMoreItems);
+        switch (w.a) {
+        case static_cast<int>(PresetAction::Init):
+            resetIcon(c, icon, ink);
             break;
-        case PresetAction::Load: {
-            // An open folder: a tab on the back, the front tilted forward.
-            const Point back[] = {{m.x - 7.0f, m.y + 5.0f}, {m.x - 7.0f, m.y - 5.0f}, {m.x - 2.5f, m.y - 5.0f},
-                                  {m.x - 1.0f, m.y - 3.5f}, {m.x + 5.0f, m.y - 3.5f}, {m.x + 5.0f, m.y - 1.0f}};
-            const Point front[] = {{m.x - 7.0f, m.y + 5.0f}, {m.x - 4.5f, m.y - 1.0f}, {m.x + 7.5f, m.y - 1.0f},
-                                   {m.x + 5.0f, m.y + 5.0f}, {m.x - 7.0f, m.y + 5.0f}};
-            c.polyline(back, std::size(back), color, 1.4f);
-            c.polyline(front, std::size(front), color, 1.4f);
+        case static_cast<int>(PresetAction::Load):
+            folderIcon(c, icon, ink);
+            break;
+        case static_cast<int>(PresetAction::Save):
+        case static_cast<int>(PresetAction::SaveAs):
+            saveIcon(c, icon, ink, w.a == static_cast<int>(PresetAction::SaveAs));
+            break;
+        case kMoreManual:
+            bookIcon(c, icon, ink);
+            break;
+        default:
+            cogIcon(c, icon, ink);
             break;
         }
-        case PresetAction::Save: {
-            // A floppy disk: a clipped corner, the shutter at the top and the label below.
-            const Point body[] = {{m.x - 6.5f, m.y - 6.5f}, {m.x + 3.5f, m.y - 6.5f}, {m.x + 6.5f, m.y - 3.5f},
-                                  {m.x + 6.5f, m.y + 6.5f}, {m.x - 6.5f, m.y + 6.5f}, {m.x - 6.5f, m.y - 6.5f}};
-            c.polyline(body, std::size(body), color, 1.4f);
-            c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
-            c.strokeRect({m.x - 3.5f, m.y + 1.0f, 7.0f, 5.5f}, color, 1.2f);
-            break;
-        }
-        case PresetAction::SaveAs: {
-            // The same disk, its bottom right corner left open for a plus: a new file.
-            const Point body[] = {{m.x + 6.5f, m.y + 1.0f}, {m.x + 6.5f, m.y - 3.5f}, {m.x + 3.5f, m.y - 6.5f},
-                                  {m.x - 6.5f, m.y - 6.5f}, {m.x - 6.5f, m.y + 6.5f}, {m.x + 1.0f, m.y + 6.5f}};
-            c.polyline(body, std::size(body), color, 1.4f);
-            c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
-            const Point plus{m.x + 5.0f, m.y + 5.0f};
-            c.line({plus.x - 3.5f, plus.y}, {plus.x + 3.5f, plus.y}, color, 1.5f);
-            c.line({plus.x, plus.y - 3.5f}, {plus.x, plus.y + 3.5f}, color, 1.5f);
-            break;
-        }
-        }
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(kNames[w.a]), kTextBody, ink, Align::Left);
         break;
     }
     case Kind::Octave: { // in a flat theme in a well, without an outline, as its switches
@@ -4959,25 +4978,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.line({m.x - 3.0f, m.y}, {m.x + 3.0f, m.y}, kText, 1.2f);
         if (w.a > 0)
             c.line({m.x, m.y - 3.0f}, {m.x, m.y + 3.0f}, kText, 1.2f);
-        break;
-    }
-    case Kind::SettingsButton: {
-        const bool open = settingsOpen_;
-        const Color color = paintActionFace(c, w.rect, hovered || open);
-        // A cog: eight teeth around a ring.
-        const Point center = w.rect.center();
-        constexpr float kTau = 6.2831853f;
-        for (int tooth = 0; tooth < 8; ++tooth) {
-            const float angle = tooth * kTau / 8.0f;
-            const float half = 0.2f;
-            const Point outline[] = {Canvas::onCircle(center, 5.5f, angle - half * 1.3f),
-                                     Canvas::onCircle(center, 8.0f, angle - half),
-                                     Canvas::onCircle(center, 8.0f, angle + half),
-                                     Canvas::onCircle(center, 5.5f, angle + half * 1.3f)};
-            c.fillPolygon(outline, std::size(outline), color);
-        }
-        c.fillCircle(center, 6.0f, color);
-        c.fillCircle(center, 2.6f, hovered || open ? kTrack : kRaised);
         break;
     }
     case Kind::SettingsBackdrop:
@@ -5151,6 +5151,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsManual:
         bookIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered));
         break;
+    case Kind::SettingsTab: { // as the operator page's tabs: names on the line, the shown one's accent over it
+        const bool shown = settingsTab_ == w.b;
+        c.text(w.rect, tr(w.b == kSettingsEngineTab ? Str::SettingsTabEngine : Str::SettingsTabVisual), kTextLabel,
+               shown || hovered ? kText : kDim, Align::Center, true);
+        if (shown)
+            c.line({w.rect.x + 4.0f, w.rect.bottom() - 1.0f}, {w.rect.right() - 4.0f, w.rect.bottom() - 1.0f}, kAccent,
+                   2.0f);
+        break;
+    }
     case Kind::ModDot: {
         // Compact: on a wire label, matrix cell or depth bar.
         // A bypassed modulation's dot is hollow.
@@ -5650,7 +5659,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::PresetButton &&
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::TempoBox && hover_->kind != Kind::TempoHost && hover_->kind != Kind::TempoSync &&
-         hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
+         hover_->kind != Kind::MoreButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::SettingsManual &&
          hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
          hover_->kind != Kind::SettingsLinks && hover_->kind != Kind::SettingsGrid &&
@@ -5730,9 +5739,8 @@ void View::paintTooltip(Canvas &c) {
             break;
         case PresetAction::Save: {
             PresetStore &store = presetStore();
-            text = !controller_.presetHasFile()                         ? tr(Str::TipSaveNoFile)
-                   : !controller_.patchEdited()                         ? tr(Str::TipSaveUnchanged)
-                   : store.writesPresetFiles() && !store.presetWritable() ? tr(Str::TipSaveAs)
+            text = !controller_.patchEdited()                           ? tr(Str::TipSaveUnchanged)
+                   : !store.writesPresetFiles() || !store.presetWritable() ? tr(Str::TipSaveAs) // Init's too
                                                                         : trf(Str::TipSave, {store.presetName()});
             break;
         }
@@ -5740,8 +5748,8 @@ void View::paintTooltip(Canvas &c) {
             text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
             break;
         }
-    else if (hover_->kind == Kind::SettingsButton)
-        text = tr(Str::TipSettings);
+    else if (hover_->kind == Kind::MoreButton)
+        text = tr(Str::TipMore);
     else if (hover_->kind == Kind::SettingsManual)
         text = tr(Str::TipManual);
     else if (hover_->kind == Kind::SettingsHue)
@@ -5908,7 +5916,7 @@ void View::openModList(const Widget &pill, bool sprung) {
 }
 
 bool View::popupOpen() const {
-    if (modList_ || sourceMenuOpen_ || listMenu_ >= 0 || peqMenu_ >= 0)
+    if (modList_ || sourceMenuOpen_ || moreMenuOpen_ || listMenu_ >= 0 || peqMenu_ >= 0)
         return true;
     std::vector<Widget> list; // the panels' (the list of effects, the wave menu, a MODS row's menu, the SEQ view's lists)
     for (const Panel *panel : panels_)
@@ -5927,6 +5935,7 @@ void View::closeMenus() {
     for (Panel *panel : panels_)
         panel->closePopups();
     sourceMenuOpen_ = false;
+    moreMenuOpen_ = false;
     listMenu_ = -1;
     peqMenu_ = -1;
     inspector_.closeWaveMenu();
@@ -6861,25 +6870,27 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::Octave:
         octave_ = std::clamp(octave_ + w.a, -2, 2);
         break;
-    case Kind::PresetButton: {
-        // Init and Load ask first when they would throw away changes, and Save before it overwrites a preset's file.
-        // Save and Save As do nothing while greyed out.
-        const auto action = static_cast<PresetAction>(w.a);
-        if (!presetActionOn(action))
-            break;
-        const bool overwrites = presetStore().writesPresetFiles() && presetStore().presetWritable();
-        const bool ask = action == PresetAction::Save     ? overwrites
-                         : action == PresetAction::SaveAs ? false
-                                                          : controller_.patchEdited();
-        if (ask) {
-            confirm_ = w.a;
-            confirmFrom_ = nullptr;
-            hover_.reset();
-        } else {
-            runPreset(action);
-        }
+    case Kind::PresetButton:
+        pressPreset(static_cast<PresetAction>(w.a));
         break;
-    }
+    case Kind::MoreButton:
+        moreMenuOpen_ = !moreMenuOpen_;
+        hover_.reset();
+        break;
+    case Kind::MoreMenu:
+        if (w.a == 0) // a click anywhere else closes the menu
+            moreMenuOpen_ = false;
+        break;
+    case Kind::MoreMenuItem:
+        moreMenuOpen_ = false;
+        hover_.reset();
+        if (w.a == kMoreManual)
+            controller_.openManual();
+        else if (w.a == kMoreSettings)
+            settingsOpen_ = true;
+        else
+            pressPreset(static_cast<PresetAction>(w.a));
+        break;
     case Kind::PresetStep:
         stepPreset(w.a);
         break;
@@ -6911,10 +6922,6 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::ConfirmButton:
         answerConfirm(w.a);
-        break;
-    case Kind::SettingsButton:
-        settingsOpen_ = true;
-        hover_.reset();
         break;
     case Kind::SettingsBackdrop:
         if (w.a == 0) // a click around the dialog closes it
@@ -6967,6 +6974,9 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::SettingsManual: // the dialog stays open behind the browser
         controller_.openManual();
+        break;
+    case Kind::SettingsTab:
+        settingsTab_ = w.b;
         break;
     case Kind::ModWheel:
         drag_.kind = DragKind::ModWheel;
@@ -8378,6 +8388,7 @@ CursorKind View::cursor() const {
     // An open list's own panel and what is around it, where a click picks nothing (though around it, it closes it),
     // and a pill's list's rows, which only take a source's handle dropped on them.
     case Kind::SourceMenu:
+    case Kind::MoreMenu:
     case Kind::ListMenu:
     case Kind::PeqTypeMenu:
     case Kind::ModList:
