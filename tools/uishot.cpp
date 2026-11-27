@@ -634,7 +634,8 @@ const Point kF1Tab = detail::nodeTabRect(kOps).center();
 const Point kInitButton = detail::toolbarButton(detail::kToolbarInit).center();
 const Point kSaveButton = detail::toolbarButton(detail::kToolbarSave).center();
 const Point kMoreButton = detail::toolbarButton(detail::kToolbarMore).center();
-constexpr int kMenuInit = 0, kMenuLoad = 1, kMenuSave = 2, kMenuSaveAs = 3, kMenuSettings = detail::kMoreSettings;
+constexpr int kMenuInit = 0, kMenuLoad = 1, kMenuSave = 2, kMenuSaveAs = 3, kMenuManual = detail::kMoreManual,
+              kMenuSettings = detail::kMoreSettings;
 const Point kOpFTab = detail::nodeTabRect(kOps - 1).center();
 constexpr Point kModTitle{60.0f, 541.0f}; // the modulation panel's title, which takes no click
 const Point kKeysToggle = detail::keysToggle(detail::keyboardTop()).center();
@@ -16778,6 +16779,16 @@ void run(const std::filesystem::path &dir, float scale) {
                                             detail::moreMenuItem(kMenuLoad).center().y});
     const uint32_t rowPlain = renderer.pixel({detail::moreMenuItem(kMenuSettings).right() - 8.0f,
                                               detail::moreMenuItem(kMenuSettings).center().y});
+    // The separator before the user manual and Settings stands out from the menu's face (read off the rendered pixels: its channels
+    // together at least 36 apart from the face's 3 px above it, three times the border's 12 it had).
+    const float separatorY = detail::moreMenuItem(kMenuManual).y - detail::kMoreLineH * 0.5f - 0.5f;
+    const float separatorX = detail::moreMenu().center().x;
+    const uint32_t separator = renderer.pixel({separatorX, separatorY});
+    const uint32_t menuFace = renderer.pixel({separatorX, separatorY - 3.0f});
+    int separatorContrast = 0;
+    for (int shift : {0, 8, 16})
+        separatorContrast += std::abs(static_cast<int>(separator >> shift & 255) - static_cast<int>(menuFace >> shift & 255));
+    std::printf("      the overflow menu's separator %d apart from its face\n", separatorContrast);
     click(view, kModTitle);
     const bool aroundCloses = !view.moreMenuShown();
     click(view, kMoreButton);
@@ -16785,12 +16796,18 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kMoreButton);
     click(view, kMoreButton);
     const bool buttonCloses = !view.moreMenuShown();
+    // Its User manual opens the manual in the web browser, the menu closing, the patch left alone.
+    const int manualsBefore = model.manualOpens;
+    clickMenu(view, kMenuManual);
+    const bool manualOpened = model.manualOpens == manualsBefore + 1 && !view.moreMenuShown() && !view.dialogOpen();
+    model.manualOpens = manualsBefore;
     clickMenu(view, kMenuInit);
     const bool menuAsks = view.confirmShown() && model.resets == 2;
     click(view, cancel);
-    check(menuShot && rowLit != rowPlain && aroundCloses && escapeCloses && buttonCloses && menuAsks &&
-              model.resets == 2 && !view.moreMenuShown(),
-          "the overflow menu opens and closes by its button, a click around it and Escape, and its Init asks first");
+    check(menuShot && rowLit != rowPlain && separatorContrast >= 36 && aroundCloses && escapeCloses && buttonCloses &&
+              manualOpened && menuAsks && model.resets == 2 && !view.moreMenuShown(),
+          "the overflow menu opens and closes by its button, a click around it and Escape, a separator before its "
+          "User manual and Settings, its User manual opening the manual, and its Init asks first");
     clickMenu(view, kMenuInit);
     click(view, ok);
     check(model.resets == 3, "the overflow menu's Init resets the changed patch once asked");

@@ -218,7 +218,8 @@ enum class WidgetKind {
     SearchClear,  // a = Field: the x in a text field: empties it
     MoreButton,     // the overflow menu's button after Init and Save: opens or closes the menu
     MoreMenu,       // a = 1 on the open overflow menu, 0 around it (a click there closes it)
-    MoreMenuItem,   // a = what it does: a View::PresetAction, or kMoreSettings (opens the settings dialog)
+    MoreMenuItem,   // a = what it does: a View::PresetAction, kMoreManual (opens the user manual) or kMoreSettings (opens
+                    // the settings dialog)
     ConfirmBackdrop, // a = 1 on the dialog asking before Init, Load or Save, 0 around it (a click there cancels)
     ConfirmButton,  // a = 1 goes ahead, 0 cancels
     SettingsBackdrop, // a = 1 on the dialog itself, 0 around it (a click there closes it)

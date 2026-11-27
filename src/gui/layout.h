@@ -1485,8 +1485,8 @@ inline Rect toolbarButton(int i) {
     return {kFxPanel.right() - (kToolbarButtons - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
 }
 // The overflow menu, under its button, its right edge on the button's: Init, Load, Save and Save As (by
-// View::PresetAction), then, after a line, Settings (kMoreSettings).
-constexpr int kMoreSettings = 4, kMoreItems = 5;
+// View::PresetAction), then, after a line, the user manual (kMoreManual) and Settings (kMoreSettings).
+constexpr int kMoreManual = 4, kMoreSettings = 5, kMoreItems = 6;
 constexpr float kMoreRowH = 26.0f, kMoreLineH = 9.0f;
 inline Rect moreMenu() {
     const Rect button = toolbarButton(kToolbarMore);
@@ -1495,7 +1495,7 @@ inline Rect moreMenu() {
 }
 inline Rect moreMenuItem(int item) {
     const Rect menu = moreMenu();
-    return {menu.x + 4.0f, menu.y + 4.0f + item * kMoreRowH + (item >= kMoreSettings ? kMoreLineH : 0.0f), menu.w - 8.0f,
+    return {menu.x + 4.0f, menu.y + 4.0f + item * kMoreRowH + (item >= kMoreManual ? kMoreLineH : 0.0f), menu.w - 8.0f,
             kMoreRowH - 2.0f};
 }
 // Undo and redo, a little apart to their left.

@@ -863,8 +863,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the title bar's overflow menu (... after Init and Save): its button lit while it is open, its rows lit under the
-    mouse (read off the rendered pixels), closing at a click around it, Escape and its button again, its Init asking
-    first as Init's button does, and its Save greyed out beside Save As while the preset is unchanged (read off the
+    mouse (read off the rendered pixels), closing at a click around it, Escape and its button again, a separator before
+    its User manual and Settings standing out from its face (read off the rendered pixels), its User manual opening the
+    manual, its Init asking first as Init's button does, and its Save greyed out beside Save As while the preset is unchanged (read off the
     rendered pixels); Save on a changed Init, on the bar and in the menu, saving it as a new preset as Save As does;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file loads);
     its category's dot at its left, its name in the middle and its author at its right (read off the rendered pixels),

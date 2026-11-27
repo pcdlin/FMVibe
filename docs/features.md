@@ -2598,7 +2598,8 @@ what it started goes on.
       selected, and its caret steps a word at a time with Ctrl too. The Save dialog's fields edit the same way.
   - The **...** after Init and Save, lit while it is open, opens the **overflow menu** under it, drawn as the
     editor's lists are: **Init preset**, **Load preset...**, **Save preset** and **Save preset as...**, each beside its
-    icon (Init's arrow, an open folder, a disk, a disk with a plus), then, after a line, **Settings** (a cog). Each does
+    icon (Init's arrow, an open folder, a disk, a disk with a plus), then, after a line, **User manual** (a book, opening
+    the user manual in the web browser, as the settings dialog's book does) and **Settings** (a cog). Each does
     what Init's and Save's buttons do, and a greyed-out one (as Save and Save As are below) passes the mouse by. A
     click on an entry, around the menu or on the ... again closes it, as Escape does.
   - **Save As** (a disk with a plus; **Save preset as...** in the overflow menu) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as

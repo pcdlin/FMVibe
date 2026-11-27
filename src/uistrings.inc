@@ -1183,6 +1183,7 @@ STR(MenuInitPreset, "Init preset") // the overflow menu's entries, each beside i
 STR(MenuLoadPreset, "Load preset...")
 STR(MenuSavePreset, "Save preset")
 STR(MenuSavePresetAs, "Save preset as...")
+STR(MenuUserManual, "User manual") // opens the user manual in the web browser
 STR(MenuSettings, "Settings")
 STR(TipManual, "Open the user manual") // the book in the settings dialog's title row, which opens it online
 STR(TipSettingsHue, "Accent color. Double-click resets") // the settings dialog's sliders, under them

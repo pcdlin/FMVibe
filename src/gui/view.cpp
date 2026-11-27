@@ -1953,7 +1953,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::MoreMenu, moreMenu(), -1, 1);
         for (int item = 0; item < kMoreItems; ++item) {
             add(Kind::MoreMenuItem, moreMenuItem(item), -1, item);
-            list.back().disabled = item < kMoreSettings && !presetActionOn(static_cast<PresetAction>(item));
+            list.back().disabled = item < kMoreManual && !presetActionOn(static_cast<PresetAction>(item));
         }
     }
 
@@ -4930,18 +4930,20 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         moreIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered || moreMenuOpen_));
         break;
     case Kind::MoreMenu:
-        if (w.a == 1) { // the menu's panel, a line across it before Settings
+        if (w.a == 1) { // the menu's panel, a separator across it before the user manual and Settings: in the faint
+                        // text's color, as the border's barely parts from a popup's face in the dark themes
             paintMenuPanel(c, w.rect);
-            const float y = moreMenuItem(kMoreSettings).y - kMoreLineH * 0.5f - 1.0f;
-            c.line({w.rect.x + 10.0f, y + 0.5f}, {w.rect.right() - 10.0f, y + 0.5f}, kBorder, 1.0f);
+            const float y = moreMenuItem(kMoreManual).y - kMoreLineH * 0.5f - 1.0f;
+            c.line({w.rect.x + 10.0f, y + 0.5f}, {w.rect.right() - 10.0f, y + 0.5f}, kFaint.alpha(0.7f), 1.0f);
         }
         break;
-    case Kind::MoreMenuItem: { // the icon its button has (had, for Load, Save As and Settings), then its name
+    case Kind::MoreMenuItem: { // the icon its button has (had, for Load, Save As and Settings; the user manual's the
+                               // settings dialog's book), then its name
         paintMenuRow(c, w.rect, hovered, false);
         const Color ink = hovered ? kText : kDim;
         const Point icon{w.rect.x + 17.0f, w.rect.center().y};
         static constexpr Str kNames[] = {Str::MenuInitPreset, Str::MenuLoadPreset, Str::MenuSavePreset,
-                                         Str::MenuSavePresetAs, Str::MenuSettings};
+                                         Str::MenuSavePresetAs, Str::MenuUserManual, Str::MenuSettings};
         static_assert(std::size(kNames) == kMoreItems);
         switch (w.a) {
         case static_cast<int>(PresetAction::Init):
@@ -4953,6 +4955,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         case static_cast<int>(PresetAction::Save):
         case static_cast<int>(PresetAction::SaveAs):
             saveIcon(c, icon, ink, w.a == static_cast<int>(PresetAction::SaveAs));
+            break;
+        case kMoreManual:
+            bookIcon(c, icon, ink);
             break;
         default:
             cogIcon(c, icon, ink);
@@ -6879,7 +6884,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::MoreMenuItem:
         moreMenuOpen_ = false;
         hover_.reset();
-        if (w.a == kMoreSettings)
+        if (w.a == kMoreManual)
+            controller_.openManual();
+        else if (w.a == kMoreSettings)
             settingsOpen_ = true;
         else
             pressPreset(static_cast<PresetAction>(w.a));
