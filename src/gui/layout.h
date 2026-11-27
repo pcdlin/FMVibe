@@ -162,14 +162,14 @@ constexpr float kOpTabsY = kInspector.y + 150.0f;
 constexpr float kOpTabH = 22.0f;
 // An even height keeps the envelope's levels (from 12 px under its top to 10 px over its bottom) on whole pixels at 0.5.
 constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w - 32.0f, 116.0f};
-// The well, the tabs and the display; INPUTS, with no controls under it, takes it down to the lens's bottom.
+// The well, the tabs and the display; I/O, with no controls under it, takes it down to the lens's bottom.
 constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpDisplay.h - kOpTabsY};
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
 constexpr float kOpControlsY = kOpDisplay.y + kOpDisplay.h + 25.0f; // the controls' knobs' centers
 inline Rect opTab(int tab, bool noise = false) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS, a quarter
+    // UNISON, ENVELOPE, SCOPE, I/O, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, I/O, a quarter
     // of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens
-    // WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS, a third
+    // WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and I/O, a third
     // each.
     constexpr int kPlace[] = {1, 0, 2, 3, 2}, kNoisePlace[] = {1, 0, 2, 2, 2};
     const float w = (kOpWell.w - 8.0f) / (noise ? 3.0f : 4.0f);
@@ -190,16 +190,25 @@ inline Rect warpButton(int warp) {
 }
 constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kOpControlsY};
 constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 32.0f, kOpControlsY - 11.0f, 32.0f, 22.0f};
-// Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
-// with room under the depth for its modulations' handles, inside the tall well. Past the rows the tab holds, they
-// scroll, with a bar at their right; drawn and hit within kInputsList, which leaves room for the ranges on the first
-// row's depth's top.
+// I/O: under an INPUTS heading a row per route into the node, its source's name, its mode's buttons (into an
+// operator; else the source's title in their place), the mode's name and its depth, with room under the depth for its
+// modulations' handles, and its feedback's; under an OUTPUTS heading, kIoGap further down, a row per route out of it,
+// as an input's (into a filter or shaper, its title in the modes' place), and its line to OUT's; a section with no
+// route a line saying so, kIoNoneH tall. All inside a well: an operator's on its I/O tab, from kInputsTop down to the
+// lens's bottom, a filter's and a shaper's under its display, from kBoxIoTop. Past what it holds, they scroll, with a
+// bar at their right; drawn and hit within ioList(), which leaves room for the ranges on the first row's depth's top.
 constexpr float kInputsTop = kOpDisplay.y + 8.0f;
+constexpr float kBoxIoTop = kInspector.y + 246.0f;
+constexpr float kIoHeadH = 18.0f, kIoNoneH = 24.0f, kIoGap = 6.0f;
 constexpr float kInputsBottom = kOpWellTall.y + kOpWellTall.h - 4.0f;
 constexpr float kInputsStep = 30.0f;
 constexpr float kInputsRowSpan = 28.0f; // a row and the handles under its depth
-constexpr Rect kInputsList{kOpWell.x, kInputsTop - 3.0f, kOpWell.w, kInputsBottom - kInputsTop + 3.0f};
-inline Rect inputsScrollTrack() { return {kOpWell.right() - 7.0f, kInputsTop + 1.0f, 4.0f, kInputsBottom - kInputsTop - 2.0f}; }
+constexpr Rect ioList(float top) { return {kOpWell.x, top - 3.0f, kOpWell.w, kInputsBottom - top + 3.0f}; }
+inline Rect ioScrollTrack(float top) { return {kOpWell.x + kOpWell.w - 7.0f, top + 1.0f, 4.0f, kInputsBottom - top - 2.0f}; }
+constexpr Rect kInputsList = ioList(kInputsTop);
+inline Rect inputsScrollTrack() { return ioScrollTrack(kInputsTop); }
+// A filter's and a shaper's well, around their lists.
+constexpr Rect kBoxIoWell{kOpWell.x, kBoxIoTop - 6.0f, kOpWell.w, kOpWellTall.y + kOpWellTall.h - kBoxIoTop + 6.0f};
 inline Rect inputsName(float y) { return {kOpWell.x + 8.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsMode(float y, int mode) { return {kOpWell.x + 36.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0f}; }
@@ -268,9 +277,25 @@ inline Rect filterModelSlopeButton(Rect display, bool plain) {
 inline Rect filterModelMenuButton(Rect button) {
     return {button.x, button.y, std::max(button.w, 136.0f), button.h};
 }
-// A filter's page: its type's list across the row under the summary (where a shaper's curve's is), its response with
-// the slope's list under it.
+// A filter's page: in the row under the summary (where a shaper's curve's list is), its type's list, a place for a
+// family of models' Model list (short, without arrows or icon, as on the filter effect's card) or a morph's notch
+// switch, and its slope's list at the row's right end, each where it is whatever the type, so the type's arrows stay
+// under the mouse; its response under its knobs, then its I/O list (kBoxIoWell). kFilterTypeButton is the whole row,
+// which the type's list opens under.
 constexpr Rect kFilterTypeButton{kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f, 22.0f};
+constexpr float kFilterRowSlopeW = 64.0f, kFilterRowModelW = 58.0f, kFilterRowGap = 6.0f;
+inline Rect filterRowSlopeButton() {
+    return {kFilterTypeButton.x + kFilterTypeButton.w - kFilterRowSlopeW, kFilterTypeButton.y, kFilterRowSlopeW,
+            kFilterTypeButton.h};
+}
+inline Rect filterRowModelButton() { // a morph's notch switch's place too
+    return {filterRowSlopeButton().x - kFilterRowGap - kFilterRowModelW, kFilterTypeButton.y, kFilterRowModelW,
+            kFilterTypeButton.h};
+}
+inline Rect filterTypeButton() {
+    return {kFilterTypeButton.x, kFilterTypeButton.y, filterRowModelButton().x - kFilterRowGap - kFilterTypeButton.x,
+            kFilterTypeButton.h};
+}
 // A Formant or Morph filter's six knobs (its Vowel or Morph after Resonance), a little smaller and closer together
 // than the five the others have.
 constexpr float kFilterSixKnobD = 30.0f;
@@ -281,11 +306,13 @@ inline Point filterSixKnob(int i) {
 inline Rect filterTypeIconRect(Rect row) {
     return {row.x + 9.0f, row.center().y - 5.0f, 22.0f, 10.0f};
 }
-constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 90.0f};
-inline const Rect kFilterSlopeButton = slopeButton(kFilterDisplay);
+// A filter's response and a shaper's curve, alike, centered on the page, narrower than it so neither is stretched flat.
+constexpr float kBoxDisplayW = 184.0f;
+constexpr Rect kFilterDisplay{kInspector.x + 0.5f * (kInspector.w - kBoxDisplayW), kInspector.y + 150.0f, kBoxDisplayW,
+                              84.0f};
 // A shaper's page: its curve's list and the link switch in the row under the summary, with a Custom curve's edit
 // button (a pencil, opening its big editor) and symmetric switch between them, or the Stack curve's Stack stepper,
-// then its transfer curve where a filter's response shows.
+// then its transfer curve where a filter's response shows, down to its I/O list (kBoxIoWell).
 constexpr Rect kShaperLinkButton{kInspector.x + kInspector.w - 16.0f - 44.0f, kInspector.y + 62.0f, 44.0f, 22.0f};
 constexpr Rect kShaperSymButton{kShaperLinkButton.x - 50.0f, kShaperLinkButton.y, 44.0f, 22.0f};
 constexpr float kClipEditW = 28.0f; // a Custom curve's edit button beside its list, on a shaper's page and card
@@ -302,7 +329,8 @@ inline Rect shaperModeButton(bool custom, bool stacked = false) {
                                               : 50.0f),
             22.0f};
 }
-constexpr Rect kShaperDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
+constexpr Rect kShaperDisplay{kInspector.x + 0.5f * (kInspector.w - kBoxDisplayW), kInspector.y + 150.0f, kBoxDisplayW,
+                              84.0f};
 // An operator's wave buttons: the common waves, then "..." with a list of the others.
 constexpr OpWave kCommonWaves[] = {OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Noise};
 constexpr OpWave kMoreWaves[] = {OpWave::Pulse,   OpWave::HalfSine, OpWave::AbsSine, OpWave::AltSine,

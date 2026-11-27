@@ -602,7 +602,7 @@ std::optional<Widget> View::dwellTarget(const std::optional<Widget> &at) const {
         if (view != RoutingView::Graph)
             return std::nullopt;
         return Widget{Kind::Node, {}, -1, at->a};
-    case Kind::MatrixLabel: // a row's or column's name in the matrix, not one of the INPUTS tab's rows
+    case Kind::MatrixLabel: // a row's or column's name in the matrix, not one of the I/O tab's rows
         if (view != RoutingView::Matrix || kInspector.contains(at->rect.center()))
             return std::nullopt;
         return Widget{Kind::Node, {}, -1, at->a};
@@ -1825,7 +1825,7 @@ std::vector<View::Widget> View::widgets() const {
         if (kind != Kind::Knob && !patternRow) {
             // Leftwards from the corner, 8 px apart on a label and 7 on a cell or depth bar, no further out than
             // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
-            // OUT label, in the graph and on the operator page's INPUTS tab, has them centered just under it and its
+            // OUT label, in the graph and on the operator page's I/O tab, has them centered just under it and its
             // ranges on its outline's top, so its depth stays readable. A matrix cell has them centered along its
             // foot, its ranges along its top; a depth bar in its top right corner, its ranges along its bottom. A
             // cell's sit low enough that a large handle's aux ring clears its number, and no lower than keeps the ring
@@ -4387,7 +4387,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool power =
             isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled || field == FxParam::AmpCabOn;
         const std::string count = std::to_string(w.b); // the partial editor's resolution
-        const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's INPUTS row's, as glyphs
+        const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's I/O row's, as glyphs
         const bool notchSwitch = isMorphMode(w.param); // a morph's, as the notch's icon
         const char *text = power || modeChoice || notchSwitch ? ""
                            : isPartialCount(w.param) || field == FxParam::ChorusVoices ? count.c_str()
@@ -5342,7 +5342,7 @@ Color View::knobColor(int param) const {
     if (const int slot = fxSlotOf(param); slot >= 0)
         return fxTypeColor(fx_.slotType(slot));
     // A filter's, and the depths of the routes into or out of one (an operator's send, another filter's link, its
-    // modulation of an operator), which its INPUTS tab shows, as the routes take its color.
+    // modulation of an operator), which its I/O tab shows, as the routes take its color.
     if (param >= kFilterModBase && param < kShaperBase)
         return kFilterColor;
     if (shaperOf(param) >= 0)
@@ -7414,7 +7414,7 @@ std::optional<View::PanStart> View::panAt(Point p) const {
     if (!sourcesHidden() && kModPanel.contains(p))
         return PanStart{PanArea::Sources, sourceScroll()};
     for (Panel *panel : panels_) // what the panels shown in their places pan (the SEQ view's roll, the MODS rows, the
-                                 // FX view's row and graph, the INPUTS tab's rows)
+                                 // FX view's row and graph, the I/O tab's rows)
         if (const auto pan = panel->panAt(p))
             return PanStart{PanArea::Panel, pan->second, panel, pan->first};
     return std::nullopt;
@@ -7822,7 +7822,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     }
     // Over a panel's area, where what is under the mouse doesn't take it: the MODS view's rows (but not on a bar), the
-    // FX view's row and graph, an operator's INPUTS rows (but not on a depth or a mode's button).
+    // FX view's row and graph, an operator's I/O rows (but not on a depth or a mode's button).
     if ((!hit || hit->param < 0) &&
         std::any_of(panels_.begin(), panels_.end(), [&](Panel *panel) { return panel->wheelBehind(p, steps); }))
         return;
