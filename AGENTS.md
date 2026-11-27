@@ -675,7 +675,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     resting, a label showing a mode other than Phase (read off the rendered pixels); the mode also picked
     from its label's and its matrix cell's
     right-click menus (the cell's corner showing the glyph, read off the rendered pixels) and from the operator
-    page's INPUTS tab, whose label sets the depth, each an undo step; a route moved onto another operator keeping
+    page's I/O tab, whose label sets the depth, each an undo step, and on it, under OUTPUTS, an operator's line to
+    OUT setting its output and its route into another operator (a click on its name showing that one, which says
+    nothing goes into it) picking its mode and depth, undoably; a route moved onto another operator keeping
     its mode, and one disconnected starting as Phase again;
   - a node's line to OUT bent by dragging it sideways, from straight, undoably, and straightened again by a
     double-click;
@@ -686,8 +688,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator lighting up while modulation opens its route from 0 %, and not with the glow setting off (read off
     the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
-  - the INPUTS tab's rows: a modulated depth's handles under it and its ranges just above it, its number left as it
-    was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
+  - the I/O tab's rows: a modulated depth's handles under it and its ranges just above it, its number left as it
+    was (read off the rendered pixels), and eight inputs and the outputs scrolling under the wheel, the scrollbar's thumb and the
     middle button;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, a dotted leader running
     from it across to the inspector's lens, and a switched-off one's ghost filled while it is shown (read off the
@@ -707,7 +709,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor, whose pencil sits beside the curve's list (on the
-    shaper effect's card too), lit while it is open (read off the rendered pixels);
+    shaper effect's card too), lit while it is open (read off the rendered pixels); and the I/O list under its
+    curve, an input's label setting its send, undoably, and scrolled to OUTPUTS, its route into an operator's
+    buttons picking that route's mode;
   - a shaper's Stack curve, between Fold and Custom in its list, showing its Stack stepper beside LINK, on its page
     left of it (the list narrowing for it, the knobs staying) and on the shaper effect's card right of it, the two
     centered together, its + an undo step a click, dragged in whole stages, undoably, and the wheel over the list's
@@ -726,9 +730,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     curve's) showing the seven families with their icons (read off the rendered pixels) and picking one; the Model
     list beside the slope's picking a low-pass's Ladder, a family picked keeping the model where it has it (Ladder's
     high-pass and band-pass) and else taking its first; the wheel over the type's button stepping the family and over
-    the Model button the model, a run of notches one undo step, held at the lists' ends, and the Model button's arrows
-    stepping round its family; and the filter card's type list picking Comb, and its Model button, short and without
-    arrows, picking a low-pass's Diode from its list; a morph's slope's list picking 24 dB (18 refused) and its notch switch beside it (the notch's icon)
+    the Model button (short and without arrows, in the type's row) the model, a run of notches one undo step, held at
+    the lists' ends; and the filter card's type list picking Comb, and its Model button, short and without
+    arrows, picking a low-pass's Diode from its list; a morph's slope's list picking 24 dB (18 refused) and its notch switch in the Model list's place (the notch's icon)
     going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
@@ -1469,7 +1473,7 @@ breakpoints in `src/` then hit.
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h` | The routing graph's geometry: which param joins two nodes, wires and arrowheads, their bows and grips, a node's edge, and where the inspector's lens's leader starts |
 | `src/gui/routingpanel.h`, `src/gui/routingpanel.cpp` | The routing panel, `RoutingPanel`: the routing graph and the matrix, with ALGORITHM and its panel of algorithms: the graph's nodes, wires and labels (clear of each other), its glow (the effects graph's backdrop too), halos and grid's points for Ctrl+drag, the drags that move nodes and routes and bend wires, a label's list of modes and the routing's context menus |
-| `src/gui/inspectorpanel.h`, `src/gui/inspectorpanel.cpp` | The inspector, `InspectorPanel`: the lens over the routing panel's left end and the page of the node it shows (an operator's waves and their list, its tabs, unison copies, scope and INPUTS rows, a filter's response and handle, a shaper's curve), its title and nodes' tabs; what covers it, and a node's tab or name clicked showing that node |
+| `src/gui/inspectorpanel.h`, `src/gui/inspectorpanel.cpp` | The inspector, `InspectorPanel`: the lens over the routing panel's left end and the page of the node it shows (an operator's waves and their list, its tabs, unison copies, scope and I/O rows, a filter's response and handle, a shaper's curve), its title and nodes' tabs; what covers it, and a node's tab or name clicked showing that node |
 | `src/gui/filterdisplay.h`, `src/gui/filterdisplay.cpp` | A filter's display, shared by the inspector's filter page and the filter effect's card: its response with its modulation's reach, the spectrum behind it and its handle |
 | `src/gui/lists.h` | The lists the editor's list buttons open: which params open one, their entries' values and names, and which have arrows that step along them |
 | `src/gui/fxpanel.h`, `src/gui/fxpanel.cpp` | The FX view, `FxPanel`: the effects' line of effects, splits and joins as it shows it: its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector, their cards' and nodes' moves (and Ctrl-drag copies), glides and scrolling; a split's controls, which both show; the list of effects, the bin and its questions. What an effect's card holds below its title row is still the `View`'s |

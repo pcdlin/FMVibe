@@ -808,7 +808,7 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
 
 void RoutingPanel::popups(std::vector<Widget> &list) const {
     // The graph's labels go over every widget listed so far, an open pill over the labels at rest, and all of them under
-    // the lists that follow: they take the mouse over a node, a wire's end or a depth handle. (The INPUTS tab's depths,
+    // the lists that follow: they take the mouse over a node, a wire's end or a depth handle. (The I/O tab's depths,
     // labels too, stay on the inspector's page.)
     if (graphShown()) {
         auto isLabel = [](const Widget &w) {
@@ -1245,7 +1245,7 @@ void RoutingPanel::paintDrag(Canvas &c) {
 }
 
 // The graph's nodes, ghosts, edges, arrowheads, wires' starts and labels, the matrix's cells and ALGORITHM with its
-// panel, wherever they are listed (a route's label on the operator page's INPUTS tab too).
+// panel, wherever they are listed (a route's label on the operator page's I/O tab too).
 bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     const bool active = host_.isActive(w);
     switch (w.kind) {
@@ -1325,7 +1325,7 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
             text = trf(Str::CaptionFeedback, {text});
-        // In the graph larger than on the operator page's INPUTS tab (see kWireLabelH), its glyph, text and ranges too.
+        // In the graph larger than on the operator page's I/O tab (see kWireLabelH), its glyph, text and ranges too.
         const bool graph = kRouting.contains(w.rect.center());
         const float glyphW = graph ? kLabelGlyphW : 18.0f;
         // Its ranges and handles are over and under it, and its text stays in the middle, its digits centered.

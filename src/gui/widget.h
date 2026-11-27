@@ -96,7 +96,7 @@ enum class WidgetKind {
     ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
     ModsAuxDepth, // a = source, b = slot: the aux depth on an aux's chip, dragged up and down
     ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
-    InputsScroll, // the operator page's INPUTS tab's scrollbar, as the MODS view's
+    InputsScroll, // the operator page's I/O tab's scrollbar, as the MODS view's
     ModListScroll, // a pill's open list's scrollbar, as the MODS view's
     CascadeMenu, // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
     CascadeItem,  // a = level, b = entry: an entry of the open cascading menu
