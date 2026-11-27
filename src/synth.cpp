@@ -511,6 +511,11 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         seq_.keyDown(note.key);
         return;
     }
+    // A key the tuning leaves unmapped plays nothing.
+    if (unmapped(note)) {
+        reportEnded(note);
+        return;
+    }
     // A velocity that isn't a number plays as 0, so the note still plays out and ends.
     const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
     // Another key is still down, or the pedal holds a note: played legato.
@@ -528,7 +533,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     Voice *newest = newestVoice();
     const double from = newest ? newest->glide + newest->seqTune : lastKey_;
     const bool glide = from >= 0.0 && (glideAlways_ || overlapping);
-    lastKey_ = note.key;
+    const double retune = retuneOf(note);
+    lastKey_ = note.key + retune;
 
     if (mono_ && newest) {
         // Mono: the sounding voice moves to the new note. Legato keeps its
@@ -591,7 +597,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     v.velocity = played.velocity;
     v.order = noteCounter_++;
     v.rng = static_cast<uint32_t>(v.order * 2654435761u) | 1u;
-    v.glide = glide ? from : note.key;
+    v.retune = retune;
+    v.glide = glide ? from : note.key + retune;
     v.fresh = true;
     v.newRandom = true;
     v.auxOut.fill(0.0); // a new note's sources have put out nothing yet
@@ -828,8 +835,9 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     v.silent = false;
     v.tail = false;
     v.order = noteCounter_++;
+    v.retune = retuneOf(to.note);
     if (!glide)
-        v.glide = to.note.key;
+        v.glide = to.note.key + v.retune;
     else // from where the sequencer bent the note before
         v.glide += v.seqTune;
     // The new note brings its own host modulation and expressions, and its own bend.
@@ -1054,6 +1062,11 @@ void Synth::applyMacros(const ParamValues &params) {
 }
 
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
+    // The patch's own tuning, key by key, as its params may have changed: what the notes started from here play in.
+    if (!sameParams || !patchTuningRead_) {
+        tuningTable(params, patchTuning_);
+        patchTuningRead_ = true;
+    }
     // The sequencer plans its notes a stretch at a time, and the voices render up to each note it starts or ends, at
     // its sample, and up to where its curves move on; through the stretches between, they run on. Its pattern is read
     // again only when its params may have changed.
@@ -1986,6 +1999,37 @@ void Synth::endVoice(Voice &v) {
             held_.erase(own);
     }
     reportEnded(v.note);
+}
+
+// With MPE off, every note asks with a channel and with MPE on none does: MTS-ESP's client keeps whether the last note
+// it filtered had a channel and picks the table it retunes the next by that, so a note asked with none between two on
+// channel 2 would put a held one there on the master's table for every channel. The sequencer's and the editor's own
+// notes, and a host's note on no channel, ask on the first channel, the one their NoteRef is on.
+int Synth::tuningChannel(const NoteRef &note) const {
+    if (mpe_)
+        return -1;
+    return note.channel >= 0 && note.channel <= 15 ? note.channel : 0;
+}
+
+// The tuning set where it overrides the patch's (an MTS-ESP master) or the patch has none; else the patch's own.
+double Synth::retuneOf(const NoteRef &note) const {
+    if (note.key < 0 || note.key > 127)
+        return 0.0;
+    double retune = 0.0;
+    if (tuning_ && (!patchTuning_.on || tuning_->overrides()))
+        retune = tuning_->retune(note.key, tuningChannel(note));
+    else if (patchTuning_.on)
+        retune = patchTuning_.retune[note.key];
+    // Held to the keys' range and more, whatever a master sends: a pitch that isn't a number would end in silence.
+    return std::isfinite(retune) ? std::clamp(retune, -128.0, 128.0) : 0.0;
+}
+
+bool Synth::unmapped(const NoteRef &note) const {
+    if (note.key < 0 || note.key > 127)
+        return false;
+    if (tuning_ && (!patchTuning_.on || tuning_->overrides()))
+        return tuning_->unmapped(note.key, tuningChannel(note));
+    return patchTuning_.on && patchTuning_.unmapped[note.key];
 }
 
 void Synth::reportEnded(const NoteRef &note) {
@@ -3347,13 +3391,21 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         v.seqTune = v.seqTuneLeft > 0 ? v.seqTune + v.seqTuneStep * n : v.seqTuneTo;
     }
 
+    // Retuning continuously, the note follows its tuning as it changes, at once: what is left of a glide stays where
+    // it was from the note. Without a tuning (taken away, or out of the patch), it goes back to 12-TET.
+    if (tuneContinuous_ || !tuned()) {
+        const double retune = retuneOf(v.note);
+        v.glide += retune - v.retune;
+        v.retune = retune;
+    }
     // Glide: the pitch closes 99 % of the gap to the note in the glide time.
+    const double tuned = v.note.key + v.retune;
     const double glideTime = p[paramIndex(GlobalParam::Glide)];
-    if (glideTime <= 0.0 || std::abs(v.glide - v.note.key) < 1e-3)
-        v.glide = v.note.key;
+    if (glideTime <= 0.0 || std::abs(v.glide - tuned) < 1e-3)
+        v.glide = tuned;
     else
-        v.glide = v.note.key + (v.glide - v.note.key) *
-                                   std::exp(std::log(0.01) * hostFrames / (timeFromNorm(glideTime) * sampleRate_));
+        v.glide = tuned + (v.glide - tuned) *
+                              std::exp(std::log(0.01) * hostFrames / (timeFromNorm(glideTime) * sampleRate_));
 
     // From here on the voice runs at its own rate, `frames` samples. Gains and
     // levels ramp toward the block's values over a control block's length,

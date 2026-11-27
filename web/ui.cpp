@@ -6,6 +6,7 @@
 #include "factory.h"
 #include "gui/canvas.h"
 #include "gui/controller.h"
+#include "gui/tuningedits.h"
 #include "gui/view.h"
 #include "params.h"
 #include "state.h"
@@ -152,6 +153,9 @@ public:
         clearHistory();
     }
     void choosePreset(PresetDialog) override { js_toast(tr(Str::DemoNoFiles)); }
+    void chooseTuning(bool) override { js_toast(tr(Str::DemoNoTuningFiles)); }
+    // No MTS-ESP: the patch's own tuning alone (a factory preset's).
+    TuningStatus tuningStatus() const override { return withPatchTuning(*this, layout_, {}); }
     // Every example is built in, as a factory preset: NoPresetFiles' presetWritable() is false.
     // Favorites and the recent examples, for as long as the page.
     bool presetFavorite(int index) const override {

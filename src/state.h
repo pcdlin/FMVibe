@@ -40,6 +40,11 @@ struct Settings {
     // BPM (held to the range and rounded as gui::clampTempo() does; 140 to begin with, gui::kDefaultTempo).
     bool tempoSync = true;
     double ownTempo = 140.0;
+    // MTS-ESP (see Synth::setTuning()): whether the synth plays the tuning a master or MTS SysEx gives it, and whether
+    // held notes follow it as it changes (else each keeps the one it started in). MTS-ESP off to begin with, and for a
+    // project from before it; retuning continuous.
+    bool mts = false;
+    bool mtsContinuous = true;
 };
 
 // Streams over a file, for presets.

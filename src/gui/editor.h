@@ -57,6 +57,8 @@ public:
     bool show(bool visible);
     // Opens the preset file dialog, after the current mouse gesture is over.
     void choosePreset(PresetDialog dialog);
+    // Likewise the tuning file dialog: a scale or tuning, or (`mapping`) a keyboard mapping, loaded into the patch.
+    void chooseTuning(bool mapping);
     // The whole editor painted again: the layout changed under it (a state loaded), which its poll doesn't watch.
     void repaint() { invalidate(); }
     // The zoom the host asks for (CLAP's set_scale, VST3's content scale): 1 at 96 DPI. The editor keeps its zoom,
@@ -102,6 +104,7 @@ private:
     void updateCursor();
     void contextMenu(int x, int y);
     void browsePreset(PresetDialog dialog);
+    void browseTuning(bool mapping);
     // The editor takes the keyboard while a value is typed or a dialog is open, and hands it back after.
     bool wantsKeyboard() const { return view_.typing() || view_.dialogOpen(); }
     // Whether a key the host's loop took for the window `to` is this editor's (see typedKey()).
@@ -146,6 +149,7 @@ private:
     void updateCursor();
     void contextMenu(int rootX, int rootY, int x, int y);
     void startPresetDialog(PresetDialog dialog);
+    void startTuningDialog(bool mapping);
     void followScale(float scale, bool fromHost);
     void takeKeyFocus();
     void passKeyToHost(const void *event); // an XKeyEvent the editor didn't take, to the host's window
@@ -181,6 +185,7 @@ private:
     bool whole_ = true;             // the next paint draws every of it
     std::vector<Rect> areas_;       // what changed, in the view's coordinates
     int pendingPreset_ = -1;        // a PresetDialog, opened after the mouse gesture is over
+    int pendingTuning_ = -1;        // 0 a scale, 1 a keyboard mapping: likewise
     uint64_t lastClickMs_ = 0;      // for a double-click: the last press's time and place
     int lastClickX_ = 0, lastClickY_ = 0;
     bool dragging_ = false;         // the pointer is grabbed for a drag

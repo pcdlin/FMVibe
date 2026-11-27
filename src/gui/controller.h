@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -198,7 +199,13 @@ struct UiLayout {
     // What the preset says about itself (see PresetInfo). Part of the patch, but not undone: it changes as a preset is
     // saved, or its info edited.
     PresetInfo presetInfo;
+    // The names of the files the patch's own tuning came from (see TuningParam): its scale's and its keyboard
+    // mapping's, each the file's name without its extension, as the overflow menu shows them; empty for none. Part of
+    // the patch, undone with the tuning. UTF-8, at most kMaxTuningName bytes (whole characters).
+    std::string tuningName;
+    std::string mappingName;
 };
+constexpr size_t kMaxTuningName = 64;
 
 // What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, whether the keyboard
 // strip is collapsed, the shape editor's grid, the operator page's tab and the scope's cycles, and the view shown (the routing
@@ -471,6 +478,16 @@ struct UndoStep {
     std::vector<int> seqPickedBefore, seqPickedAfter;
 };
 
+// Where the synth's tuning comes from (see Controller::tuningStatus()): nowhere, standard tuning (12-TET), an MTS-ESP
+// master plugin, MTS SysEx the plugin was sent while neither a master nor the patch tunes it, or the patch's own tuning
+// (a tuning file loaded into it); and the scale's name, as the master, the SysEx or the file names it.
+enum class TuningSource { Standard, Master, SysEx, Patch };
+struct TuningStatus {
+    TuningSource source = TuningSource::Standard;
+    std::string scale;
+    bool operator==(const TuningStatus &) const = default;
+};
+
 class Controller;
 
 // The editor's undo history: the steps it undoes and redoes, the one being recorded, and the preset the patch is,
@@ -633,6 +650,27 @@ public:
     virtual void setMpe(bool on) = 0;
     virtual int mpeBendRange() const = 0;
     virtual void setMpeBendRange(int semitones) = 0;
+    // MTS-ESP microtuning: whether the synth plays in the tuning an MTS-ESP master gives it (or MTS SysEx, while no
+    // master is connected), and whether a held note follows the tuning as it changes or keeps the one it started in.
+    // Off, and continuous, to begin with.
+    // A host without MTS-ESP (the browser demo) offers none: the settings' TUNING shows it, its buttons disabled.
+    virtual bool offersTuning() const { return false; }
+    virtual bool mtsOn() const { return false; }
+    virtual void setMtsOn(bool) {}
+    virtual bool mtsContinuous() const { return true; }
+    virtual void setMtsContinuous(bool) {}
+    // Where the synth's tuning comes from now, and its scale's name (see TuningStatus).
+    virtual TuningStatus tuningStatus() const { return {}; }
+    // A tuning of the patch's own, from a file, which presets keep (see tuningedits.h): opening the file dialog for a
+    // scale or tuning (.scl, .ascl, .tun) or, `mapping`, a keyboard mapping (.kbm) over the patch's scale. A host
+    // without files (the browser demo) tells the user so instead.
+    virtual void chooseTuning(bool mapping) { (void)mapping; }
+    // The file the dialog picked loaded into the patch, as its extension says what it holds (one undo step): nothing
+    // on success, else what to tell the user.
+    virtual std::optional<std::string> loadTuningFile(const std::wstring &path) {
+        (void)path;
+        return std::nullopt;
+    }
     // The editor's look (see EditorSettings). Unlike the settings above it is the user's: every FMVibe editor uses it,
     // whichever project it is in. Set, it is held to its ranges first, then stored.
     virtual EditorSettings editorSettings() const = 0;

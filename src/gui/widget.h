@@ -183,6 +183,8 @@ enum class WidgetKind {
     PresetNameBox, // the current preset's name: opens the preset browser
     TempoBox,     // the synth's own tempo (see Controller::ownTempo()): drag up and down, scroll, or double-click to type
     TempoHost,    // the tempo where TempoBox is while the synth follows the host's: shown dimmed, taking no edits
+    TuningMark,   // left of the H: a tuning fork while an MTS-ESP master or the patch's own tuning tunes the synth (its
+                  // tooltip says which, and the scale's name); a click does nothing
     TempoSync,    // the H left of the tempo: whether the synth follows the host's tempo (see Controller::tempoSync()),
                   // in a plugin host alone (see Controller::hasTempo())
     PresetInfoButton, // the (i) in the preset bar: opens the preset's info card
@@ -223,14 +225,18 @@ enum class WidgetKind {
     SearchClear,  // a = Field: the x in a text field: empties it
     MoreButton,     // the overflow menu's button after Init and Save: opens or closes the menu
     MoreMenu,       // a = 1 on the open overflow menu, 0 around it (a click there closes it)
-    MoreMenuItem,   // a = what it does: a View::PresetAction, kMoreImport (imports a DX7 sysex file), kMoreManual (opens the user manual) or kMoreSettings (opens
-                    // the settings dialog)
+    MoreMenuItem,   // a = what it does: a View::PresetAction, kMoreImport (imports a DX7 sysex file), kMoreLoadTuning
+                    // or kMoreLoadMapping (the patch's own tuning) and their resets (kMoreResetTuning,
+                    // kMoreResetMapping: a button at the load row's right end), kMoreManual (opens the user manual) or
+                    // kMoreSettings (opens the settings dialog)
     ConfirmBackdrop, // a = 1 on the dialog asking before Init, Load or Save, 0 around it (a click there cancels)
     ConfirmButton,  // a = 1 goes ahead, 0 cancels
     SettingsBackdrop, // a = 1 on the dialog itself, 0 around it (a click there closes it)
     SettingsOption, // b = the oversampling factor it picks
     SettingsMpe,    // b = 1 switches MPE on, 0 off
     SettingsMpeRange, // b = the MPE bend range it picks, in semitones
+    SettingsMts,    // b = 1 switches MTS-ESP on, 0 off (see Controller::mtsOn())
+    SettingsMtsRetune, // b = 1 retunes held notes as the tuning changes, 0 only as notes start
     SettingsTheme,  // b = the theme it picks
     SettingsHandles, // b = the depth handles' size it picks
     SettingsCards,  // b = 1 tints a flat theme's cards with their own color, 0 leaves them plain

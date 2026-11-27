@@ -1286,6 +1286,10 @@ void Plugin::applyEvent(const Event &ev) {
         synth.polyPressure({pressure.noteId, 0, pressure.channel, pressure.pitch}, pressure.pressure);
         break;
     }
+    case Event::kDataEvent: // MTS SysEx retunes the synth (see PluginCore::playSysEx())
+        if (ev.data.type == DataEvent::kMidiSysEx)
+            playSysEx(ev.data.bytes, ev.data.size);
+        break;
     case Event::kNoteExpressionValueEvent: {
         const NoteExpressionValueEvent &expr = ev.noteExpressionValue;
         int32_t id = 0;

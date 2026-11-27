@@ -7,6 +7,8 @@
 #include "oversampler.h"
 #include "params.h"
 #include "sequencer.h"
+#include "tuning.h"
+#include "tuningfile.h"
 #include "wavetable.h"
 
 #include <algorithm>
@@ -245,6 +247,20 @@ public:
     // pressure and CC 74 are that note's alone (see pitchBend()). Off, every channel's apply to every voice, and the
     // member channels' bends are forgotten. CLAP's note expressions are per note either way.
     void setMpe(bool on, double bendRange);
+    // A tuning other than 12-TET (MTS-ESP's, through the plugins; see tuning.h), or none. A voice plays its key as far
+    // off 12-TET as the tuning says (Tuning::retune()), asked again every block while `continuous` (a held note
+    // following the tuning as it changes) and else once as its note starts; its glide, bend and Pitch go on top. A note
+    // on a key the tuning leaves unmapped plays nothing, its end reported at once, though in Key and Latch the
+    // sequencer still takes the key. The tuning is asked with the note's channel (the first for the sequencer's and the
+    // editor's own notes, and a host's on none), but every note for none with MPE on (its channels carry notes, not
+    // tunings): never with and without one at once, which MTS-ESP's client takes amiss. Set while not rendering.
+    // The patch's own tuning (see TuningParam) plays under the same rules, between them: a tuning that overrides
+    // (an MTS-ESP master, Tuning::overrides()) plays over it, and it over one that doesn't (MTS SysEx); with neither
+    // tuning set nor one in the patch, 12-TET.
+    void setTuning(Tuning *tuning, bool continuous) {
+        tuning_ = tuning;
+        tuneContinuous_ = continuous;
+    }
     // The sustain pedal on `channel`: while it is down, a key let go leaves its note sounding as if still held, until
     // the pedal comes up. In mono, a key let go still hands the voice back to an earlier key held down, as without the
     // pedal; with none down, the pedal holds the note. A note the pedal holds counts as held for legato and glide:
@@ -506,7 +522,8 @@ private:
         double gainL = 0.0;
         double gainR = 0.0;
         uint32_t rng = 1;
-        double glide = 0.0;     // current pitch in semitones, sliding toward note.key
+        double glide = 0.0;     // current pitch in semitones, sliding toward note.key + retune
+        double retune = 0.0;    // how far the tuning puts its key off 12-TET, in semitones (see setTuning())
         double pitch = 0.0;     // what it played at in its last block, bend and tuning included: the note source's
         std::array<Operator, kOps> ops{};
         // Each source place has both, for whichever type it holds.
@@ -721,7 +738,19 @@ private:
     bool legato_ = true;
     bool glideAlways_ = false;
     std::vector<HeldNote> held_; // keys down, oldest first; reserved in prepare()
-    double lastKey_ = -1.0;      // where the next glide starts when no voice is sounding
+    double lastKey_ = -1.0;      // where the next glide starts when no voice is sounding (a key, as tuned)
+    // The tuning the notes play in (see setTuning()), and how far it puts a note's key off 12-TET, and whether it
+    // leaves the key unmapped, asked with the channel the tuning takes for it.
+    Tuning *tuning_ = nullptr;
+    bool tuneContinuous_ = true;
+    // The patch's own tuning, key by key, worked out again as its params change (see render()).
+    TuningTable patchTuning_;
+    bool patchTuningRead_ = false;
+    // Whether a tuning tunes the notes: the one set or the patch's.
+    bool tuned() const { return tuning_ || patchTuning_.on; }
+    int tuningChannel(const NoteRef &note) const;
+    double retuneOf(const NoteRef &note) const;
+    bool unmapped(const NoteRef &note) const;
     ParamValues globalMod_{};
     // What the macros and the mod wheel add to their targets, for every voice and the effects alike, worked out at
     // the start of each render; the targets touched last time, so they can be cleared again.
