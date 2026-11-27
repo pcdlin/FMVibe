@@ -243,8 +243,7 @@ note. **Freq** (1 Hz–2 kHz) and **Mult** (×0.001, ×0.01, ×0.1, ×1 or ×10)
 
 When you switch it on, Freq and Mult are set to the frequency the operator was playing for an A4. A fixed operator
 ignores the note, pitch bend, glide, the global Pitch and its own Ratio. Its own **Pitch** and **Detune** still move
-it, and so does modulation on them, so you can give a fixed operator its own pitch envelope or vibrato. Freq can be
-modulated too.
+it, so you can give it its own pitch envelope or vibrato. Freq can be modulated too.
 
 ### Pitch, Detune, Phase and Pan
 
@@ -294,18 +293,14 @@ a **drawn envelope** (the middle one) and a **Rate/Level** envelope (the bottom 
 
 #### Rate/Level envelopes
 
-A Rate/Level envelope works as a DX7's. Imported DX7 voices use it.
+A Rate/Level envelope emulates the DX7's multi-stage envelopes.
 
-- It has four levels, from 0 (silent) to 99 (full), and four rates, how fast the envelope moves to each level,
-  from 0 (very slow, minutes) to 99 (at once).
+- Four levels and four rates, each from 0 to 99. A higher rate moves faster.
 - From each note it goes to Level 1 at Rate 1, then to Level 2 at Rate 2, then to Level 3 at Rate 3, and stays at
   Level 3 while the key is down.
 - When you let go of the key, it goes to Level 4 at Rate 4.
-- **Rate Scaling**, on the Keys tab, makes the envelope faster on higher keys.
-- The display shows the envelope as middle C plays it. While notes play, a dot moves along it. Drag a point up or down to set its level, and left or right
-  to set its rate (right is slower). Hover over a point to read its rate, level and how long it takes.
-- **1**, **2**, **3** and **4** pick the segment that the **Rate** and **Level** knobs beside them set. Clicking a
-  point on the display, or between two points, picks that segment too.
+- Drag a point up or down to set its level, and left or right to set its rate.
+- **1**, **2**, **3** and **4** pick the segment that the **Rate** and **Level** knobs beside them set.
 
 ### Unison tab
 
@@ -368,16 +363,10 @@ The summary line names the warp and says "note sync" while either is active.
 The **KEYS** tab sets keyboard level scaling: how the operator's level changes across the keyboard. On a modulator,
 that changes how bright the sound is, so you can keep high notes from getting harsh.
 
-- **Break** is the note where scaling starts. Drag the dot on the line, or turn the knob.
+- **Break** is the note where scaling starts.
 - **L Depth** and **R Depth** set how far the level moves one octave below and above Break, from −24 to +24 dB.
-  Drag their handles up or down.
-- **Exp** in each top corner makes that side curve away faster: past the first octave, the change doubles every
-  octave. Off, it changes by the same amount every octave.
-- **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys. It is dimmed while the operator's
-  envelope is another.
-- Double-click a handle to reset it.
-
-While a note plays, a dot shows where its key sits on the curve.
+- **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
+- **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.
 
 ### Inputs tab
 
@@ -496,8 +485,7 @@ Loops can get loud but never grow without limit, and they fade out after a note 
 An operator's feedback has two modes. Hover its label in the graph and click the mode part at the label's left:
 
 - **Smooth** (the default) is FMVibe's own feedback.
-- **Classic** runs the feedback the way the DX7 does. High feedback then breaks up into noise as it does on the DX7, and
-  sounds the same whatever the oversampling. Imported DX7 voices use it.
+- **Classic** works like the DX7's: high feedback breaks up into noise. Imported DX7 voices use it.
 
 ### The matrix
 
@@ -724,8 +712,8 @@ An LFO produces a repeating shape.
 - **Clock mode**, picked from the list under the shape list, one of five:
   - **Retrigger** (default): restarts from Phase with every note.
   - **Free**: runs continuously, all voices sharing one clock.
-  - **Global**: one LFO for all voices, like the DX7's. Every new note restarts it from Phase, so notes you are
-    already holding restart their vibrato too.
+  - **Global**: one LFO for all voices, like the DX7's. Every new note restarts it from Phase, for notes
+    already held too.
   - **Anchor**: locked to the host's song position, so it is at the same point of its cycle at the same place in
     the song. While the transport is stopped, it runs freely.
   - **One-Shot**: runs one cycle from each note, then holds its end value.
@@ -1550,24 +1538,19 @@ does not contain the instance settings (oversampling and MPE).
 FMVibe can play voices made for the Yamaha DX7.
 
 1. Choose **Import sysex...** in the **...** menu and pick a DX7 sysex file (`.syx`): a bank of 32 voices or
-   a single voice. If the patch has unsaved changes, FMVibe asks first.
+   a single voice.
 2. FMVibe saves each voice as a preset in the **Syx** folder of your preset folder, in a folder named after the
-   file. The presets are numbered in the bank's order and named after their voices, such as "07 E.PIANO 1".
+   file. The presets are numbered and named after their voices, such as "07 E.PIANO 1".
 3. The first voice loads. Use the preset bar's arrows to step through the others, or find them in the browser.
 
 Importing the same file again saves over the presets it made before.
 
-An imported voice uses the DX7's algorithm, with operators A to F standing for its operators 1 to 6. Each operator
-plays its DX7 envelope as a Rate/Level envelope. The DX7's LFO, pitch envelope and velocity sensitivity become
-modulation sources, which you can see and change like any other. FM Amount is set to 200 %, the depth a DX7
-modulator reaches at full level.
+An imported voice uses the DX7's algorithm, with operators A to F as its operators 1 to 6. Each operator plays its
+DX7 envelope as a Rate/Level envelope. The DX7's LFO, pitch envelope and velocity sensitivity become modulation
+sources.
 
-Some parts of a DX7 voice don't come across:
-
-- **Keyboard level scaling** comes across on each operator's KEYS tab. Where the DX7 lifts the level of keys away
-  from the break point, the lift is kept smaller so it never goes past what the DX7 could reach.
-- **Controller settings** (what the mod wheel, aftertouch, breath and foot controller do) aren't stored in DX7
-  voices. Assign the Mod Wheel yourself if a voice needs it.
+DX7 voices don't hold what the mod wheel, aftertouch, breath and foot controller do. Assign the Mod Wheel yourself if
+a voice needs it.
 
 ### Factory presets
 
