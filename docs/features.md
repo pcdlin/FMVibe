@@ -900,6 +900,35 @@ What the plugin does and how its editor works, in full. Building and installing 
   channel's pressure until its own channel sends some. With MPE off, every channel's bend, controllers and
   pressure apply to every voice, as without MPE. The plugin offers hosts the MPE MIDI dialect alongside CLAP's and
   plain MIDI. The browser demo takes no MIDI, so there MPE has nothing to act on.
+- **Microtuning (MTS-ESP)**, off to begin with (switched on in the settings dialog): the notes play in the tuning an **MTS-ESP** master plugin (ODDSound's
+  MTS-ESP Mini, say) gives every client in the session, or, while none is connected, the one **MTS SysEx** (the MIDI
+  Tuning Standard's bulk dumps, single-note and scale/octave messages) sent to the plugin last; with neither, 12-TET.
+  Each note's key plays as far off 12-TET as the tuning says, and its glide, bend, note expressions and Pitch go on
+  top, so key tracking and the note source follow the tuning; a fixed operator doesn't. With **Retune** on
+  **Continuous** (to begin with), a held note follows the tuning as it changes, at once, a glide going on from there;
+  on **Note On**, it keeps the tuning it started in. A key the master leaves unmapped plays nothing (its end reported
+  at once), though in Key and Latch the sequencer still takes it to transpose its pattern. The tuning is asked with the
+  note's MIDI channel (so a master's tables for each channel apply), the sequencer's and the editor's own notes with
+  the first, but every note with none while MPE is on. Switched off, a master and MTS SysEx are ignored. Both are
+  settings of the instance, in the settings dialog (see Settings): a project keeps them (one saved before them has
+  MTS-ESP off, retuning continuously), presets don't, and undo leaves them alone. The title bar shows the tuning's name
+  while a master, MTS SysEx or the patch's own tuning tunes the synth (see Header). Each instance registers with MTS-ESP as it is made, through ODDSound's client library,
+  which finds the master's library (`LIBMTS.dll` in `Common Files\MTS-ESP`, `libMTS.so` in `/usr/local/lib`) where
+  the master installed it; without it, MTS SysEx still tunes the synth. The CLAP plugin takes SysEx as CLAP's SysEx
+  events, the VST3 plugin as SysEx data events. The browser demo has no MTS-ESP: its settings show TUNING disabled.
+- **Tuning files**: a patch may have a tuning of its own, which presets and projects keep with it, loaded from the
+  overflow menu (see Header): **Load custom tuning...** takes a Scala scale (`.scl`), Ableton's Scala (`.ascl`, its
+  `@ABL REFERENCE_PITCH` setting the pitch of a degree in an octave, octave 4 holding middle C) or an AnaMark tuning
+  (`.tun`, each key's cents over its base frequency, `[Exact Tuning]` over `[Tuning]`), of up to 128 notes;
+  **Load keyboard mapping...** a Scala keyboard mapping (`.kbm`: which degree each key plays, its keys marked `x`
+  unmapped, and the key at its reference frequency), over the patch's scale or 12-TET. With no mapping, a scale's
+  degree 0 is on middle C at its 12-TET pitch (as Scala has it), an `.ascl`'s where its reference puts it, a `.tun`'s
+  keys where it puts them. While there is one, a faint, indented line under each entry names the file loaded, and a
+  reset button at the entry's right end (Init's arrow, its tooltip **Reset tuning** or **Reset keyboard mapping**)
+  takes it out; each load and reset is one undo step. The patch's tuning plays
+  under a connected MTS-ESP master (which tunes the whole project) and over MTS SysEx, the rules above applying alike:
+  Retune, unmapped keys, the channels. A file that isn't what its extension says loads nothing, a message saying
+  why. The browser demo plays a preset's tuning, but loads no files.
 - **Sustain pedal** (CC 64, down from the middle of its travel): while it is down, a key let go leaves its note
   sounding as if still held, until the pedal comes up and the note releases. A key struck again while the pedal holds
   its note lets that note go into its release, the new note taking over. In mono, letting the sounding key go still
@@ -1931,8 +1960,12 @@ what it started goes on.
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens in the same panel the
     same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
-  redo, Init, Save and the overflow menu's **...** at its right (see Presets and Settings, below). Between the
-  name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
+  redo, Init, Save and the overflow menu's **...** at its right (see Presets and Settings, below). Left of the
+  tempo, while an MTS-ESP master, MTS SysEx or the patch's own tuning tunes the synth (see Microtuning and Tuning
+  files), a small mark with the tuning's name, cut to fit: in the accent for a master, the text's color for the patch's
+  tuning, dimmed for SysEx, its tooltip saying which ("Tuned by MTS-ESP: 19-EDO", "Tuned by MTS SysEx: 19-EDO" or
+  "Tuning from the patch: 19-EDO", a master's and SysEx's adding "Click to turn MTS-ESP off."), a click on a master's or SysEx's switching MTS-ESP off for the instance (as the settings do, no undo step) and on the patch's opening the overflow menu; with nothing tuning
+  it, none (a master and SysEx not while MTS-ESP is off). Between the name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
   host tempo"), then a field with the tempo in BPM (20–999). With the H on, as it starts, the synth plays at the
   host's tempo, which the field shows dimmed (as the synth last played it) and which takes no edits there. With the
   H off, the synth plays at a
@@ -2598,7 +2631,11 @@ what it started goes on.
       selected, and its caret steps a word at a time with Ctrl too. The Save dialog's fields edit the same way.
   - The **...** after Init and Save, lit while it is open, opens the **overflow menu** under it, drawn as the
     editor's lists are: **Init preset**, **Load preset...**, **Save preset** and **Save preset as...**, each beside its
-    icon (Init's arrow, an open folder, a disk, a disk with a plus), then, after a line, **User manual** (a book, opening
+    icon (Init's arrow, an open folder, a disk, a disk with a plus), then, after a line, the patch's own tuning (see
+    Tuning files): **Load custom tuning...** and **Load keyboard mapping...** (an open folder each), and while there is one,
+    a button with Init's arrow at the entry's right end taking it out (**Reset tuning**, **Reset keyboard mapping**,
+    as their tooltips say) and a faint line under it, indented past its name, naming the file loaded, the menu growing
+    for it, then, after another line, **User manual** (a book, opening
     the user manual in the web browser, as the settings dialog's book does) and **Settings** (a cog). Each does
     what Init's and Save's buttons do, and a greyed-out one (as Save and Save As are below) passes the mouse by. A
     click on an entry, around the menu or on the ... again closes it, as Escape does.
@@ -2638,13 +2675,19 @@ what it started goes on.
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
     since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.
 - **Settings** (the overflow menu's last entry), in two tabs: **Visual**, the editor's look (Theme, under its heading, then
-  Hue, Glow, Lines, Grid, Handles and Cards), and **Engine**, the instance's settings (Oversampling and MPE). The
-  dialog opens on Visual and then on the tab shown last while the editor is open, one height for both, the version
+  Hue, Glow, Lines, Grid, Handles and Cards), and **Engine**, the instance's settings (Oversampling, MPE and Tuning). The
+  dialog opens on Visual and then on the tab shown last while the editor is open, one height for both (Engine's), the version
   and the license at the bottom of each. **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,
   and aren't undo steps.
+  **Tuning (MTS-ESP)**, Off (to begin with) or On, and its **Retune**, Note On or Continuous (to begin with), faint
+  while MTS-ESP is off (see Microtuning, above), saved likewise; under them, where the tuning comes from: "Connected
+  to MTS-ESP:" and the scale's name after a lit dot, "Tuned by MTS SysEx:" and its name after a grey one, "No MTS-ESP
+  master. MTS SysEx can retune it too.", or with it off "Off: ignores MTS-ESP masters and MTS SysEx." (the patch's own tuning playing on) It follows a master
+  coming and going while the dialog is open. In the browser demo, which has none, the switches are disabled and the
+  line says so.
   **Theme**: Spectrum (deep indigo, the default: its window, panels, cards and displays' wells four steps of one
   blue-grey, its text in three greys each at 4.5 : 1 or more on all of them), Porcelain (Spectrum in light: white panels lifted off a cool gray
   by soft shadows, their cards with a slight one too), Midnight or Light (crisp: white cards and knob caps on a cool
@@ -2767,7 +2810,8 @@ What the VST3 plugin does its own way:
 - **MIDI**: VST3 hands plugins notes, but no controllers. FMVibe asks hosts to map every controller, channel pressure
   and pitch bend, on each of the 16 MIDI channels, to hidden parameters of its own, and takes them as MIDI from
   there: pitch bend (by Bend Range), the MIDI sources' controllers and pressure, and MPE over MIDI work as in the
-  CLAP plugin. Polyphonic pressure comes as its own event, a note's pressure.
+  CLAP plugin. Polyphonic pressure comes as its own event, a note's pressure. MIDI SysEx comes as data events, whose
+  MTS SysEx retunes the synth as in the CLAP plugin (see Microtuning).
 - **Note expressions**: Volume, Pan, Tuning (ten octaves either way) and Brightness (a note's slide), as VST3 names
   them, and Pressure, one of FMVibe's own. For touch surfaces and MPE controllers, FMVibe tells hosts to send a
   finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as
@@ -2801,3 +2845,5 @@ of the host's drawn through Cairo (XWayland included; no Wayland and no GTK is l
 - **The editor's scale** is the host's where it gives one (CLAP's `set_scale`, VST3's content scale factor), else the
   desktop's `Xft.dpi` over 96: the editor opens at that scale, its zoom kept.
 - Text is drawn in Inter (`FMVIBE_FONT` picks another family), and typing takes Latin-1 — no compose or IME.
+- **MTS-ESP** finds its library at `/usr/local/lib/libMTS.so`, where an MTS-ESP master for Linux installs it. Without
+  one, MTS SysEx still tunes the synth.

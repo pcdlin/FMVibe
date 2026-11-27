@@ -48,6 +48,19 @@ std::vector<View::Widget> View::settingsWidgets() const {
         for (int i = 0; i < static_cast<int>(std::size(kMpeBendRanges)); ++i)
             add(Kind::SettingsMpeRange, settingsMpeRange(panel, i), -1, kMpeBendRanges[i]);
         mergeButtons(list, row);
+        row = list.size();
+        // TUNING's, disabled in a host without MTS-ESP (the browser demo).
+        for (int on = 0; on < 2; ++on) {
+            add(Kind::SettingsMts, settingsMts(panel, on), -1, on);
+            list.back().disabled = !controller_.offersTuning();
+        }
+        mergeButtons(list, row);
+        row = list.size();
+        for (int continuous = 0; continuous < 2; ++continuous) {
+            add(Kind::SettingsMtsRetune, settingsMtsRetune(panel, continuous), -1, continuous);
+            list.back().disabled = !controller_.offersTuning();
+        }
+        mergeButtons(list, row);
         return list;
     }
     // VISUAL: the themes, the sliders, the depth handles' size and the cards.
@@ -111,6 +124,37 @@ void View::paintSettings(Canvas &c) {
                Align::Left);
         c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
                Align::Left);
+        // TUNING: MTS-ESP Off | On, then RETUNE's Note On | Continuous, and under them where the tuning comes from.
+        const float tuningY = panel.y + kSettingsTuningY;
+        c.line({panel.x + 24.0f, tuningY + 0.5f}, {panel.right() - 24.0f, tuningY + 0.5f}, kBorder, 1.0f);
+        c.text({panel.x + 24.0f, tuningY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsTuning), kTextLabel, kFaint,
+               Align::Left, true);
+        const bool tuning = controller_.offersTuning();
+        c.text(settingsMtsRetuneLabel(panel), tr(Str::SettingsMtsRetune), kTextLabel,
+               tuning && controller_.mtsOn() ? kDim : kFaint, Align::Left, true);
+        {
+            const TuningStatus &status = tuning_;
+            const Rect line{panel.x + 24.0f, tuningY + 66.0f, panel.w - 48.0f, 16.0f};
+            if (!tuning)
+                c.text(line, tr(Str::SettingsMtsUnavailable), kTextLabel, kDim, Align::Left);
+            else if (!controller_.mtsOn())
+                c.text(line, tr(Str::SettingsMtsOff), kTextLabel, kDim, Align::Left);
+            else if (status.source == TuningSource::Standard || status.source == TuningSource::Patch)
+                c.text(line, tr(Str::SettingsMtsNone), kTextLabel, kDim, Align::Left);
+            else { // a dot, lit for a master, then where the tuning comes from and the scale's name
+                const bool master = status.source == TuningSource::Master;
+                c.fillCircle({line.x + 3.5f, line.center().y}, 3.5f, master ? kAccent : kDim);
+                const std::string scale =
+                    status.scale.empty() ? std::string(tr(Str::SettingsMtsUnnamed)) : status.scale;
+                const std::string from(tr(master ? Str::SettingsMtsMaster : Str::SettingsMtsSysEx));
+                const float fromW = c.textWidth(from, kTextLabel);
+                c.text({line.x + 13.0f, line.y, fromW + 1.0f, line.h}, from, kTextLabel, kDim, Align::Left);
+                c.text({line.x + 17.0f + fromW, line.y, line.w - 17.0f - fromW, line.h}, scale, kTextLabel, kText,
+                       Align::Left, true);
+            }
+        }
+        c.text({panel.x + 24.0f, tuningY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMtsSaved), kTextLabel,
+               kFaint, Align::Left);
     } else {
         // VISUAL: THEME and the themes, their main color's hue, the glow, the sources' lines, the roll's grid, the depth handles'
         // size and the cards.

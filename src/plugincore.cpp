@@ -2,6 +2,7 @@
 
 #include "factory.h"
 #include "fxlag.h"
+#include "gui/tuningedits.h"
 #include "oversampler.h"
 #include "params.h"
 #include "uistrings.h"
@@ -12,6 +13,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <new>
 #include <random>
 
@@ -218,6 +221,8 @@ void PluginCore::applyPlayMode() {
     auto on = [this](GlobalParam p) { return values_[paramIndex(p)].load(std::memory_order_relaxed) >= 0.5; };
     synth_.setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
     synth_.setMpe(mpe_.load(std::memory_order_relaxed), mpeBendRange_.load(std::memory_order_relaxed));
+    synth_.setTuning(mtsOn_.load(std::memory_order_relaxed) ? &mts_ : nullptr,
+                     mtsContinuous_.load(std::memory_order_relaxed));
     synth_.setOwnTempo(tempoSync() ? 0.0 : ownTempo_.load(std::memory_order_relaxed));
 }
 
@@ -293,6 +298,16 @@ void PluginCore::setMpe(bool on) {
 void PluginCore::setMpeBendRange(int semitones) {
     semitones = std::clamp(semitones, 1, kMaxMpeBendRange);
     if (mpeBendRange_.exchange(semitones) != semitones)
+        hostMarkDirty();
+}
+
+void PluginCore::setMtsOn(bool on) {
+    if (mtsOn_.exchange(on) != on)
+        hostMarkDirty();
+}
+
+void PluginCore::setMtsContinuous(bool on) {
+    if (mtsContinuous_.exchange(on) != on)
         hostMarkDirty();
 }
 
@@ -542,7 +557,8 @@ bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
     if (!settings)
         return true;
     if (!writeSettings(stream,
-                       {oversampling_.load(), mpe_.load(), mpeBendRange_.load(), tempoSync_.load(), ownTempo_.load()}))
+                       {oversampling_.load(), mpe_.load(), mpeBendRange_.load(), tempoSync_.load(), ownTempo_.load(),
+                        mtsOn_.load(), mtsContinuous_.load()}))
         return false;
     // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
     return writePresetChunk(stream, patchEdited(), utf8(pathOf(presetFile())));
@@ -582,6 +598,8 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         mpeBendRange_.store(stored.mpeBendRange);
         tempoSync_.store(stored.tempoSync);
         ownTempo_.store(stored.ownTempo);
+        mtsOn_.store(stored.mts);
+        mtsContinuous_.store(stored.mtsContinuous);
         if (hasTempo() && tempo() != stored.ownTempo)
             setTempo(stored.ownTempo);
         restartIfNeeded();
@@ -783,6 +801,38 @@ void PluginCore::choosePreset(bool save) {
     PresetLibrary::makeFolder(); // where the dialogs start
     if (editor_)
         editor_->choosePreset(save);
+}
+
+// MTS-ESP's, while it is on, then the patch's own: a master plays over it, and it over MTS SysEx.
+gui::TuningStatus PluginCore::tuningStatus() const {
+    return gui::withPatchTuning(*this, layout_, mtsOn_.load() ? mts_.status() : gui::TuningStatus{});
+}
+
+void PluginCore::chooseTuning(bool mapping) {
+    if (editor_)
+        editor_->chooseTuning(mapping);
+}
+
+std::optional<std::string> PluginCore::loadTuningFile(const std::wstring &path) {
+    const std::filesystem::path file(path);
+    const std::u8string extension = file.extension().u8string();
+    const TuningFile kind = tuningFileOf(std::string(extension.begin(), extension.end()));
+    if (kind == TuningFile::Unknown)
+        return std::string(tr(Str::TuningUnknownFile));
+    std::ifstream in(file, std::ios::binary);
+    std::string text;
+    if (in) {
+        constexpr std::streamsize kMaxTuningFile = 1 << 20; // far past any tuning file
+        text.resize(kMaxTuningFile);
+        in.read(text.data(), kMaxTuningFile);
+        text.resize(static_cast<size_t>(in.gcount()));
+    }
+    if (!in && !in.eof())
+        return std::string(tr(Str::TuningUnreadable));
+    const std::u8string stem = file.stem().u8string();
+    if (const std::optional<Str> why = gui::loadTuningText(*this, text, kind, std::string(stem.begin(), stem.end())))
+        return std::string(tr(*why));
+    return std::nullopt;
 }
 
 std::wstring PluginCore::presetFolder() const {

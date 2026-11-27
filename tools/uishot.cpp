@@ -11,6 +11,7 @@
 #include "gui/routing.h"
 #include "gui/shapeclip.h"
 #include "gui/theme.h"
+#include "gui/tuningedits.h"
 #include "gui/view.h"
 #include "uistrings.h"
 
@@ -269,6 +270,19 @@ public:
     void setMpe(bool on) override { mpeOn = on; }
     int mpeBendRange() const override { return mpeRange; }
     void setMpeBendRange(int semitones) override { mpeRange = semitones; }
+    bool mtsOn() const override { return mtsOnSet; }
+    void setMtsOn(bool on) override { mtsOnSet = on; }
+    bool mtsContinuous() const override { return mtsContinuousSet; }
+    void setMtsContinuous(bool on) override { mtsContinuousSet = on; }
+    bool offersTuning() const override { return tuningOffered; }
+    // As the plugin tells it: MTS-ESP's (`tuning`, a master's or MTS SysEx's) while it is on, with the patch's own.
+    TuningStatus tuningStatus() const override { return withPatchTuning(*this, ui, mtsOnSet ? tuning : TuningStatus{}); }
+    void chooseTuning(bool mapping) override { ++(mapping ? mappingChoices : tuningChoices); }
+    bool tuningOffered = true; // false: a host without MTS-ESP, as the browser demo
+    bool mtsOnSet = false;
+    bool mtsContinuousSet = true;
+    TuningStatus tuning; // MTS-ESP's tuning, as the plugin would tell
+    int tuningChoices = 0, mappingChoices = 0; // the overflow menu's load entries picked
     EditorSettings editorSettings() const override {
         return {.theme = themeName, .accentHue = hue, .glow = glowLevel, .handleSize = handles, .linkIntensity = links,
                 .gridIntensity = grid, .seqFull = seqFull, .tintedCards = tinted};
@@ -1192,6 +1206,12 @@ void clickMenu(View &view, int item) {
     click(view, detail::moreMenuItem(item).center());
     if (view.moreMenuShown())
         click(view, kModTitle); // around the menu
+}
+
+// The settings dialog opened from the overflow menu, on its ENGINE tab (it opens on VISUAL).
+void openEngineSettings(View &view) {
+    clickMenu(view, kMenuSettings);
+    click(view, detail::settingsTab(detail::settingsPanel(view.height()), detail::kSettingsEngineTab).center());
 }
 
 void doubleClick(View &view, Point p) {
@@ -14006,6 +14026,271 @@ void testPresetLibrary(const std::filesystem::path &dir, Renderer &renderer) {
 // The preset library's parts in every theme: the bar (and its tooltip), the info card of the user's preset and of a
 // factory one, the browser (and filtered by category), the New Folder and New Category forms, the Save sheet (and its
 // list of folders) and Edit Info, into presets-<theme>-<part>.png.
+// MTS-ESP: the settings' TUNING switches setting MTS-ESP and its retuning, each a setting of the project and no edit of
+// the patch; the title bar's MTS mark showing while a master (in the accent) or MTS SysEx (dimmed) tunes the synth,
+// not while MTS-ESP is off, its tooltip naming the scale, and the title bar alone repainted as it comes and goes,
+// as a whole paint would; the patch's own tuning shown its own way; the overflow menu's tuning entries asking to load
+// a tuning or a mapping and to reset it, greyed out while they can't act; the mark switching MTS-ESP off while it
+// tunes, and else opening the menu; and in a host without MTS-ESP (the browser demo) the switches doing nothing.
+void testTuning(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    model.mtsOnSet = true; // off to begin with
+    View view(model);
+    view.poll();
+    const Point inMark{detail::kTuningMark.x + 3.0f, detail::kTuningMark.center().y}; // its face, clear of its text
+    const bool plainShot = renderer.save(view, dir / "tuning-1-standard.png");
+    const uint32_t plain = renderer.pixel(inMark);
+    // Compares a repaint of the areas the last poll found changed, over the last frame, with a whole paint of the same
+    // moment.
+    auto samePixels = [&](const char *name) {
+        bool repainted = true;
+        for (const Rect &area : view.changedAreas())
+            repainted = renderer.repaint(view, area) && repainted;
+        const std::vector<uint32_t> part = renderer.image();
+        const bool saved = renderer.save(view, dir / name);
+        return repainted && saved && part == renderer.image();
+    };
+    auto onlyTitleBar = [&] {
+        const std::vector<Rect> &areas = view.changedAreas();
+        return areas.size() == 1 && areas[0].x == 0.0f && areas[0].y == 0.0f && areas[0].w == View::kWidth &&
+               areas[0].h == detail::kTitleBarH;
+    };
+    model.tuning = {TuningSource::Master, "19-EDO"};
+    const bool masterCame = view.poll() && onlyTitleBar() && samePixels("tuning-2-master.png");
+    const uint32_t master = renderer.pixel(inMark);
+    model.tuning = {TuningSource::SysEx, "Werckmeister III"};
+    const bool sysExCame = view.poll() && onlyTitleBar() && samePixels("tuning-3-sysex.png");
+    const uint32_t sysEx = renderer.pixel(inMark);
+    std::printf("      the mark's face: 0x%06x with nothing tuning, 0x%06x for a master, 0x%06x for MTS SysEx\n", plain,
+                master, sysEx);
+    check(plainShot && master != plain && sysEx != plain && sysEx != master,
+          "the title bar's MTS mark shows while a master or MTS SysEx tunes the synth, each its own way");
+    check(masterCame && sysExCame, "the mark coming and changing repaints the title bar alone, as a whole paint would");
+    // Its tooltip: under it, where nothing was drawn before.
+    const Point underMark{detail::kTuningMark.center().x, detail::kTuningMark.bottom() + 16.0f};
+    renderer.save(view, dir / "tuning-4-untipped.png");
+    const uint32_t untipped = renderer.pixel(underMark);
+    view.mouseMove(detail::kTuningMark.center(), {});
+    const bool tipShot = renderer.save(view, dir / "tuning-5-tooltip.png");
+    const bool tipped = tipShot && renderer.pixel(underMark) != untipped;
+    view.mouseMove({600.0f, 960.0f}, {});
+    check(tipped, "the MTS mark shows its tooltip under the mouse");
+
+    // The patch's own tuning, loaded from a scale's text: the mark in the text's color, apart from a master's and
+    // SysEx's, and one undo step taking it out again with its name.
+    std::string edo19 = "! 19-EDO.scl\n19 equal divisions of 2/1\n 19\n!\n";
+    for (int degree = 1; degree <= 19; ++degree) {
+        char line[32];
+        std::snprintf(line, sizeof line, "%.6f\n", 1200.0 * degree / 19.0);
+        edo19 += line;
+    }
+    const std::string mapping = "! skips a key\n12\n0\n127\n60\n69\n440.0\n12\n0\n1\n2\nx\n4\n5\n6\n7\n8\n9\n10\n11\n";
+    view.poll(); // the tooltip gone, in the frame the repaint goes over
+    renderer.save(view, dir / "tuning-7b-untipped.png");
+    model.tuning = {};
+    const bool loaded = !loadTuningText(model, edo19, TuningFile::Scala, "19-EDO") && patchHasScale(model) &&
+                        model.ui.tuningName == "19-EDO" &&
+                        model.value(paramIndex(TuningParam::Degrees)) == 19.0;
+    const bool patchCame = view.poll() && samePixels("tuning-8-patch.png");
+    const uint32_t patch = renderer.pixel(inMark);
+    std::printf("      the mark's face for the patch's tuning: 0x%06x\n", patch);
+    check(loaded && patchCame && patch != plain && patch != master && patch != sysEx,
+          "a scale's text loads into the patch, and the mark shows the patch's own tuning in a way of its own");
+    model.undo();
+    const bool undone = !patchHasScale(model) && model.ui.tuningName.empty();
+    model.redo();
+    check(undone && patchHasScale(model) && model.ui.tuningName == "19-EDO",
+          "loading a tuning is one undo step, its name undone and redone with it");
+    // Files that aren't what they say leave the patch as it was.
+    const Str notScale = loadTuningText(model, "nothing here", TuningFile::Scala, "x").value_or(Str::MenuSettings);
+    const Str notMapping = loadTuningText(model, "12\n0\n", TuningFile::Mapping, "x").value_or(Str::MenuSettings);
+    const Str unknown = loadTuningText(model, edo19, TuningFile::Unknown, "x").value_or(Str::MenuSettings);
+    check(notScale == Str::TuningNotScale && notMapping == Str::TuningNotMapping && unknown == Str::TuningUnknownFile &&
+              model.ui.tuningName == "19-EDO" && !patchHasMapping(model),
+          "a file that isn't a scale, a mapping or a tuning file at all loads nothing, saying why");
+
+    // The overflow menu's tuning entries: with a scale, Load tuning... names it and Reset tuning shows, taking it out;
+    // with a mapping, likewise Load keyboard mapping... and Reset keyboard mapping; the loads asking the controller
+    // for a file, each closing the menu; and the mark opening the menu.
+    click(view, detail::kTuningMark.center());
+    const bool markOpens = view.moreMenuShown();
+    view.mouseMove(detail::moreMenuItem(detail::kMoreResetTuning).center(), {});
+    const bool scaleShot = renderer.save(view, dir / "tuning-9-menu-scale.png");
+    click(view, detail::moreMenuItem(detail::kMoreResetTuning).center());
+    const bool reset = !patchHasScale(model) && model.ui.tuningName.empty() && !view.moreMenuShown();
+    model.undo();
+    const bool mapped = !loadTuningText(model, mapping, TuningFile::Mapping, "Skip D#") && patchHasMapping(model);
+    view.poll();
+    click(view, kMoreButton);
+    view.mouseMove(detail::moreMenuItem(detail::kMoreResetMapping, true, true).center(), {});
+    const bool bothShot = renderer.save(view, dir / "tuning-10-menu-both.png");
+    click(view, detail::moreMenuItem(detail::kMoreResetMapping, true, true).center());
+    const bool unmapped = !patchHasMapping(model) && model.ui.mappingName.empty() && patchHasScale(model);
+    check(markOpens && scaleShot && reset && mapped && bothShot && unmapped,
+          "the menu names the patch's scale and keyboard mapping, and the reset buttons at their rows' right ends take "
+          "them out");
+    resetTuning(model, false);
+    view.poll();
+    click(view, kMoreButton);
+    const bool standardShot = renderer.save(view, dir / "tuning-11-menu-standard.png");
+    view.dialogKey(View::Key::Escape);
+    clickMenu(view, detail::kMoreLoadTuning);
+    clickMenu(view, detail::kMoreLoadMapping);
+    // With nothing to take out, no reset's button: a click where it would be is its load row's.
+    clickMenu(view, detail::kMoreResetTuning);
+    clickMenu(view, detail::kMoreResetMapping);
+    check(standardShot && model.tuningChoices == 2 && model.mappingChoices == 2 && !view.moreMenuShown(),
+          "the menu's load entries ask for a tuning file and a keyboard mapping, each closing it, with no reset's "
+          "button at their right end while there is nothing to take out");
+    // A master over the patch's tuning: the mark's tooltip tells both.
+    loadTuningText(model, edo19, TuningFile::Scala, "19-EDO");
+    model.tuning = {TuningSource::Master, "Bohlen-Pierce"};
+    view.poll();
+    view.mouseMove(detail::kTuningMark.center(), {});
+    const bool overTip = renderer.save(view, dir / "tuning-12-over-tooltip.png");
+    view.mouseMove({600.0f, 960.0f}, {});
+    // A click on the mark switches MTS-ESP off, opening no menu and leaving the patch and its undo alone: the patch's
+    // tuning plays, and the mark shows it. A second click, on the patch's tuning, opens the menu.
+    const UndoStep *lastStep = model.nextUndo();
+    click(view, detail::kTuningMark.center());
+    const bool clickedOff = !model.mtsOnSet && !view.moreMenuShown() && model.nextUndo() == lastStep;
+    view.mouseMove({600.0f, 960.0f}, {});
+    view.poll();
+    const bool offPatch = renderer.save(view, dir / "tuning-13-off-patch.png") && renderer.pixel(inMark) == patch;
+    click(view, detail::kTuningMark.center());
+    const bool patchMenu = !model.mtsOnSet && view.moreMenuShown();
+    view.dialogKey(View::Key::Escape);
+    model.mtsOnSet = true;
+    model.tuning = {};
+    resetTuning(model, false);
+    view.poll();
+    check(overTip && offPatch, "a master over the patch's tuning renders in the mark's tooltip, and with MTS-ESP off "
+                               "the mark shows the patch's own tuning");
+    check(clickedOff && patchMenu, "a click on the mark switches MTS-ESP off while it tunes, leaving the patch and its "
+                                   "undo alone, and opens the menu on the patch's own tuning");
+    model.clearHistory(); // the tuning's edits, which the settings below are to leave alone
+
+    // The settings' switches.
+    model.tuning = {TuningSource::Master, "19-EDO"};
+    view.poll();
+    openEngineSettings(view);
+    const Rect panel = detail::settingsPanel(view.height());
+    auto at = [](Rect r) { return Point{r.x + 0.5f * r.w, r.y + 0.5f * r.h}; };
+    click(view, at(detail::settingsMts(panel, 0)));
+    const bool switchedOff = !model.mtsOnSet;
+    click(view, at(detail::settingsMtsRetune(panel, 0)));
+    const bool noteOn = !model.mtsContinuousSet;
+    const bool offShot = renderer.save(view, dir / "tuning-6-settings-off.png");
+    click(view, at(detail::settingsMtsRetune(panel, 1)));
+    click(view, at(detail::settingsMts(panel, 1)));
+    const bool back = model.mtsOnSet && model.mtsContinuousSet;
+    check(switchedOff && noteOn && back && offShot && model.nextUndo() == nullptr && view.dialogOpen(),
+          "the settings' TUNING switches set MTS-ESP and its retuning, leaving the patch and its undo alone");
+    // Off, the mark goes, though a master still tunes.
+    click(view, at(detail::settingsMts(panel, 0)));
+    view.dialogKey(View::Key::Escape);
+    view.poll();
+    const bool offShot2 = renderer.save(view, dir / "tuning-6b-off.png");
+    check(offShot2 && renderer.pixel(inMark) == plain, "with MTS-ESP off, the title bar shows no MTS mark");
+    model.mtsOnSet = true;
+
+    // A host without MTS-ESP: the switches disabled, their clicks setting nothing.
+    FakeController demo;
+    demo.tuningOffered = false;
+    View demoView(demo);
+    openEngineSettings(demoView);
+    const Rect demoPanel = detail::settingsPanel(demoView.height());
+    click(demoView, at(detail::settingsMts(demoPanel, 1)));
+    click(demoView, at(detail::settingsMtsRetune(demoPanel, 0)));
+    const bool demoShot = renderer.save(demoView, dir / "tuning-7-settings-unoffered.png");
+    check(demoShot && !demo.mtsOnSet && demo.mtsContinuousSet,
+          "in a host without MTS-ESP, the TUNING switches are disabled");
+}
+
+// The tuning's settings and the title bar's MTS mark, in each state the plugin tells of, in three themes.
+void renderTuning(const std::filesystem::path &dir, Renderer &renderer) {
+    bool all = true;
+    for (const char *themeName : {"Midnight", "Spectrum", "Porcelain"}) {
+        FakeController model;
+        libraryModel(model);
+        model.themeName = themeName;
+        model.glowLevel = 0.5;
+        model.loadPresetAt(libraryIndex(model, "Screamer"));
+        std::string theme = themeName;
+        std::transform(theme.begin(), theme.end(), theme.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        View view(model);
+        const Rect bar{0.0f, 0.0f, 420.0f, detail::kTitleBarH};
+        const Rect barTip{0.0f, 0.0f, 420.0f, 64.0f};
+        const Point away{600.0f, 960.0f};
+        struct State {
+            const char *name;
+            bool on;
+            TuningStatus status; // MTS-ESP's
+            bool patch;          // the patch with a scale and a keyboard mapping of its own
+        };
+        const State states[] = {{"master", true, {TuningSource::Master, "19-EDO"}, false},
+                                {"sysex", true, {TuningSource::SysEx, "Werckmeister III"}, false},
+                                {"patch", true, {}, true},
+                                {"over", true, {TuningSource::Master, "Bohlen-Pierce"}, true},
+                                {"none", true, {}, false},
+                                {"off", false, {TuningSource::Master, "19-EDO"}, false}};
+        const std::string pythagorean = "! pythagorean.scl\nPythagorean 12\n12\n2187/2048\n9/8\n32/27\n81/64\n4/3\n"
+                                        "729/512\n3/2\n6561/4096\n27/16\n16/9\n243/128\n2/1\n";
+        const std::string mapping = "! white keys\n12\n0\n127\n60\n69\n440.0\n12\n0\nx\n2\nx\n4\n5\nx\n7\nx\n9\nx\n11\n";
+        // The overflow menu with its button, and the toolbar beside it, as tall as it gets.
+        const Rect menu = detail::moreMenu(true, true);
+        const Rect menuArea{menu.x - 8.0f, 0.0f, View::kWidth - menu.x + 8.0f, menu.bottom() + 8.0f};
+        for (const State &state : states) {
+            model.mtsOnSet = state.on;
+            model.tuning = state.status;
+            if (state.patch) {
+                loadTuningText(model, pythagorean, TuningFile::Scala, "pythagorean");
+                loadTuningText(model, mapping, TuningFile::Mapping, "white keys");
+            } else {
+                resetTuning(model, false);
+                resetTuning(model, true);
+            }
+            view.mouseMove(away, {});
+            view.poll();
+            all = renderer.save(view, dir / ("tuning-" + theme + "-bar-" + state.name + ".png"), &bar) && all;
+            if (state.on && state.status.source != TuningSource::Standard) {
+                view.mouseMove(detail::kTuningMark.center(), {});
+                all = renderer.save(view, dir / ("tuning-" + theme + "-bar-" + state.name + "-tip.png"), &barTip) && all;
+                view.mouseMove(away, {});
+            }
+            click(view, kMoreButton);
+            view.mouseMove(detail::moreMenuItem(detail::kMoreLoadTuning).center(), {});
+            all = renderer.save(view, dir / ("tuning-" + theme + "-menu-" + state.name + ".png"), &menuArea) && all;
+            view.dialogKey(View::Key::Escape);
+            openEngineSettings(view);
+            view.mouseMove(away, {});
+            const Rect panel = detail::settingsPanel(view.height()).inset(-8.0f);
+            all = renderer.save(view, dir / ("tuning-" + theme + "-settings-" + state.name + ".png"), &panel) && all;
+            view.dialogKey(View::Key::Escape);
+        }
+        model.mtsOnSet = true;
+        model.mtsContinuousSet = false;
+        model.tuning = {TuningSource::Master, "19-EDO"};
+        openEngineSettings(view);
+        view.mouseMove(away, {});
+        const Rect panel = detail::settingsPanel(view.height()).inset(-8.0f);
+        all = renderer.save(view, dir / ("tuning-" + theme + "-settings-noteon.png"), &panel) && all;
+        view.dialogKey(View::Key::Escape);
+        model.mtsContinuousSet = true;
+        all = renderer.save(view, dir / ("tuning-" + theme + "-editor.png")) && all;
+        // The keyboard collapsed: the shortest editor, which the dialog has to fit.
+        model.ui.keysCollapsed = true;
+        openEngineSettings(view);
+        view.mouseMove(away, {});
+        all = renderer.save(view, dir / ("tuning-" + theme + "-settings-short.png")) && all;
+        std::printf("%s: editor %.0f px tall with the keyboard collapsed, the dialog %.0f\n", themeName, view.height(),
+                    detail::kSettingsH);
+        view.dialogKey(View::Key::Escape);
+        model.ui.keysCollapsed = false;
+    }
+    check(all, "tuning drafts rendered");
+}
+
 void renderPresetThemes(const std::filesystem::path &dir, Renderer &renderer) {
     bool all = true;
     for (int t = 0; t < View::themeCount(); ++t) {
@@ -17259,6 +17544,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFxListAfterUndo(dir, renderer);
     testInvalidText(dir, renderer);
     testPartialRepaint(dir, renderer);
+    testTuning(dir, renderer);
     testFxGraphScroll(dir, renderer);
     testFxGraphRoom(dir, renderer);
     testFxRow(dir, renderer);
@@ -17314,6 +17600,9 @@ int main(int argc, char **argv) {
             if (loadFactoryPreset(preset, values, layout) && values[paramIndex(SeqParam::Enabled)] >= 0.5)
                 renderExample(dir, renderer, preset.name, "seq-" + preset.name, SIZE_MAX, "Spectrum", false, true);
         }
+    } else if (argc > 3 && std::strcmp(argv[3], "--tuning") == 0) { // only the tuning's settings and mark
+        Renderer renderer(scale);
+        renderTuning(dir, renderer);
     } else if (argc > 3 && std::strcmp(argv[3], "--library") == 0) { // only the preset library's
         Renderer renderer(scale);
         testPresetLibrary(dir, renderer);

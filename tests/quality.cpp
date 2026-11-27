@@ -6278,9 +6278,9 @@ void sequencerChecks() {
     }
 }
 
-// The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds, and
-// whether the SEQ view's roll bends notes.
-constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1 + 1;
+// The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds,
+// whether the SEQ view's roll bends notes, and the names of the tuning's files (two empty texts, a float each).
+constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1 + 1 + 2;
 
 // The layout chunk, the patch's last, cut short by its last `floats` floats: as saved before they came.
 void cutLayout(std::vector<unsigned char> &bytes, uint32_t floats) {
@@ -7100,8 +7100,344 @@ void newerEffectChecks() {
     }
 }
 
+// A tuning other than 12-TET, as MTS-ESP hands the synth one (see Synth::setTuning()): a stand-in that retunes each
+// key by its own amount, leaves keys unmapped, and keeps the channel it was last asked with, and whether it was asked
+// both with a channel and with none (which MTS-ESP's client takes amiss: see Synth::tuningChannel()).
+struct TestTuning : Tuning {
+    std::array<double, 128> by{};
+    std::array<bool, 128> gone{};
+    int channel = -2; // the channel asked last
+    bool withChannel = false, withNone = false;
+    bool mixed() const { return withChannel && withNone; }
+    void asked(int ch) {
+        channel = ch;
+        (ch < 0 ? withNone : withChannel) = true;
+    }
+    double retune(int key, int ch) override {
+        asked(ch);
+        return by[key];
+    }
+    bool unmapped(int key, int ch) override {
+        asked(ch);
+        return gone[key];
+    }
+    bool master = false; // a master's, which plays over the patch's own tuning; else SysEx's, under it
+    bool overrides() override { return master; }
+};
+
+// A tuning file's text loaded into `p` as the editor loads it (see tuningedits.h), true if it read.
+bool loadTuning(ParamValues &p, std::string_view text, TuningFile file) {
+    Str why = Str::TuningNotScale;
+    if (file == TuningFile::Mapping) {
+        TuningMapping mapping;
+        if (!parseKbm(text, mapping, why))
+            return false;
+        for (const auto &[index, value] : mappingChanges(&mapping))
+            p[index] = value;
+        return true;
+    }
+    TuningScale scale;
+    if (!(file == TuningFile::AnaMark ? parseTun(text, scale, why)
+                                      : parseScl(text, file == TuningFile::AbletonScala, scale, why)))
+        return false;
+    for (const auto &[index, value] : scaleChanges(&scale))
+        p[index] = value;
+    return true;
+}
+
+void tuningChecks() {
+    std::printf("tuning:\n");
+    // The rising zero crossings of what plays, and its pitch between two times (samples), the default patch a sine.
+    auto hzBetween = [](const std::vector<float> &x, double from, double to) {
+        std::vector<double> at;
+        for (size_t i = 1; i < x.size(); ++i)
+            if (x[i - 1] < 0.0f && x[i] >= 0.0f) {
+                const double t = static_cast<double>(i - 1) + x[i - 1] / (x[i - 1] - x[i]);
+                if (t >= from && t <= to)
+                    at.push_back(t);
+            }
+        return at.size() < 2 ? 0.0 : (at.size() - 1) * kSampleRate / (at.back() - at.front());
+    };
+    auto semitones = [](double hz) { return 69.0 + 12.0 * std::log2(hz / 440.0); }; // as a key, tuning and all
+    const double second = kSampleRate;
+
+    // An A4 a quarter tone up plays a quarter tone up; without the tuning, at 440 Hz.
+    {
+        TestTuning tuning;
+        tuning.by[69] = 0.5;
+        Engine e(2);
+        e.synth().setTuning(&tuning, true);
+        e.noteOn(69);
+        const double tuned = semitones(hzBetween(e.render(24000), 4800.0, 24000.0));
+        Engine plain(2);
+        plain.noteOn(69);
+        const double untuned = semitones(hzBetween(plain.render(24000), 4800.0, 24000.0));
+        std::printf("      an A4 tuned a quarter tone up plays key %.3f, untuned %.3f\n", tuned, untuned);
+        check(std::abs(tuned - 69.5) < 0.01 && std::abs(untuned - 69.0) < 0.01,
+              "a note plays as far off 12-TET as its tuning says");
+    }
+    // The tuning changed under a held note: retuning continuously, the note follows it from the next block; on note
+    // on, it keeps the tuning it started in, until the tuning is taken away (MTS-ESP switched off), back to 12-TET.
+    for (bool continuous : {true, false}) {
+        TestTuning tuning;
+        Engine e(2);
+        e.synth().setTuning(&tuning, continuous);
+        e.noteOn(69);
+        const std::vector<float> before = e.render(12000);
+        tuning.by[69] = 1.0;
+        const std::vector<float> after = e.render(12000);
+        e.synth().setTuning(nullptr, continuous);
+        const std::vector<float> gone = e.render(12000);
+        const double a = semitones(hzBetween(before, 2400.0, 12000.0)), b = semitones(hzBetween(after, 512.0, 12000.0)),
+                     c = semitones(hzBetween(gone, 512.0, 12000.0));
+        std::printf("      %s: key %.3f, retuned a semitone up %.3f, the tuning gone %.3f\n",
+                    continuous ? "continuous" : "note on", a, b, c);
+        check(std::abs(a - 69.0) < 0.01 && std::abs(b - (continuous ? 70.0 : 69.0)) < 0.01 && std::abs(c - 69.0) < 0.01,
+              continuous ? "retuning continuously, a held note follows its tuning as it changes"
+                         : "retuning on note on, a held note keeps the tuning it started in");
+    }
+    // Mono legato with a glide, from an A4 a quarter tone up into a B4 a quarter tone down: from 69.5 to 70.5.
+    {
+        TestTuning tuning;
+        tuning.by[69] = 0.5;
+        tuning.by[71] = -0.5;
+        Engine e(2);
+        e.synth().setTuning(&tuning, true);
+        e.synth().setPlayMode(true, true, false);
+        e.p[paramIndex(GlobalParam::Glide)] = normFromTime(0.3);
+        e.noteOn(69);
+        e.render(12000);
+        e.noteOn(71);
+        const std::vector<float> x = e.render(static_cast<size_t>(second));
+        const double start = semitones(hzBetween(x, 0.0, 400.0)), end = semitones(hzBetween(x, 0.6 * second, second));
+        std::printf("      gliding: from key %.3f to %.3f\n", start, end);
+        check(std::abs(start - 69.5) < 0.1 && std::abs(end - 70.5) < 0.01,
+              "a glide goes from one tuned note to the next");
+        // And a change of tuning during a glide moves the note at once, the glide going on from there.
+        tuning.by[73] = 0.25;
+        e.noteOn(73);
+        e.render(2400);
+        tuning.by[73] = 1.25;
+        const std::vector<float> on = e.render(static_cast<size_t>(second));
+        const double settled = semitones(hzBetween(on, 0.6 * second, second));
+        std::printf("      retuned a semitone up mid-glide: settling on key %.3f\n", settled);
+        check(std::abs(settled - 74.25) < 0.01, "a glide carries on to the note as it is retuned meanwhile");
+    }
+    // An unmapped key plays nothing and its end is reported at once; in mono it doesn't take the voice over. The
+    // channel the tuning is asked with is the note's, but none with MPE on.
+    {
+        TestTuning tuning;
+        tuning.gone[61] = true;
+        Engine e(2);
+        e.synth().setTuning(&tuning, true);
+        e.synth().noteOn({7, 0, 3, 61}, 1.0);
+        const bool reported = e.synth().endedNotes().size() == 1 && e.synth().endedNotes()[0].noteId == 7;
+        const bool channel = tuning.channel == 3;
+        e.synth().clearEndedNotes();
+        const std::vector<float> x = e.render(4800);
+        float peak = 0.0f;
+        for (float v : x)
+            peak = std::max(peak, std::abs(v));
+        e.synth().noteOff({7, 0, 3, 61});
+        e.render(256);
+        const bool once = e.synth().endedNotes().empty();
+        // With MPE off, the editor's own note and a host's on no channel ask on the first channel, beside a note on
+        // the fourth held meanwhile: never with none.
+        e.synth().noteOn({9, 0, 3, 69}, 1.0);
+        e.synth().noteOn({-1, kAuditionPort, 0, 64}, 1.0);
+        const bool audition = tuning.channel == 0;
+        e.synth().noteOn({10, 0, -1, 67}, 1.0);
+        const bool none = tuning.channel == 0;
+        e.render(512);
+        const bool unmixed = !tuning.mixed();
+        e.synth().setMpe(true, 48.0);
+        e.synth().noteOn({8, 0, 3, 69}, 1.0);
+        const bool mpe = tuning.channel == -1;
+        std::printf("      an unmapped key: peak %.6f, its end reported %s\n", peak, reported && once ? "once" : "wrongly");
+        check(reported && once && peak == 0.0f, "a key the tuning leaves unmapped plays nothing, its end reported once");
+        check(channel && mpe, "the tuning is asked with the note's channel, and with none while MPE is on");
+        check(audition && none && unmixed,
+              "with MPE off, the editor's notes and a host's on no channel ask on the first channel, never with none");
+
+        Engine mono(2);
+        mono.synth().setTuning(&tuning, true);
+        mono.synth().setPlayMode(true, true, false);
+        mono.noteOn(69);
+        mono.render(4800);
+        mono.noteOn(61);
+        const double held = semitones(hzBetween(mono.render(12000), 2400.0, 12000.0));
+        check(std::abs(held - 69.0) < 0.01, "in mono, an unmapped key leaves the note playing as it was");
+    }
+    // In Key, the sequencer still takes an unmapped key: C#4 starts the pattern a semitone up, its A4 playing as the
+    // tuning has the A#4, asked on the first channel beside the key's on the third, never with none.
+    {
+        constexpr double kStep = kSampleRate * 60.0 / 120.0 / 4.0;
+        TestTuning tuning;
+        tuning.gone[61] = true;
+        tuning.by[70] = 0.5;
+        Engine e(1);
+        e.synth().setTuning(&tuning, true);
+        e.p[paramIndex(SeqParam::Enabled)] = 1.0;
+        e.p[paramIndex(SeqParam::Play)] = static_cast<double>(SeqPlay::Key);
+        e.p[seqNoteIndex(0, 0, SeqNoteParam::Start)] = 0.0;
+        e.p[seqNoteIndex(0, 0, SeqNoteParam::Length)] = 8.0;
+        e.p[seqNoteIndex(0, 0, SeqNoteParam::Pitch)] = 69;
+        e.synth().setTempo(120.0);
+        e.render(256);
+        e.synth().noteOn({1, 3, 2, 61}, 1.0);
+        const std::vector<float> x = e.render(static_cast<size_t>(4.0 * kStep));
+        const double played = semitones(hzBetween(x, 0.5 * kStep, 3.5 * kStep));
+        std::printf("      the sequencer from an unmapped key: key %.3f, asked on channel %d\n", played, tuning.channel);
+        check(std::abs(played - 70.5) < 0.01 && tuning.channel == 0 && !tuning.mixed(),
+              "in Key, the sequencer still takes an unmapped key, and its notes play in the tuning");
+    }
+
+    // The patch's own tuning, from tuning files (see tuningfile.h).
+    // A Scala scale: comments, cents (words after them ignored), a ratio and a whole number; too many notes and text
+    // that isn't one refused, saying why.
+    {
+        TuningScale scale;
+        Str why = Str::MenuSettings;
+        const bool read = parseScl("! a test\nThree steps\n 3\n! between\n 100.0 a hundred\n3/2\n2\n", false, scale, why);
+        const bool cents = read && scale.cents.size() == 3 && scale.cents[0] == 100.0 &&
+                           std::abs(scale.cents[1] - 701.955) < 1e-3 && std::abs(scale.cents[2] - 1200.0) < 1e-9 &&
+                           scale.description == "Three steps";
+        std::string many = "Too many\n129\n";
+        for (int k = 1; k <= 129; ++k)
+            many += std::to_string(k * 10) + ".0\n";
+        Str tooMany = Str::MenuSettings, notScale = Str::MenuSettings, short_ = Str::MenuSettings;
+        const bool refused = !parseScl(many, false, scale, tooMany) && tooMany == Str::TuningTooManyNotes &&
+                             !parseScl("Words\nno number\n", false, scale, notScale) && notScale == Str::TuningNotScale &&
+                             !parseScl("Short\n3\n100.0\n", false, scale, short_) && short_ == Str::TuningNotScale;
+        check(cents && refused, "a Scala scale reads its cents, ratios and whole numbers, and refuses too many notes or "
+                                "text that isn't one");
+    }
+    // The table (to a millionth of a semitone: the scales are written to a millionth of a cent): a 12-TET scale plays as 12-TET; 19-EDO from middle C, each key a 19th of an octave on; a keyboard
+    // mapping's reference key at its frequency and its unmapped keys; an AnaMark tuning's keys at their cents; and
+    // Ableton's reference pitch.
+    {
+        auto edo = [](int n) {
+            std::string text = std::to_string(n) + "-EDO\n" + std::to_string(n) + "\n";
+            for (int k = 1; k <= n; ++k)
+                text += std::to_string(1200.0 * k / n) + "\n";
+            return text;
+        };
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        TuningTable table;
+        tuningTable(p, table);
+        const bool off = !table.on;
+        loadTuning(p, edo(12), TuningFile::Scala);
+        tuningTable(p, table);
+        double most = 0.0;
+        for (double r : table.retune)
+            most = std::max(most, std::abs(r));
+        const bool twelve = table.on && most < 1e-9;
+        loadTuning(p, edo(19), TuningFile::Scala);
+        tuningTable(p, table);
+        const bool nineteen = std::abs(table.retune[60]) < 1e-9 && std::abs(table.retune[61] - (12.0 / 19.0 - 1.0)) < 1e-6 &&
+                              std::abs(table.retune[79] - (12.0 - 19.0)) < 1e-6 && std::abs(table.retune[41] - (7.0)) < 1e-6;
+        std::printf("      19-EDO: C#4 %.4f, the octave up %.4f semitones off 12-TET\n", table.retune[61], table.retune[79]);
+        // A mapping over 19-EDO: A4 (its reference) at 440 Hz, D#4 unmapped, and the keys round its 12 entries playing
+        // degrees 0 to 11 an octave (19 degrees) apart.
+        const bool mapped =
+            loadTuning(p, "! test\n12\n0\n127\n60\n69\n440.0\n19\n0\n1\n2\nx\n4\n5\n6\n7\n8\n9\n10\n11\n", TuningFile::Mapping);
+        tuningTable(p, table);
+        const double degree9 = 1200.0 * 9 / 19.0, degree1 = 1200.0 * 1 / 19.0;
+        const bool mapping = mapped && std::abs(table.retune[69]) < 1e-9 && table.unmapped[63] && !table.unmapped[64] &&
+                             std::abs((69 + table.retune[69]) - (61 + table.retune[61]) - (degree9 - degree1) / 100.0) < 1e-6 &&
+                             std::abs((72 + table.retune[72]) - (60 + table.retune[60]) - 12.0) < 1e-6;
+        Str why = Str::MenuSettings;
+        TuningMapping shortMap;
+        const bool shortRefused = !parseKbm("12\n0\n127\n60\n69\n440\n12\n0\n1\n", shortMap, why) &&
+                                  why == Str::TuningNotMapping;
+        for (const auto &[index, value] : mappingChanges(nullptr))
+            p[index] = value;
+        // AnaMark: [Exact Tuning] over [Tuning], A4 a quarter tone up, at the default base frequency.
+        const bool anaMark = loadTuning(p, "; a test\n[Tuning]\nnote 69 = 6900\n[Exact Tuning]\nnote 69 = 6950.0\n",
+                                        TuningFile::AnaMark);
+        tuningTable(p, table);
+        const bool tun = anaMark && std::abs(table.retune[69] - 0.5) < 1e-9 && std::abs(table.retune[60]) < 1e-9;
+        // Ableton: 12-TET with A4 at 432 Hz.
+        const bool ableton = loadTuning(p, "! @ABL REFERENCE_PITCH 4 9 432.0\n12-TET\n12\n100.0\n200.0\n300.0\n400.0\n"
+                                           "500.0\n600.0\n700.0\n800.0\n900.0\n1000.0\n1100.0\n2/1\n",
+                                        TuningFile::AbletonScala);
+        tuningTable(p, table);
+        const double at432 = 12.0 * std::log2(432.0 / 440.0);
+        const bool reference = ableton && std::abs(table.retune[69] - at432) < 1e-9 && std::abs(table.retune[60] - at432) < 1e-9;
+        std::printf("      Ableton's A4 at 432 Hz: %.4f semitones off\n", table.retune[69]);
+        check(off && twelve && nineteen, "a tuning file's table plays 12-TET as 12-TET and 19-EDO from middle C");
+        check(mapping && shortRefused, "a keyboard mapping puts its reference key at its frequency, leaves its x keys "
+                                       "unmapped and repeats its entries by its octave, and refuses missing entries");
+        check(tun && reference, "an AnaMark tuning plays its keys at their exact cents, and Ableton's reference pitch "
+                                "tunes the scale");
+    }
+    // Through the synth: an A4 the patch's tuning puts a quarter tone up plays there; a master's tuning plays over it
+    // and MTS SysEx's under it; and a key a mapping leaves unmapped plays nothing.
+    {
+        const std::string quarter = "[Exact Tuning]\nnote 69 = 6950.0\n";
+        Engine e(2);
+        loadTuning(e.p, quarter, TuningFile::AnaMark);
+        e.noteOn(69);
+        const double patched = semitones(hzBetween(e.render(24000), 4800.0, 24000.0));
+        TestTuning sysEx;
+        sysEx.by[69] = -0.5;
+        Engine under(2);
+        loadTuning(under.p, quarter, TuningFile::AnaMark);
+        under.synth().setTuning(&sysEx, true);
+        under.noteOn(69);
+        const double withSysEx = semitones(hzBetween(under.render(24000), 4800.0, 24000.0));
+        TestTuning master;
+        master.by[69] = -0.5;
+        master.master = true;
+        Engine over(2);
+        loadTuning(over.p, quarter, TuningFile::AnaMark);
+        over.synth().setTuning(&master, true);
+        over.noteOn(69);
+        const double withMaster = semitones(hzBetween(over.render(24000), 4800.0, 24000.0));
+        std::printf("      the patch's A4 a quarter tone up: key %.3f; under SysEx's %.3f; under a master's %.3f\n", patched,
+                    withSysEx, withMaster);
+        check(std::abs(patched - 69.5) < 0.01 && std::abs(withSysEx - 69.5) < 0.01 && std::abs(withMaster - 68.5) < 0.01,
+              "the patch's own tuning plays, over MTS SysEx's and under a master's");
+
+        Engine gaps(2);
+        loadTuning(gaps.p, "12\n0\n127\n60\n69\n440.0\n12\nx\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", TuningFile::Mapping);
+        gaps.render(256); // the table worked out from the params
+        gaps.synth().noteOn({5, 0, 0, 60}, 1.0);
+        const bool ended = gaps.synth().endedNotes().size() == 1;
+        float peak = 0.0f;
+        for (float v : gaps.render(4800))
+            peak = std::max(peak, std::abs(v));
+        check(ended && peak == 0.0f, "a key the patch's keyboard mapping leaves unmapped plays nothing");
+    }
+    // A preset keeps the tuning: written sparse and read back, the params and the files' names.
+    {
+        ParamValues p{};
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        loadTuning(p, "Pentatonic\n5\n200.0\n400.0\n700.0\n900.0\n2/1\n", TuningFile::Scala);
+        loadTuning(p, "5\n0\n127\n60\n60\n261.6\n5\n0\n1\nx\n3\n4\n", TuningFile::Mapping);
+        gui::UiLayout ui;
+        ui.tuningName = "pentatonic";
+        ui.mappingName = "Gaps \xC3\xA9";
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, ui, true);
+        MemoryReader reader{bytes.data(), bytes.size(), 0};
+        const clap_istream_t in = memoryIn(reader);
+        ParamValues loaded;
+        const bool read = readParams(&in, loaded);
+        const gui::UiLayout back = readLayout(&in);
+        check(read && std::equal(loaded.begin(), loaded.end(), p.begin()) && back.tuningName == ui.tuningName &&
+                  back.mappingName == ui.mappingName,
+              "a preset keeps the patch's tuning and its files' names");
+    }
+}
+
 int main() {
     const int factors[] = {1, 2, 4, 8};
+    tuningChecks();
     dcChecks();
     sequencerChecks();
     savedTempoChecks();

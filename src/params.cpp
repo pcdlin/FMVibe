@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 52142 && kParamCount <= 35 * 1500);
+static_assert(kParamCount == 52410 && kParamCount <= 35 * 1500);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -1185,6 +1185,34 @@ void buildTable(ParamTable &t) {
                 }
             }
         }
+    }
+
+    // The patch's own tuning: none to begin with (12-TET), and no keyboard mapping. Scala's reference with no mapping
+    // (degree 0 on middle C, at its 12-TET pitch), and a mapping's as a .kbm leaves them: every key, A4 at 440 Hz.
+    {
+        const std::string module = tr(Str::ModuleTuning);
+        auto field = [&](TuningParam f, Str label, ParamKind kind, double min, double max, double def) {
+            add(paramIndex(f), tr(label), module, kind, min, max, def);
+        };
+        field(TuningParam::Degrees, Str::ParamTuningDegrees, ParamKind::ShapeCount, 0.0, kMaxTuningDegrees, 0.0);
+        field(TuningParam::Middle, Str::ParamTuningMiddle, ParamKind::ShapeCount, 0.0, 127.0, kTuningMiddle);
+        field(TuningParam::RefKey, Str::ParamTuningRefKey, ParamKind::ShapeCount, 0.0, 127.0, kTuningMiddle);
+        field(TuningParam::RefHz, Str::ParamTuningRefHz, ParamKind::ShapePoint, kMinTuningHz, kMaxTuningHz,
+              kTuningMiddleHz);
+        field(TuningParam::MapOn, Str::ParamMapOn, ParamKind::ShapeCount, 0.0, 1.0, 0.0);
+        field(TuningParam::MapSize, Str::ParamMapSize, ParamKind::ShapeCount, 0.0, kMaxMapKeys, 0.0);
+        field(TuningParam::MapFirst, Str::ParamMapFirst, ParamKind::ShapeCount, 0.0, 127.0, 0.0);
+        field(TuningParam::MapLast, Str::ParamMapLast, ParamKind::ShapeCount, 0.0, 127.0, 127.0);
+        field(TuningParam::MapMiddle, Str::ParamMapMiddle, ParamKind::ShapeCount, 0.0, 127.0, kTuningMiddle);
+        field(TuningParam::MapRefKey, Str::ParamMapRefKey, ParamKind::ShapeCount, 0.0, 127.0, 69.0);
+        field(TuningParam::MapRefHz, Str::ParamMapRefHz, ParamKind::ShapePoint, kMinTuningHz, kMaxTuningHz, 440.0);
+        field(TuningParam::MapOctave, Str::ParamMapOctave, ParamKind::ShapeCount, 0.0, kMaxTuningDegrees, 0.0);
+        for (int degree = 0; degree < kMaxTuningDegrees; ++degree)
+            add(tuningDegreeIndex(degree), trf(Str::ParamTuningDegree, {std::to_string(degree + 1)}), module,
+                ParamKind::ShapePoint, -kMaxTuningCents, kMaxTuningCents, 0.0);
+        for (int entry = 0; entry < kMaxMapKeys; ++entry)
+            add(tuningMapIndex(entry), trf(Str::ParamMapEntry, {std::to_string(entry + 1)}), module,
+                ParamKind::ShapeCount, -1.0, kMaxMapDegree, 0.0);
     }
 }
 

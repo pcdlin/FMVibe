@@ -6,6 +6,7 @@
 
 #include "gui/controller.h"
 #include "gui/editor.h"
+#include "mtstuning.h"
 #include "presets.h"
 #include "sharedtelemetry.h"
 #include "state.h"
@@ -135,6 +136,14 @@ public:
     void setMpe(bool on) override;
     int mpeBendRange() const override { return mpeBendRange_.load(); }
     void setMpeBendRange(int semitones) override;
+    bool offersTuning() const override { return true; }
+    bool mtsOn() const override { return mtsOn_.load(); }
+    void setMtsOn(bool on) override;
+    bool mtsContinuous() const override { return mtsContinuous_.load(); }
+    void setMtsContinuous(bool on) override;
+    gui::TuningStatus tuningStatus() const override;
+    void chooseTuning(bool mapping) override;
+    std::optional<std::string> loadTuningFile(const std::wstring &path) override;
     // A host that lets the editor set its tempo stands in for a transport of the plugin's own: the synth always plays
     // its own tempo there, and the title bar shows no H.
     bool tempoSync() const override { return !hasTempo() && tempoSync_.load(std::memory_order_relaxed); }
@@ -223,6 +232,9 @@ public:
     // played rather than part of the patch, so nothing is undone or marked changed. True when the param changed: the
     // caller then tells the host its new value, in its place in the block, as a param edit from the plugin.
     bool playModWheel(double value);
+    // Audio thread: a MIDI SysEx message from the host, F0 to F7. MTS SysEx (MIDI Tuning Standard) retunes the synth
+    // while no MTS-ESP master is connected (see MtsTuning); anything else is passed by.
+    void playSysEx(const uint8_t *data, size_t size) { mts_.sysEx(data, size); }
 
     // The state, the same bytes in either format: the patch, then (`settings`) the settings and the preset chunks.
     // Preset files leave out the settings, and loading one keeps them as they are. Main thread.
@@ -389,6 +401,11 @@ private:
     std::atomic<bool> outOfMemory_{false}; // see outOfMemory()
     std::atomic<bool> mpe_{false};
     std::atomic<int> mpeBendRange_{kDefaultMpeBendRange};
+    // MTS-ESP's tuning, this instance's client of it, and whether the synth plays it and retunes held notes as it
+    // changes (see Settings): likewise.
+    MtsTuning mts_;
+    std::atomic<bool> mtsOn_{false};
+    std::atomic<bool> mtsContinuous_{true};
     // Whether the synth plays at the host's tempo, and its own while it doesn't (see Settings): likewise.
     std::atomic<bool> tempoSync_{true};
     std::atomic<double> ownTempo_{gui::kDefaultTempo};

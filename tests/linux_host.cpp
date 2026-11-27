@@ -1,6 +1,8 @@
 // A small headless host for the Linux plugins: loads the built .clap and the .vst3 bundle's object, plays a note
-// through each, saves and loads a state, and (where a display is there) opens the CLAP editor in a window of its own
+// through each (MTS SysEx retuning it), saves and loads a state, and (where a display is there) opens the CLAP editor in a window of its own
 // and pumps it a few times. Not a validator: a check that what is built loads and plays.
+
+#include "mtstuning.h"
 
 #include <clap/clap.h>
 
@@ -220,6 +222,136 @@ double play(const clap_plugin_t *plugin, int key = 69, int blocks = 8) {
     return peak;
 }
 
+// MTS SysEx (MIDI Tuning Standard), a single note tuning change in real time to every device: A4 to 69 and 0x2000 of
+// 0x4000 of a semitone, a quarter tone up.
+const std::vector<uint8_t> kQuarterToneA4 = {0xF0, 0x7F, 0x7F, 0x08, 0x02, 0x00, 0x01, 0x45, 0x45, 0x40, 0x00, 0xF7};
+// The same putting A4 back where it was.
+const std::vector<uint8_t> kQuarterToneA4Back = {0xF0, 0x7F, 0x7F, 0x08, 0x02, 0x00, 0x01, 0x45, 0x45, 0x00, 0x00, 0xF7};
+
+// The pitch of what came out, as a key (69 at 440 Hz), from its rising zero crossings.
+double keyOf(const std::vector<float> &x, double rate) {
+    std::vector<double> at;
+    for (size_t i = 1; i < x.size(); ++i)
+        if (x[i - 1] < 0.0f && x[i] >= 0.0f)
+            at.push_back(static_cast<double>(i - 1) + x[i - 1] / (x[i - 1] - x[i]));
+    if (at.size() < 2)
+        return 0.0;
+    return 69.0 + 12.0 * std::log2((at.size() - 1) * rate / (at.back() - at.front()) / 440.0);
+}
+
+// The pitch `key` plays through a CLAP plugin (as keyOf()), `sysex` sent before it in its first block; let go of and
+// rung out after.
+double clapPitch(const clap_plugin_t *plugin, int key, const std::vector<uint8_t> &sysex = {}) {
+    struct List {
+        std::vector<const clap_event_header_t *> events;
+        clap_input_events_t in{};
+    } list;
+    list.in.ctx = &list;
+    list.in.size = [](const clap_input_events_t *in) {
+        return static_cast<uint32_t>(static_cast<List *>(in->ctx)->events.size());
+    };
+    list.in.get = [](const clap_input_events_t *in, uint32_t index) {
+        const auto &events = static_cast<List *>(in->ctx)->events;
+        return index < events.size() ? events[index] : nullptr;
+    };
+    clap_event_midi_sysex_t message{};
+    message.header = {sizeof message, 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI_SYSEX, 0};
+    message.buffer = sysex.data();
+    message.size = static_cast<uint32_t>(sysex.size());
+    clap_event_note_t on{}, off{};
+    on.header = {sizeof on, 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON, 0};
+    on.note_id = -1;
+    on.key = static_cast<int16_t>(key);
+    on.velocity = 1.0;
+    off = on;
+    off.header.type = CLAP_EVENT_NOTE_OFF;
+    clap_output_events_t out{}; // the notes' ends, which go nowhere
+    out.try_push = [](const clap_output_events_t *, const clap_event_header_t *) { return true; };
+    std::vector<float> left(512), right(512), heard;
+    constexpr int kHeld = 60, kBlocks = 160;
+    for (int block = 0; block < kBlocks; ++block) {
+        list.events.clear();
+        if (block == 0) {
+            if (!sysex.empty())
+                list.events.push_back(&message.header);
+            list.events.push_back(&on.header);
+        } else if (block == kHeld) {
+            list.events.push_back(&off.header);
+        }
+        float *channels[2] = {left.data(), right.data()};
+        clap_audio_buffer_t audio{};
+        audio.data32 = channels;
+        audio.channel_count = 2;
+        clap_process_t process{};
+        process.frames_count = 512;
+        process.steady_time = -1;
+        process.audio_outputs = &audio;
+        process.audio_outputs_count = 1;
+        process.in_events = &list.in;
+        process.out_events = &out;
+        plugin->process(plugin, &process);
+        if (block >= 8 && block < kHeld)
+            heard.insert(heard.end(), left.begin(), left.end());
+    }
+    return keyOf(heard, 48000.0);
+}
+
+// The settings chunk's field `field` (see writeSettings() in src/state.cpp) in a state's bytes: where it is, or 0.
+size_t settingAt(const std::vector<uint8_t> &bytes, size_t field) {
+    const uint8_t magic[] = {'S', 'E', 'T', 'G'}; // kSettingsMagic, little-endian
+    const auto at = std::search(bytes.begin(), bytes.end(), std::begin(magic), std::end(magic));
+    const size_t count = static_cast<size_t>(at - bytes.begin()) + 4, first = count + 4;
+    uint32_t fields = 0;
+    if (at == bytes.end() || first > bytes.size())
+        return 0;
+    std::memcpy(&fields, bytes.data() + count, 4);
+    return field < fields && first + 4 * (field + 1) <= bytes.size() ? first + 4 * field : 0;
+}
+
+// The field set to `value`.
+bool setSetting(std::vector<uint8_t> &bytes, size_t field, float value) {
+    const size_t at = settingAt(bytes, field);
+    if (at == 0)
+        return false;
+    std::memcpy(bytes.data() + at, &value, 4);
+    return true;
+}
+
+// MTS-ESP's client as the plugins hold it: with no master (none runs here), MTS SysEx retunes its own table, and the
+// editor is told it does, and the scale's name; a message without its F0 the same; other SysEx nothing.
+void testMtsTuning() {
+    std::printf("== MTS-ESP client\n");
+    fmvibe::MtsTuning none;
+    check(none.status().source == fmvibe::gui::TuningSource::Standard && none.retune(69, 0) == 0.0,
+          "with no master and no SysEx, the client plays 12-TET and says nothing tunes it");
+    // A bulk tuning dump: the name, then each key's semitone and fraction of one; A4 a quarter tone up.
+    std::vector<uint8_t> dump = {0xF0, 0x7E, 0x7F, 0x08, 0x01, 0x00};
+    const char name[17] = "Quarter A4      ";
+    dump.insert(dump.end(), name, name + 16);
+    for (int key = 0; key < 128; ++key) {
+        dump.push_back(static_cast<uint8_t>(key));
+        dump.push_back(key == 69 ? 0x40 : 0x00);
+        dump.push_back(0x00);
+    }
+    dump.push_back(0x00); // its checksum, which the client doesn't check
+    dump.push_back(0xF7);
+    for (bool framed : {true, false}) {
+        fmvibe::MtsTuning tuning;
+        tuning.sysEx(framed ? dump.data() : dump.data() + 1, framed ? dump.size() : dump.size() - 1);
+        const fmvibe::gui::TuningStatus status = tuning.status();
+        std::printf("       %s: '%s', A4 %.4f semitones, C4 %.4f\n", framed ? "a bulk dump" : "one without its F0",
+                    status.scale.c_str(), tuning.retune(69, 0), tuning.retune(60, 0));
+        check(status.source == fmvibe::gui::TuningSource::SysEx && status.scale == "Quarter A4" &&
+                  std::abs(tuning.retune(69, 0) - 0.5) < 0.001 && std::abs(tuning.retune(60, 0)) < 0.001,
+              framed ? "MTS SysEx retunes the client, the editor told so and the scale's name"
+                     : "MTS SysEx without its F0 retunes the client the same");
+    }
+    fmvibe::MtsTuning other;
+    const std::vector<uint8_t> identity = {0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7}; // an identity request
+    other.sysEx(identity.data(), identity.size());
+    check(other.status().source == fmvibe::gui::TuningSource::Standard, "SysEx that isn't MTS tunes nothing");
+}
+
 // The user's settings file has a '.' before a fraction, whatever the locale: read in a host that has set one writing
 // a ',' (as GTK and Qt apps set the desktop's), saved zooms of 0.6 and 0.75 still open the editor as wide as they say
 // (both within the screen, which holds a larger one back), where atof() would have read 0, no zoom saved, for both.
@@ -330,6 +462,37 @@ void testClap(const char *path) {
     const double peak = play(plugin);
     check(peak > 0.001, "a note sounds");
     std::printf("       peak %.3f\n", peak);
+    {
+        // MTS-ESP, off to begin with, ignores MTS SysEx; switched on in the project's settings, MTS SysEx retunes it;
+        // off again, it plays 12-TET, and on again, the SysEx's tuning.
+        const auto *tuneState = static_cast<const clap_plugin_state_t *>(plugin->get_extension(plugin, CLAP_EXT_STATE));
+        auto settingTo = [&](float on) {
+            State saved;
+            State loaded;
+            if (!tuneState || !tuneState->save(plugin, &saved.out))
+                return false;
+            loaded.bytes = saved.bytes;
+            return setSetting(loaded.bytes, 5, on) && tuneState->load(plugin, &loaded.in);
+        };
+        const double ignored = clapPitch(plugin, 69, kQuarterToneA4);
+        const bool firstOn = settingTo(1.0f);
+        const double plain = clapPitch(plugin, 69, kQuarterToneA4Back), tuned = clapPitch(plugin, 69, kQuarterToneA4);
+        const bool offLoaded = settingTo(0.0f);
+        const double off = clapPitch(plugin, 69);
+        State kept;
+        float keptValue = 1.0f; // what a project saved now holds
+        const bool keptOff = tuneState && tuneState->save(plugin, &kept.out) && settingAt(kept.bytes, 5) != 0 &&
+                             (std::memcpy(&keptValue, kept.bytes.data() + settingAt(kept.bytes, 5), 4), keptValue == 0.0f);
+        const bool onLoaded = settingTo(1.0f);
+        const double on = clapPitch(plugin, 69);
+        std::printf("       A4 as key %.3f, after MTS SysEx %.3f, MTS-ESP off %.3f, on again %.3f\n", plain, tuned, off,
+                    on);
+        check(std::abs(ignored - 69.0) < 0.01, "with MTS-ESP off, as to begin with, MTS SysEx tunes nothing");
+        check(firstOn && std::abs(plain - 69.0) < 0.01 && std::abs(tuned - 69.5) < 0.01,
+              "with MTS-ESP on, MTS SysEx retunes the CLAP plugin");
+        check(offLoaded && keptOff && onLoaded && std::abs(off - 69.0) < 0.01 && std::abs(on - 69.5) < 0.01,
+              "MTS-ESP switched off in the project's settings plays 12-TET, and on again the tuning");
+    }
 
     State saved;
     const auto *state = static_cast<const clap_plugin_state_t *>(plugin->get_extension(plugin, CLAP_EXT_STATE));
@@ -585,6 +748,32 @@ public:
 };
 
 // A state's bytes in memory.
+// A block's events, for the processor.
+class TestEvents final : public IEventList {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
+        QUERY_INTERFACE(iid, obj, FUnknown::iid, IEventList)
+        QUERY_INTERFACE(iid, obj, IEventList::iid, IEventList)
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    int32 PLUGIN_API getEventCount() override { return static_cast<int32>(events.size()); }
+    tresult PLUGIN_API getEvent(int32 index, Event &e) override {
+        if (index < 0 || index >= getEventCount())
+            return kInvalidArgument;
+        e = events[static_cast<size_t>(index)];
+        return kResultOk;
+    }
+    tresult PLUGIN_API addEvent(Event &e) override {
+        events.push_back(e);
+        return kResultOk;
+    }
+
+    std::vector<Event> events;
+};
+
 class MemoryStream final : public IBStream {
 public:
     tresult PLUGIN_API queryInterface(const TUID iid, void **obj) override {
@@ -718,6 +907,13 @@ void testVst3(const char *path) {
         return;
     }
     check(component->initialize(nullptr) == kResultOk, "it initializes");
+    {
+        // MTS-ESP, off to begin with, switched on through the state's settings chunk, for the MTS SysEx below.
+        MemoryStream state;
+        const bool saved = component->getState(&state) == kResultOk && setSetting(state.data, 5, 1.0f);
+        state.at = 0;
+        check(saved && component->setState(&state) == kResultOk, "a state's settings chunk switches MTS-ESP on");
+    }
     IAudioProcessor *processor = nullptr;
     check(component->queryInterface(IAudioProcessor::iid, reinterpret_cast<void **>(&processor)) == kResultOk,
           "it is a processor");
@@ -750,6 +946,42 @@ void testVst3(const char *path) {
                 peak = std::max(peak, std::fabs(sample));
         }
         check(peak >= 0.0f, "a block goes through"); // silence without a note: the check is that it doesn't crash
+        // MTS SysEx in a data event retunes it, as it does the CLAP plugin.
+        {
+            TestEvents events;
+            data.inputEvents = &events;
+            Event message{};
+            message.type = Event::kDataEvent;
+            message.data.type = DataEvent::kMidiSysEx;
+            message.data.bytes = kQuarterToneA4.data();
+            message.data.size = static_cast<uint32>(kQuarterToneA4.size());
+            Event on{};
+            on.type = Event::kNoteOnEvent;
+            on.noteOn.pitch = 69;
+            on.noteOn.velocity = 1.0f;
+            on.noteOn.noteId = -1;
+            Event off{};
+            off.type = Event::kNoteOffEvent;
+            off.noteOff.pitch = 69;
+            off.noteOff.noteId = -1;
+            std::vector<float> heard;
+            for (int block = 0; block < 160; ++block) {
+                events.events.clear();
+                if (block == 0) {
+                    events.events.push_back(message);
+                    events.events.push_back(on);
+                } else if (block == 60) {
+                    events.events.push_back(off);
+                }
+                processor->process(data);
+                if (block >= 8 && block < 60)
+                    heard.insert(heard.end(), left.begin(), left.end());
+            }
+            data.inputEvents = nullptr;
+            const double tuned = keyOf(heard, 48000.0);
+            std::printf("       A4 after MTS SysEx in a data event: key %.3f\n", tuned);
+            check(std::abs(tuned - 69.5) < 0.01, "MTS SysEx in a VST3 data event retunes the plugin");
+        }
         processor->setProcessing(false);
 
         // The editor, as Bitwig opens it: a view in an X11 host window, pumped by the run loop's timer.
@@ -817,6 +1049,7 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "usage: %s <FMVibe.clap> <FMVibe.so>\n", argv[0]);
         return 2;
     }
+    testMtsTuning();
     std::printf("== CLAP\n");
     testClap(argv[1]);
     std::printf("== VST3\n");

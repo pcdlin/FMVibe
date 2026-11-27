@@ -378,14 +378,28 @@ public:
         }
     }
 
-    void openFile(const std::string &title, const std::string &folder, Then then) {
+    // The files `patterns` matches (apart by spaces), as `kinds` names them: presets, to begin with. The dialogs'
+    // patterns heed case where the loaders don't, so each goes in upper case too (a FOO.SCL listed with foo.scl).
+    void openFile(const std::string &title, const std::string &folder, Then then, const std::string &kinds = {},
+                  const std::string &lowerPatterns = "*.fmv") {
+        std::string patterns = lowerPatterns;
+        for (size_t at = 0; at < lowerPatterns.size();) {
+            const size_t end = std::min(lowerPatterns.find(' ', at), lowerPatterns.size());
+            std::string upper = lowerPatterns.substr(at, end - at);
+            for (char &c : upper)
+                c = c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : c;
+            if (!upper.empty() && upper != lowerPatterns.substr(at, end - at))
+                patterns += " " + upper;
+            at = end + 1;
+        }
         auto answer = pathThen(std::move(then));
+        const std::string filter = (kinds.empty() ? std::string(tr(Str::DialogPresetFiles)) : kinds) + " | " + patterns;
         if (which() == Tool::Zenity)
-            start({"zenity", "--file-selection", "--title=" + title, "--file-filter=" + presetFilter(),
+            start({"zenity", "--file-selection", "--title=" + title, "--file-filter=" + filter,
                    "--file-filter=All files | *", "--filename=" + startFolder(folder)},
                   answer);
         else if (which() == Tool::KDialog)
-            start({"kdialog", "--title", title, "--getopenfilename", startFolder(folder), "*.fmv|" + presetFilter()},
+            start({"kdialog", "--title", title, "--getopenfilename", startFolder(folder), patterns + "|" + filter},
                   answer);
         else
             noTool();
@@ -890,6 +904,8 @@ bool Editor::show(bool visible) {
 
 void Editor::choosePreset(bool save) { pendingPreset_ = save ? 1 : 0; }
 
+void Editor::chooseTuning(bool mapping) { pendingTuning_ = mapping ? 1 : 0; }
+
 bool Editor::modal() const { return menu_ || (dialogs_ && dialogs_->busy()); }
 
 void Editor::notify(std::string text) {
@@ -931,6 +947,11 @@ void Editor::pump() {
         pendingPreset_ = -1;
         startPresetDialog(save != 0);
     }
+    if (pendingTuning_ >= 0 && dialogs_ && !dialogs_->busy()) {
+        const int mapping = pendingTuning_;
+        pendingTuning_ = -1;
+        startTuningDialog(mapping != 0);
+    }
     tick();
     paint();
 }
@@ -959,6 +980,22 @@ void Editor::startPresetDialog(bool save) {
         dialogs_->saveFile(title, folder, name, then);
     else
         dialogs_->openFile(title, folder, then);
+}
+
+// A scale or tuning, or a keyboard mapping, into the patch, from the home folder.
+void Editor::startTuningDialog(bool mapping) {
+    if (!dialogs_)
+        return;
+    auto then = [this](const std::string &path) {
+        if (path.empty() || !dialogs_)
+            return;
+        if (const std::optional<std::string> why = controller_.loadTuningFile(widePath(path)))
+            dialogs_->message("FMVibe", *why, true, false);
+        invalidate();
+    };
+    dialogs_->openFile(tr(mapping ? Str::DialogLoadMapping : Str::DialogLoadTuning), {}, then,
+                       tr(mapping ? Str::DialogMappingFiles : Str::DialogTuningFiles),
+                       mapping ? "*.kbm" : "*.scl *.ascl *.tun");
 }
 
 void Editor::pumpEvents() {

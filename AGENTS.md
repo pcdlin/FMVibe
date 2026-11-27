@@ -104,6 +104,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     set to 64 modulated on to 128 and no further;
   - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
     Pitch and Detune turned and modulated;
+  - MTS-ESP off in a new instance, MTS SysEx (a single note tuning change) then tuning nothing, and once MTS-ESP is
+    switched on through the state's settings chunk retuning an A4 a quarter tone up, and back;
   - a new instance has only operator A on, no filter key tracking or going out, its shaper effects linked, its
     frequency shifters' range at 100 Hz, its flangers stereo and its Custom waves at 32 partials; a switched-off
     operator is silent, and a switched-off filter passes nothing; a filter routed nowhere isn't heard, and goes out
@@ -515,7 +517,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the flanger through zero, held at its sweep's middle and negative, cancelling noise to nothing; the phaser's
     Spread moving its notches; and the Lo-Fi holding Bits' levels at Rate, Smooth taking the steps' edges off and Mix
     at 0 dry;
-  - the CPU cost of each factor.
+  - the CPU cost of each factor;
+  - a tuning (MTS-ESP's in the plugins, a stand-in here, see `src/tuning.h`): a note playing as far off 12-TET as it
+    says; retuning continuously, a held note following it as it changes, and on note on keeping the one it started in
+    (back to 12-TET once the tuning is taken away); a glide going from one tuned note to the next, and on to a note
+    retuned meanwhile; an unmapped key playing nothing, its end reported once (in mono leaving the note playing as it
+    was); the tuning asked with the note's channel, the editor's notes and a host's on no channel with the first, never
+    with and without one at once, and with none while MPE is on; and in Key, the sequencer still taking an unmapped
+    key, its notes tuned and asked on the first channel;
+  - the patch's own tuning (`src/tuningfile.h`): a Scala scale's cents, ratios and whole numbers read, too many notes
+    and text that isn't one refused; its table playing a 12-TET scale as 12-TET and 19-EDO from middle C, a keyboard
+    mapping's reference key at its frequency, its x keys unmapped and its entries repeating by its octave (missing
+    entries refused), an AnaMark tuning's keys at their exact cents and Ableton's reference pitch tuning the scale;
+    through the synth, an A4 a .tun puts a quarter tone up playing there, over a stand-in for MTS SysEx and under one
+    for a master, and a key its mapping leaves unmapped playing nothing; and a sparse patch keeping the tuning and its
+    files' names.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
   screenshots in Spectrum). On the way it replays drags and clicks:
@@ -860,6 +876,18 @@ the plain CMake commands and installing into a host are in the [README](README.m
     size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), opening on its Visual tab (a THEME heading over the themes), its Engine tab showing the oversampling and MPE in its place, back on Visual a click where a bend range was picking nothing (the tab's accent under it, read off the rendered pixels), the tab shown kept as the dialog closes and opens again, its book opening the user manual and
     leaving it open, closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
+  - the settings' TUNING, on the Engine tab: its Off | On and Note On | Continuous setting MTS-ESP and its retuning,
+    leaving the patch and its undo alone, and disabled in a host without MTS-ESP; the title bar's tuning mark showing
+    while a master, MTS SysEx or the patch's own tuning tunes the synth, each its own way, a master's and SysEx's not
+    while MTS-ESP is off, the patch's then (read off the rendered pixels), its tooltip under the mouse, and its coming
+    and changing repainting the title bar alone, as a whole paint would; a scale's text loaded into the patch
+    (`gui::loadTuningText()`), one undo step with its name, and a file that isn't a scale, a mapping or a tuning file
+    loading nothing, saying why; the overflow menu's tuning entries: each load's reset button at its row's right end
+    shown only while there is one, taking it out (and with none, a click there the load row's), a line naming the
+    file under each load while there is one, the load entries asking for a file, each closing the menu, and a click on the
+    mark switching MTS-ESP off while a master tunes, leaving the patch and its undo alone, and on the patch's own tuning
+    opening the menu (`fmvibe-uishot <dir> 1 --tuning` renders the section, the
+    mark and the menu in each state in three themes);
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the title bar's overflow menu (... after Init and Save): its button lit while it is open, its rows lit under the
@@ -1108,7 +1136,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     wiring not given to hosts (their depths and Amounts given), and every param they are given showing; the MIDI
     mapping (per channel, on the note input only), the note expressions and the
     physical UI mapping;
-  - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, the MIDI-mapped mod wheel (CC 1) moving the
+  - playing: an A4 at 440 Hz, retuned a quarter tone and back by MTS SysEx in a data event (MTS-ESP switched on
+    through the state's settings chunk), bent through the
+    MIDI-mapped pitch bend, the MIDI-mapped mod wheel (CC 1) moving the
     Mod Wheel param and the host told in its place in the block, tuned an octave by a note expression on its id
     (and not by one on another id), its level set by a volume expression, automation landing at its place in a
     block, a param change coming before a note at the same place, notes let go (with ids and without) falling
@@ -1162,6 +1192,17 @@ More checks:
   the plugin when a higher voice limit asks for it, and runs its main-thread callbacks and timers. It isn't a test, and like a
   DAW it is for a person to start: it waits for its window to be closed. `.\build.ps1 -Run` builds it and starts it
   after the other steps.
+- **Against an MTS-ESP master**: `fmvibe-mtsmaster` (`tools/mtsmaster.cpp`, on Windows and Linux) is a small MTS-ESP
+  master on ODDSound's master library (`third_party/mts-esp`), for trying FMVibe's microtuning by hand, in a DAW or
+  `fmvibe-uihost`. It needs libMTS where an MTS-ESP master installs it (`Common Files\MTS-ESP\LIBMTS.dll`,
+  `/usr/local/lib/libMTS.so`; without it, it says so and stops) and no other master registered (`--reinit` after one
+  crashed, where libMTS shares its tables between processes). It starts on a scene (`fmvibe-mtsmaster 19edo`; `--list`
+  lists them) and takes another's name, `off` (deregistering, as a master closed), `on`, `status` and `quit` on its
+  input, one a line, so a program can drive it through a pipe; `--for <seconds>` ends it on its own. Its scenes are
+  the cases FMVibe's MTS-ESP support handles: 12-TET, 19-, 24- and 31-EDO, 5-limit just and quarter-comma meantone on
+  C, a stretched octave, the black keys unmapped, MIDI channel 2 a quarter tone up and a tuning sweeping 50 cents up
+  and down every 4 seconds (held notes following it on Continuous). Not a test: while it runs, it retunes every
+  MTS-ESP client on the machine, a DAW's too.
 - **What a change costs**: `.\tools\bench.ps1 -Commits HEAD~1,HEAD` (or `HEAD,Working` for the working tree's
   changes, new files too, or `-Plugins` for builds made already) builds the CLAP plugin at each commit in a worktree
   of its own under `build\bench`, keeps each build there, and runs `fmvibe-bench` (`tools/bench.cpp`) on them. It
@@ -1214,6 +1255,10 @@ there is one.
   process), at a scale given before its window (opening at that size), and destroys the host's window before the
   editor, the host still running after. It reads a window's pixels only once the window shows and only what of it is
   on the screen (`grabShown()`), as a window manager (a desktop's, WSLg's) shows the host's window a moment late.
+  It checks MTS-ESP's client as the plugins hold it (`MtsTuning`, with no master: MTS SysEx retuning it, the editor
+  told so with the scale's name, a message without its F0 the same, other SysEx nothing), MTS SysEx tuning nothing in the CLAP plugin while MTS-ESP is off, as it starts, and once it is switched on retuning it,
+  and, in a data event, the VST3 one, and MTS-ESP switched off in a state's settings chunk playing 12-TET (a
+  project saved then keeping it off) and on again the tuning.
   It also checks that, with no view open, a state's restart comes through a run loop the host application offers
   as `initialize()`'s context, on its main thread, and through the plugin's own thread where there is none; and that
   under a locale writing a decimal comma (de_DE, compiled with `localedef` into a folder of its own where none is
@@ -1228,7 +1273,8 @@ there is one.
   clear of text and of edges whose place follows a text's width. The checks that read where a text's ink falls use
   `checkFont()`, which only checks on Windows: a Linux machine has a zoo of fonts, whose metrics move the ink by a
   pixel. A lit ring's feathering is the backend's too: past the ring the Cairo halo is the background.
-- **Not covered**: the Windows smoke tests, the CLAP validator (clap-validator comes as a Windows binary), `fmvibe-uihost`
+- **Not covered**: `fmvibe-mtsmaster` builds on Linux too, but runs only where libMTS is in `/usr/local/lib`. The
+  Windows smoke tests, the CLAP validator (clap-validator comes as a Windows binary), `fmvibe-uihost`
   and `fmvibe-bench` (with `tools\bench.ps1`) need Windows, as does `src/gui/editor.cpp` (the Win32 window) and
   `src/gui/canvas.cpp` (Direct2D).
   `build.ps1` on Windows (or the release workflow) is the full check there; the Linux build compiles the shared files
@@ -1453,6 +1499,11 @@ breakpoints in `src/` then hit.
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws (`src/fx/ampfx.h` runs it in a slot) |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/tuning.h` | The tuning the synth plays notes in other than 12-TET (`Synth::setTuning()`): how far a key is retuned, and whether it is unmapped |
+| `src/tuningfile.h`, `src/tuningfile.cpp` | Tuning files (Scala's `.scl` and `.kbm`, Ableton's `.ascl`, AnaMark's `.tun`) read into the patch's own tuning, and the table of what it does to each key, which the synth works out as its params change |
+| `src/gui/tuningedits.h`, `src/gui/tuningedits.cpp` | The patch's own tuning as the editor edits it: a file's text loaded and its scale or mapping taken out, one undo step each, and where the tuning comes from with it taken in |
+| `src/mtstuning.h`, `src/mtstuning.cpp` | MTS-ESP's tuning, through ODDSound's client: one client per instance, MTS SysEx, and where the tuning comes from for the editor (plugins only) |
+| `third_party/mts-esp/` | ODDSound's MTS-ESP client library (0BSD), and its master library for `fmvibe-mtsmaster`, unchanged, and the commit they came from |
 | `src/drawnenvelope.h` | An operator's drawn envelope: its shape stepped a sample at a time, its loop in Sustain, and its release on to the shape's end |
 | `src/fxlag.h` | How late each path through the effects graph is from the effects that run oversampled, the pads that keep paths meeting in step, and the output's latency |
 | `src/unison.h` | Where an operator's unison copies go: their detune, place and level by its Unison Curve, Pan and Blend, for the voices and the UNISON tab alike |
@@ -1494,8 +1545,9 @@ breakpoints in `src/` then hit.
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
-| `tests/linux_host.cpp` | Headless host for the Linux CLAP and VST3 plugins (loads them, plays, checks the editor paints) |
+| `tests/linux_host.cpp` | Headless host for the Linux CLAP and VST3 plugins (loads them, plays, retunes them by MTS SysEx, checks the editor paints) |
 | `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
+| `tools/mtsmaster.cpp` | `fmvibe-mtsmaster`: a small MTS-ESP master with scenes of tunings, for trying FMVibe's microtuning by hand |
 | `tools/bench.cpp` | `fmvibe-bench`: what a build of the CLAP plugin costs (`time`) and what it plays (`render`), to compare builds by |
 | `tools/manual.py`, `cmake/manual.cmake` | The user manual (`docs/manual.md`) as one self-contained HTML file, for the zips and GitHub Pages, and the `manual` test that checks it |
 | `tools/bench.ps1` | Builds commits (or the working tree) and compares them with `fmvibe-bench`: bit for bit, then CPU, round-robin |
@@ -1508,7 +1560,8 @@ breakpoints in `src/` then hit.
 | `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugins, and the browser demo on GitHub Pages |
 
 Everything except the plugins' own files builds into the `fmvibe-core` static library, which the plugins and the
-tools share. `plugincore.cpp`, `presets.cpp`, `usersettings.cpp` and `editor.cpp` build into `fmvibe-plugin` on top
+tools share. `plugincore.cpp`, `presets.cpp`, `usersettings.cpp`, `editor.cpp`, `mtstuning.cpp` and the MTS-ESP
+client build into `fmvibe-plugin` on top
 of it, which each plugin links a copy of (so the editor's window class belongs to that plugin's DLL). The VST3 SDK's
 interfaces and their ids build into `vst3-interfaces`, for the VST3 plugin and its test host. The browser demo builds the engine (`FMVIBE_ENGINE_SOURCES`) into its modules
 itself.
@@ -1577,7 +1630,8 @@ itself.
   point count and 64 (x, y, curve) points each (see `SeqParam`, `SeqCurveParam`), and each note's bend
   64000 + 32·(128·pattern + note), a point count and 8 (x, y, curve) points (see `SeqNoteBendParam`). The
   operators' drawn envelopes' shapes are 81000 + 200·op (`opEnvShapeIndex()`), a point count and 64 points each, as
-  a source's shape.
+  a source's shape. The patch's own tuning is 83000+ (`TuningParam`): its scale's degree count, reference and 128
+  degrees' cents, then its keyboard mapping's fields and 128 entries.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
@@ -1614,9 +1668,9 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,027 of the 52,142 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,027 of the 52,410 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
-  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the operators' drawn envelopes' fields, the Custom waves' partials and counts, the chain's retired order, the
+  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the operators' drawn envelopes' fields, the patch's own tuning, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires), the source places' own fields (a place's slot
   depths are listed, whatever it holds) and the sequencer's root, scale, patterns' lengths and loops, notes, their bends and curves. Nothing hosts
@@ -1657,7 +1711,7 @@ itself.
   differently goes into the step already made since the last tag, if there is one (its comment in `src/state.cpp`
   and the checks that load a state from before it), rather than adding another. States saved by a build between two
   tags are not kept loading as they were: only released versions are.
-- The state blob holds `(id, value)` pairs with a version number (currently 17: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 18: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -1692,7 +1746,9 @@ itself.
   and Octave what Transpose can't hold (`transposeFromRoot()`), since the keys now transpose a pattern from C4
   (`kSeqTransposeFrom`) and Root sets the scale alone;
   version 17's sequencer notes may also bend, an earlier state loading with none, and its Play is Key to begin with, an
-  earlier state without one loading Host, its default then),
+  earlier state without one loading Host, its default then;
+  version 18's patch may have a tuning of its own (`TuningParam`), an earlier state loading with none, the version
+  rising so that an earlier build refuses a state whose tuning it would play in 12-TET),
   followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, a retired field (once whether the modulation panel was collapsed, which it no longer is),
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
@@ -1706,10 +1762,11 @@ itself.
   (`Controller::hasTempo()`) take up as the preset loads, then what the preset says about itself (`gui::PresetInfo`: its author, its category by
   name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
   the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips, then the
-  source places past the first 16 (their order and folds) and whether the SEQ view's roll bends notes (its Bend tool).
+  source places past the first 16 (their order and folds), whether the SEQ view's roll bends notes (its Bend tool),
+  and the names of the files the patch's own tuning came from (its scale's and its keyboard mapping's), undone with it.
   The host's state goes on with
   the settings chunk (the oversampling, MPE, MPE's bend range, whether the synth follows the host's tempo and its
-  own tempo, `Settings` in `src/state.h`) and a preset chunk (whether the patch changed since its preset, then the preset file's path
+  own tempo, whether MTS-ESP is on and retunes held notes, `Settings` in `src/state.h`) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
   floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
@@ -1724,7 +1781,9 @@ itself.
   stored values from 0 up keep their meaning.
 - The plugin takes CLAP note events (preferred), raw MIDI and MPE MIDI (see `Synth::setMpe()`; MPE is a setting
   in the settings dialog, not a param, so presets leave it alone: with it on, channels 2 to 16 bend, press and slide
-  their own notes, kept per channel in the synth), and reports
+  their own notes, kept per channel in the synth), MIDI SysEx, whose MTS SysEx retunes the synth while no MTS-ESP
+  master does (see `Synth::setTuning()` and `src/mtstuning.h`; MTS-ESP and its retuning are settings like MPE), and
+  reports
   `NOTE_END` so hosts with
   polyphonic modulation (Bitwig) know when a voice has finished. In mono, a note that is taken over keeps its
   host voice while its key is down and reports `NOTE_END` when the key is let go. Per-note modulation follows the
@@ -1756,7 +1815,8 @@ itself.
   user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a
   bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`, on Linux `FMVibe.vst3/Contents/x86_64-linux/FMVibe.so`.
   On Linux, libstdc++ and libgcc are linked statically likewise: the plugins depend on glibc, X11, Cairo and
-  fontconfig.
+  fontconfig. The MTS-ESP client opens libMTS as the plugin loads, where an MTS-ESP master installed it
+  (`Common Files\MTS-ESP\LIBMTS.dll`, `/usr/local/lib/libMTS.so`), and does without it.
 
 ## Updating the CLAP and VST3 SDKs
 

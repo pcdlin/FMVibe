@@ -73,6 +73,8 @@ add_library(fmvibe-core STATIC
     src/gui/layout.h
     src/gui/patchedits.cpp
     src/gui/patchedits.h
+    src/gui/tuningedits.cpp
+    src/gui/tuningedits.h
     src/gui/presetbrowser.cpp
     src/gui/presetbrowser.h
     src/gui/routing.h
@@ -110,10 +112,17 @@ add_library(fmvibe-plugin STATIC
     src/usersettings.h
     src/gui/editor.h
     src/gui/editor_x11.cpp
+    src/mtstuning.cpp
+    src/mtstuning.h
+    third_party/mts-esp/libMTSClient.cpp
+    third_party/mts-esp/libMTSClient.h
 )
 set_target_properties(fmvibe-plugin PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
-target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core X11::X11 Threads::Threads)
+# CMAKE_DL_LIBS: the MTS-ESP client opens libMTS with dlopen() (see third_party/mts-esp).
+target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core X11::X11 Threads::Threads ${CMAKE_DL_LIBS})
 fmvibe_options(fmvibe-plugin)
+# ODDSound's MTS-ESP client, as it comes: its warnings are its own.
+set_source_files_properties(third_party/mts-esp/libMTSClient.cpp PROPERTIES COMPILE_OPTIONS "-w")
 
 # The CLAP plugin: a shared object, FMVibe.clap, that hosts load from a CLAP folder (~/.clap).
 add_library(FMVibe MODULE
@@ -215,8 +224,16 @@ fmvibe_options(fmvibe-presettool)
 
 # A small headless host: loads the built .clap and the .vst3 bundle's object, plays a note through each, round-trips
 # its state, and (where a display is there) opens the editor in a window of its own and drives it.
+# A small MTS-ESP master for trying FMVibe's microtuning by hand (see tools/mtsmaster.cpp): ODDSound's master library,
+# which needs libMTS in /usr/local/lib. Not a test: while it runs, it retunes every MTS-ESP client on the machine.
+add_executable(fmvibe-mtsmaster tools/mtsmaster.cpp third_party/mts-esp/libMTSMaster.cpp third_party/mts-esp/libMTSMaster.h)
+target_link_libraries(fmvibe-mtsmaster PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+fmvibe_options(fmvibe-mtsmaster)
+set_source_files_properties(third_party/mts-esp/libMTSMaster.cpp PROPERTIES COMPILE_OPTIONS "-w")
+
 add_executable(fmvibe-linux-host tests/linux_host.cpp)
-target_link_libraries(fmvibe-linux-host PRIVATE clap fmvibe-core vst3-interfaces X11::X11 Threads::Threads ${CMAKE_DL_LIBS})
+# fmvibe-plugin for MtsTuning, which it checks on its own as well as through the plugins.
+target_link_libraries(fmvibe-linux-host PRIVATE clap fmvibe-plugin vst3-interfaces X11::X11 Threads::Threads ${CMAKE_DL_LIBS})
 fmvibe_options(fmvibe-linux-host)
 add_dependencies(fmvibe-linux-host FMVibe FMVibe-vst3)
 add_test(NAME linux-host COMMAND fmvibe-linux-host $<TARGET_FILE:FMVibe>

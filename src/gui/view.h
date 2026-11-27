@@ -729,6 +729,9 @@ private:
     ParamValues seen_{};
     uint64_t seenStamp_ = 0; // the controller's valuesStamp() when seen_ was taken (0: not yet)
     Telemetry telemetry_{};
+    // Where the synth's tuning comes from, as poll() last asked (none while MTS-ESP is off): the title bar's MTS mark
+    // and the settings' TUNING show it.
+    TuningStatus tuning_{};
     std::optional<Widget> hover_;
     Point hoverPoint_; // where the mouse is
     // Where the effect and source cards were last painted, as much of each as shows (a source by its number, an effect

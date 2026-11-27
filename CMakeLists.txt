@@ -80,6 +80,8 @@ set(FMVIBE_ENGINE_SOURCES
     src/sequencer.cpp
     src/synth.cpp
     src/synth.h
+    src/tuningfile.cpp
+    src/tuningfile.h
     src/zerobuffer.cpp
     src/zerobuffer.h
     src/wavetable.cpp
@@ -174,6 +176,8 @@ add_library(fmvibe-core STATIC
     src/gui/layout.h
     src/gui/patchedits.cpp
     src/gui/patchedits.h
+    src/gui/tuningedits.cpp
+    src/gui/tuningedits.h
     src/gui/presetbrowser.cpp
     src/gui/presetbrowser.h
     src/gui/routing.h
@@ -210,9 +214,15 @@ add_library(fmvibe-plugin STATIC
     src/usersettings.h
     src/gui/editor.cpp
     src/gui/editor.h
+    src/mtstuning.cpp
+    src/mtstuning.h
+    third_party/mts-esp/libMTSClient.cpp
+    third_party/mts-esp/libMTSClient.h
 )
 target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core ole32 shell32 uuid) # ole32 and shell32: the file dialogs
 fmvibe_options(fmvibe-plugin)
+# ODDSound's MTS-ESP client, as it comes (see third_party/mts-esp): its warnings are its own.
+set_source_files_properties(third_party/mts-esp/libMTSClient.cpp PROPERTIES COMPILE_OPTIONS "/W0")
 
 add_library(FMVibe MODULE
     src/entry.cpp
@@ -302,6 +312,14 @@ if (MSVC)
 endif()
 add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
 include(cmake/manual.cmake)
+
+# A small MTS-ESP master for trying FMVibe's microtuning by hand (see tools/mtsmaster.cpp): ODDSound's master library,
+# which needs libMTS installed. Not a test: while it runs, it retunes every MTS-ESP client on the machine. shell32 and
+# ole32 load before the library looks for libMTS through them.
+add_executable(fmvibe-mtsmaster tools/mtsmaster.cpp third_party/mts-esp/libMTSMaster.cpp third_party/mts-esp/libMTSMaster.h)
+target_link_libraries(fmvibe-mtsmaster PRIVATE shell32 ole32)
+fmvibe_options(fmvibe-mtsmaster)
+set_source_files_properties(third_party/mts-esp/libMTSMaster.cpp PROPERTIES COMPILE_OPTIONS "/W0")
 
 # A small CLAP host for trying the editor by hand: loads the built plugin, opens its editor in a window and plays it
 # through the default output device, with notes from MIDI inputs. Not a test: it waits for the window to close.

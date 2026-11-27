@@ -372,6 +372,11 @@ void Plugin::handleEvent(const clap_event_header_t *ev) {
         synth.paramMod(indexOfId(mod.param_id), noteRef(mod), mod.amount);
         break;
     }
+    case CLAP_EVENT_MIDI_SYSEX: { // MTS SysEx retunes the synth (see PluginCore::playSysEx())
+        const auto &sysex = *reinterpret_cast<const clap_event_midi_sysex_t *>(ev);
+        playSysEx(sysex.buffer, sysex.size);
+        break;
+    }
     case CLAP_EVENT_MIDI: {
         const auto &midi = *reinterpret_cast<const clap_event_midi_t *>(ev);
         const uint8_t status = midi.data[0] & 0xF0;

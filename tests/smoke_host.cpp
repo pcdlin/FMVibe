@@ -1362,6 +1362,77 @@ int main(int argc, char **argv) {
               "a fixed operator plays its Freq x Mult whatever the note, bend, Pitch and Detune");
     }
 
+    // A saved state's settings chunk: its floats, past the params and layout (oversampling, MPE, its bend range, the
+    // title bar's H, the synth's own tempo, MTS-ESP and its retuning), or none.
+    const auto settingsOf = [&](MemoryStream &saved) -> float * {
+        size_t at = 12 + static_cast<size_t>(kParamCount) * 12;
+        uint32_t chunk[2] = {};
+        if (at + 8 > saved.data.size())
+            return nullptr;
+        std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
+        at += 8 + chunk[1] * sizeof(float);
+        if (at + 8 + 7 * sizeof(float) > saved.data.size())
+            return nullptr;
+        std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
+        return chunk[0] == 0x47544553 && chunk[1] >= 7 ? reinterpret_cast<float *>(saved.data.data() + at + 8)
+                                                       : nullptr;
+    };
+    // MTS-ESP switched on or off through the state's settings chunk, as a project holds it.
+    const auto setMts = [&](bool on) {
+        MemoryStream saved;
+        state->save(plugin, &saved.out);
+        float *settings = settingsOf(saved);
+        if (!settings)
+            return false;
+        settings[5] = on ? 1.0f : 0.0f;
+        return state->load(plugin, &saved.in);
+    };
+
+    // MTS SysEx (MIDI Tuning Standard, a single note tuning change in real time to every device) retunes the synth
+    // while no MTS-ESP master is connected, once MTS-ESP is switched on (off to begin with): A4 a quarter tone up (69
+    // and 0x2000 of 0x4000 of a semitone), then put back, and with MTS-ESP off as a new instance has it, not at all.
+    // The pitch from a sine's rising zero crossings, between samples.
+    {
+        MemoryStream fresh;
+        const float *freshSettings = state->save(plugin, &fresh.out) ? settingsOf(fresh) : nullptr;
+        check(freshSettings && freshSettings[5] == 0.0f, "MTS-ESP is off in a new instance");
+        auto tuneA4 = [](uint8_t fraction) {
+            return std::vector<uint8_t>{0xF0, 0x7F, 0x7F, 0x08, 0x02, 0x00, 0x01, 0x45, 0x45, fraction, 0x00, 0xF7};
+        };
+        auto playTuned = [&](const std::vector<uint8_t> &message) {
+            clap_event_midi_sysex_t sysex{};
+            sysex.header = {sizeof(sysex), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI_SYSEX, 0};
+            sysex.buffer = message.data();
+            sysex.size = static_cast<uint32_t>(message.size());
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 23, 69);
+            runBlock({&sysex.header, &on.header});
+            runBlocks(8);
+            std::vector<float> signal;
+            for (int b = 0; b < 64; ++b) {
+                runBlock();
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            runBlocks(blockerSettle);
+            std::vector<double> at;
+            for (size_t i = 1; i < signal.size(); ++i)
+                if (signal[i - 1] < 0.0f && signal[i] >= 0.0f)
+                    at.push_back(static_cast<double>(i - 1) + signal[i - 1] / (signal[i - 1] - signal[i]));
+            return at.size() < 2 ? NAN : (at.size() - 1) * kSampleRate / (at.back() - at.front());
+        };
+        const double ignored = playTuned(tuneA4(0x40));
+        const bool switchedOn = setMts(true);
+        const double tuned = playTuned(tuneA4(0x40)), back = playTuned(tuneA4(0x00));
+        const bool switchedOff = setMts(false);
+        std::printf("      A4 after MTS SysEx a quarter tone up: %.2f Hz with MTS-ESP off, %.2f Hz on, then put back: "
+                    "%.2f Hz\n",
+                    ignored, tuned, back);
+        check(std::abs(ignored - 440.0) < 0.5, "with MTS-ESP off, as to begin with, MTS SysEx tunes nothing");
+        check(switchedOn && switchedOff && std::abs(tuned - 440.0 * std::exp2(0.5 / 12.0)) < 0.5 &&
+                  std::abs(back - 440.0) < 0.5,
+              "with MTS-ESP on, MTS SysEx retunes the synth, and back");
+    }
+
     // Operator A's Ratio takes modulation on its log curve, continuously: a seventh of its range (0.5 to 64 is seven
     // octaves) plays an octave up, and half that a tritone up (622 Hz), between the two.
     {
@@ -2428,22 +2499,6 @@ int main(int argc, char **argv) {
                    {paramIndex(0, OpParam::NoiseSlope), 0.0},
                    {paramIndex(0, OpParam::UnisonSpread), 0.5}});
     }
-
-    // A saved state's settings chunk: its floats, past the params and layout (oversampling, MPE, its bend range, the
-    // title bar's H and the synth's own tempo), or none.
-    const auto settingsOf = [&](MemoryStream &saved) -> float * {
-        size_t at = 12 + static_cast<size_t>(kParamCount) * 12;
-        uint32_t chunk[2] = {};
-        if (at + 8 > saved.data.size())
-            return nullptr;
-        std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
-        at += 8 + chunk[1] * sizeof(float);
-        if (at + 8 + 5 * sizeof(float) > saved.data.size())
-            return nullptr;
-        std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
-        return chunk[0] == 0x47544553 && chunk[1] >= 5 ? reinterpret_cast<float *>(saved.data.data() + at + 8)
-                                                       : nullptr;
-    };
 
     // LFO sync: a square LFO 1 at -100 % on A's output, set to 0.5, swings it half the depth either way: muted
     // in the first half of each cycle, full in the second. At 1/4 a cycle takes 0.5 s at 120 bpm and 1 s at
@@ -6044,6 +6099,12 @@ int main(int argc, char **argv) {
             layout.push_back(static_cast<float>(source));
         layout.push_back(9.0f); // the places past the first kFirstSources folded
         layout.push_back(1.0f); // the SEQ view's roll bending notes (its Bend tool)
+        // The names of the files the patch's own tuning came from, as long as is saved: its length, then its bytes.
+        for (int file = 0; file < 2; ++file) {
+            layout.push_back(64.0f);
+            for (int k = 0; k < 64; ++k)
+                layout.push_back(static_cast<float>(32 + (k * 5 + file) % 95));
+        }
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {
