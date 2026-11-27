@@ -1,7 +1,7 @@
 // The inspector (InspectorPanel, see inspectorpanel.h): the lens over the routing panel's left end and the page of the
 // node it shows, an operator's, a filter's or a shaper's: their widgets and popups, painting (the lens, the title, the
-// unison copies, the scope, the noise's spectrum, the INPUTS rows, the filter's response and the shaper's curve), the
-// waves and their list, the tabs, the filter's handle and the INPUTS rows' scrolling. The knobs, switches, lists,
+// unison copies, the scope, the noise's spectrum, the I/O rows, the filter's response and the shaper's curve), the
+// waves and their list, the tabs, the filter's handle and the I/O rows' scrolling. The knobs, switches, lists,
 // depths and envelope on its pages are the View's, as wherever they show; a filter's display is filterdisplay.h's,
 // shared with the filter effect's card.
 
@@ -242,32 +242,44 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             }
         }
         if (tab == InspectorTab::Inputs) {
-            // A row per route into it: the name shows its node, the buttons pick its mode, the label sets its
-            // depth as a wire's does. Its feedback comes last, always Phase.
-            // Past what the tab holds they scroll, cut off at the list's ends.
-            const std::vector<int> inputs = inputsOf(op);
-            const bool feedback = routing_.wired(routeParam(op, op));
+            // A row per route into it and out of it: the name shows its node, the buttons pick its mode (a route
+            // into an operator's), the label sets its depth as a wire's does. Its feedback comes last of the inputs,
+            // always Phase, and its line to OUT last of the outputs. Past what the tab holds they scroll, cut off at
+            // the list's ends.
             auto shown = [](float y) { return y + kInputsRowSpan > kInputsList.y && y < kInputsList.bottom(); };
-            for (size_t row = 0; row < inputs.size(); ++row) {
-                const int from = inputs[row];
-                const float y = inputsRowY(op, static_cast<int>(row));
+            for (const IoRow &row : ioRows(op)) {
+                const float y = ioY(op, row.at);
                 if (!shown(y))
                     continue;
                 const size_t start = list.size();
-                add(Kind::MatrixLabel, inputsName(y), -1, from);
-                const size_t buttons = list.size();
-                for (int m = 0; m < static_cast<int>(RouteMode::Count); ++m)
-                    add(Kind::Choice, inputsMode(y, m), routeModeParam(from, op), from, m);
-                merge(buttons);
-                add(Kind::WireLabel, inputsDepth(y), routeParam(from, op), from, op);
+                const int from = row.kind == IoRow::Kind::Out ? op : row.node;
+                const int to = row.kind == IoRow::Kind::Out ? row.node : op;
+                switch (row.kind) {
+                case IoRow::Kind::In:
+                case IoRow::Kind::Out: {
+                    add(Kind::MatrixLabel, inputsName(y), -1, row.node);
+                    if (to < kOps) {
+                        const size_t buttons = list.size();
+                        for (int m = 0; m < static_cast<int>(RouteMode::Count); ++m)
+                            add(Kind::Choice, inputsMode(y, m), routeModeParam(from, to), from, m);
+                        merge(buttons);
+                    }
+                    add(Kind::WireLabel, inputsDepth(y), routeParam(from, to), from, to);
+                    break;
+                }
+                case IoRow::Kind::Feedback:
+                    add(Kind::WireLabel, inputsDepth(y), routeParam(op, op), op, op);
+                    break;
+                case IoRow::Kind::Bus: // as the OUT label in the graph
+                    add(Kind::OutLabel, inputsDepth(y), outParam(op), op, -1);
+                    break;
+                default:
+                    break;
+                }
                 for (size_t i = start; i < list.size(); ++i)
                     list[i].clip = kInputsList;
             }
-            if (const float y = inputsRowY(op, static_cast<int>(inputs.size())); feedback && shown(y)) {
-                add(Kind::WireLabel, inputsDepth(y), routeParam(op, op), op, op);
-                list.back().clip = kInputsList;
-            }
-            if (inputsEnd(op) > 0.0f)
+            if (ioEnd(op) > 0.0f)
                 add(Kind::InputsScroll, inputsScrollTrack().inset(-3.0f));
         }
         if (tab == InspectorTab::Warp) {
@@ -521,7 +533,7 @@ void InspectorPanel::paintBack(Canvas &c) {
             break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
-            paintInputs(c, op);
+            paintIo(c, op);
             break;
         }
         return;
@@ -657,68 +669,109 @@ void InspectorPanel::switchFixed(int op) {
     mods_.editMany(changes);
 }
 
-std::vector<int> InspectorPanel::inputsOf(int op) const {
-    std::vector<int> inputs;
+std::vector<InspectorPanel::IoRow> InspectorPanel::ioRows(int op) const {
+    using K = IoRow::Kind;
+    std::vector<IoRow> rows;
+    float at = 0.0f;
+    auto put = [&](K kind, int node, bool outputs, float h) {
+        rows.push_back({kind, node, outputs, at});
+        at += h;
+    };
+    put(K::Heading, -1, false, kIoHeadH);
+    size_t first = rows.size();
     for (int from = 0; from < kNodes; ++from)
         if (from != op && routing_.nodeOn(from) && routing_.wired(routeParam(from, op)))
-            inputs.push_back(from);
-    return inputs;
+            put(K::In, from, false, kInputsStep);
+    if (routing_.wired(routeParam(op, op)))
+        put(K::Feedback, op, false, kInputsStep);
+    if (rows.size() == first)
+        put(K::None, -1, false, kIoNoneH);
+    at += kIoGap;
+    put(K::Heading, -1, true, kIoHeadH);
+    first = rows.size();
+    for (int to = 0; to < kNodes; ++to)
+        if (to != op && routing_.nodeOn(to) && routing_.wired(routeParam(op, to)))
+            put(K::Out, to, true, kInputsStep);
+    if (routing_.goesOut(op))
+        put(K::Bus, -1, true, kInputsStep);
+    if (rows.size() == first)
+        put(K::None, -1, true, kIoNoneH);
+    return rows;
 }
 
-int InspectorPanel::inputsRows(int op) const {
-    return static_cast<int>(inputsOf(op).size()) + (routing_.wired(routeParam(op, op)) ? 1 : 0);
-}
-
-float InspectorPanel::inputsEnd(int op) const {
-    const int rows = inputsRows(op);
-    if (rows == 0)
+// Down to the last row's foot: a route's handles under its depth, a line's text.
+float InspectorPanel::ioLength(const std::vector<IoRow> &rows) {
+    if (rows.empty())
         return 0.0f;
-    const float length = static_cast<float>(rows - 1) * kInputsStep + kInputsRowSpan;
-    return std::max((length - (kInputsBottom - kInputsTop)) / kInputsStep, 0.0f);
+    const IoRow &last = rows.back();
+    return last.at + (last.kind == IoRow::Kind::None ? kIoNoneH : kInputsRowSpan);
 }
 
-float InspectorPanel::inputsFirst(int op) const {
-    return std::clamp(inputsScroll_, 0.0f, inputsEnd(op));
+float InspectorPanel::ioEnd(int op) const {
+    return std::max((ioLength(ioRows(op)) - (kInputsBottom - kInputsTop)) / kInputsStep, 0.0f);
 }
 
-float InspectorPanel::inputsRowY(int op, int row) const {
-    return kInputsTop + (static_cast<float>(row) - inputsFirst(op)) * kInputsStep;
+float InspectorPanel::ioFirst(int op) const {
+    return std::clamp(ioScroll_, 0.0f, ioEnd(op));
 }
 
-Rect InspectorPanel::inputsThumb(int op) const {
+float InspectorPanel::ioY(int op, float at) const {
+    return kInputsTop + at - ioFirst(op) * kInputsStep;
+}
+
+Rect InspectorPanel::ioThumb(int op) const {
     const Rect track = inputsScrollTrack();
-    const float rows = static_cast<float>(std::max(inputsRows(op), 1));
-    const float shown = (kInputsBottom - kInputsTop) / kInputsStep;
-    const float h = std::max(track.h * std::min(shown / rows, 1.0f), 16.0f);
-    return {track.x, track.y + (track.h - h) * inputsFirst(op) / std::max(inputsEnd(op), 0.001f), track.w, h};
+    const float length = std::max(ioLength(ioRows(op)), 1.0f);
+    const float h = std::max(track.h * std::min((kInputsBottom - kInputsTop) / length, 1.0f), 16.0f);
+    return {track.x, track.y + (track.h - h) * ioFirst(op) / std::max(ioEnd(op), 0.001f), track.w, h};
 }
 
-// The names of the nodes routed into the operator and their modes' names, its feedback's row, or a line saying nothing
-// is routed into it yet; the buttons and labels draw themselves, cut off at the list's ends as they scroll.
-void InspectorPanel::paintInputs(Canvas &c, int op) {
-    const std::vector<int> inputs = inputsOf(op);
-    const bool feedback = routing_.wired(routeParam(op, op));
-    if (inputs.empty() && !feedback) {
-        c.text({kInspector.x + 16.0f, kInputsTop, kInspector.w - 32.0f, 40.0f},
-               trf(Str::InputsNone, {nodeTitle(op)}), kTextBody, kDim, Align::Center);
-        return;
-    }
+// The sections' headings, the names of the nodes routed into and out of the operator and their modes' names (a
+// filter's or shaper's title in their place), its feedback's row, OUT's, or a line saying a section has none; the
+// buttons and labels draw themselves, cut off at the list's ends as they scroll.
+void InspectorPanel::paintIo(Canvas &c, int op) {
+    using K = IoRow::Kind;
     c.pushClip(kInputsList);
-    for (size_t row = 0; row < inputs.size(); ++row) {
-        const int from = inputs[row];
-        const float y = inputsRowY(op, static_cast<int>(row));
-        const std::optional<Widget> &hover = host_.hovered();
-        const bool hovered = hover && hover->kind == Kind::MatrixLabel && hover->a == from &&
-                             hover->rect.y == inputsName(y).y;
-        c.text(inputsName(y), kNodeNames[from], kTextBody, hovered ? kText : nodeColor(from), Align::Left, true);
-        const auto mode = routeMode(value(routeModeParam(from, op)));
-        c.text(inputsModeName(y), routeModeName(mode), kTextLabel, kDim, Align::Left);
-    }
-    if (feedback) {
-        const float y = inputsRowY(op, static_cast<int>(inputs.size()));
-        c.text(inputsName(y), kNodeNames[op], kTextBody, nodeColor(op), Align::Left, true);
-        c.text({inputsMode(y, 0).x, y, inputsDepth(y).x - inputsMode(y, 0).x - 6.0f, 18.0f},
-               trf(Str::InputsFeedback, {kNodeNames[op]}), kTextLabel, kDim, Align::Left);
+    const std::optional<Widget> &hover = host_.hovered();
+    for (const IoRow &row : ioRows(op)) {
+        const float y = ioY(op, row.at);
+        if (y + kInputsRowSpan <= kInputsList.y || y >= kInputsList.bottom())
+            continue;
+        const float left = inputsName(y).x;
+        const Rect rest{inputsMode(y, 0).x, y, inputsDepth(y).x - inputsMode(y, 0).x - 6.0f, 18.0f};
+        switch (row.kind) {
+        case K::Heading:
+            c.text({left, y, kOpWell.right() - 12.0f - left, 14.0f},
+                   tr(row.outputs ? Str::HeadingOutputs : Str::HeadingInputs), kTextLabel, kFaint, Align::Left, true);
+            break;
+        case K::None:
+            c.text({left, y, kOpWell.right() - 12.0f - left, 18.0f},
+                   trf(row.outputs ? Str::OutputsNone : Str::InputsNone, {nodeTitle(op)}), kTextBody, kFaint,
+                   Align::Left);
+            break;
+        case K::In:
+        case K::Out: {
+            const bool hovered = hover && hover->kind == Kind::MatrixLabel && hover->a == row.node &&
+                                 hover->rect.y == inputsName(y).y;
+            c.text(inputsName(y), kNodeNames[row.node], kTextBody, hovered ? kText : nodeColor(row.node), Align::Left,
+                   true);
+            const int from = row.kind == K::Out ? op : row.node, to = row.kind == K::Out ? row.node : op;
+            if (to < kOps)
+                c.text(inputsModeName(y), routeModeName(routeMode(value(routeModeParam(from, to)))), kTextLabel, kDim,
+                       Align::Left);
+            else // into a filter or a shaper, which takes no mode
+                c.text(rest, nodeTitle(to), kTextLabel, kDim, Align::Left);
+            break;
+        }
+        case K::Feedback:
+            c.text(inputsName(y), kNodeNames[op], kTextBody, nodeColor(op), Align::Left, true);
+            c.text(rest, trf(Str::InputsFeedback, {kNodeNames[op]}), kTextLabel, kDim, Align::Left);
+            break;
+        case K::Bus:
+            c.text({left, y, inputsDepth(y).x - left - 6.0f, 18.0f}, tr(Str::BusOut), kTextBody, kDim, Align::Left,
+                   true);
+            break;
+        }
     }
     c.popClip();
 }
@@ -938,7 +991,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
-                             Str::TabInputs, Str::TabWarp};
+                             Str::TabIo, Str::TabWarp};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
         c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
@@ -1029,7 +1082,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::InputsScroll: {
         const bool lit = hovered || active;
         c.fillRect(inputsScrollTrack(), kTrack.alpha(0.5f), kRadiusMark);
-        c.fillRect(inputsThumb(controller().layout().selectedNode), lit ? kDim : kFaint, kRadiusMark);
+        c.fillRect(ioThumb(controller().layout().selectedNode), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
     case Kind::FilterPoint: // a voice filter's; the filter effect's (b = 1) is the View's
@@ -1074,7 +1127,7 @@ std::string InspectorPanel::tooltip(const Widget &w) const {
     }
     if (w.kind != Kind::Choice && w.kind != Kind::Toggle)
         return {};
-    if (routeModeFrom(param) >= 0) { // an INPUTS row's buttons
+    if (routeModeFrom(param) >= 0) { // an I/O row's buttons
         const Str tips[] = {Str::TipRoutePhase, Str::TipRouteLinearFm, Str::TipRouteExpFm, Str::TipRouteRing};
         static_assert(std::size(tips) == static_cast<size_t>(RouteMode::Count));
         return tr(tips[std::clamp(w.b, 0, static_cast<int>(RouteMode::Count) - 1)]);
@@ -1152,10 +1205,10 @@ bool InspectorPanel::press(const Widget &w, Point p, Modifiers) {
     case Kind::InputsScroll: { // as the MODS view's
         const int op = layout.selectedNode;
         const Rect track = inputsScrollTrack();
-        const Rect thumb = inputsThumb(op);
+        const Rect thumb = ioThumb(op);
         if (p.y < thumb.y || p.y >= thumb.bottom())
-            inputsScroll_ = (p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) * inputsEnd(op);
-        drag_ = {DragKind::InputsScroll, w, inputsFirst(op)};
+            ioScroll_ = (p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) * ioEnd(op);
+        drag_ = {DragKind::InputsScroll, w, ioFirst(op)};
         host_.startDrag(*this, w, p, false);
         break;
     }
@@ -1234,12 +1287,11 @@ void InspectorPanel::drag(const DragState &d) {
         set(f.resonance, resonance);
         break;
     }
-    case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
+    case DragKind::InputsScroll: { // the I/O tab's rows follow its thumb
         const int op = controller().layout().selectedNode;
-        const float room = inputsScrollTrack().h - inputsThumb(op).h;
+        const float room = inputsScrollTrack().h - ioThumb(op).h;
         if (room > 0.0f)
-            inputsScroll_ =
-                std::clamp(drag_.startValue + (p.y - d.start.y) / room * inputsEnd(op), 0.0f, inputsEnd(op));
+            ioScroll_ = std::clamp(drag_.startValue + (p.y - d.start.y) / room * ioEnd(op), 0.0f, ioEnd(op));
         break;
     }
     case DragKind::None:
@@ -1270,12 +1322,12 @@ bool InspectorPanel::wheelOn(const Widget &w, Point, float steps, Modifiers) {
     return true;
 }
 
-// Over an operator's INPUTS rows (but not on a depth or a mode's button), a notch scrolls them a row.
+// Over an operator's I/O rows (but not on a depth or a mode's button), a notch scrolls them a row.
 bool InspectorPanel::wheelBehind(Point p, float steps) {
-    if (!inputsScrollAt(p) || steps == 0.0f)
+    if (!ioScrollAt(p) || steps == 0.0f)
         return false;
     const int op = controller().layout().selectedNode;
-    inputsScroll_ = std::clamp(inputsFirst(op) - steps, 0.0f, inputsEnd(op));
+    ioScroll_ = std::clamp(ioFirst(op) - steps, 0.0f, ioEnd(op));
     return true;
 }
 
@@ -1285,20 +1337,20 @@ bool InspectorPanel::blocksPan(const Widget &w) const {
 }
 
 std::optional<std::pair<int, float>> InspectorPanel::panAt(Point p) const {
-    if (!inputsScrollAt(p) || inputsEnd(controller().layout().selectedNode) <= 0.0f)
+    if (!ioScrollAt(p) || ioEnd(controller().layout().selectedNode) <= 0.0f)
         return std::nullopt;
-    return std::pair{0, inputsFirst(controller().layout().selectedNode)};
+    return std::pair{0, ioFirst(controller().layout().selectedNode)};
 }
 
 std::optional<float> InspectorPanel::pan(int, float first, float, float down) {
     const int op = controller().layout().selectedNode;
     const float wanted = first - down / kInputsStep;
-    const float to = std::clamp(wanted, 0.0f, std::max(op >= 0 && op < kOps ? inputsEnd(op) : 0.0f, 0.0f));
-    inputsScroll_ = to;
+    const float to = std::clamp(wanted, 0.0f, std::max(op >= 0 && op < kOps ? ioEnd(op) : 0.0f, 0.0f));
+    ioScroll_ = to;
     return to != wanted ? std::optional(to) : std::nullopt;
 }
 
-bool InspectorPanel::inputsScrollAt(Point p) const {
+bool InspectorPanel::ioScrollAt(Point p) const {
     const int op = controller().layout().selectedNode;
     return op >= 0 && op < kOps && !covered() && opTabShown(op) == InspectorTab::Inputs && kInputsList.contains(p);
 }

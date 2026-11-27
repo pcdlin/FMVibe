@@ -162,14 +162,14 @@ constexpr float kOpTabsY = kInspector.y + 150.0f;
 constexpr float kOpTabH = 22.0f;
 // An even height keeps the envelope's levels (from 12 px under its top to 10 px over its bottom) on whole pixels at 0.5.
 constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w - 32.0f, 116.0f};
-// The well, the tabs and the display; INPUTS, with no controls under it, takes it down to the lens's bottom.
+// The well, the tabs and the display; I/O, with no controls under it, takes it down to the lens's bottom.
 constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpDisplay.h - kOpTabsY};
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
 constexpr float kOpControlsY = kOpDisplay.y + kOpDisplay.h + 25.0f; // the controls' knobs' centers
 inline Rect opTab(int tab, bool noise = false) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS, a quarter
+    // UNISON, ENVELOPE, SCOPE, I/O, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, I/O, a quarter
     // of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens
-    // WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS, a third
+    // WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and I/O, a third
     // each.
     constexpr int kPlace[] = {1, 0, 2, 3, 2}, kNoisePlace[] = {1, 0, 2, 2, 2};
     const float w = (kOpWell.w - 8.0f) / (noise ? 3.0f : 4.0f);
@@ -190,11 +190,14 @@ inline Rect warpButton(int warp) {
 }
 constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kOpControlsY};
 constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 32.0f, kOpControlsY - 11.0f, 32.0f, 22.0f};
-// Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
-// with room under the depth for its modulations' handles, inside the tall well. Past the rows the tab holds, they
-// scroll, with a bar at their right; drawn and hit within kInputsList, which leaves room for the ranges on the first
-// row's depth's top.
+// I/O: under an INPUTS heading a row per route into the operator, its source's name, its mode's buttons, the mode's
+// name and its depth, with room under the depth for its modulations' handles, and its feedback's; under an OUTPUTS
+// heading, kIoGap further down, a row per route out of it, as an input's (a filter's or shaper's with its title in the
+// modes' place), and its line to OUT's; a section with no route a line saying so, kIoNoneH tall. All inside the tall
+// well. Past what the tab holds, they scroll, with a bar at their right; drawn and hit within kInputsList, which
+// leaves room for the ranges on the first row's depth's top.
 constexpr float kInputsTop = kOpDisplay.y + 8.0f;
+constexpr float kIoHeadH = 18.0f, kIoNoneH = 24.0f, kIoGap = 6.0f;
 constexpr float kInputsBottom = kOpWellTall.y + kOpWellTall.h - 4.0f;
 constexpr float kInputsStep = 30.0f;
 constexpr float kInputsRowSpan = 28.0f; // a row and the handles under its depth

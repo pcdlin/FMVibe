@@ -14,7 +14,7 @@
 // offers what is the routing's in their context menus. A route's label and a matrix cell show their route's depth as a
 // knob shows a param: the View drags, types and turns it and puts the modulation's depth handles on it as it does a
 // knob's, the panel adding what is the routing's (a cell dragged switching on what it joins, a double-click connecting
-// or disconnecting, the modes and Disconnect in its menu), wherever one shows (on the operator page's INPUTS tab too).
+// or disconnecting, the modes and Disconnect in its menu), wherever one shows (on the operator page's I/O tab too).
 // The matrix's names do what the inspector's tabs do, and are the inspector's with them (see InspectorPanel). The glow
 // is the effects graph's backdrop too (see paintFxBackdrop()), which the View paints for the FX view.
 

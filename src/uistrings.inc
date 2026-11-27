@@ -650,13 +650,14 @@ STR(TabUnison, "Unison") // an operator's page: what its lower half shows
 STR(TabSpectrum, "Spectrum") // a noise operator's, in Unison's place
 STR(TabEnvelope, "Envelope")
 STR(TabScope, "Scope")
-STR(TabInputs, "Inputs") // the routes into the operator, each with its mode
+STR(TabIo, "I/O") // the routes into and out of the operator, each with its mode
 STR(TabWarp, "Warp") // its scope, warp and hard sync
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
 STR(HeadingHowToRead, "LEGEND")
 STR(HeadingInputs, "INPUTS")
+STR(HeadingOutputs, "OUTPUTS") // over the routes out of an operator, on its I/O tab
 STR(HeadingLevel, "LEVEL")
 STR(HeadingPhase, "PHASE")
 STR(HeadingGrid, "GRID")
@@ -1191,7 +1192,8 @@ STR(TipSettingsGlow, "Glow effect strength. Double-click resets")
 STR(TipSettingsLinks, "Strength of the modulation lines. Double-click resets")
 STR(TipSettingsGrid, "Strength of the sequencer's grid lines. Double-click resets")
 STR(TipBypassed, "Bypassed. Click to resume")
-STR(InputsNone, "Nothing modulates {1} yet.") // an operator's INPUTS tab with no route into it
+STR(InputsNone, "Nothing modulates {1} yet.") // an operator's I/O tab with no route into it
+STR(OutputsNone, "Nothing takes {1}'s output yet.") // an operator's I/O tab with no route out of it
 STR(InputsFeedback, "{1} feedback  ·  phase only")
 STR(TipBypass, "Bypass modulation")
 STR(TipSourceUnipolar, "Unipolar: one way. Click for bipolar") // a MODS row's switch

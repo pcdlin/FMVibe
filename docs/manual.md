@@ -346,15 +346,19 @@ combined.
 
 The summary line names the warp and says "note sync" while either is active.
 
-### Inputs tab
+### I/O tab
 
-**Inputs** lists every node routed into the operator, one row each:
+**I/O** lists the operator's routes in two parts. **Inputs** has one row for every node routed into the operator:
 
 - the node's name (click it to show that node);
 - four buttons for the route's **mode** (Phase, Linear FM, Exp FM, Ring), with the active one lit;
 - the route's depth, which you can drag, type and modulate like a wire label in the graph.
 
 The operator's feedback comes last and is always Phase.
+
+**Outputs** has one row for every node the operator is routed into, set the same way. A route into a filter or a
+shaper has no mode, so its row shows the node's name instead of the buttons. The last row is the operator's line to
+**OUT**: its depth is how loud the operator goes out.
 
 While you drag a modulation source's handle, hold it over one of these tabs for half a second to open it and drop
 the handle on its controls.
@@ -452,7 +456,7 @@ Every route into an operator works in one of four modes (Phase by default):
 | **Exp FM** | Modulates the operator's pitch in octaves, like the FM input of an analog synth (up to 4 octaves at 100 %). Deeper settings pull the pitch upward. |
 | **Ring** | Multiplies the operator's output by the source. At 100 % you hear only the sum and difference frequencies; at 50 % they are mixed with the original tone (amplitude modulation). |
 
-Set the mode from a wire's label, the right-click menu of a wire or matrix cell, or the operator's Inputs tab. Feedback
+Set the mode from a wire's label, the right-click menu of a wire or matrix cell, or the I/O tab of either operator it joins. Feedback
 is always Phase. Route amounts give finer control at low settings, and **FM Amount** scales all of them.
 
 ### Feedback and loops

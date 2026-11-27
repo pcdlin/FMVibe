@@ -338,7 +338,7 @@ private:
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: the source cards, a pill's list's, or a panel's own part (drag_.panel,
     // drag_.widget.b its part): the preset browser's list or sidebar, the SEQ view's roll, the MODS view's rows, the FX
-    // view's row and graph or the INPUTS tab's rows, say.
+    // view's row and graph or the I/O tab's rows, say.
     enum class PanArea { Sources, Panel, ModList };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an

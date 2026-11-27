@@ -918,7 +918,7 @@ Point waveMenuItem(int item) {
     return detail::waveMenuItem(item).center();
 }
 const Point kNoiseButton = waveButton(4);
-// An operator page's tabs, ENVELOPE, UNISON, INPUTS and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
+// An operator page's tabs, ENVELOPE, UNISON, I/O and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
 // and 4 cycles in its display's top right corner.
 Point opTabPoint(InspectorTab tab) {
     return detail::opTab(static_cast<int>(tab)).center();
@@ -11226,11 +11226,11 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
 // the left (a click opens the list of modes, the wheel steps them) and an x on the right that removes the route, as an
 // OUT label's does; resting, a label shows a mode other than Phase inside it. The mode is also picked from the
 // right-click menus of its label and its matrix cell (whose corner shows the glyph), and from the operator page's
-// INPUTS tab; each pick an undo step. Moved onto another operator by its arrowhead, a route keeps its mode;
+// I/O tab, among its inputs and its outputs; each pick an undo step. Moved onto another operator by its arrowhead, a route keeps its mode;
 // disconnected, it starts as Phase.
-// The INPUTS tab's rows 30 px apart: a modulated depth showing its handles under it and its ranges just above it,
-// its number left as it was (read off the rendered pixels); past the six rows the tab holds, the wheel scrolls the
-// rows and its scrollbar's thumb dragged brings them back.
+// The I/O tab's rows 30 px apart, under its INPUTS heading: a modulated depth showing its handles under it and its
+// ranges just above it, its number left as it was (read off the rendered pixels); past the rows the tab holds, the
+// wheel scrolls the rows and its scrollbar's thumb dragged brings them back.
 void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -11248,8 +11248,9 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, opTabPoint(InspectorTab::Inputs));
     view.mouseMove({600.0f, 468.0f}, {});
-    // The first row's depth, 48 px wide at the well's right, and the rows' place in it.
-    const Rect depth = detail::inputsDepth(detail::kInputsTop);
+    // The first row's depth, 48 px wide at the well's right, under the INPUTS heading, and the rows' place in it.
+    const float firstRow = detail::kInputsTop + detail::kIoHeadH;
+    const Rect depth = detail::inputsDepth(firstRow);
     auto pixels = [&](float top, float bottom) {
         std::vector<uint32_t> found;
         for (float y = top; y < bottom; y += 1.0f)
@@ -11268,15 +11269,16 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     const bool modShot = renderer.save(view, dir / "5m-op-inputs-modulated.png");
     check(modShot && pixels(depth.y + 4.0f, depth.bottom() - 4.0f) == number &&
               pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 5.0f, depth.y - 2.0f) != top,
-          "an INPUTS row's modulated depth has its handles under it and its ranges just above it, its number as it was");
+          "an I/O row's modulated depth has its handles under it and its ranges just above it, its number as it was");
 
-    // The sixth row's depth is F1's; two notches down over the names, the eighth's, the feedback's, is there.
-    const Point sixth{depth.center().x, depth.center().y + 5.0f * 30.0f};
-    const float names = detail::inputsName(detail::kInputsTop).center().x;
-    view.wheel({names, detail::kInputsTop + 18.0f}, -2.0f, {});
+    // The fifth row's depth is F; three notches down over the names (between two rows), the eighth's, the feedback's,
+    // is there.
+    const Point fifth{depth.center().x, depth.center().y + 4.0f * 30.0f};
+    const float names = detail::inputsName(firstRow).center().x;
+    view.wheel({names, firstRow + 24.0f}, -3.0f, {});
     view.poll();
     const bool scrolledShot = renderer.save(view, dir / "5n-op-inputs-scrolled.png");
-    drag(view, sixth, {sixth.x, sixth.y - 20.0f});
+    drag(view, fifth, {fifth.x, fifth.y - 20.0f});
     const bool feedback = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
     view.undo();
     // The thumb, at the bar's foot now, dragged up to its top: the first row is B's again.
@@ -11286,14 +11288,14 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, depth.center(), {depth.center().x, depth.center().y - 20.0f});
     const bool back = model.value(detail::routeParam(1, 0)) > 0.5;
     view.undo();
-    // Dragged up 60 px with the middle button over the names, the rows follow: the feedback's is the sixth again.
-    view.middleDown({names, detail::kInputsTop + 108.0f});
-    view.mouseMove({names, detail::kInputsTop + 48.0f}, {});
-    view.middleUp({names, detail::kInputsTop + 48.0f});
-    drag(view, sixth, {sixth.x, sixth.y - 20.0f});
+    // Dragged up 90 px with the middle button over the names, the rows follow: the feedback's is the fifth again.
+    view.middleDown({names, firstRow + 114.0f});
+    view.mouseMove({names, firstRow + 24.0f}, {});
+    view.middleUp({names, firstRow + 24.0f});
+    drag(view, fifth, {fifth.x, fifth.y - 20.0f});
     const bool panned = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
     check(scrolledShot && feedback && back && panned,
-          "the INPUTS tab's rows scroll under the wheel, the middle button and their scrollbar's thumb");
+          "the I/O tab's rows scroll under the wheel, the middle button and their scrollbar's thumb");
 }
 
 void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
@@ -11408,14 +11410,15 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     check(matrixShot && linear && cornerPixels() != expCorner,
           "a matrix cell shows its route's mode in its corner, and its menu picks one");
 
-    // The INPUTS tab: a row per route into A, B's and its feedback's; B's buttons pick its mode, its label its depth.
+    // The I/O tab: under INPUTS a row per route into A, B's and its feedback's; B's buttons pick its mode, its label
+    // its depth.
     model.ui.view = RoutingView::Graph;
     model.set(matrixIndex(0, 0), 0.25);
     model.ui.keptRoutes.push_back(matrixIndex(0, 0));
     view.poll();
     click(view, opTabPoint(InspectorTab::Inputs));
     const bool tab = layout.opTab == InspectorTab::Inputs;
-    const float row = detail::kInputsTop;
+    const float row = detail::kInputsTop + detail::kIoHeadH;
     auto modeButton = [&](RouteMode m) { return detail::inputsMode(row, static_cast<int>(m)).center(); };
     click(view, modeButton(RouteMode::Ring));
     const bool ringPicked = model.value(mode) == static_cast<double>(RouteMode::Ring);
@@ -11429,7 +11432,34 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     const bool undoneTwice = model.value(matrixIndex(1, 0)) == 0.5 && model.value(mode) == 0.0;
     view.redo();
     check(tab && ringPicked && inputsShot && deeper && undoneTwice && model.value(mode) == 3.0,
-          "the INPUTS tab lists the routes into an operator, its buttons picking a route's mode and its label the depth");
+          "the I/O tab lists the routes into an operator, its buttons picking a route's mode and its label the depth");
+
+    // Under OUTPUTS, past B's and the feedback's rows, A's line to OUT, its label setting A's output. B's tab, shown by
+    // a click on B's name, says nothing goes into B and lists B -> A as an output, its buttons picking its mode and
+    // its label its depth, each undoably; A's name there shows A again.
+    const float outputs = row + 2.0f * detail::kInputsStep + detail::kIoGap + detail::kIoHeadH;
+    const int aOut = paramIndex(0, OpParam::Out);
+    const double aOutWas = model.value(aOut);
+    drag(view, detail::inputsDepth(outputs).center(), {detail::inputsDepth(outputs).center().x, outputs + 40.0f});
+    const bool outSet = model.value(aOut) != aOutWas;
+    view.undo();
+    const bool outBack = model.value(aOut) == aOutWas;
+    click(view, detail::inputsName(row).center());
+    const bool showsB = layout.selectedNode == 1;
+    const float bOut = detail::kInputsTop + detail::kIoHeadH + detail::kIoNoneH + detail::kIoGap + detail::kIoHeadH;
+    click(view, detail::inputsMode(bOut, static_cast<int>(RouteMode::ExpFm)).center());
+    const bool expPicked = model.value(mode) == static_cast<double>(RouteMode::ExpFm);
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool outputsShot = renderer.save(view, dir / "5o-op-io-outputs.png");
+    const Point bDepth = detail::inputsDepth(bOut).center();
+    drag(view, bDepth, {bDepth.x, bDepth.y - 20.0f});
+    const bool bDeeper = model.value(matrixIndex(1, 0)) > 0.5;
+    view.undo();
+    view.undo();
+    const bool bUndone = model.value(matrixIndex(1, 0)) == 0.5 && model.value(mode) == 3.0;
+    click(view, detail::inputsName(bOut).center());
+    check(outSet && outBack && showsB && expPicked && outputsShot && bDeeper && bUndone && layout.selectedNode == 0,
+          "the I/O tab lists the routes out of an operator and its line to OUT, their buttons and labels setting them");
 
     // B -> A's arrowhead dragged onto C: B -> C keeps its amount and Ring, and B -> A is Phase again.
     model.set(matrixIndex(0, 0), 0.0);

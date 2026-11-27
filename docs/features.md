@@ -2020,7 +2020,7 @@ what it started goes on.
     an edit button (a pencil, the same as a Curve source's and a drawn shaper curve's), left of the keyboard, opens
     the operator's partial editor (lit while it is open; a second click closes it, as does picking another operator, filter or shaper in the
     inspector). Under the block, past a line across the page, a well: tabs along its top edge pick what the
-    display under them shows, and the tab's controls sit in a row under the well (Inputs, which has none, takes the
+    display under them shows, and the tab's controls sit in a row under the well (I/O, which has none, takes the
     well down to the lens's bottom). The tab is the same for every operator and saved with the project (a preset
     leaves it as it is); a tab whose knobs a source modulates, shown or hidden, has a ring in its corner (not the
     filled dot that says a tab's contents are at work), and holding a dragged
@@ -2068,12 +2068,16 @@ what it started goes on.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
-    - **Inputs**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
-      which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
-      naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
-      wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
-      so. The rows sit 30 px apart, room for a modulated depth's dots under it; past the six the tab holds, they
-      scroll, by the wheel over them, by dragging with the middle button held, or by the scrollbar at their right.
+    - **I/O**: under an INPUTS heading, a row per node routed into the operator (the nodes that are on, in the
+      graph's order): its name, which shows it in the inspector as a tab does; four buttons with the modes' glyphs,
+      the one in force lit, each naming its mode on hover; the mode's name; and the route's depth as a label,
+      dragged, typed and modulated as a wire's. Its feedback comes last, with its depth and "phase only". Under an
+      OUTPUTS heading, a row per node the operator is routed into, likewise: an operator's with the route's mode
+      buttons and name, a filter's or a shaper's with its title in their place (a route into one takes no mode);
+      then its line to OUT, with its output's depth as the graph's OUT label. A section with no route has a line
+      saying so ("Nothing modulates operator A yet.", "Nothing takes operator A's output yet."), in the faint text the headings take. The rows sit 30 px apart,
+      room for a modulated depth's dots under it; past what the tab holds, they scroll, by the wheel over them, by
+      dragging with the middle button held, or by the scrollbar at their right.
 
     A noise operator shows Slope and Spread in the Ratio readout's place, and no Pitch, Detune or Phase; its first tab is
     **Spectrum**, its spectrum against white, pink and brown, and it has no Warp tab (picked, it shows its
@@ -2220,7 +2224,7 @@ what it started goes on.
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a matrix cell, centered along its foot, the ranges along its top, right of a mode's glyph; on a wire or OUT label in the
-    graph and on the Inputs tab's labels, centered just under it, the ranges running along its outline's top, so
+    graph and on the I/O tab's labels, centered just under it, the ranges running along its outline's top, so
     its depth stays readable; the graph's labels, 19 px tall with their depth in the size of list rows,
     have dots as large as a knob's, 10 px apart, and their ranges a little thicker). Where a range runs past its target's end, cut off there, a short line across the
     ring or bar marks that end (in every theme; the Ratio readout's track has its arrow instead). The dots stay
@@ -2234,7 +2238,7 @@ what it started goes on.
     a depth bar in the Mods view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 24 or
-    26 px knob 2, under a 30 or 32 px one 3, under a 34 px one 4; on a wire label in the graph 4, on the Inputs tab
+    26 px knob 2, under a 30 or 32 px one 3, under a 34 px one 4; on a wire label in the graph 4, on the I/O tab
     6, a matrix cell 5, a depth bar 11), in the order the
     sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 4 on a cell, 9 on
     a depth bar; the graph's labels' as large as a knob's) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
@@ -2315,7 +2319,7 @@ what it started goes on.
   view or no longer holds that type. A drag the editor loses the mouse during (another window taking it, or the
   browser demo's page its focus) ends where it is, its edit one undo step, but drops nothing: no route moves or goes,
   no modulation is assigned, no card moves. Hold the middle button and drag over a
-  panel that scrolls (the effects chain, the source cards, the Mods view's rows, an operator's Inputs rows, the
+  panel that scrolls (the effects chain, the source cards, the Mods view's rows, an operator's I/O rows, the
   preset browser's list, a pill's open list) to drag what it shows along with the mouse, whatever is under it; past
   either end the row stops, and dragged back it follows at once. A middle press on another open list or menu does
   nothing, and one that starts a drag closes it;
@@ -2658,7 +2662,7 @@ what it started goes on.
   knobs, its curves and its lit switches, and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it
-  belongs to (its card's; in the inspector a filter's and a shaper's, and the routes into them on its Inputs tab, in
+  belongs to (its card's; in the inspector a filter's and a shaper's, and the routes into them on an operator's I/O tab, in
   that node's color, as its switches are, an operator's in the accent), modulated or not: a modulation ring whose
   source's color is like the arc's is drawn lighter (in Spectrum) or darker (in Porcelain), keeping its hue, so it
   stands apart from the arc, while the others keep their sources' colors; and its pointer a dot; an LFO's shape filled on
@@ -2699,7 +2703,7 @@ what it started goes on.
   its grid lines: Off draws none, 100 % twice as strongly as 50 %. With the mouse resting on any of the four sliders
   (not while one is dragged), a tooltip under it says what it sets and that a double-click puts it back. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
-  radius and a pixel more across, in the same places (so on an Inputs tab label or a cell, Large ones overlap a
+  radius and a pixel more across, in the same places (so on an I/O tab label or a cell, Large ones overlap a
   little). **Cards**,
   Plain (to begin with) or Tinted, tints each effect's and source card's face with its own color in Spectrum and
   Porcelain, as those themes drew their cards before they were plain (switched off, faintly); Midnight and Light
