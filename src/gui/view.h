@@ -410,7 +410,7 @@ private:
     void flash(std::string message) override;
     // The MIDI note under the keyboard's first key.
     int keyboardBase() const;
-    // The MIDI velocity a key (its rect) struck at `p` plays at: 1 at its top, 127 at its bottom.
+    // The MIDI velocity a key (its rect) struck at `p` plays at: 1 at its top, 127 over its bottom tenth.
     static int keyVelocity(const Rect &key, Point p);
     // Modulation sources. The places that hold one, in the order they show (kept while a scope goes on); shown,
     // with the card being dragged already moved to where it would land.

@@ -1399,9 +1399,9 @@ host; patterns, notes and curves are edited in the plugin only.
 ### Keyboard strip
 
 - **Keys**: six octaves, C1 to C7. The small **−** and **+** buttons under the right end shift the range by an
-  octave. A key plays as hard as where you click it: softest at its top, hardest at its bottom. Drag across the keys
-  to glide between notes; each key plays as hard as where the mouse enters it. Keys light while held, whether clicked
-  or played by the host.
+  octave. A key plays as hard as where you click it: softest at its top, hardest over its bottom tenth. Drag across
+  the keys to glide between notes; each key plays as hard as where the mouse enters it. Keys light while held, whether
+  clicked or played by the host.
 - **Bend** and **Mod** wheels, with their handles above them. Right-click a wheel or its handle to make it unipolar or
   bipolar.
 - The eight **macros**, the **Note** display and the **Velocity** display, each with its handle.

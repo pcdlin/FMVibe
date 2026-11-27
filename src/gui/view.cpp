@@ -804,7 +804,9 @@ int View::keyboardBase() const {
 }
 
 int View::keyVelocity(const Rect &key, Point p) {
-    const float along = key.h > 0.0f ? (p.y - key.y) / key.h : 1.0f;
+    // The bottom tenth of a key plays at full velocity, so 127 is easy to hit; above it velocity rises evenly.
+    constexpr float kFullBand = 0.1f;
+    const float along = key.h > 0.0f ? (p.y - key.y) / (key.h * (1.0f - kFullBand)) : 1.0f;
     // At least 1, so a key struck at its very top still sounds where velocity sets the level.
     return std::max(1, static_cast<int>(std::lround(std::clamp(along, 0.0f, 1.0f) * 127.0f)));
 }
