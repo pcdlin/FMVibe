@@ -175,7 +175,7 @@ try {
         Invoke-Git commit -m "Version $full"
         Invoke-Git tag $tag
         Invoke-Git push origin $branch $tag
-        Write-Host "== pushed $tag: GitHub Actions builds the $kind" -ForegroundColor Green
+        Write-Host "== pushed ${tag}: GitHub Actions builds the $kind" -ForegroundColor Green
     }
     finally {
         # Nothing was committed (not confirmed, or a step failed): put the files back.
