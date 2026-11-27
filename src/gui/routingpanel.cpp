@@ -850,7 +850,7 @@ void RoutingPanel::popups(std::vector<Widget> &list) const {
                 idle = rect;
         const Rect part = labelPill(routeParam(from, to), open, idle).mode;
         const Rect button{part.x, part.y, 112.0f, part.h};
-        const int items = static_cast<int>(RouteMode::Count);
+        const int items = listCount(open); // a feedback's two modes, a route's four
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
         for (int item = 0; item < items; ++item)
@@ -1818,14 +1818,23 @@ bool RoutingPanel::blocksPan(const Widget &w) const {
 }
 
 namespace {
-// A route into an operator lists its modes in a menu, the one in force checked.
+// The param holding a route's mode: a route into another operator's (RouteMode), an operator's feedback's
+// (FeedbackMode); -1 for none.
+int modeParamOf(int route) {
+    for (int op = 0; op < kOps; ++op)
+        if (route == routeParam(op, op))
+            return feedbackModeIndex(op);
+    return routeModeOfRoute(route);
+}
+
+// A route into an operator lists its modes in a menu, the one in force checked: a feedback its own.
 void addRouteModes(std::vector<MenuItem> &items, int route, double mode) {
-    if (routeModeOfRoute(route) < 0)
+    const int param = modeParamOf(route);
+    if (param < 0)
         return;
-    const auto now = routeMode(mode);
-    for (int m = 0; m < static_cast<int>(RouteMode::Count); ++m)
-        items.push_back({RoutingPanel::kRouteModeCommand + m, routeModeName(static_cast<RouteMode>(m)),
-                         static_cast<int>(now) == m});
+    const int now = static_cast<int>(std::lround(mode));
+    for (int m = 0; m < listCount(param); ++m)
+        items.push_back({RoutingPanel::kRouteModeCommand + m, listItemName(param, m), now == m});
     items.push_back({0, ""});
 }
 
@@ -1838,7 +1847,7 @@ bool RoutingPanel::contextMenu(const std::optional<Widget> &hit, Point, std::vec
     if (!hit)
         return false;
     auto modeOf = [&](int route) {
-        const int mode = routeModeOfRoute(route);
+        const int mode = modeParamOf(route);
         return mode >= 0 ? value(mode) : 0.0;
     };
     switch (hit->kind) {
@@ -1873,9 +1882,9 @@ void RoutingPanel::paramMenu(const Widget &w, std::vector<MenuItem> &items) {
     menuRoute_ = w.param;
     if (!routing_.wired(w.param))
         return;
-    if (w.kind != Kind::OutLabel && routeModeOfRoute(w.param) >= 0) {
+    if (w.kind != Kind::OutLabel && modeParamOf(w.param) >= 0) {
         items.push_back({0, ""});
-        addRouteModes(items, w.param, value(routeModeOfRoute(w.param)));
+        addRouteModes(items, w.param, value(modeParamOf(w.param)));
         items.pop_back(); // Disconnect follows the modes without a line between
     }
     items.push_back({kMenuDisconnect, tr(Str::MenuDisconnect)});
@@ -1887,8 +1896,9 @@ bool RoutingPanel::menuCommand(int command) {
     } else if (command == kMenuSwitchOff && menuNode_ >= 0) {
         edit(enabledParam(menuNode_), 0.0); // switch a node off
     } else if (command >= kRouteModeCommand && command < kRouteModeCommand + static_cast<int>(RouteMode::Count) &&
-               menuRoute_ >= 0 && routeModeOfRoute(menuRoute_) >= 0) {
-        edit(routeModeOfRoute(menuRoute_), command - kRouteModeCommand);
+               menuRoute_ >= 0 && modeParamOf(menuRoute_) >= 0 &&
+               command - kRouteModeCommand < listCount(modeParamOf(menuRoute_))) {
+        edit(modeParamOf(menuRoute_), command - kRouteModeCommand);
     } else if (command == kMenuResetBend && menuRoute_ >= 0) {
         const UndoScope step(controller());
         routing_.setWireBend(menuRoute_, RoutingModel::defaultWireBend(menuRoute_)); // a line to OUT straight

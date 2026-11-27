@@ -163,7 +163,7 @@ STR(EnvModeAdsr, "ADSR") // what an operator's envelope is
 STR(EnvModeCurve, "Curve")
 STR(EnvModeRates, "Rate/Level")
 STR(FeedbackSmooth, "Smooth") // how an operator's feedback hears it: as it always did
-STR(FeedbackDx7, "DX7") // at the DX7's rate, as its feedback runs
+STR(FeedbackDx7, "Classic") // at the DX7's rate, as the classic FM synths' feedback runs
 STR(KeyCurveLinear, "Linear") // a keyboard scaling side's curve
 STR(KeyCurveExp, "Exp")
 

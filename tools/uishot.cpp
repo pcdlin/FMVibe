@@ -12371,7 +12371,8 @@ void testLabelsClearOfEachOther(const std::filesystem::path &dir, Renderer &rend
 }
 
 // A feedback's mode (FeedbackMode): its loop's label, under the mouse, opens into a pill whose mode part lists Smooth
-// and DX7, a pick an undo step, and resting, a label in DX7 shows its glyph (read off the rendered pixels). The label
+// and DX7 and nothing after them (a click where a third would be picking nothing), a pick an undo step, and resting, a
+// label in DX7 shows its glyph (read off the rendered pixels); its right-click menu offering the two alone. The label
 // is found by its right-click menu, as below.
 void testFeedbackMode(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
@@ -12425,11 +12426,28 @@ void testFeedbackMode(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shows = pixelsAround(glyph) != smooth;
     view.undo();
     const bool undone = model.value(mode) == static_cast<double>(FeedbackMode::Smooth);
-    std::printf("      feedback's label at (%.0f, %.0f): DX7 picked %d, its glyph shown %d, undone %d\n", label.x, label.y,
-                picked, shows, undone);
-    check(row > 0.0f && listShot && picked && restShot && shows && undone && model.value(feedback) == 0.4,
-          "a feedback's pill picks its mode, Smooth or DX7, and resting in DX7 shows its glyph (read off the rendered "
-          "pixels)");
+    // Its right-click menu offers the two alone, Smooth checked.
+    int modes = 0, smoothes = 0;
+    for (const MenuItem &item : view.contextMenu(label)) {
+        modes += item.label == feedbackModeName(FeedbackMode::Smooth) ||
+                 item.label == feedbackModeName(FeedbackMode::Dx7) || item.label == routeModeName(RouteMode::Ring);
+        smoothes += item.label == feedbackModeName(FeedbackMode::Smooth) && item.checked;
+    }
+    // The list open again, a click where a third mode would be picks none (the list closing).
+    view.mouseMove({600.0f, 468.0f}, {});
+    view.mouseMove(label, {});
+    view.mouseMove(modePart, {});
+    click(view, modePart);
+    view.mouseMove({dx7Item.x, dx7Item.y + 22.0f}, {});
+    click(view, {dx7Item.x, dx7Item.y + 22.0f});
+    const bool none = model.value(mode) == static_cast<double>(FeedbackMode::Smooth);
+    std::printf("      feedback's label at (%.0f, %.0f): Classic picked %d, its glyph shown %d, undone %d, %d modes in its "
+                "menu (Smooth checked %d), no third in its list %d\n",
+                label.x, label.y, picked, shows, undone, modes, smoothes, none);
+    check(row > 0.0f && listShot && picked && restShot && shows && undone && modes == 2 && smoothes == 1 && none &&
+              model.value(feedback) == 0.4,
+          "a feedback's pill and menu offer Smooth and Classic alone, a pick its mode, and resting in Classic its "
+          "glyph (read off the rendered pixels)");
 }
 
 // A feedback loop's label moves off a wire's label: B feeds itself back, and A -> C runs straight above B, its label

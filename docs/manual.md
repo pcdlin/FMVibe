@@ -494,7 +494,7 @@ Loops can get loud but never grow without limit, and they fade out after a note 
 An operator's feedback has two modes. Hover its label in the graph and click the mode part at the label's left:
 
 - **Smooth** (the default) is FMVibe's own feedback.
-- **DX7** runs the feedback the way the DX7 does. High feedback then breaks up into noise as it does on the DX7, and
+- **Classic** runs the feedback the way the DX7 does. High feedback then breaks up into noise as it does on the DX7, and
   sounds the same whatever the oversampling. Imported DX7 voices use it.
 
 ### The matrix

@@ -190,8 +190,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   Like Phase, Linear and Exp FM take their amounts squared, and all four are scaled by FM Amount. An operator's
   feedback is always Phase, and has a mode of its own instead (`FeedbackMode`, held in its route's mode param, hidden
   from hosts and the editor's alone, as that was), picked from its label's pill as a route's mode is (its list, or the
-  wheel over it, each pick an undo step; resting, a label in DX7 shows its glyph, a wave in steps): **Smooth** (to begin
-  with, as feedback always played) hears the average of its last two samples at the voices' oversampled rate; **DX7**
+  wheel over it, each pick an undo step; resting, a label in Classic shows its glyph, a wave in steps): **Smooth** (to begin
+  with, as feedback always played) hears the average of its last two samples at the voices' oversampled rate; **Classic**
   hears the average of its last two at the DX7's rate, 49,096 Hz, held between them, so its loop runs as the DX7's does
   whatever the voices' rate (its harmonics within 0.1 dB at 2x and 4x), and high feedback breaks up into noise as it does
   there. An operator that Linear or Exp FM can take higher reads a wavetable with fewer
@@ -2701,7 +2701,7 @@ what it started goes on.
       Amount** at 200 % so that a modulator at the DX7's full level, two cycles (4 pi) of phase into its carrier, fits
       a route's 8 radians; a route's amount is then the square root of its share, from the operator's output level on
       the DX7's level curve (0.75 dB a step from 20 up, steeper below). **Feedback** 1-7 moves an operator's phase by
-      2^(feedback - 8) of its last two samples' average, as the DX7's does, its feedback in DX7 mode, at the DX7's rate
+      2^(feedback - 8) of its last two samples' average, as the DX7's does, its feedback in Classic mode, at the DX7's rate
       (the feedback up a stack in algorithms 4 and 6 a route from D into F); a carrier's Out is its gain at full envelope, and Volume comes down by as much as its
       carriers add up past one at full level;
     - each operator's **pitch**: its coarse (0 for 0.5) and fine ratio, or a fixed Freq of 10^(coarse mod 4 + fine /
