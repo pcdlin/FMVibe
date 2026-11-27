@@ -1290,6 +1290,10 @@ PresetBrowser::SaveLayout PresetBrowser::saveLayout() const {
 }
 
 void PresetBrowser::openSave(int index) {
+    // Saving the patch: the folders as they are now, which nothing may have scanned yet (Init, the browser not opened).
+    // Editing a preset's info keeps the list its index is into.
+    if (index < 0)
+        presetStore().rescanPresets();
     const std::vector<PresetEntry> &presets = presetStore().presets();
     PresetInfo info;
     if (index >= 0 && index < static_cast<int>(presets.size())) { // editing a preset's info, where it is
