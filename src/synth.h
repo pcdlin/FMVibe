@@ -384,9 +384,6 @@ private:
         std::array<double, kMaxUnison> phases{}; // in cycles, one per unison copy
         double out = 0.0;     // latest mono output sample (what other operators hear)
         double prevOut = 0.0; // the one before, for feedback smoothing
-        // DX7 feedback (see FeedbackMode): how far it is to the next of the DX7's samples, its output at the last of
-        // them, and what its feedback hears until the next, the average of the last two.
-        double dx7Tick = 0.0, dx7Last = 0.0, dx7Feedback = 0.0;
         std::array<double, kMaxUnison> incNow{}; // the copies' phase increments, moving to each block's
         int incCopies = 0;     // how many copies incNow holds
         bool incKnown = false; // incNow holds the last block's, not stale: false for a new note and after being off
@@ -447,7 +444,6 @@ private:
     // What renderBlock() ramps sample by sample toward each block's values.
     struct Levels {
         std::array<double, kOps> out{};
-        std::array<double, kOps> keyLevel{}; // an operator's keyboard scaling, a gain on all it puts out (see keyScaleDb())
         std::array<double, kOps> panL{}; // an operator's Pan as left and right gains, on all it puts out but its FM
         std::array<double, kOps> panR{};
         std::array<std::array<double, kFilters>, kOps> send{};
@@ -582,6 +578,16 @@ private:
         // started and released with them, kept apart from them so the fields the voice's samples read stay together.
         std::array<DrawnEnvelope, kOps> drawn{};
         std::array<RateEnvelope, kOps> rateEnvs{}; // and their Rate/Level envelopes (see RateEnvelope), likewise
+        // Its operators' DX7 feedback (see FeedbackMode): how far it is to the next of the DX7's samples, the output at
+        // the last of them, and what the feedback hears until the next, the average of the last two. Kept here, past
+        // the fields the voices' loop reads for every patch, as only some patches play it.
+        struct Dx7Feed {
+            double tick = 0.0, last = 0.0, held = 0.0;
+        };
+        std::array<Dx7Feed, kOps> dx7{};
+        // Keyboard level scaling (see keyScaleDb()): each operator's gain as it ramps sample by sample to the block's,
+        // and its step; likewise kept apart, and multiplied in only for the operators it scales (renderBlock()).
+        std::array<double, kOps> keyNow{}, keyTo{}, keyStep{};
     };
 
     struct HeldNote {

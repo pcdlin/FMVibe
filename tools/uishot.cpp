@@ -1228,6 +1228,30 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         view.wheel(kOpPhaseKnob, 1.0f, {});
     view.undo();
     check(std::abs(model.value(opPhase) - 0.2) < 1e-6, "a run of wheel notches is one undo step");
+    {
+        // Bend Range edited takes along the Pitch Bend's depth on a fixed operator's Pitch that bends it as far (as an
+        // imported DX7 voice's does), in the same gesture and undo step, and leaves one set otherwise alone.
+        const int bendRange = paramIndex(GlobalParam::BendRange);
+        const int follows = slotAmountIndex(kBendSource, 0), apart = slotAmountIndex(kBendSource, 1);
+        model.beginStep();
+        model.setValue(paramIndex(1, OpParam::Fixed), 1.0);
+        model.setValue(paramIndex(2, OpParam::Fixed), 1.0);
+        model.setValue(slotTargetIndex(kBendSource, 0), slotTargetValue(paramIndex(1, OpParam::Transpose)));
+        model.setValue(follows, -2.0 * 2.0 / 96.0); // bending it down by the 2 semitones Bend Range starts at
+        model.setValue(slotTargetIndex(kBendSource, 1), slotTargetValue(paramIndex(2, OpParam::Transpose)));
+        model.setValue(apart, 0.3);
+        model.endStep();
+        model.beginEdit(bendRange);
+        model.setValue(bendRange, 7.0);
+        model.setValue(bendRange, 12.0);
+        model.endEdit(bendRange);
+        const bool followed = std::abs(model.value(follows) + 2.0 * 12.0 / 96.0) < 1e-12 &&
+                              model.value(apart) == 0.3 && model.openEdits == 0;
+        view.undo();
+        check(followed && model.value(bendRange) == 2.0 && std::abs(model.value(follows) + 4.0 / 96.0) < 1e-12,
+              "Bend Range takes a fixed operator's Pitch Bend depth that bends it as far along, in one undo step");
+        view.undo();
+    }
     // Moving a node is a step too.
     const Point a = nodeCenter(model.layout(), 0);
     const float wasX = model.layout().nodeX[0];

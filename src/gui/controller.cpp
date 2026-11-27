@@ -67,6 +67,32 @@ double UndoHistory::pushedCrossover(int index, double v) const {
     return std::min(controller_.value(partner), std::max(normFromCutoff(hz / third), 0.0));
 }
 
+std::vector<int> UndoHistory::bendFollowers(int index) const {
+    std::vector<int> depths;
+    if (index != paramIndex(GlobalParam::BendRange))
+        return depths;
+    const double range = controller_.value(index);
+    for (int slot = 0; slot < kSlots; ++slot) {
+        const int target = slotTarget(controller_.value(slotTargetIndex(kBendSource, slot)));
+        int op = -1;
+        for (int o = 0; o < kOps && target >= 0; ++o)
+            if (target == paramIndex(o, OpParam::Transpose))
+                op = o;
+        if (op < 0 || controller_.value(paramIndex(op, OpParam::Fixed)) < 0.5)
+            continue;
+        const int depth = slotAmountIndex(kBendSource, slot);
+        if (std::abs(std::abs(controller_.value(depth)) - bendDepth(1.0, range)) < 1e-9)
+            depths.push_back(depth);
+    }
+    return depths;
+}
+
+double UndoHistory::bendDepth(double depth, double range) {
+    // Bipolar, half its depth bent fully up, of Pitch's span: as far as Bend Range.
+    const ParamDef &pitch = paramTable()[paramIndex(0, OpParam::Transpose)];
+    return (depth < 0.0 ? -1.0 : 1.0) * 2.0 * range / (pitch.max - pitch.min);
+}
+
 void UndoHistory::beginEdit(int index) {
     const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
     const int partner = applying_ ? -1 : crossoverPartner(index);
@@ -82,6 +108,13 @@ void UndoHistory::beginEdit(int index) {
             controller_.performBeginEdit(field);
     if (partner >= 0)
         controller_.performBeginEdit(partner);
+    if (!applying_ && index == paramIndex(GlobalParam::BendRange)) {
+        bendGesture_ = bendFollowers(index);
+        for (int depth : bendGesture_) {
+            record(depth);
+            controller_.performBeginEdit(depth);
+        }
+    }
 }
 
 void UndoHistory::setValue(int index, double value) {
@@ -97,6 +130,7 @@ void UndoHistory::setValue(int index, double value) {
         record(field);
     if (partner >= 0)
         record(partner);
+    followBend(index, value);
     for (int field : fields)
         if (field >= 0)
             controller_.performSetValue(field, value);
@@ -104,6 +138,13 @@ void UndoHistory::setValue(int index, double value) {
         if (const double pushed = pushedCrossover(index, value); pushed != controller_.value(partner))
             controller_.performSetValue(partner, pushed);
     endStep();
+}
+
+void UndoHistory::followBend(int index, double value) {
+    for (int depth : bendFollowers(index)) { // picked before Bend Range moves
+        record(depth);
+        controller_.performSetValue(depth, bendDepth(controller_.value(depth), value));
+    }
 }
 
 void UndoHistory::endEdit(int index) {
@@ -114,8 +155,14 @@ void UndoHistory::endEdit(int index) {
             controller_.performEndEdit(field);
     if (partner >= 0)
         controller_.performEndEdit(partner);
-    if (!applying_)
+    if (!applying_) {
+        if (index == paramIndex(GlobalParam::BendRange)) {
+            for (int depth : bendGesture_)
+                controller_.performEndEdit(depth);
+            bendGesture_.clear();
+        }
         endStep();
+    }
 }
 
 void UndoHistory::beginStep(bool merges) {

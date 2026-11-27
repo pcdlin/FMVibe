@@ -487,7 +487,8 @@ public:
     // Each gesture is an undo step, unless a beginStep() around it groups it with others. While a three-band
     // dynamics is linked, an edit of one band's threshold, ratio or gain is made to every band's (see linkedBands()).
     // An edit of a three-band split's crossover that takes it past the other pushes that one along, a third of an
-    // octave away, in the same gesture (see crossoverPartner()).
+    // octave away, in the same gesture (see crossoverPartner()). An edit of Bend Range takes along the Pitch Bend's
+    // modulations of a fixed operator's Pitch that bend it as far as Bend Range (see bendFollowers()).
     void beginEdit(int index);
     void setValue(int index, double value);
     void endEdit(int index);
@@ -532,6 +533,14 @@ private:
     int crossoverPartner(int index) const;
     // Where the other crossover goes for `index` set to `value`: pushed a third of an octave past it, or as it is.
     double pushedCrossover(int index, double value) const;
+    // For an edit of Bend Range, the depths of the Pitch Bend's modulations of a fixed operator's Pitch that bend it as
+    // far as Bend Range bends the rest (as an imported DX7 voice's do, see dx7::toPatch()), so that they keep doing so;
+    // none for any other param. A depth set to bend it otherwise is left alone.
+    std::vector<int> bendFollowers(int index) const;
+    // Such a depth for Bend Range at `range`, its sign kept (bending up where it was at 0).
+    static double bendDepth(double depth, double range);
+    // Sets those depths for Bend Range going to `value` (before it does).
+    void followBend(int index, double value);
     void apply(const UndoStep &step, bool forward);
 
     Controller &controller_;
@@ -545,6 +554,7 @@ private:
     uint64_t patchLoads_ = 0;    // see patchLoads()
     std::wstring preset_;        // see presetFile()
     bool presetSet_ = false;     // setPreset() was called in the open step
+    std::vector<int> bendGesture_; // the depths a gesture on Bend Range took along (see bendFollowers())
 };
 
 // What the editor needs from the plugin: the params and their edits, the telemetry, the layout, the keyboard and the

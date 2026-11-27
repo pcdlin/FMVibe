@@ -2405,7 +2405,8 @@ inline double hzOfPitch(double pitch) { return 440.0 * std::exp2((pitch - 69.0) 
 // breakpoint, evenly in dB on the way there; past that, a Linear side adds its depth again every octave, an Exp one
 // doubles all it has moved every octave (2, 4, 8 times the depth two, three and four octaves out), as the DX7's
 // exponential curves do. Held within kKeyScaleFloorDb..kKeyScaleCeilingDb, so a boosted modulator can't run away and a
-// cut one ends silent. The note is the key a voice plays (gliding with it), not the bend.
+// cut one ends silent. The note is the key a voice plays (gliding with it) transposed by the global Pitch as set, not
+// the bend.
 constexpr double kMaxKeyDepthDb = 24.0;
 constexpr double kKeyScaleCeilingDb = 24.0;
 constexpr double kKeyScaleFloorDb = -96.0;

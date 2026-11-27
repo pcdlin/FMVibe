@@ -140,8 +140,25 @@ public:
             if (stage_ != Stage::Idle && stage_ != Stage::Fade)
                 enter(3);
         }
-        if (stage_ == Stage::Play || stage_ == Stage::Hold)
-            target_ = levelUnits(settings_.levels[segment_]); // its levels may move under it
+        // Its rates, levels and scaling may move under it (modulated, or turned while a note plays): the segment it is
+        // on goes on at its rate and toward its level as they are now, a wait for as much of its time as is left;
+        // held at L3, it follows L3 there at R3.
+        if (stage_ == Stage::Play) {
+            target_ = levelUnits(settings_.levels[segment_]);
+            speed_ = segmentSpeed(segment_);
+            if (waitTotal_ > 0.0) {
+                const double total = waitTicks(segment_);
+                if (total != waitTotal_) {
+                    waits_ *= total / waitTotal_;
+                    waitTotal_ = total;
+                }
+            } else {
+                rising_ = target_ > units_;
+            }
+        } else if (stage_ == Stage::Hold) {
+            target_ = levelUnits(settings_.levels[2]);
+            speed_ = segmentSpeed(2);
+        }
     }
 
     double next() {
@@ -186,27 +203,42 @@ private:
             return;
         }
         stage_ = segment_ == 3 && held_ ? Stage::Hold : Stage::Play;
+        if (stage_ == Stage::Hold) { // at L3 while the key is down, following it (see tick())
+            target_ = levelUnits(settings_.levels[2]);
+            speed_ = segmentSpeed(2);
+            return;
+        }
         const int i = segment_;
         target_ = levelUnits(settings_.levels[i]);
         rising_ = target_ > units_;
-        const double rate = settings_.rates[i];
         waits_ = 0.0;
-        if (std::abs(target_ - units_) < 0.5 || (i == 0 && settings_.levels[0] < 0.5)) {
-            // A segment that stays at its level waits; an attack to nothing waits a twentieth as long.
-            const double r = std::min(rate + settings_.scaling, 99.0);
-            double seconds = staticSeconds(r);
-            if (i == 0 && settings_.levels[0] < 0.5 && r < 77.0)
-                seconds /= 20.0;
-            waits_ = std::max(seconds / kTickSeconds, 1e-9);
-        }
+        if (std::abs(target_ - units_) < 0.5 || (i == 0 && settings_.levels[0] < 0.5))
+            waits_ = waitTicks(i); // a segment that stays at its level waits
         waitTotal_ = waits_;
         from_ = rising_ ? std::max(units_, 1716.0) : units_; // where progress() counts from
-        speed_ = std::min(rateSpeed(rate) + settings_.scaling, 63.0);
+        speed_ = segmentSpeed(i);
+    }
+
+    // Segment i's speed (of the 64), its rate's with the scaling's.
+    double segmentSpeed(int i) const { return std::min(rateSpeed(settings_.rates[i]) + settings_.scaling, 63.0); }
+    // How many ticks segment i waits where it stays at its level; an attack to nothing waits a twentieth as long.
+    double waitTicks(int i) const {
+        const double r = std::min(settings_.rates[i] + settings_.scaling, 99.0);
+        double seconds = staticSeconds(r);
+        if (i == 0 && settings_.levels[0] < 0.5 && r < 77.0)
+            seconds /= 20.0;
+        return std::max(seconds / kTickSeconds, 1e-9);
     }
 
     void tick() {
-        if (stage_ == Stage::Hold)
+        if (stage_ == Stage::Hold) { // at L3 (target_ here, see prepare()), following it as it moves, at R3
+            const double step = tickUnits(speed_);
+            if (units_ < target_)
+                units_ = std::min(units_ + std::max(std::floor(17.0 - units_ / 256.0), 1.0) * step, target_);
+            else if (units_ > target_)
+                units_ = std::max(units_ - step, target_);
             return;
+        }
         if (waits_ > 0.0) {
             waits_ -= 1.0;
             if (waits_ <= 0.0)

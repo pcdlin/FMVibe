@@ -179,7 +179,8 @@ pattern plays as it was made. In a DAW, loading a preset never changes the host'
 - **Volume**: the output level after the effects, −60 to +12 dB (−12 dB by default).
 - **FM Amount**: scales every route in the routing at once, a quick way to make a patch duller or brighter.
 - **Pitch**: transposes the whole instrument by up to ±48 semitones. A useful envelope target for drums.
-- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It can't be modulated.
+- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It can't be modulated. Fixed
+  operators that the Pitch Bend bends by the same range, as in an imported DX7 voice, follow it when you change it.
 - **Pan**: the stereo position of the whole instrument.
 - **Poly | Mono**, **Legato**, **Glide** and **Always**: the play modes. See [Play modes](#play-modes).
 - **Voices**: the polyphony limit, 1–512 (16 by default), with the number of voices playing beside it.
@@ -363,7 +364,7 @@ The summary line names the warp and says "note sync" while either is active.
 The **KEYS** tab sets keyboard level scaling: how the operator's level changes across the keyboard. On a modulator,
 that changes how bright the sound is, so you can keep high notes from getting harsh.
 
-- **Break** is the note where scaling starts.
+- **Break** is the note where scaling starts. Notes count after the global **Pitch**, as for Rate Scaling.
 - **L Depth** and **R Depth** set how far the level moves one octave below and above Break, from −24 to +24 dB.
 - **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
 - **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.

@@ -92,7 +92,7 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    did nothing on it. An earlier state's fixed operators load with them at 0, and what modulated them modulating
 //    nothing, playing as they played (see fixedIgnoredPitch()).
 //    And an operator's feedback has a mode (FeedbackMode), its route into itself's mode param, which held nothing: an
-//    earlier state's is 0, Smooth, as it played.
+//    earlier state's loads Smooth, as it played, whatever the param held.
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
 constexpr uint32_t kStateVersion = 18;
@@ -822,8 +822,13 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         holdSeqCurveEnds(loaded);
     if (header[1] < 17)
         transposeFromRoot(loaded);
-    if (header[1] < 18)
+    if (header[1] < 18) {
         fixedIgnoredPitch(loaded);
+        // An operator's feedback's mode param, its route into itself's, held nothing then (a host could still set it):
+        // it loads Smooth, as the feedback played.
+        for (int op = 0; op < kOps; ++op)
+            loaded[feedbackModeIndex(op)] = static_cast<double>(FeedbackMode::Smooth);
+    }
     if (header[1] < 9) { // the chain's effects in its order, as the graph's line
         if (!outWired) {
             std::vector<int> chain;

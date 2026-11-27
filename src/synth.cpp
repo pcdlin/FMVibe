@@ -496,7 +496,6 @@ void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool
 }
 
 void Synth::noteOn(const NoteRef &note, double velocity) {
-    globalRestart_ = true; // every note starts the global LFOs again (see lfoGlobal())
     if (note.key < 0 || note.key > 127 || voices_.empty())
         return;
     // In Key and Latch, the sequencer takes the host's keys: they start and transpose its pattern, and no voice plays
@@ -511,6 +510,9 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         seq_.keyDown(note.key);
         return;
     }
+    // Every note a voice plays starts the global LFOs again (see lfoGlobal()), at the next render(), which starts at
+    // the note's frame: a host's note splits the block there, and the sequencer's notes start between spans.
+    globalRestart_ = true;
     // A velocity that isn't a number plays as 0, so the note still plays out and ends.
     const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
     // Another key is still down, or the pedal holds a note: played legato.
@@ -1904,7 +1906,7 @@ void Synth::telemetry(Telemetry &out) const {
     }
     for (int i = 0; i < kOps; ++i) {
         // Keyboard scaling's level on it too, as it is heard (held to full level, as the envelope is).
-        out.opLevels[i] = static_cast<float>(std::min(newest->ops[i].env.level() * newest->levels.keyLevel[i], 1.0));
+        out.opLevels[i] = static_cast<float>(std::min(newest->ops[i].env.level() * newest->keyNow[i], 1.0));
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
         out.opEnvPhase[i] = newest->ops[i].env.following()        ? static_cast<float>(newest->drawn[i].phase())
@@ -3325,6 +3327,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     if (v.fresh) {
         v.fresh = false;
         v.keepLfos = v.keepFollow = false;
+        v.dx7.fill({}); // DX7 feedback starts from silence, not from what a voice stolen for it played
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
@@ -3477,7 +3480,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // nothing (its targets stay at 0), so there is nothing more to work out for it.
             op.out = 0.0;
             op.prevOut = 0.0;
-            op.dx7Tick = op.dx7Last = op.dx7Feedback = 0.0;
+            v.dx7[i] = {};
+            v.keyNow[i] = v.keyTo[i] = 1.0;
             op.incKnown = false;
             op.syncOn = false;
             op.syncKnown = false;
@@ -3515,10 +3519,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             followDrawn(v, i, p, params);
         if (envMode == OpEnvMode::Rates || op.env.followingRates()) // or its Rate/Level envelope
             followRates(v, i, p, params);
-        // Keyboard level scaling, by the key the voice plays (gliding with it): what it puts out (to the output, the
-        // filters, the shapers and the operators it modulates) up or down. Exactly 1 while it is off.
-        target.keyLevel[i] = keyScaleGain(keyScaleDb(
-            v.glide, p[paramIndex(i, OpParam::KeyBreak)], p[paramIndex(i, OpParam::KeyLeftDepth)],
+        // Keyboard level scaling, by the key the voice plays (gliding with it), transposed by the global Pitch as set, as
+        // Rate Scaling takes it: what it puts out (to the output, the filters, the shapers and the operators it
+        // modulates) up or down. Exactly 1 while it is off.
+        v.keyTo[i] = keyScaleGain(keyScaleDb(
+            v.glide + params[paramIndex(GlobalParam::Pitch)], p[paramIndex(i, OpParam::KeyBreak)], p[paramIndex(i, OpParam::KeyLeftDepth)],
             p[paramIndex(i, OpParam::KeyRightDepth)], p[paramIndex(i, OpParam::KeyLeftCurve)],
             p[paramIndex(i, OpParam::KeyRightCurve)]));
         target.out[i] = p[paramIndex(i, OpParam::Out)];
@@ -3733,6 +3738,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
     }
     const Levels &routeBy = audioOn ? audioSteps(step) : step; // and the steps, likewise
+    // Keyboard level scaling ramps as the levels do; only the operators it scales (or one ramping back to 1) multiply
+    // their envelope by it, so a patch without it plays exactly as before and pays for no multiply.
+    uint32_t keyed = 0;
+    for (int i = 0; i < kOps; ++i) {
+        if (!opOn[i])
+            continue;
+        if (starting || std::abs(v.keyTo[i] - v.keyNow[i]) < 1e-9)
+            v.keyNow[i] = v.keyTo[i];
+        v.keyStep[i] = (v.keyTo[i] - v.keyNow[i]) * ramp;
+        if (v.keyNow[i] != 1.0 || v.keyStep[i] != 0.0)
+            keyed |= 1u << i;
+    }
     // Filters run only while something is routed into them (a route still
     // ramping down counts), and only once (on the left channel, copied right)
     // while the voice has no stereo spread.
@@ -4008,6 +4025,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (dx7Feedback_[i] && opOn[i])
             dx7Fed |= 1u << i;
     const double dx7Step = kDx7Rate / rate_;
+    const uint32_t extras = keyed | dx7Fed; // the operators with either (see the loop below)
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
@@ -4102,8 +4120,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
             // Its envelope a sample at a time, here: run a block ahead into a buffer of its own (Envelope::run()), the
             // same levels made the voices a sixth slower with one copy in the plugins' MSVC build.
-            // Keyboard scaling's level on it: exactly 1 while it is off, so it changes nothing then.
-            const double envLevel = op.env.next(rates[i]) * level.keyLevel[i];
+            double envLevel = op.env.next(rates[i]);
             // A synced operator's scope follows the note's cycles, which its own restart with.
             const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;
@@ -4181,17 +4198,27 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;
-            // DX7 feedback (see FeedbackMode): at each of the DX7's samples, what its feedback hears next, its last two's
-            // average, held between them; kept as the prevOut that, with its output, averages to it, so that its
-            // feedback is read as any other's (a branch there cost the voices' loop more than its work).
-            if (dx7Fed >> i & 1u) {
-                op.dx7Tick += dx7Step;
-                if (op.dx7Tick >= 1.0) {
-                    op.dx7Tick -= std::floor(op.dx7Tick);
-                    op.dx7Feedback = 0.5 * (op.out + op.dx7Last);
-                    op.dx7Last = op.out;
+            // Keyboard scaling and DX7 feedback, for the operators that have them, behind a single test, as two cost
+            // every patch more than their work.
+            if (extras >> i & 1u) {
+                if (keyed >> i & 1u) { // keyboard scaling's level on all it puts out
+                    v.keyNow[i] += v.keyStep[i];
+                    envLevel *= v.keyNow[i];
+                    op.out = mono * monoGain[i] * envLevel;
                 }
-                op.prevOut = 2.0 * op.dx7Feedback - op.out;
+                // DX7 feedback (see FeedbackMode): at each of the DX7's samples, what its feedback hears next, its last
+                // two's average, held between them; kept as the prevOut that, with its output, averages to it, so that
+                // its feedback is read as any other's (a branch there cost the voices' loop more than its work).
+                if (dx7Fed >> i & 1u) {
+                    Voice::Dx7Feed &fed = v.dx7[i];
+                    fed.tick += dx7Step;
+                    if (fed.tick >= 1.0) {
+                        fed.tick -= std::floor(fed.tick);
+                        fed.held = 0.5 * (op.out + fed.last);
+                        fed.last = op.out;
+                    }
+                    op.prevOut = 2.0 * fed.held - op.out;
+                }
             }
             if (tapped >> i & 1u) {
                 if (i == scopeOp) {

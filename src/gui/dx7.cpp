@@ -454,11 +454,13 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
             p[paramIndex(op, OpParam::PhaseRandom)] = 1.0;
 
         // Its keyboard level scaling: the DX7 moves an operator's level from 17 notes over its break point (of the key
-        // played, transposed, where the operator's Key Break is of the key played) in steps of three keys, a linear
-        // side 0.0803 levels (0.75 dB) a step per unit of depth, an exponential one from 1/8 of that, doubling all it
-        // moved every octave past the first, as keyScaleDb()'s Exp does. A side that lifts the level stops at the
-        // DX7's top level (127 on its scale): held so it reaches no higher at the end of the keys on its side.
-        const double breakNote = voice.op(dxOp, BreakPoint) + 17.0 - (voice.voice(Transpose) - 24.0);
+        // played, transposed, as the operator's Key Break is of the key played transposed by Pitch) in steps of three
+        // keys, a linear side 0.0803 levels (0.75 dB) a step per unit of depth, an exponential one from 1/8 of that,
+        // doubling all it moved every octave past the first, as keyScaleDb()'s Exp does. A side that lifts the level
+        // stops at the DX7's top level (127 on its scale): held so it reaches no higher at the end of the keys on its
+        // side, which run from A0 to C8 as played (the break point, as played, `breakNote`).
+        const double breakAt = voice.op(dxOp, BreakPoint) + 17.0;
+        const double breakNote = breakAt - (voice.voice(Transpose) - 24.0);
         auto side = [&](int depth, int curve, double octaves) {
             const bool exp = curve == 1 || curve == 2; // -LIN, -EXP, +EXP, +LIN
             double db = 0.75 * depth * (exp ? 4.0 * 329.0 / 32768.0 : 4.0 * 329.0 / 4096.0); // an octave out
@@ -477,7 +479,7 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
                                               std::max(breakNote - 21.0, 0.0) / 12.0);
         const auto [rightDb, rightCurve] = side(voice.op(dxOp, RightDepth), voice.op(dxOp, RightCurve),
                                                 std::max(108.0 - breakNote, 0.0) / 12.0);
-        p[paramIndex(op, OpParam::KeyBreak)] = std::clamp(breakNote, 0.0, 127.0);
+        p[paramIndex(op, OpParam::KeyBreak)] = std::clamp(breakAt, 0.0, 127.0);
         p[paramIndex(op, OpParam::KeyLeftDepth)] = leftDb;
         p[paramIndex(op, OpParam::KeyRightDepth)] = rightDb;
         p[paramIndex(op, OpParam::KeyLeftCurve)] = leftCurve;

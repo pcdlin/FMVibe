@@ -38,7 +38,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Rate/Level envelopes** (EnvMode's third, `OpEnvMode::Rates`): an operator's envelope can instead be a DX7's,
     four rates and four levels (0-99 each) and a Rate Scaling (0-7), ids 83000 + 20·op, hidden, modulated as any
     param. It rises or falls to L1 at R1, L2 at R2 and L3 at R3, holds at L3 while the key is down, and, let go, goes
-    to L4 at R4 from where it is; a segment between two equal levels waits as long as the DX7's does. Levels are in
+    to L4 at R4 from where it is; a segment between two equal levels waits as long as the DX7's does. Its rates,
+    levels and Rate Scaling turned or modulated under a note take effect at once: the segment it is on goes on at
+    its rate and toward its level as they are then (a wait for as much of its new time as was left), and held at L3,
+    it follows L3 at R3. Levels are in
     the DX7's steps of 1/256 of a doubling (99 full, each step about 0.75 dB below 20, more under it), a rise jumps
     from silence to 40 dB under full and slows as it nears the top, a rate moving its level a set number of those
     steps a tick (1.45 ms, the DX7's 64 samples at 44.1 kHz) with the gain ramped across each tick, so no segment has
@@ -88,7 +91,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     doubles all it has moved every octave (at −6 dB: 12, 24 and 48 dB down two, three and four octaves out), as the
     DX7's exponential curves do. It is held between −96 dB and +24 dB. It scales all the operator puts out (to the
     output, the filters and shapers, and the operators it modulates, so on a modulator it is the index), by the key the
-    voice plays, gliding with it (the pitch bend leaves it alone), and moves smoothly when it changes. The depths and
+    voice plays, gliding with it, and transposed by the global Pitch as set (as the Rate/Level envelope's Rate
+    Scaling is; Pitch's modulation and the pitch bend leave it alone), and moves smoothly when it changes. The depths and
     the breakpoint can be modulated and automated; the curves are switches. Off (no depth), wherever its breakpoint is,
     the operator plays exactly as it did, so projects and presets from before it sound as they did (ids 145 to 149 +
     50·op, `OpParam::KeyBreak` to `KeyRightCurve`; the curves' list, `KeyCurve`, is stored by number). The KEYS tab
@@ -2726,7 +2730,9 @@ what it started goes on.
       carriers add up past one at full level;
     - each operator's **pitch**: its coarse (0 for 0.5) and fine ratio, or a fixed Freq of 10^(coarse mod 4 + fine /
       100) Hz (on Mult x10 above 2 kHz), the pitch envelope, the LFO's pitch modulation and the pitch bend (by Bend
-      Range) on a fixed operator's own Pitch too, as they bend the DX7's, its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
+      Range, a Pitch Bend modulation that an edit of Bend Range in the editor takes along, as it does any Pitch Bend
+      modulation of a fixed operator's Pitch that bends it as far as Bend Range: `UndoHistory::bendFollowers()`; a
+      host's automation of Bend Range leaves it as it is) on a fixed operator's own Pitch too, as they bend the DX7's, its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
       Pitch (24 in tune); with oscillator key sync off, Rnd Phase at 100 %;
     - each operator's **envelope** as its Rate/Level envelope (see Rate/Level envelopes, under the operators), its
       four rates, four levels and rate scaling as the voice has them, which runs them as the DX7 does;

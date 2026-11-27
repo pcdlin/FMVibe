@@ -7,6 +7,14 @@
 #include <algorithm>
 #include <cmath>
 
+#ifndef FMVIBE_NOINLINE
+#ifdef _MSC_VER
+#define FMVIBE_NOINLINE __declspec(noinline)
+#else
+#define FMVIBE_NOINLINE __attribute__((noinline))
+#endif
+#endif
+
 namespace fmvibe {
 
 // One attack, decay or release segment: its phase step per sample and its
@@ -213,18 +221,26 @@ private:
         case Stage::Release:
             return releaseStep(r);
         case Stage::Drawn:
-            level_ = drawn_->next();
-            if (drawn_->idle())
-                stop();
-            return level_;
         case Stage::Rates:
-            level_ = rates_->next();
-            if (rates_->idle())
-                stop();
-            return level_;
+            return followed();
         case Stage::Sustain: // see next()
         case Stage::Idle:
             break;
+        }
+        return level_;
+    }
+
+    // The level of what it follows (a drawn or a Rate/Level envelope), out of the way of the AHDSR's stages, which
+    // every other patch runs and the voices' loop inlines.
+    FMVIBE_NOINLINE double followed() {
+        if (stage_ == Stage::Drawn) {
+            level_ = drawn_->next();
+            if (drawn_->idle())
+                stop();
+        } else {
+            level_ = rates_->next();
+            if (rates_->idle())
+                stop();
         }
         return level_;
     }
@@ -275,8 +291,12 @@ private:
     double k_ = 0.0;
     bool resync_ = true;
     bool drawnRising_ = false;       // whether what it follows was rising as the block started (see follow())
-    DrawnEnvelope *drawn_ = nullptr; // what it follows, while it does
-    RateEnvelope *rates_ = nullptr;
+    // What it follows, while it does: by its stage, a drawn envelope or a Rate/Level one, sharing one place so that an
+    // operator's Envelope, which the voices' loop reads for every patch, is no larger than it was with drawn ones alone.
+    union {
+        DrawnEnvelope *drawn_ = nullptr;
+        RateEnvelope *rates_;
+    };
 };
 
 } // namespace fmvibe

@@ -2468,6 +2468,14 @@ void effectsChainChecks() {
                   before[paramIndex(1, OpParam::Transpose)] == 7.0 && before[slotAmountIndex(0, 1)] == 0.3,
               "a state before version 18 loads a fixed operator's Pitch and Detune, which did nothing, at 0");
         check(std::equal(after.begin(), after.end(), f.begin()), "a version 18 state loads a fixed operator as saved");
+        // And an operator's feedback mode, its route into itself's mode param, held nothing before version 18: a
+        // version 17 state holding 1 there (as a host could set it) loads Smooth, a version 18 state DX7.
+        ParamValues fb = defaults();
+        fb[feedbackModeIndex(2)] = static_cast<double>(FeedbackMode::Dx7);
+        const ParamValues fbBefore = load(fb, 17), fbAfter = load(fb, 18);
+        check(fbBefore[feedbackModeIndex(2)] == static_cast<double>(FeedbackMode::Smooth) &&
+                  fbAfter[feedbackModeIndex(2)] == static_cast<double>(FeedbackMode::Dx7),
+              "a state before version 18 loads every feedback Smooth, whatever its mode param held");
     }
     {
         // The places past the first 16: a patch with an LFO in the last place on operator A's level, the 17th place's
@@ -6850,6 +6858,38 @@ void dx7Checks() {
         const double end = rmsAt(out, 0.95);
         std::printf("      L4 at 50: %.0f dB once let go and done\n", end);
         check(end < -200.0, "a DX7 envelope that releases to a level heard still ends its voice");
+    }
+    // Its rates and levels moving under it (turned or modulated as a note plays): held at L3, L3 turned from 99 to 70
+    // takes the level there, 21 dB down (63 to 49 halves of its scaled level, 64 units each); and R2 turned from 20 to
+    // 60 half a second into a decay speeds it up there, from 2 dB a second to near 200.
+    {
+        Engine e(2);
+        gui::UiLayout layout;
+        dx7::toPatch(patch(32, [](dx7::Voice &) {}), e.p, layout);
+        e.noteOn(69);
+        std::vector<float> out = e.render(static_cast<size_t>(0.3 * kSampleRate));
+        e.p[paramIndex(0, OpParam::EnvLevel3)] = 70.0;
+        const std::vector<float> rest = e.render(static_cast<size_t>(0.5 * kSampleRate));
+        out.insert(out.end(), rest.begin(), rest.end());
+        const double held = rmsAt(out, 0.25), moved = rmsAt(out, 0.7);
+        Engine d(2);
+        dx7::toPatch(rateVoice([&](dx7::Voice &voice) {
+                         set(voice, 1, dx7::Rate1 + 1, 20);
+                         set(voice, 1, dx7::Level1 + 1, 0);
+                         set(voice, 1, dx7::Level1 + 2, 0);
+                     }),
+                     d.p, layout);
+        d.noteOn(69);
+        std::vector<float> fall = d.render(static_cast<size_t>(0.5 * kSampleRate));
+        d.p[paramIndex(0, OpParam::EnvRate2)] = 60.0;
+        const std::vector<float> faster = d.render(static_cast<size_t>(0.5 * kSampleRate));
+        fall.insert(fall.end(), faster.begin(), faster.end());
+        const double before = rmsAt(fall, 0.49), after = rmsAt(fall, 0.74);
+        std::printf("      L3 turned from 99 to 70 while held: %.1f dB (21 wanted); R2 turned up mid-decay: %.1f dB in "
+                    "0.25 s\n",
+                    moved - held, after - before);
+        check(std::abs(moved - held + 21.0) < 2.0 && after - before < -30.0,
+              "a DX7 envelope follows its levels and rates as they move under it, held at L3 too");
     }
 
     // Velocity sensitivity 7: a note at 64 some 16 dB under one at 127, as the DX7's velocity curve has it.
