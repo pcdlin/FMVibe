@@ -43,7 +43,7 @@ FMVibe works in the spirit of classic and modern FM synthesizers. Its main featu
 - **Effects**: up to 32 effects from 17 types, in a chain that can be split into frequency bands.
 - **A step sequencer** with a piano roll, four patterns per preset and automation curves.
 - **Presets** with a browser, categories, favorites and search, and a library of factory presets.
-- MPE support, MTS-ESP microtuning and tuning files (Scala, AnaMark), CLAP per-voice modulation, and a resizable UI with four themes.
+- MPE support, microtuning (MTS-ESP, Scala and AnaMark files), CLAP per-voice modulation, and a resizable UI with four themes.
 
 ## 2. Installation
 
@@ -140,9 +140,8 @@ Tabs use two small marks in their top-right corner, with the same meaning everyw
 
 From left to right:
 
-- **A tuning fork**, only while an MTS-ESP master or the patch's own tuning tunes FMVibe: lit for a master, plain for
-  the patch's tuning. Hover it to see the scale's name and where the tuning comes from. See
-  [Microtuning (MTS-ESP)](#microtuning-mts-esp) and [Tuning files](#tuning-files).
+- **A tuning fork**, while an MTS-ESP master or the patch's own tuning plays. Hover it to see the scale's name. See
+  [Microtuning (MTS-ESP)](#microtuning-mts-esp).
 - **Tempo**, with its **H** button: see [Tempo](#tempo).
 - **Play** (a triangle), right of the tempo, only while the sequencer is on: plays the sequencer's pattern from the
   start of its loop, from any view. It is the SEQ card's Play button: while the pattern plays it shows a lit square,
@@ -1443,54 +1442,29 @@ MPE is saved with your project but not with presets, so browsing presets leaves 
 
 ### Microtuning (MTS-ESP)
 
-FMVibe plays in any tuning that an **MTS-ESP** master plugin sets, such as ODDSound's free MTS-ESP Mini, which loads
-Scala (`.scl`, `.kbm`) and `.tun` files. To use one:
+FMVibe plays in the tuning an **MTS-ESP** master plugin sets, such as ODDSound's free MTS-ESP Mini:
 
-1. Install the master plugin and put it on any track of your project.
-2. In FMVibe's settings, switch **Tuning (MTS-ESP)** on. It is off in a new instance.
-3. Load a scale in the master. Every FMVibe instance with MTS-ESP on plays in it at once.
+1. Put the master plugin on any track of your project.
+2. In FMVibe's settings, switch **Tuning (MTS-ESP)** on.
+3. Load a scale in the master.
 
-While a master tunes FMVibe, the title bar shows a tuning fork, lit. Hover it to see the scale's name and where the
-tuning comes from.
+With MTS-ESP on, FMVibe also follows **MTS SysEx** messages sent to its MIDI input. Operators set to a fixed pitch
+ignore the tuning, and keys the tuning leaves unmapped play nothing.
 
-Without a master, and with MTS-ESP on, FMVibe also follows **MTS SysEx** (MIDI Tuning Standard messages) sent to it on its MIDI input.
-The title bar shows no tuning fork for it. A master always wins over SysEx, and over a tuning loaded into the patch (see
-[Tuning files](#tuning-files)).
-
-How a tuning plays:
-
-- Glide, pitch bend, note expressions, Pitch and key tracking all work on the tuned pitch. Operators set to a fixed
-  pitch ignore the tuning.
-- A key the master leaves unmapped plays nothing. In Key and Latch, the sequencer still uses that key to transpose
-  its pattern, and the pattern's notes play in the tuning.
-
-The settings dialog has two options for it (see [Settings](#15-settings)):
-
-- **Tuning (MTS-ESP)**: switch it **Off** to ignore the master and MTS SysEx in this instance. A tuning loaded into
-  the patch still plays.
-- **Retune**: on **Continuous** (the default), held notes follow the tuning when it changes. On **Note On**, each
-  note keeps the tuning it started with.
-
-Both are saved with your project but not with presets.
+**Retune** in the settings: on **Continuous** (the default), held notes follow a tuning change. On **Note On**, each
+note keeps the tuning it started with.
 
 ### Tuning files
 
-A patch can have its own tuning, loaded from a file. Presets and projects keep it, so it comes back with the patch.
-Use the title bar's **...** menu:
+A patch can have its own tuning, which presets and projects keep. In the title bar's **...** menu:
 
-- **Load custom tuning...** loads a scale: Scala (`.scl`), Ableton's Scala (`.ascl`) or AnaMark (`.tun`), up to 128 notes.
-- **Load keyboard mapping...** loads a Scala keyboard mapping (`.kbm`). It sets which key plays which note of the
-  scale, the reference pitch, and keys that play nothing. It works over the patch's scale, or over standard tuning.
+- **Load custom tuning...** loads a Scala (`.scl`, `.ascl`) or AnaMark (`.tun`) scale. Without a keyboard mapping, a
+  Scala scale starts on middle C.
+- **Load keyboard mapping...** loads a Scala keyboard mapping (`.kbm`): which key plays which note, and the reference
+  pitch.
 
-While a file is loaded, its name shows in a faint line under its entry, and the reset button at the right end of the
-entry (**Reset tuning** or **Reset keyboard mapping**) takes it out again. Undo brings it back.
-
-Without a keyboard mapping, a Scala scale starts on middle C, at its usual pitch. An `.ascl` file and a `.tun` file
-set their own pitches.
-
-The title bar shows a tuning fork while the patch's tuning plays: hover it to see the scale's name. A connected
-MTS-ESP master wins over it, so the whole project can follow one tuning. To hear the patch's own tuning then, switch
-**Tuning (MTS-ESP)** off in the settings.
+The reset button at the end of each entry removes the file. A connected MTS-ESP master wins over the patch's tuning:
+to hear the patch's tuning, switch **Tuning (MTS-ESP)** off.
 
 ## 14. Presets
 
@@ -1643,8 +1617,7 @@ your web browser. The dialog has two tabs: **Visual** and **Engine**.
 - **Oversampling**: 1x, 2x (default), 4x or 8x for the voices. Higher values reduce aliasing in bright FM and driven
   filters at the cost of CPU. Changing it restarts the plugin briefly.
 - **MPE**: Off or On, and the **Bend** range for MPE member channels (12, 24, 48 or 96 semitones).
-- **Tuning (MTS-ESP)**: Off (default) or On, and **Retune**: Note On or Continuous (default). The line under them says
-  where the tuning comes from: an MTS-ESP master, MTS SysEx, or neither. See
+- **Tuning (MTS-ESP)**: Off (default) or On, and **Retune**: Note On or Continuous (default). See
   [Microtuning (MTS-ESP)](#microtuning-mts-esp).
 
 Double-click a slider to reset it. Enter or Escape closes the dialog.
