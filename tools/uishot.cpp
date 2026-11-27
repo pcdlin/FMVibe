@@ -933,16 +933,16 @@ Point listStep(Rect button, int dir) {
     return detail::listStepButton(button, dir).center();
 }
 
-// The type's list button on a filter's page (where a shaper's curve's is), and its entries, the families of types,
-// which open under it.
-const Point kTypeButton = detail::kFilterTypeButton.center();
+// The type's list button on a filter's page (where a shaper's curve's is), and its
+// entries, the families of types, which open under the whole row.
+const Point kTypeButton = detail::filterTypeButton().center();
 Point typeItem(detail::FilterFamily family) {
     return detail::listMenuItem(detail::kFilterTypeButton, detail::kFilterFamilies, static_cast<int>(family)).center();
 }
 
-// The Model list's button beside the slope's, under the response of a filter whose family has models, and its
-// entries, the family's models, which open under it, wider.
-const Rect kModelRect = detail::filterModelButton(detail::kFilterDisplay, false);
+// The Model list's button beside the slope's, in the type's row of a filter whose family has models, and its entries,
+// the family's models, which open under it, wider.
+const Rect kModelRect = detail::filterRowModelButton();
 const Point kModelButton = kModelRect.center();
 Point modelItem(FilterType type) {
     const detail::FilterFamilyTypes &family = detail::filterFamilyTypes(type);
@@ -952,9 +952,8 @@ Point modelItem(FilterType type) {
     return detail::listMenuItem(detail::filterModelMenuButton(kModelRect), family.count, at).center();
 }
 
-// The slope's list button under the response of a low-pass or band-pass (beside its Model list), and its entries,
-// 6 to 24 dB, which open under it.
-const Rect kSlopeRect = detail::filterModelSlopeButton(detail::kFilterDisplay, false);
+// The slope's list button at the right end of the type's row, and its entries, 6 to 24 dB, which open under it.
+const Rect kSlopeRect = detail::filterRowSlopeButton();
 const Point kSlopeButton = kSlopeRect.center();
 Point slopeItem(int slope) {
     return detail::listMenuItem(kSlopeRect, kFilterSlopes, slope).center();
@@ -1017,8 +1016,9 @@ int clipRow(ClipMode mode) {
 Point shaperListItem(ClipMode mode) {
     return ins(1009.0f, 220.0f + 4.0f + clipRow(mode) * 22.0f + 11.0f);
 }
-Point shaperCurveAt(double x, double y) {
-    return ins(908.0f + static_cast<float>(x) * 252.0f, 338.0f - static_cast<float>(y) * 42.24f);
+Point shaperCurveAt(double x, double y) { // its curve 8 px inside the display, its levels 0.88 of the way up and down
+    const Rect r = detail::kShaperDisplay.inset(8.0f);
+    return {r.x + static_cast<float>(x) * r.w, r.center().y - static_cast<float>(y) * 0.44f * r.h};
 }
 const Point kShaperEdit = detail::kShaperEditButton.center();
 
@@ -1817,7 +1817,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         model.live.notePitch = pitch;
         view.poll();
         renderer.save(view, dir / "18e-filter-key-track.png");
-        return static_cast<int>(renderer.pixel(ins(910.0f + 0.75f * 248.0f, 329.0f)) >> 16 & 255);
+        const Rect r = detail::kFilterDisplay; // three quarters across, half way down
+        return static_cast<int>(renderer.pixel({r.x + 10.0f + 0.75f * (r.w - 20.0f), r.y + 0.52f * r.h}) >> 16 & 255);
     };
     const int fillC4 = fillAt(60.0f), fillC7 = fillAt(96.0f);
     check(fillC7 > fillC4 + 10, "a filter's response moves with the note its key tracking follows");
@@ -4159,6 +4160,27 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(2, OpParam::Enabled), 1.0);
     view.mouseMove({600.0f, 328.0f}, {});
     const bool pageShot = renderer.save(view, dir / "30-shaper-page.png");
+    // Under its curve, its I/O list: A's and B's sends under INPUTS, A's label setting its send, undoably; two
+    // notches down (as far as it scrolls), its route into C under OUTPUTS, whose buttons pick that route's mode.
+    {
+        const float step = detail::kInputsStep, aRow = detail::kBoxIoTop + detail::kIoHeadH;
+        const Point aDepth = detail::inputsDepth(aRow).center();
+        drag(view, aDepth, {aDepth.x, aDepth.y + 20.0f});
+        const bool aLower = model.value(shaperSendIndex(0, shaper)) < 0.8;
+        view.undo();
+        const bool aBack = model.value(shaperSendIndex(0, shaper)) == 0.8;
+        view.wheel({detail::inputsName(aRow).center().x, aRow + 24.0f}, -2.0f, {});
+        view.poll();
+        const float cRow = aRow + 2.0f * step + detail::kIoGap + detail::kIoHeadH - step;
+        const int mode = detail::routeModeParam(kOps + kFilters + shaper, 2);
+        click(view, detail::inputsMode(cRow, static_cast<int>(RouteMode::Ring)).center());
+        const bool ring = model.value(mode) == static_cast<double>(RouteMode::Ring);
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool ioShot = renderer.save(view, dir / "30-shaper-io.png");
+        view.undo();
+        check(aLower && aBack && ring && ioShot && model.value(mode) == 0.0,
+              "a shaper's page lists its routes in and out under its curve, their labels and buttons setting them");
+    }
     click(view, kShaperList);
     click(view, shaperListItem(ClipMode::Custom));
     drag(view, shaperCurveAt(0.5, 0.0), shaperCurveAt(0.5, 0.5));
@@ -4318,7 +4340,7 @@ void testShapePick(const std::filesystem::path &dir, Renderer &renderer) {
         view.poll();
         auto cxAt = [&](int i) { return model.value(shapeFieldIndex(clip.curve, i, PointField::X)); };
         auto cyAt = [&](int i) { return model.value(shapeFieldIndex(clip.curve, i, PointField::Y)); };
-        boxDrag(shaperCurveAt(0.85, 0.9), shaperCurveAt(0.45, -0.3)); // from the right half, over the middle
+        boxDrag(shaperCurveAt(0.8, 0.98), shaperCurveAt(0.45, -0.3)); // from the right half, clear of its line
         drag(view, shaperCurveAt(0.75, 0.6), shaperCurveAt(0.3, 0.7));
         const bool middle = cxAt(1) == 0.5 && nearly(cyAt(1), 0.1) && cxAt(2) > 0.5 && cxAt(2) < 0.51 &&
                             nearly(cyAt(2), 0.7) && cxAt(3) == 1.0;
@@ -15529,7 +15551,7 @@ void run(const std::filesystem::path &dir, float scale) {
         // Its arrows: back from the first family round to the last, on round to the first again and on to the
         // second, each click an undo step; the arrow under the mouse lit (read off the rendered pixels, in its corner,
         // clear of its glyph).
-        const Rect button = detail::kFilterTypeButton;
+        const Rect button = detail::filterTypeButton();
         const Rect next = detail::listStepButton(button, 1);
         const Point corner{next.x + 2.5f, next.y + 3.0f};
         view.mouseMove({button.x - 8.0f, button.center().y}, {});
@@ -15558,14 +15580,6 @@ void run(const std::filesystem::path &dir, float scale) {
         check(stepsShot && hovered > idle + 8 && wrapped && round && on && stepUndone && quick,
               "the arrows in a filter's type list step its family round the list's ends, undoably, lit under the "
               "mouse, and a quick second click steps again");
-        // The Model button's arrows: on from SVF to Ladder, back round to Sallen-Key.
-        model.set(type, static_cast<double>(FilterType::LowPass));
-        click(view, listStep(kModelRect, 1));
-        const bool nextModel = typeIs(FilterType::Ladder);
-        click(view, listStep(kModelRect, -1));
-        click(view, listStep(kModelRect, -1));
-        check(nextModel && typeIs(FilterType::SallenKeyLow),
-              "the arrows on the Model button step the model round its family's ends");
         model.set(type, static_cast<double>(FilterType::LowPass));
     }
     // A morph's slope's list and notch switch, side by side where the slope's list is: 24 dB picked from the list
@@ -15575,8 +15589,8 @@ void run(const std::filesystem::path &dir, float scale) {
         const int type = paramIndex(0, FilterParam::Type), mode = paramIndex(0, FilterParam::MorphMode),
                   morph = paramIndex(0, FilterParam::Morph), vowel = paramIndex(0, FilterParam::Vowel),
                   slopeIndex = paramIndex(0, FilterParam::Slope);
-        const Rect slopeButton = detail::morphSlopeButton(detail::kFilterDisplay);
-        const Point notchButton = detail::morphNotchButton(detail::kFilterDisplay).center();
+        const Rect slopeButton = detail::filterRowSlopeButton();
+        const Point notchButton = detail::filterRowModelButton().center();
         pickType(view, FilterType::Morph);
         click(view, slopeButton.center());
         view.mouseMove(detail::listMenuItem(slopeButton, kFilterSlopes, 3).center(), {});

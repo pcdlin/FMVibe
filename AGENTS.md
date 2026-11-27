@@ -709,7 +709,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor, whose pencil sits beside the curve's list (on the
-    shaper effect's card too), lit while it is open (read off the rendered pixels);
+    shaper effect's card too), lit while it is open (read off the rendered pixels); and the I/O list under its
+    curve, an input's label setting its send, undoably, and scrolled to OUTPUTS, its route into an operator's
+    buttons picking that route's mode;
   - a shaper's Stack curve, between Fold and Custom in its list, showing its Stack stepper beside LINK, on its page
     left of it (the list narrowing for it, the knobs staying) and on the shaper effect's card right of it, the two
     centered together, its + an undo step a click, dragged in whole stages, undoably, and the wheel over the list's
@@ -728,9 +730,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     curve's) showing the seven families with their icons (read off the rendered pixels) and picking one; the Model
     list beside the slope's picking a low-pass's Ladder, a family picked keeping the model where it has it (Ladder's
     high-pass and band-pass) and else taking its first; the wheel over the type's button stepping the family and over
-    the Model button the model, a run of notches one undo step, held at the lists' ends, and the Model button's arrows
-    stepping round its family; and the filter card's type list picking Comb, and its Model button, short and without
-    arrows, picking a low-pass's Diode from its list; a morph's slope's list picking 24 dB (18 refused) and its notch switch beside it (the notch's icon)
+    the Model button (short and without arrows, in the type's row) the model, a run of notches one undo step, held at
+    the lists' ends; and the filter card's type list picking Comb, and its Model button, short and without
+    arrows, picking a low-pass's Diode from its list; a morph's slope's list picking 24 dB (18 refused) and its notch switch in the Model list's place (the notch's icon)
     going through the notch and back, its six knobs, its Morph after Resonance turning, and a formant's, its Vowel after Q turning;
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;

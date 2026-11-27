@@ -99,8 +99,9 @@ private:
     OpWarp opWarp(int op) const;
     bool opSynced(int op) const;
     std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;
-    // A row of operator `op`'s I/O tab: a section's heading (INPUTS or OUTPUTS), its line saying it has no route, a
-    // route in from `node`, its feedback, a route out to `node` or its line to OUT; `at` its top, in px down the list.
+    // A row of a node's I/O list (an operator's on its I/O tab, a filter's or a shaper's under its display): a section's
+    // heading (INPUTS or OUTPUTS), its line saying it has no route, a route in from `node`, its feedback, a route out to
+    // `node` or its line to OUT; `at` its top, in px down the list.
     struct IoRow {
         enum class Kind { Heading, None, In, Feedback, Out, Bus };
         Kind kind;
@@ -111,13 +112,15 @@ private:
     // Its rows, the nodes that are on in the graph's order: the inputs, the feedback, then the outputs and OUT. How
     // long they are, how far they scroll at most and where they are scrolled to, in rows of kInputsStep; where a row
     // is drawn, and the scrollbar's thumb.
-    std::vector<IoRow> ioRows(int op) const;
+    std::vector<IoRow> ioRows(int node) const;
     static float ioLength(const std::vector<IoRow> &rows);
-    float ioEnd(int op) const;
-    float ioFirst(int op) const;
-    float ioY(int op, float at) const;
-    Rect ioThumb(int op) const;
-    // Whether the rows of the operator shown's I/O tab show at `p`, scrolling (more than fit).
+    static float ioTop(int node); // where its list starts (see kInputsTop, kBoxIoTop)
+    bool ioShown(int node) const; // its list shows: a filter's and a shaper's always, an operator's on its I/O tab
+    float ioEnd(int node) const;
+    float ioFirst(int node) const;
+    float ioY(int node, float at) const;
+    Rect ioThumb(int node) const;
+    // Whether the rows of the node shown's I/O list show at `p`, scrolling (more than fit).
     bool ioScrollAt(Point p) const;
     // What a filter's display reads (see FilterReads): the values, where modulation takes them now and how far.
     std::pair<double, double> reach(int param, double set) const;
@@ -130,7 +133,7 @@ private:
     void paintUnison(Canvas &c, Rect r, int op);
     void paintScope(Canvas &c, Rect r, int op);
     void paintNoiseSlope(Canvas &c, Rect r, int op);
-    void paintIo(Canvas &c, int op);
+    void paintIo(Canvas &c, int node);
 
     PanelHost &host_;
     ShapeEditor &shapes_;
@@ -141,7 +144,7 @@ private:
     const ParamTable &table_;
     Drag drag_;
     int waveMenu_ = -1;          // the operator whose list of more waves is open, or -1
-    float ioScroll_ = 0.0f;      // rows the I/O tab is scrolled to, before clamping
+    float ioScroll_ = 0.0f;      // rows the I/O list is scrolled to, before clamping
     float opScopeLevel_ = 0.0f;  // the operator scope's level, following its spans' peaks, which its dB readout shows
     ScopeCache<std::vector<Assignment>> assignments_;
 };

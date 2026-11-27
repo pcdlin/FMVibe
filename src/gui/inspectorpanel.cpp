@@ -127,16 +127,46 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                 knob(params[i], opKnobCenter(i - 2), kOpKnobD, labels[i]);
     };
     const Str envLabels[] = {Str::LabelAttack, Str::LabelHold, Str::LabelDecay, Str::LabelSustain, Str::LabelRelease};
-    // What feeds a filter or shaper, from the other nodes that are on.
-    auto inputKnobs = [&](int into) {
-        std::vector<int> sources;
-        for (int from = 0; from < kNodes; ++from)
-            if (from != into && routing_.nodeOn(from))
-                sources.push_back(from);
-        const float spacing = (kInspector.w - 32.0f) / std::max<size_t>(sources.size(), 6);
-        for (size_t i = 0; i < sources.size(); ++i)
-            knob(routeParam(sources[i], into), {kInspector.x + 16.0f + spacing * (i + 0.5f), kInspector.y + 314.0f},
-                 28.0f, kNodeNames[sources[i]]);
+    // A node's I/O list: a row per route into it and out of it, the name showing its node, the buttons picking its mode
+    // (a route into an operator's), the label setting its depth as a wire's does. Its feedback comes last of the
+    // inputs, and its line to OUT last of the outputs. Past what the list holds they scroll, cut off at its ends.
+    auto ioWidgets = [&](int at) {
+        const Rect clip = detail::ioList(ioTop(at));
+        auto shown = [&](float y) { return y + kInputsRowSpan > clip.y && y < clip.bottom(); };
+        for (const IoRow &row : ioRows(at)) {
+            const float y = ioY(at, row.at);
+            if (!shown(y))
+                continue;
+            const size_t start = list.size();
+            const int from = row.kind == IoRow::Kind::Out ? at : row.node;
+            const int to = row.kind == IoRow::Kind::Out ? row.node : at;
+            switch (row.kind) {
+            case IoRow::Kind::In:
+            case IoRow::Kind::Out: {
+                add(Kind::MatrixLabel, inputsName(y), -1, row.node);
+                if (to < kOps) {
+                    const size_t buttons = list.size();
+                    for (int m = 0; m < static_cast<int>(RouteMode::Count); ++m)
+                        add(Kind::Choice, inputsMode(y, m), routeModeParam(from, to), from, m);
+                    merge(buttons);
+                }
+                add(Kind::WireLabel, inputsDepth(y), routeParam(from, to), from, to);
+                break;
+            }
+            case IoRow::Kind::Feedback:
+                add(Kind::WireLabel, inputsDepth(y), routeParam(at, at), at, at);
+                break;
+            case IoRow::Kind::Bus: // as the OUT label in the graph
+                add(Kind::OutLabel, inputsDepth(y), outParam(at), at, -1);
+                break;
+            default:
+                break;
+            }
+            for (size_t i = start; i < list.size(); ++i)
+                list[i].clip = clip;
+        }
+        if (ioEnd(at) > 0.0f)
+            add(Kind::InputsScroll, ioScrollTrack(ioTop(at)).inset(-3.0f));
     };
     if (isShaperNode(node)) {
         // The curve's list and the symmetric and link switches (the Stack curve's Stack stepper left of LINK, without
@@ -167,7 +197,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
         if (clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom &&
             shapes_.shapeEditing() != shaperCurve(shaper))
             drawnCurve(kFxSlots + shaper, kShaperDisplay);
-        inputKnobs(node);
+        ioWidgets(node);
     } else if (node < kOps) {
         const int op = node;
         // One segmented row, the list's button last in it.
@@ -241,47 +271,8 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
                          tr(unisonLabels[i]));
             }
         }
-        if (tab == InspectorTab::Inputs) {
-            // A row per route into it and out of it: the name shows its node, the buttons pick its mode (a route
-            // into an operator's), the label sets its depth as a wire's does. Its feedback comes last of the inputs,
-            // always Phase, and its line to OUT last of the outputs. Past what the tab holds they scroll, cut off at
-            // the list's ends.
-            auto shown = [](float y) { return y + kInputsRowSpan > kInputsList.y && y < kInputsList.bottom(); };
-            for (const IoRow &row : ioRows(op)) {
-                const float y = ioY(op, row.at);
-                if (!shown(y))
-                    continue;
-                const size_t start = list.size();
-                const int from = row.kind == IoRow::Kind::Out ? op : row.node;
-                const int to = row.kind == IoRow::Kind::Out ? row.node : op;
-                switch (row.kind) {
-                case IoRow::Kind::In:
-                case IoRow::Kind::Out: {
-                    add(Kind::MatrixLabel, inputsName(y), -1, row.node);
-                    if (to < kOps) {
-                        const size_t buttons = list.size();
-                        for (int m = 0; m < static_cast<int>(RouteMode::Count); ++m)
-                            add(Kind::Choice, inputsMode(y, m), routeModeParam(from, to), from, m);
-                        merge(buttons);
-                    }
-                    add(Kind::WireLabel, inputsDepth(y), routeParam(from, to), from, to);
-                    break;
-                }
-                case IoRow::Kind::Feedback:
-                    add(Kind::WireLabel, inputsDepth(y), routeParam(op, op), op, op);
-                    break;
-                case IoRow::Kind::Bus: // as the OUT label in the graph
-                    add(Kind::OutLabel, inputsDepth(y), outParam(op), op, -1);
-                    break;
-                default:
-                    break;
-                }
-                for (size_t i = start; i < list.size(); ++i)
-                    list[i].clip = kInputsList;
-            }
-            if (ioEnd(op) > 0.0f)
-                add(Kind::InputsScroll, inputsScrollTrack().inset(-3.0f));
-        }
+        if (tab == InspectorTab::Inputs)
+            ioWidgets(op);
         if (tab == InspectorTab::Warp) {
             // The warps as buttons, each its icon (named in its tooltip), its amount, and hard sync to the note.
             const size_t buttons = list.size();
@@ -320,17 +311,15 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
     } else {
         const int filter = node - kOps;
         const auto filterType = filterTypeOf(value(paramIndex(filter, FilterParam::Type)));
-        add(Kind::ListButton, kFilterTypeButton, paramIndex(filter, FilterParam::Type)); // as a shaper's curve's
-        if (filterType == FilterType::Morph) { // its slope's list and notch switch side by side
-            add(Kind::ListButton, morphSlopeButton(kFilterDisplay), paramIndex(filter, FilterParam::Slope));
-            add(Kind::Toggle, morphNotchButton(kFilterDisplay), paramIndex(filter, FilterParam::MorphMode));
-        } else if (hasFilterModels(filterType)) { // its Model list beside the slope's (see kModelList)
-            add(Kind::ListButton, filterModelButton(kFilterDisplay, false), paramIndex(filter, FilterParam::Type),
-                kModelList);
-            add(Kind::ListButton, filterModelSlopeButton(kFilterDisplay, false), paramIndex(filter, FilterParam::Slope));
-        } else {
-            add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
-        }
+        // Its type's list (as a shaper's curve's), then in the same row its Model list (short, see kModelListPlain), its
+        // slope's and a morph's notch switch.
+        const bool models = hasFilterModels(filterType), morph = filterType == FilterType::Morph;
+        add(Kind::ListButton, filterTypeButton(), paramIndex(filter, FilterParam::Type));
+        if (models)
+            add(Kind::ListButton, filterRowModelButton(), paramIndex(filter, FilterParam::Type), kModelListPlain);
+        if (morph)
+            add(Kind::Toggle, filterRowModelButton(), paramIndex(filter, FilterParam::MorphMode));
+        add(Kind::ListButton, filterRowSlopeButton(), paramIndex(filter, FilterParam::Slope));
         const FilterKnobLabels names = filterKnobLabels(filterType, false);
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
                               paramIndex(filter, FilterParam::KeyTrack), paramIndex(filter, FilterParam::Drive),
@@ -354,7 +343,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
         }
         const Point handle = filterHandle(kFilterDisplay, value(params[0]), value(params[1]));
         add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, filter);
-        inputKnobs(node);
+        ioWidgets(node);
     }
     // The operator's envelope's handles, on its ENVELOPE tab, as the View lists every envelope's.
     if (node < kOps && opTabShown(node) == InspectorTab::Envelope && !opEnvDrawn(node))
@@ -373,17 +362,11 @@ void InspectorPanel::popups(std::vector<Widget> &list) const {
         open >= 0 && isFilterNode(pageNode) && open == paramIndex(pageNode - kOps, FilterParam::Slope);
     const bool typeList =
         open >= 0 && isFilterNode(pageNode) && open == paramIndex(pageNode - kOps, FilterParam::Type);
-    const FilterType pageType =
-        isFilterNode(pageNode) ? filterTypeOf(value(paramIndex(pageNode - kOps, FilterParam::Type))) : FilterType::LowPass;
-    const bool morphSlope = slopeList && pageType == FilterType::Morph;
-    const bool modelSlope = slopeList && hasFilterModels(pageType);
     const bool model = typeList && host_.openListModel(); // its Model list, beside its slope's
     if (shaperList || slopeList || typeList) {
-        const Rect button = morphSlope   ? morphSlopeButton(kFilterDisplay)
-                            : modelSlope ? filterModelSlopeButton(kFilterDisplay, false)
-                            : slopeList  ? kFilterSlopeButton
-                            : model      ? filterModelMenuButton(filterModelButton(kFilterDisplay, false))
-                            : typeList   ? kFilterTypeButton
+        const Rect button = slopeList ? filterRowSlopeButton()
+                            : model     ? filterModelMenuButton(filterRowModelButton())
+                            : typeList  ? kFilterTypeButton
                                          : shaperModeButton(clipMode(value(open)) == ClipMode::Custom,
                                                             clipMode(value(open)) == ClipMode::Stack);
         const int shown = static_cast<int>(std::lround(value(open)));
@@ -558,8 +541,8 @@ void InspectorPanel::paintBack(Canvas &c) {
                             [this](int param, double set) { return reach(param, set); }};
     paintFilterResponse(c, kFilterDisplay, voiceFilterParams(filter), reads, t.voices > 0 ? t.notePitch : 60.0,
                         kFilterColor, &t.filterSpectrum[filter], t.age);
-    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
-           Align::Left, true);
+    c.fillRect(kBoxIoWell, kDisplayColor, kRadiusCard);
+    paintIo(c, node);
 }
 
 // A filter's or shaper's routes, for its page's summary: what goes into it, the filters and shapers it feeds and the
@@ -602,8 +585,8 @@ void InspectorPanel::paintPageTitle(Canvas &c, int node, Rect r, const std::stri
 void InspectorPanel::paintShaperPage(Canvas &c, int shaper) {
     c.fillRect(kShaperDisplay, kDisplayColor, kRadiusCard);
     shapes_.paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
-    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
-           Align::Left, true);
+    c.fillRect(kBoxIoWell, kDisplayColor, kRadiusCard);
+    paintIo(c, kOps + kFilters + shaper);
 }
 
 // Where the unison copies sit: left to right by stereo position, up and down by detune.
@@ -669,30 +652,30 @@ void InspectorPanel::switchFixed(int op) {
     mods_.editMany(changes);
 }
 
-std::vector<InspectorPanel::IoRow> InspectorPanel::ioRows(int op) const {
+std::vector<InspectorPanel::IoRow> InspectorPanel::ioRows(int node) const {
     using K = IoRow::Kind;
     std::vector<IoRow> rows;
     float at = 0.0f;
-    auto put = [&](K kind, int node, bool outputs, float h) {
-        rows.push_back({kind, node, outputs, at});
+    auto put = [&](K kind, int other, bool outputs, float h) {
+        rows.push_back({kind, other, outputs, at});
         at += h;
     };
     put(K::Heading, -1, false, kIoHeadH);
     size_t first = rows.size();
     for (int from = 0; from < kNodes; ++from)
-        if (from != op && routing_.nodeOn(from) && routing_.wired(routeParam(from, op)))
+        if (from != node && routing_.nodeOn(from) && routing_.wired(routeParam(from, node)))
             put(K::In, from, false, kInputsStep);
-    if (routing_.wired(routeParam(op, op)))
-        put(K::Feedback, op, false, kInputsStep);
+    if (routing_.wired(routeParam(node, node)))
+        put(K::Feedback, node, false, kInputsStep);
     if (rows.size() == first)
         put(K::None, -1, false, kIoNoneH);
     at += kIoGap;
     put(K::Heading, -1, true, kIoHeadH);
     first = rows.size();
     for (int to = 0; to < kNodes; ++to)
-        if (to != op && routing_.nodeOn(to) && routing_.wired(routeParam(op, to)))
+        if (to != node && routing_.nodeOn(to) && routing_.wired(routeParam(node, to)))
             put(K::Out, to, true, kInputsStep);
-    if (routing_.goesOut(op))
+    if (routing_.goesOut(node))
         put(K::Bus, -1, true, kInputsStep);
     if (rows.size() == first)
         put(K::None, -1, true, kIoNoneH);
@@ -707,35 +690,44 @@ float InspectorPanel::ioLength(const std::vector<IoRow> &rows) {
     return last.at + (last.kind == IoRow::Kind::None ? kIoNoneH : kInputsRowSpan);
 }
 
-float InspectorPanel::ioEnd(int op) const {
-    return std::max((ioLength(ioRows(op)) - (kInputsBottom - kInputsTop)) / kInputsStep, 0.0f);
+float InspectorPanel::ioTop(int node) {
+    return node < kOps ? kInputsTop : kBoxIoTop;
 }
 
-float InspectorPanel::ioFirst(int op) const {
-    return std::clamp(ioScroll_, 0.0f, ioEnd(op));
+bool InspectorPanel::ioShown(int node) const {
+    return node >= kOps ? node < kNodes : node >= 0 && opTabShown(node) == InspectorTab::Inputs;
 }
 
-float InspectorPanel::ioY(int op, float at) const {
-    return kInputsTop + at - ioFirst(op) * kInputsStep;
+float InspectorPanel::ioEnd(int node) const {
+    return std::max((ioLength(ioRows(node)) - (kInputsBottom - ioTop(node))) / kInputsStep, 0.0f);
 }
 
-Rect InspectorPanel::ioThumb(int op) const {
-    const Rect track = inputsScrollTrack();
-    const float length = std::max(ioLength(ioRows(op)), 1.0f);
-    const float h = std::max(track.h * std::min((kInputsBottom - kInputsTop) / length, 1.0f), 16.0f);
-    return {track.x, track.y + (track.h - h) * ioFirst(op) / std::max(ioEnd(op), 0.001f), track.w, h};
+float InspectorPanel::ioFirst(int node) const {
+    return std::clamp(ioScroll_, 0.0f, ioEnd(node));
 }
 
-// The sections' headings, the names of the nodes routed into and out of the operator and their modes' names (a
-// filter's or shaper's title in their place), its feedback's row, OUT's, or a line saying a section has none; the
-// buttons and labels draw themselves, cut off at the list's ends as they scroll.
-void InspectorPanel::paintIo(Canvas &c, int op) {
+float InspectorPanel::ioY(int node, float at) const {
+    return ioTop(node) + at - ioFirst(node) * kInputsStep;
+}
+
+Rect InspectorPanel::ioThumb(int node) const {
+    const Rect track = ioScrollTrack(ioTop(node));
+    const float length = std::max(ioLength(ioRows(node)), 1.0f);
+    const float h = std::max(track.h * std::min((kInputsBottom - ioTop(node)) / length, 1.0f), 16.0f);
+    return {track.x, track.y + (track.h - h) * ioFirst(node) / std::max(ioEnd(node), 0.001f), track.w, h};
+}
+
+// The sections' headings, the names of the nodes routed into and out of the node and their modes' names (a route
+// into a filter or a shaper takes none: the other node's title in their place), its feedback's row, OUT's, or a line
+// saying a section has none; the buttons and labels draw themselves, cut off at the list's ends as they scroll.
+void InspectorPanel::paintIo(Canvas &c, int node) {
     using K = IoRow::Kind;
-    c.pushClip(kInputsList);
+    const Rect clip = detail::ioList(ioTop(node));
+    c.pushClip(clip);
     const std::optional<Widget> &hover = host_.hovered();
-    for (const IoRow &row : ioRows(op)) {
-        const float y = ioY(op, row.at);
-        if (y + kInputsRowSpan <= kInputsList.y || y >= kInputsList.bottom())
+    for (const IoRow &row : ioRows(node)) {
+        const float y = ioY(node, row.at);
+        if (y + kInputsRowSpan <= clip.y || y >= clip.bottom())
             continue;
         const float left = inputsName(y).x;
         const Rect rest{inputsMode(y, 0).x, y, inputsDepth(y).x - inputsMode(y, 0).x - 6.0f, 18.0f};
@@ -745,9 +737,8 @@ void InspectorPanel::paintIo(Canvas &c, int op) {
                    tr(row.outputs ? Str::HeadingOutputs : Str::HeadingInputs), kTextLabel, kFaint, Align::Left, true);
             break;
         case K::None:
-            c.text({left, y, kOpWell.right() - 12.0f - left, 18.0f},
-                   trf(row.outputs ? Str::OutputsNone : Str::InputsNone, {nodeTitle(op)}), kTextBody, kFaint,
-                   Align::Left);
+            c.text({left, y, kOpWell.right() - 12.0f - left, 18.0f}, tr(row.outputs ? Str::OutputsNone : Str::InputsNone),
+                   kTextBody, kFaint.alpha(0.6f), Align::Left);
             break;
         case K::In:
         case K::Out: {
@@ -755,17 +746,18 @@ void InspectorPanel::paintIo(Canvas &c, int op) {
                                  hover->rect.y == inputsName(y).y;
             c.text(inputsName(y), kNodeNames[row.node], kTextBody, hovered ? kText : nodeColor(row.node), Align::Left,
                    true);
-            const int from = row.kind == K::Out ? op : row.node, to = row.kind == K::Out ? row.node : op;
+            const int from = row.kind == K::Out ? node : row.node, to = row.kind == K::Out ? row.node : node;
             if (to < kOps)
                 c.text(inputsModeName(y), routeModeName(routeMode(value(routeModeParam(from, to)))), kTextLabel, kDim,
                        Align::Left);
             else // into a filter or a shaper, which takes no mode
-                c.text(rest, nodeTitle(to), kTextLabel, kDim, Align::Left);
+                c.text(rest, nodeTitle(row.node), kTextLabel, kDim, Align::Left);
             break;
         }
         case K::Feedback:
-            c.text(inputsName(y), kNodeNames[op], kTextBody, nodeColor(op), Align::Left, true);
-            c.text(rest, trf(Str::InputsFeedback, {kNodeNames[op]}), kTextLabel, kDim, Align::Left);
+            c.text(inputsName(y), kNodeNames[node], kTextBody, nodeColor(node), Align::Left, true);
+            c.text(rest, trf(node < kOps ? Str::InputsFeedback : Str::InputsFeedbackBox, {kNodeNames[node]}),
+                   kTextLabel, kDim, Align::Left);
             break;
         case K::Bus:
             c.text({left, y, inputsDepth(y).x - left - 6.0f, 18.0f}, tr(Str::BusOut), kTextBody, kDim, Align::Left,
@@ -1081,7 +1073,7 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     }
     case Kind::InputsScroll: {
         const bool lit = hovered || active;
-        c.fillRect(inputsScrollTrack(), kTrack.alpha(0.5f), kRadiusMark);
+        c.fillRect(ioScrollTrack(ioTop(controller().layout().selectedNode)), kTrack.alpha(0.5f), kRadiusMark);
         c.fillRect(ioThumb(controller().layout().selectedNode), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
@@ -1204,7 +1196,7 @@ bool InspectorPanel::press(const Widget &w, Point p, Modifiers) {
     switch (w.kind) {
     case Kind::InputsScroll: { // as the MODS view's
         const int op = layout.selectedNode;
-        const Rect track = inputsScrollTrack();
+        const Rect track = ioScrollTrack(ioTop(op));
         const Rect thumb = ioThumb(op);
         if (p.y < thumb.y || p.y >= thumb.bottom())
             ioScroll_ = (p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) * ioEnd(op);
@@ -1287,9 +1279,9 @@ void InspectorPanel::drag(const DragState &d) {
         set(f.resonance, resonance);
         break;
     }
-    case DragKind::InputsScroll: { // the I/O tab's rows follow its thumb
+    case DragKind::InputsScroll: { // the I/O list's rows follow its thumb
         const int op = controller().layout().selectedNode;
-        const float room = inputsScrollTrack().h - ioThumb(op).h;
+        const float room = ioScrollTrack(ioTop(op)).h - ioThumb(op).h;
         if (room > 0.0f)
             ioScroll_ = std::clamp(drag_.startValue + (p.y - d.start.y) / room * ioEnd(op), 0.0f, ioEnd(op));
         break;
@@ -1322,12 +1314,12 @@ bool InspectorPanel::wheelOn(const Widget &w, Point, float steps, Modifiers) {
     return true;
 }
 
-// Over an operator's I/O rows (but not on a depth or a mode's button), a notch scrolls them a row.
+// Over a node's I/O rows (but not on a depth or a mode's button), a notch scrolls them a row.
 bool InspectorPanel::wheelBehind(Point p, float steps) {
     if (!ioScrollAt(p) || steps == 0.0f)
         return false;
-    const int op = controller().layout().selectedNode;
-    ioScroll_ = std::clamp(ioFirst(op) - steps, 0.0f, ioEnd(op));
+    const int node = controller().layout().selectedNode;
+    ioScroll_ = std::clamp(ioFirst(node) - steps, 0.0f, ioEnd(node));
     return true;
 }
 
@@ -1343,16 +1335,16 @@ std::optional<std::pair<int, float>> InspectorPanel::panAt(Point p) const {
 }
 
 std::optional<float> InspectorPanel::pan(int, float first, float, float down) {
-    const int op = controller().layout().selectedNode;
+    const int node = controller().layout().selectedNode;
     const float wanted = first - down / kInputsStep;
-    const float to = std::clamp(wanted, 0.0f, std::max(op >= 0 && op < kOps ? ioEnd(op) : 0.0f, 0.0f));
+    const float to = std::clamp(wanted, 0.0f, std::max(ioShown(node) ? ioEnd(node) : 0.0f, 0.0f));
     ioScroll_ = to;
     return to != wanted ? std::optional(to) : std::nullopt;
 }
 
 bool InspectorPanel::ioScrollAt(Point p) const {
-    const int op = controller().layout().selectedNode;
-    return op >= 0 && op < kOps && !covered() && opTabShown(op) == InspectorTab::Inputs && kInputsList.contains(p);
+    const int node = controller().layout().selectedNode;
+    return !covered() && ioShown(node) && detail::ioList(ioTop(node)).contains(p);
 }
 
 } // namespace fmvibe::gui

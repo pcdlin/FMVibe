@@ -1192,9 +1192,10 @@ STR(TipSettingsGlow, "Glow effect strength. Double-click resets")
 STR(TipSettingsLinks, "Strength of the modulation lines. Double-click resets")
 STR(TipSettingsGrid, "Strength of the sequencer's grid lines. Double-click resets")
 STR(TipBypassed, "Bypassed. Click to resume")
-STR(InputsNone, "Nothing modulates {1} yet.") // an operator's I/O tab with no route into it
-STR(OutputsNone, "Nothing takes {1}'s output yet.") // an operator's I/O tab with no route out of it
+STR(InputsNone, "No inputs") // a node's I/O list (an operator's I/O tab) with no route into it
+STR(OutputsNone, "No outputs") // a node's I/O list with no route out of it
 STR(InputsFeedback, "{1} feedback  ·  phase only")
+STR(InputsFeedbackBox, "{1} feedback") // a filter's or a shaper's own route into itself
 STR(TipBypass, "Bypass modulation")
 STR(TipSourceUnipolar, "Unipolar: one way. Click for bipolar") // a MODS row's switch
 STR(TipSourceBipolar, "Bipolar: both ways. Click for unipolar")

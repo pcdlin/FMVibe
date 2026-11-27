@@ -2068,14 +2068,15 @@ what it started goes on.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
-    - **I/O**: under an INPUTS heading, a row per node routed into the operator (the nodes that are on, in the
+    - **I/O** (the list a filter's and a shaper's page show under their displays too): under an INPUTS heading, a
+      row per node routed into the operator (the nodes that are on, in the
       graph's order): its name, which shows it in the inspector as a tab does; four buttons with the modes' glyphs,
       the one in force lit, each naming its mode on hover; the mode's name; and the route's depth as a label,
       dragged, typed and modulated as a wire's. Its feedback comes last, with its depth and "phase only". Under an
       OUTPUTS heading, a row per node the operator is routed into, likewise: an operator's with the route's mode
       buttons and name, a filter's or a shaper's with its title in their place (a route into one takes no mode);
       then its line to OUT, with its output's depth as the graph's OUT label. A section with no route has a line
-      saying so ("Nothing modulates operator A yet.", "Nothing takes operator A's output yet."), in the faint text the headings take. The rows sit 30 px apart,
+      saying so ("No inputs", "No outputs"), fainter than the headings. The rows sit 30 px apart,
       room for a modulated depth's dots under it; past what the tab holds, they scroll, by the wheel over them, by
       dragging with the middle button held, or by the scrollbar at their right.
 
@@ -2102,23 +2103,28 @@ what it started goes on.
     (what goes straight out is its line to OUT's label),
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
     edit button opens the big curve editor over the routing panel, the shaper's page staying beside it, the button lit
-    while it is open. Underneath
-    are the send knobs of the operators and filters that feed it.
+    while it is open. Underneath, in a well of its own, its I/O list, as an operator's I/O tab has it (see below):
+    under INPUTS the routes into it, each its node's name and title and its depth, its own route into itself last
+    ("S1 feedback"); under OUTPUTS the routes out of it, into an operator with that route's mode buttons and name, and
+    its line to OUT; a section with none a line saying so ("No inputs"). Past what the well
+    holds, about three rows, the list scrolls as an operator's does.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
     operators it modulates, as a shaper's has), the type's list across the row under it (where a shaper's curve's
     is), offering the seven families (Low-pass, High-pass, Band-pass, Notch, Comb, Formant and Morph), its button and
     each of its entries a small picture of the family's response before its name, the wheel over it and its arrows
     stepping along them (a family picked keeping the model where it has it, Ladder's high-pass for a ladder, say, else
-    taking its first), then, for a low-, high- or band-pass, the **Model** list beside the slope's (SVF, Ladder, Diode
-    and Sallen-Key for a low-pass; SVF, Ladder and Sallen-Key for a high-pass; SVF and Ladder for a band-pass), with
-    arrows that step along the family's models round its ends, the wheel stepping them held at the ends, and each a
-    small picture of the model's response before its name, cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph after
-    them, the six knobs a little closer together, and a morph's slope's list and notch switch (the notch's icon) side
-    by side where the slope's list is), key tracking, drive and mix (its output level is its line to OUT's
+    taking its first), then in the same row, for a low-, high- or band-pass, the **Model** list (SVF, Ladder, Diode
+    and Sallen-Key for a low-pass; SVF, Ladder and Sallen-Key for a high-pass; SVF and Ladder for a band-pass), short
+    as on the filter effect's card (its button the model's short name, without arrows or icon; its list each model's
+    small picture before its name), the wheel stepping it held at the ends, or a morph's notch switch (the notch's
+    icon) in its place, and the slope's list at the row's right end, each where it is whatever the type (so the type's
+    arrows stay put as it steps); then cutoff, resonance (a formant's Shift and Q; a formant's Vowel or a morph's Morph
+    after them, the six knobs a little closer together), key tracking, drive and mix (its output level is its line to
+    OUT's
     label), and a live response curve, drawn as its Mix blends what goes in back in (a notch at 50 % dips about 6 dB,
     a low-pass leveling off 6 dB down past its cutoff), whose
-    handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it (beside the Model list, for
-    a family of models), as the filter effect's and a split's are: 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
+    handle drags cutoff (sideways) and resonance (up/down), centered under the knobs, as tall as a shaper's curve and
+    as wide. The slope's list offers 6, 12, 18 or 24 dB, as the filter effect's and a split's do (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
     what plays; for a comb it is faint and doesn't open). With its cutoff or resonance modulated, faint curves
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that
@@ -2126,7 +2132,8 @@ what it started goes on.
     staying where the last note left it, as the effect's does. It sits on the filter effect's grid. Behind the curve,
     like the filter effect's, is what the filter puts out, all voices together, measured before its output level
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
-    that is off shows none. Underneath are the send knobs of everything that feeds the filter.
+    that is off shows none. Underneath, in a well of its own, its I/O list, as a shaper's (and an operator's I/O tab)
+    has it.
 - **Modulation**: the panel's title row has its title, **MODULATION** (the panel doesn't collapse; the Seq view
   covers it), then **+ Source**,
   shaped like + Effect (a drawn plus, the word and a chevron), which opens the list of source types under it to add

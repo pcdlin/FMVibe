@@ -550,13 +550,17 @@ high-pass.
 - **Drive**: saturation before the filter. It changes the tone, not the level. On the Ladder and Diode models, a loud
   sound driven hard also pulls the resonance down, as on an analog ladder.
 - **Mix**: blends the filter's input with its output (100 % = fully filtered).
-- **Model** and **Slope**: lists under the response display.
+- **Model** and **Slope**: lists beside the type's list, in the same row.
 - **Vowel** (Formant) or **Morph** and the notch switch (Morph).
 
 The **response display** shows the filter's curve with its Mix applied. Drag its handle sideways for cutoff and up or
 down for resonance. Faint curves show the reach of any modulation on cutoff or resonance, and while notes play the
-curve follows the most recent voice. Behind the curve, a spectrum analyzer shows what the filter puts out. Under the
-display, knobs set the send levels of everything that feeds the filter.
+curve follows the most recent voice. Behind the curve, a spectrum analyzer shows what the filter puts out.
+
+Under the display, the filter's **I/O** list works like an operator's [I/O tab](#io-tab): **Inputs** has a row for each
+node routed into the filter, with its depth, and **Outputs** a row for each node it feeds and its line to **OUT**. A
+route into an operator has mode buttons; a route into a filter or a shaper has none. To add a route, connect the nodes
+in the routing graph or the matrix.
 
 **Tracking the note exactly**: to make a filter (for example a comb) follow the note's pitch exactly, set its Cutoff to 0
 and assign the **Note** source to it at 100 %, leaving Key Track at 0.
@@ -588,8 +592,8 @@ effect.
 - **Stack** (Stack only): the number left of Link, 1–8 stages. Click its − or +, or drag the number up or down.
 
 The page shows the transfer curve. A Custom curve can be drawn right there, or in the larger curve editor opened with
-the **pencil** button (see [Shape editors](#shape-editors)). Under the curve are the send knobs of the operators and
-filters that feed the shaper.
+the **pencil** button (see [Shape editors](#shape-editors)). Under the curve is the shaper's **I/O** list, the same
+as a filter's.
 
 ## 10. Modulation
 
