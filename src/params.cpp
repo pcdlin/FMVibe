@@ -41,7 +41,7 @@ constexpr bool idsRoundTrip(int from, int to) {
     return true;
 }
 // (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
-static_assert(kParamCount == 52204 && kParamCount <= 35 * 1500);
+static_assert(kParamCount == 52258 && kParamCount <= 35 * 1500);
 static_assert(idsRoundTrip(0, 1500), "param id layout overlaps");
 static_assert(idsRoundTrip(1500, 3000), "param id layout overlaps");
 static_assert(idsRoundTrip(3000, 4500), "param id layout overlaps");
@@ -154,6 +154,8 @@ static_assert(std::size(kAmpMicNames) == static_cast<size_t>(AmpMic::Count));
 constexpr Str kRouteModeNames[] = {Str::RoutePhase, Str::RouteLinearFm, Str::RouteExpFm, Str::RouteRing};
 static_assert(std::size(kRouteModeNames) == static_cast<size_t>(RouteMode::Count));
 constexpr Str kKeyCurveNames[] = {Str::KeyCurveLinear, Str::KeyCurveExp};
+constexpr Str kOpEnvModeNames[] = {Str::EnvModeAdsr, Str::EnvModeCurve, Str::EnvModeRates};
+static_assert(std::size(kOpEnvModeNames) == static_cast<size_t>(OpEnvMode::Count));
 constexpr Str kFeedbackModeNames[] = {Str::FeedbackSmooth, Str::FeedbackDx7};
 static_assert(std::size(kFeedbackModeNames) == static_cast<size_t>(FeedbackMode::Count));
 static_assert(std::size(kKeyCurveNames) == static_cast<size_t>(KeyCurve::Count));
@@ -269,7 +271,8 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::OpWarp ||
             kind == ParamKind::UniCurve || kind == ParamKind::UniPan || kind == ParamKind::MorphMode ||
             kind == ParamKind::SeqPattern || kind == ParamKind::SeqPlay || kind == ParamKind::SeqRate ||
-            kind == ParamKind::SeqOrder || kind == ParamKind::KeyCurve || kind == ParamKind::FeedbackMode)
+            kind == ParamKind::SeqOrder || kind == ParamKind::KeyCurve || kind == ParamKind::FeedbackMode ||
+            kind == ParamKind::OpEnvMode)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -451,7 +454,8 @@ void buildTable(ParamTable &t) {
             add(paramIndex(op, f), name + " " + tr(label), module, kind, min, max, def);
             t[paramIndex(op, f)].flags |= CLAP_PARAM_IS_HIDDEN;
         };
-        hidden(OpParam::EnvMode, Str::ParamEnvMode, ParamKind::Toggle, 0.0, 1.0, 0.0);
+        hidden(OpParam::EnvMode, Str::ParamEnvMode, ParamKind::OpEnvMode, 0.0, static_cast<double>(OpEnvMode::Count) - 1.0,
+               0.0);
         hidden(OpParam::EnvSustain, Str::ParamEnvSustain, ParamKind::Toggle, 0.0, 1.0, 1.0);
         hidden(OpParam::EnvLoopStart, Str::ParamEnvLoopStart, ParamKind::ShapePoint, 0.0, 1.0, 0.0);
         hidden(OpParam::EnvLoopEnd, Str::ParamEnvLoopEnd, ParamKind::ShapePoint, 0.0, 1.0, 1.0);
@@ -460,6 +464,16 @@ void buildTable(ParamTable &t) {
         hidden(OpParam::EnvDivision, Str::ParamEnvDivision, ParamKind::SyncDivision, kSlowestDivision,
                kDivisions - 1.0, kQuarter);
         hidden(OpParam::EnvSlew, Str::ParamEnvSlew, ParamKind::TimeOrOff, 0.0, kMaxSlewNorm, 0.0);
+        // Its Rate/Level envelope as the DX7's INIT VOICE has it: at once to full, held there, at once to nothing.
+        const Str rateNames[] = {Str::ParamEnvRate1, Str::ParamEnvRate2, Str::ParamEnvRate3, Str::ParamEnvRate4};
+        const Str levelNames[] = {Str::ParamEnvLevel1, Str::ParamEnvLevel2, Str::ParamEnvLevel3, Str::ParamEnvLevel4};
+        for (int k = 0; k < 4; ++k) {
+            hidden(static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k), rateNames[k], ParamKind::Dx7Value, 0.0,
+                   99.0, 99.0);
+            hidden(static_cast<OpParam>(static_cast<int>(OpParam::EnvLevel1) + k), levelNames[k], ParamKind::Dx7Value,
+                   0.0, 99.0, k < 3 ? 99.0 : 0.0);
+        }
+        hidden(OpParam::EnvRateScale, Str::ParamEnvRateScale, ParamKind::Dx7Value, 0.0, 7.0, 0.0);
         // Keyboard level scaling, off to begin with: no depth either side, so the operator plays every key as set (see
         // keyScaleDb()).
         add(paramIndex(op, OpParam::KeyBreak), name + " " + tr(Str::ParamKeyBreak), module, ParamKind::NotePitch, 0.0,
@@ -1441,7 +1455,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::OpWarp || kind == ParamKind::UniCurve || kind == ParamKind::UniPan ||
            kind == ParamKind::MorphMode || kind == ParamKind::SeqPattern || kind == ParamKind::SeqPlay ||
            kind == ParamKind::SeqRate || kind == ParamKind::SeqOrder || kind == ParamKind::SeqBars ||
-           kind == ParamKind::KeyCurve || kind == ParamKind::FeedbackMode;
+           kind == ParamKind::KeyCurve || kind == ParamKind::FeedbackMode || kind == ParamKind::OpEnvMode;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1592,6 +1606,15 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     case ParamKind::FeedbackMode:
         std::snprintf(out, capacity, "%s", nameAt(kFeedbackModeNames, value));
+        break;
+    case ParamKind::OpEnvMode:
+        std::snprintf(out, capacity, "%s", nameAt(kOpEnvModeNames, value));
+        break;
+    case ParamKind::Dx7Value: // a whole number, or with its tenth where modulation leaves it between
+        if (std::abs(value - std::round(value)) < 0.05)
+            std::snprintf(out, capacity, "%.0f", std::round(value));
+        else
+            std::snprintf(out, capacity, "%.1f", value);
         break;
     case ParamKind::KeyDepth: // never "-0.0"
         std::snprintf(out, capacity, "%+.1f dB", std::abs(value) < 0.05 ? 0.0 : value);
@@ -1757,6 +1780,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::UniPan       ? findName(kUniPanNames, text)
                       : def.kind == ParamKind::KeyCurve     ? findName(kKeyCurveNames, text)
                       : def.kind == ParamKind::FeedbackMode ? findName(kFeedbackModeNames, text)
+                      : def.kind == ParamKind::OpEnvMode    ? findName(kOpEnvModeNames, text)
                       : def.kind == ParamKind::SeqPattern   ? findName(kSeqPatternNames, text)
                       : def.kind == ParamKind::SeqPlay      ? findName(kSeqPlayNames, text)
                       : def.kind == ParamKind::SeqRate      ? findName(kSeqRateNames, text)
@@ -1999,6 +2023,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::UniPan:
     case ParamKind::KeyCurve:
     case ParamKind::FeedbackMode:
+    case ParamKind::OpEnvMode:
     case ParamKind::MorphMode:
     case ParamKind::SeqPattern:
     case ParamKind::SeqPlay:
@@ -2093,6 +2118,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::NotePitch: // a bare number is a MIDI note
     case ParamKind::Decibel:
     case ParamKind::KeyDepth:
+    case ParamKind::Dx7Value:
     case ParamKind::Cents:
     case ParamKind::CentsAmount:
     case ParamKind::SemitoneOffset:

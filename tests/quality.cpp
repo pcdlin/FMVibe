@@ -9,6 +9,7 @@
 #include "state.h"
 #include "synth.h"
 #include "unison.h"
+#include "rateenvelope.h"
 #include "uistrings.h"
 #include "warp.h"
 
@@ -6767,6 +6768,88 @@ void dx7Checks() {
         const double seconds = down / kSampleRate, want = 40.0 / (4.0 / (64.0 / 44100.0) * 6.0206 / 256.0);
         std::printf("      rate 50: 40 dB down in %.3f s, %.3f wanted\n", seconds, want);
         check(std::abs(seconds / want - 1.0) < 0.08, "a DX7 envelope's rate sets its decay's time as on the DX7");
+    }
+
+    // The Rate/Level envelope (see RateEnvelope), as imported voices play it. A voice of OP1 alone on an A4, its level
+    // read a 10 ms window at a time (its RMS, dB), from `at` seconds; and the time it first falls `db` under `from`'s.
+    auto rateVoice = [&](auto setup) {
+        return patch(32, [&](dx7::Voice &voice) { setup(voice); });
+    };
+    auto rmsAt = [](const std::vector<float> &out, double at) {
+        const size_t from = static_cast<size_t>(at * kSampleRate), n = 480;
+        double sum = 0.0;
+        for (size_t i = from; i < from + n && i < out.size(); ++i)
+            sum += out[i] * out[i];
+        return 10.0 * std::log10(sum / n + 1e-30);
+    };
+    auto fallTime = [&](const std::vector<float> &out, double from, double db) {
+        const double start = rmsAt(out, from);
+        for (double t = from; t + 0.02 < out.size() / kSampleRate; t += 0.005)
+            if (rmsAt(out, t) < start - db)
+                return t - from;
+        return -1.0;
+    };
+    auto run = [](const dx7::Voice &v, int key, double seconds, double letGo = -1.0) {
+        Engine e(2);
+        gui::UiLayout layout;
+        dx7::toPatch(v, e.p, layout);
+        e.noteOn(key);
+        std::vector<float> out;
+        if (letGo >= 0.0) {
+            out = e.render(static_cast<size_t>(letGo * kSampleRate));
+            e.noteOff(key);
+            const std::vector<float> rest = e.render(static_cast<size_t>((seconds - letGo) * kSampleRate));
+            out.insert(out.end(), rest.begin(), rest.end());
+        } else {
+            out = e.render(static_cast<size_t>(seconds * kSampleRate));
+        }
+        return out;
+    };
+    // A decay at rate 20, longer than a drawn envelope may last: 2.03 dB a second, 40 dB down in 19.7 s.
+    {
+        const std::vector<float> out = run(rateVoice([&](dx7::Voice &v) {
+                                               set(v, 1, dx7::Rate1 + 1, 20);
+                                               set(v, 1, dx7::Level1 + 1, 0);
+                                               set(v, 1, dx7::Level1 + 2, 0);
+                                           }),
+                                           69, 24.0);
+        const double seconds = fallTime(out, 0.05, 40.0), want = 40.0 / (0.125 / RateEnvelope::kTickSeconds * 6.0206 / 256.0);
+        std::printf("      rate 20: 40 dB down in %.2f s, %.2f wanted\n", seconds, want);
+        check(std::abs(seconds / want - 1.0) < 0.05, "a DX7 envelope plays a decay longer than 10 s at its rate");
+    }
+    // Rate Scaling 7 an octave up, A4 to A5: its speed from 33 to 36 of the 64, the decay at rate 30 5/8 as long.
+    {
+        const dx7::Voice v = rateVoice([&](dx7::Voice &voice) {
+            set(voice, 1, dx7::Rate1 + 1, 30);
+            set(voice, 1, dx7::Level1 + 1, 0);
+            set(voice, 1, dx7::Level1 + 2, 0);
+            set(voice, 1, dx7::RateScaling, 7);
+        });
+        const double a4 = fallTime(run(v, 69, 1.5), 0.02, 40.0), a5 = fallTime(run(v, 81, 1.5), 0.02, 40.0);
+        std::printf("      rate scaling 7: 40 dB down in %.3f s at A4, %.3f s at A5 (%.3f, 0.625 wanted)\n", a4, a5, a5 / a4);
+        check(a4 > 0.0 && std::abs(a5 / a4 / 0.625 - 1.0) < 0.05, "a DX7 envelope's rate scaling speeds it up as the DX7's");
+    }
+    // Let go half way up a slow attack (rate 20 to L1 99), it releases at R4 (50, 64.8 dB a second) from where it is,
+    // without a jump: as loud just after as just before, and 19.4 dB down 0.3 s on.
+    {
+        const std::vector<float> out = run(rateVoice([&](dx7::Voice &voice) {
+                                               set(voice, 1, dx7::Rate1, 20);
+                                               set(voice, 1, dx7::Rate1 + 3, 50);
+                                           }),
+                                           69, 1.5, 0.5);
+        const double before = rmsAt(out, 0.49), after = rmsAt(out, 0.505), later = rmsAt(out, 0.805);
+        std::printf("      let go mid-attack: %.1f dB before, %.1f just after, %.1f dB 0.3 s on (19.4 wanted)\n", before,
+                    after, after - later);
+        check(std::abs(after - before) < 1.0 && std::abs(after - later - 19.4) < 2.0,
+              "a DX7 envelope let go mid-attack releases at its R4 from where it is");
+    }
+    // L4 heard (50): let go, it goes there and then fades out, its voice ending.
+    {
+        const std::vector<float> out = run(rateVoice([&](dx7::Voice &voice) { set(voice, 1, dx7::Level1 + 3, 50); }),
+                                           69, 1.0, 0.2);
+        const double end = rmsAt(out, 0.95);
+        std::printf("      L4 at 50: %.0f dB once let go and done\n", end);
+        check(end < -200.0, "a DX7 envelope that releases to a level heard still ends its voice");
     }
 
     // Velocity sensitivity 7: a note at 64 some 16 dB under one at 127, as the DX7's velocity curve has it.

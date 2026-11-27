@@ -84,8 +84,8 @@ std::vector<uint8_t> bankSysex(const std::vector<Voice> &voices);
 std::vector<uint8_t> voiceSysex(const Voice &voice);
 
 // The patch that plays `voice`: from Init (`values` and `layout` set to it first), its algorithm laid out as the
-// ALGORITHM panel lays it out, each operator on a drawn envelope traced from the DX7's and with its keyboard level
-// scaling, and the LFO, the pitch envelope, velocity and rate scaling as sources.
+// ALGORITHM panel lays it out, each operator on a Rate/Level envelope with the DX7's rates, levels and rate scaling and
+// its keyboard level scaling, and the LFO, the pitch envelope and velocity as sources.
 void toPatch(const Voice &voice, ParamValues &values, UiLayout &layout);
 
 // A preset file's name (without .fmv) and bytes, sparse as the factory presets are stored.

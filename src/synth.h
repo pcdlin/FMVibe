@@ -581,6 +581,7 @@ private:
         // Its operators' drawn envelopes (see OpParam::EnvMode), which their Envelopes follow while they play one:
         // started and released with them, kept apart from them so the fields the voice's samples read stay together.
         std::array<DrawnEnvelope, kOps> drawn{};
+        std::array<RateEnvelope, kOps> rateEnvs{}; // and their Rate/Level envelopes (see RateEnvelope), likewise
     };
 
     struct HeldNote {
@@ -654,6 +655,8 @@ private:
     // An operator's drawn envelope for this block, its Envelope following it, or its AHDSR again once it is switched
     // back (see OpParam::EnvMode); `p` are the voice's params.
     void followDrawn(Voice &v, int op, const double *p, const ParamValues &params);
+    // Its Rate/Level envelope likewise (see RateEnvelope), at the key the voice plays for its Rate Scaling.
+    void followRates(Voice &v, int op, const double *p, const ParamValues &params);
     // Moves the free and anchored LFOs' shared clocks on by `frames`, which end `end` frames into this render(); with
     // no frames, only the anchored ones go to where the transport stands `end` frames in. Their params are what is
     // set with the host's, the macros' and the newest voice's modulation.

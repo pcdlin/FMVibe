@@ -48,6 +48,10 @@ enum class WidgetKind {
     AlgorithmItem, // a = index in kAlgorithms: a thumbnail of the panel; a click sets the operators to it
     OpTab,        // a = InspectorTab: picks what the lower half of an operator's page shows
     ScopeCycles,  // b = how many cycles the scope shows
+    RateSegment,  // a = op, b = 0-3: the segment of its Rate/Level envelope whose rate and level its knobs set
+    RatePoint,    // param = the level, a = op, b = 0-3: a breakpoint of its Rate/Level envelope on the display, dragged
+                  // up and down for the level, across for the rate
+    RateArea,     // a = op, b = 0-3: the display between a segment's breakpoints, whose click picks the segment
 
     NodeTab,      // a = node: selects it; the selected one switches it on and off
     MatrixLabel,  // a = node: a matrix row's or column's name; a click does what the node's tab does

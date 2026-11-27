@@ -965,17 +965,17 @@ int View::lfoClockCount(int lfo) const {
                                                            : kLfoModes;
 }
 
-void View::pickEnvMode(int op, bool curve) {
+void View::pickEnvMode(int op, OpEnvMode mode) {
     const int param = paramIndex(op, OpParam::EnvMode);
-    if (curve == (value(param) >= 0.5))
+    if (mode == opEnvMode(value(param)))
         return;
-    if (curve) {
+    if (mode == OpEnvMode::Curve) {
         shapes_.drawEnvelope(op);
         return;
     }
     if (shapeEditing() == opEnvCurve(op))
         shapes_.close();
-    edit(param, 0.0);
+    edit(param, static_cast<double>(mode));
 }
 
 // Free, Global, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
@@ -4393,8 +4393,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
             warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
                      on ? litInk(color) : (hovered ? kText : kDim));
-        else if (opOfField(w.param, OpParam::EnvMode) >= 0) // an AHDSR's shape, or a curve through its points
-            envModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
+        else if (opOfField(w.param, OpParam::EnvMode) >= 0) // an AHDSR's shape, a curve through its points, a DX7's
+            envModeIcon(c, w.rect.center(), w.b, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale() * 0.95f);
         else if (opOfField(w.param, OpParam::UnisonCurve) >= 0) // where five copies' pitches go
             uniCurveIcon(c, w.rect.center(), static_cast<UniCurve>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (opOfField(w.param, OpParam::UnisonPan) >= 0) // and where they sit
@@ -5785,7 +5785,7 @@ void View::paintTooltip(Canvas &c) {
     else if (isLfoSync(param))
         text = tr(Str::TipLfoSync);
     else if (opOfField(param, OpParam::EnvMode) >= 0)
-        text = tr(hover_->b == 0 ? Str::TipEnvAdsr : Str::TipEnvCurve);
+        text = tr(hover_->b == 0 ? Str::TipEnvAdsr : hover_->b == 1 ? Str::TipEnvCurve : Str::TipEnvRates);
     else if (hover_->kind == Kind::Choice && opOfField(param, OpParam::EnvSustain) >= 0)
         text = tr(hover_->b == 1 ? Str::TipSustain : Str::TipEnvOneShot);
     else if (opOfField(param, OpParam::EnvSync) >= 0)
@@ -6810,7 +6810,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (isLfoClockChoice(w))
             setLfoClock(w.a, static_cast<LfoClock>(w.b));
         else if (const int op = opOfField(w.param, OpParam::EnvMode); op >= 0)
-            pickEnvMode(op, w.b == 1);
+            pickEnvMode(op, static_cast<OpEnvMode>(w.b));
         else
             edit(w.param, w.b);
         break;
@@ -7758,9 +7758,11 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     // A switch and the partial counts move as a click on them does: a switch on upward and off downward, with what
     // the symmetric switches bring along (the Fixed switch's, the inspector's), and a count to the next one offered.
-    if (const int op = opOfField(hit->param, OpParam::EnvMode); op >= 0) { // ADSR | Curve, as a click picks them
-        if (whole != 0)
-            pickEnvMode(op, whole > 0);
+    if (const int op = opOfField(hit->param, OpParam::EnvMode); op >= 0) { // ADSR | Curve | Rate/Level, as clicks
+        const int now = static_cast<int>(opEnvMode(value(hit->param)));   // pick them, held at their ends
+        const int to = std::clamp(now + whole, 0, static_cast<int>(OpEnvMode::Count) - 1);
+        if (to != now)
+            pickEnvMode(op, static_cast<OpEnvMode>(to));
         return;
     }
     if (hit->kind == Kind::Toggle) {

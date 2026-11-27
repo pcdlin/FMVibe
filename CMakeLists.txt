@@ -138,6 +138,7 @@ add_library(fmvibe-core STATIC
     src/factory.cpp
     src/factory.h
     src/gui/arrange.h
+    src/gui/rateshape.h
     src/gui/canvas.cpp
     src/gui/canvas.h
     src/gui/controller.cpp

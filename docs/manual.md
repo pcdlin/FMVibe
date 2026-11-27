@@ -277,8 +277,8 @@ The display zooms to fit the whole envelope. While notes play, a dashed line and
 
 #### Drawn envelopes
 
-The two buttons at the left of the row under the display switch between the **ADSR** envelope (the upper button)
-and a **drawn envelope** (the lower one).
+The three buttons at the left of the row under the display switch between the **ADSR** envelope (the top button),
+a **drawn envelope** (the middle one) and a **Rate/Level** envelope (the bottom one, see below).
 
 - Double-click to add or delete a point, drag points, and drag the small dots between them to bend a segment.
 - **Length** sets how long the whole curve takes. With the metronome switch on, it is a note value at the tempo.
@@ -289,6 +289,21 @@ and a **drawn envelope** (the lower one).
 - When you let go of the key, the envelope goes on from where it is to the end of the curve, so the curve's last
   part is the release.
 - The pencil opens a large editor for the curve. Click the check mark, or a view tab, to close it.
+
+#### Rate/Level envelopes
+
+A Rate/Level envelope works as a DX7's. Imported DX7 voices use it.
+
+- It has four levels, from 0 (silent) to 99 (full), and four rates, how fast the envelope moves to each level,
+  from 0 (very slow, minutes) to 99 (at once).
+- From each note it goes to Level 1 at Rate 1, then to Level 2 at Rate 2, then to Level 3 at Rate 3, and stays at
+  Level 3 while the key is down.
+- When you let go of the key, it goes to Level 4 at Rate 4.
+- **Rate Scaling**, on the Keys tab, makes the envelope faster on higher keys.
+- The display shows the envelope as middle C plays it. While notes play, a dot moves along it. Drag a point up or down to set its level, and left or right
+  to set its rate (right is slower). Hover over a point to read its rate, level and how long it takes.
+- **1**, **2**, **3** and **4** pick the segment that the **Rate** and **Level** knobs beside them set. Clicking a
+  point on the display, or between two points, picks that segment too.
 
 ### Unison tab
 
@@ -356,6 +371,8 @@ that changes how bright the sound is, so you can keep high notes from getting ha
   Drag their handles up or down.
 - **Exp** in each top corner makes that side curve away faster: past the first octave, the change doubles every
   octave. Off, it changes by the same amount every octave.
+- **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys. It is dimmed while the operator's
+  envelope is another.
 - Double-click a handle to reset it.
 
 While a note plays, a dot shows where its key sits on the curve.
@@ -1537,15 +1554,14 @@ FMVibe can play voices made for the Yamaha DX7.
 Importing the same file again saves over the presets it made before.
 
 An imported voice uses the DX7's algorithm, with operators A to F standing for its operators 1 to 6. Each operator
-plays its DX7 envelope as a drawn envelope. The DX7's LFO, pitch envelope, velocity sensitivity and rate scaling
-become modulation sources, which you can see and change like any other. FM Amount is set to 200 %, the depth a DX7
+plays its DX7 envelope as a Rate/Level envelope. The DX7's LFO, pitch envelope and velocity sensitivity become
+modulation sources, which you can see and change like any other. FM Amount is set to 200 %, the depth a DX7
 modulator reaches at full level.
 
 Some parts of a DX7 voice don't come across:
 
 - **Keyboard level scaling** comes across on each operator's KEYS tab. Where the DX7 lifts the level of keys away
   from the break point, the lift is kept smaller so it never goes past what the DX7 could reach.
-- **Envelopes longer than 10 seconds** are shortened to fit.
 - **Controller settings** (what the mod wheel, aftertouch, breath and foot controller do) aren't stored in DX7
   voices. Assign the Mod Wheel yourself if a voice needs it.
 

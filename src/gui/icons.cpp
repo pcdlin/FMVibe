@@ -398,9 +398,17 @@ void noteIcon(Canvas &c, Point m, Color color) {
     c.polyline(flag, std::size(flag), color, 1.4f);
 }
 
-void envModeIcon(Canvas &c, Point m, bool curve, Color color, float scale) {
+void envModeIcon(Canvas &c, Point m, int mode, Color color, float scale) {
     auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
-    if (!curve) {
+    if (mode == 2) { // up fast, down in two slopes to a level held, then down
+        const Point points[] = {at(-8.0f, 4.5f), at(-5.5f, -4.5f), at(-2.0f, -1.5f), at(1.0f, -0.5f), at(4.5f, -0.5f),
+                                at(7.5f, 4.5f)};
+        c.polyline(points, std::size(points), color, 1.3f);
+        for (const Point &p : {points[1], points[2], points[3]})
+            c.fillCircle(p, 1.3f * scale, color);
+        return;
+    }
+    if (mode == 0) {
         const Point points[] = {at(-8.0f, 5.0f), at(-5.0f, -4.5f), at(-3.0f, -4.5f), at(0.5f, 0.0f), at(4.5f, 0.0f),
                                 at(7.5f, 5.0f)};
         c.polyline(points, std::size(points), color, 1.3f);

@@ -1534,7 +1534,8 @@ itself.
   Sync, Warp, Warp Amount, Unison Curve, Unison Pan and Unison Blend, then the drawn envelope's EnvMode, EnvSustain,
   EnvLoopStart, EnvLoopEnd, EnvLength, EnvSync, EnvDivision and EnvSlew, ids 137 to 144 + 50·op, then keyboard level
   scaling's KeyBreak, KeyLeftDepth, KeyRightDepth, KeyLeftCurve and KeyRightCurve, ids 145 to 149 + 50·op, which fill
-  the operators' room; the
+  the operators' room, and past it the Rate/Level envelope's EnvRate1 to EnvRate4, EnvLevel1 to EnvLevel4 and
+  EnvRateScale, 83000 + 20·op (EnvMode is 0 ADSR, 1 Curve, 2 Rates, `OpEnvMode`); the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -1581,7 +1582,7 @@ itself.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`),
-  warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`), morph mode (`MorphMode`) and the sequencer's play
+  warp (`OpWarp`), unison curve (`UniCurve`), unison pan (`UniPan`), envelope mode (`OpEnvMode`), morph mode (`MorphMode`) and the sequencer's play
   mode, rate, order and scale (`SeqPlay`, `SeqRate`, `SeqOrder`, `SeqScale`) and curve (`SeqCurve`) lists, keyboard
   scaling's curve (`KeyCurve`), the feedback's mode (`FeedbackMode`), the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
@@ -1615,7 +1616,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 2,057 of the 52,172 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 2,057 of the 52,258 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 1,600 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the operators' drawn envelopes' fields, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

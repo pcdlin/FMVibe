@@ -220,9 +220,9 @@ inline Rect keyCurveButton(int side) {
     return {side == 0 ? kKeyScaleRect.x + 6.0f : kKeyScaleRect.right() - 6.0f - 34.0f, kKeyScaleRect.y + 5.0f, 34.0f,
             16.0f};
 }
-// Break, L Depth and R Depth, a third of the row each.
+// Break, L Depth, R Depth and Rate Scaling (the Rate/Level envelope's, keyboard scaling on a DX7), a quarter each.
 inline Point keyScaleKnob(int knob) {
-    return {kOpDisplay.x + kOpDisplay.w * (knob + 0.5f) / 3.0f, kOpControlsY};
+    return {kOpDisplay.x + kOpDisplay.w * (knob + 0.5f) / 4.0f, kOpControlsY};
 }
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
 // with room under the depth for its modulations' handles, inside the tall well. Past the rows the tab holds, they
@@ -238,13 +238,24 @@ inline Rect inputsName(float y) { return {kOpWell.x + 8.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsMode(float y, int mode) { return {kOpWell.x + 36.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0f}; }
 inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
-// Envelope: the curve on the whole display; in the row under the well, at its left, ADSR over Curve (their icons, one
-// pill), then the AHDSR's five knobs, or for a drawn envelope One-Shot | Sustain, its sync switch, its Length and, at
-// the right, the pencil that opens its full-size editor, with its Slew between them.
+// Envelope: the curve on the whole display; in the row under the well, at its left, ADSR over Curve over Rate/Level
+// (their icons, one pill), then the AHDSR's five knobs, or for a drawn envelope One-Shot | Sustain, its sync switch,
+// its Length and, at the right, the pencil that opens its full-size editor, with its Slew between them, or for a
+// Rate/Level envelope 1 | 2 | 3 | 4, which picks the segment, then that segment's rate and level (its Rate Scaling
+// is on the KEYS tab, as keyboard scaling).
 constexpr Rect kOpEnvRect = kOpDisplay;
-inline Rect opEnvModeButton(int curve) { // 0 ADSR, over 1 Curve
-    return {kOpDisplay.x, kOpControlsY - 20.0f + curve * 20.0f, 26.0f, 20.0f};
+inline Rect opEnvModeButton(int mode) { // 0 ADSR, over 1 Curve, over 2 Rate/Level, in the same place for each
+    return {kOpDisplay.x, kOpDisplay.y + kOpDisplay.h + 4.0f + mode * 18.0f, 26.0f, 18.0f};
 }
+inline Rect rateSegmentButton(int segment) { // one pill, right of the modes
+    return {kOpDisplay.x + 36.0f + static_cast<float>(segment) * 22.0f, kOpControlsY - 11.0f, 22.0f, 22.0f};
+}
+inline Point opRateKnob(int knob) { // 0 the segment's rate, 1 its level, right of the segments
+    constexpr float left = kOpDisplay.x + 36.0f + 4.0f * 22.0f + 4.0f, step = (kOpDisplay.x + kOpDisplay.w - left) / 2.0f;
+    return {left + step * (static_cast<float>(knob) + 0.5f), kOpControlsY};
+}
+// A Rate/Level envelope's plot in the display, as the AHDSR's (see rateShapeOf()).
+constexpr Rect kOpRatePlot{kOpDisplay.x + 10.0f, kOpDisplay.y + 14.0f, kOpDisplay.w - 20.0f, kOpDisplay.h - 24.0f};
 inline Point opEnvKnob(int knob) { // the AHDSR's: Attack, Hold, Decay, Sustain, Release, right of ADSR | Curve
     constexpr float left = kOpDisplay.x + 32.0f, step = (kOpDisplay.x + kOpDisplay.w - left) / 5.0f;
     return {left + step * (static_cast<float>(knob) + 0.5f), kOpControlsY};

@@ -18,6 +18,7 @@
 
 #include "modulationmodel.h"
 #include "panel.h"
+#include "rateshape.h"
 #include "routingmodel.h"
 
 #include <optional>
@@ -73,11 +74,12 @@ private:
     // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), a keyboard scaling
     // handle on the KEYS tab, and the INPUTS tab's scrollbar's thumb. What each holds and where the thumb's rows were
     // when it was grabbed.
-    enum class DragKind { None, FilterPoint, KeyPoint, InputsScroll };
+    enum class DragKind { None, FilterPoint, KeyPoint, InputsScroll, RatePoint };
     struct Drag {
         DragKind kind = DragKind::None;
         Widget widget;
         float startValue = 0.0f;
+        float startLevel = 0.0f; // a Rate/Level breakpoint's level, startValue its rate
     };
 
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
@@ -96,6 +98,7 @@ private:
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
     bool opEnvDrawn(int op) const; // its ENVELOPE tab shows its drawn envelope (Curve), not its AHDSR
+    bool opEnvRates(int op) const; // or its Rate/Level envelope
     // Whether a source modulates one of the knobs on an operator's tab, which shows a ring on the tab.
     bool opTabModulated(int op, InspectorTab tab) const;
     OpWarp opWarp(int op) const;
@@ -128,6 +131,10 @@ private:
     // operator's level across the keys, and a handle's readout over the display while it is under the mouse or held.
     Point keyPoint(int op, int handle) const;
     void paintKeyScale(Canvas &c, int op);
+    void paintRateEnvelope(Canvas &c, int op);
+    void paintRateReadout(Canvas &c, const Widget &w);
+    // Its Rate/Level envelope as the display draws it (see rateShapeOf()), kept while its settings stay.
+    const RateShape &rateShape(int op) const;
     void paintKeyReadout(Canvas &c, const Widget &w);
 
     PanelHost &host_;
@@ -142,6 +149,9 @@ private:
     float inputsScroll_ = 0.0f;  // rows the INPUTS tab is scrolled to, before clamping
     float opScopeLevel_ = 0.0f;  // the operator scope's level, following its spans' peaks, which its dB readout shows
     ScopeCache<std::vector<Assignment>> assignments_;
+    mutable std::vector<double> rateKey_; // what rateShape_ was traced from
+    mutable RateShape rateShape_;
+    int rateSegment_ = 0; // the segment of a Rate/Level envelope its knobs set (0-3)
 };
 
 } // namespace fmvibe::gui

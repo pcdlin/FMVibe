@@ -159,6 +159,9 @@ STR(RoutePhase, "Phase")
 STR(RouteLinearFm, "Linear FM")
 STR(RouteExpFm, "Exp FM")
 STR(RouteRing, "Ring")
+STR(EnvModeAdsr, "ADSR") // what an operator's envelope is
+STR(EnvModeCurve, "Curve")
+STR(EnvModeRates, "Rate/Level")
 STR(FeedbackSmooth, "Smooth") // how an operator's feedback hears it: as it always did
 STR(FeedbackDx7, "DX7") // at the DX7's rate, as its feedback runs
 STR(KeyCurveLinear, "Linear") // a keyboard scaling side's curve
@@ -312,6 +315,15 @@ STR(ParamPhase, "Phase")
 STR(ParamSlew, "Slew")
 STR(ParamCc, "CC")
 STR(ParamInput, "Input")
+STR(ParamEnvRate1, "Rate 1") // an operator's Rate/Level envelope's, as a DX7's
+STR(ParamEnvRate2, "Rate 2")
+STR(ParamEnvRate3, "Rate 3")
+STR(ParamEnvRate4, "Rate 4")
+STR(ParamEnvLevel1, "Level 1")
+STR(ParamEnvLevel2, "Level 2")
+STR(ParamEnvLevel3, "Level 3")
+STR(ParamEnvLevel4, "Level 4")
+STR(ParamEnvRateScale, "Rate Scaling")
 STR(ParamFeedbackMode, "{1} Feedback Mode") // an operator's feedback's, hidden
 STR(ParamRouteMode, "{1} Mode") // a route into an operator ("B → A"), how it acts on it
 STR(ParamOpFeedback, "{1} Feedback") // a node (an operator, a filter, a shaper) into itself, in the matrix
@@ -800,6 +812,15 @@ STR(LabelSmooth, "Smooth")
 STR(LabelChaos, "Chaos")
 STR(LabelPhase, "Phase")
 STR(LabelSlew, "Slew")
+STR(LabelRate1, "Rate 1") // a Rate/Level envelope's knobs
+STR(LabelRate2, "Rate 2")
+STR(LabelRate3, "Rate 3")
+STR(LabelRate4, "Rate 4")
+STR(LabelLevel1, "Level 1")
+STR(LabelLevel2, "Level 2")
+STR(LabelLevel3, "Level 3")
+STR(LabelLevel4, "Level 4")
+STR(LabelRateScale, "Rate Scaling") // its Rate Scaling
 STR(LabelCc, "CC")
 STR(LabelBass, "Bass")
 STR(LabelTreble, "Treble")
@@ -1062,6 +1083,7 @@ STR(CaptionUtility, "{1}  ·  {2}") // the utility's gain and pan
 STR(CaptionUtilityMonoBass, "mono < {1}") // on the utility's Mono Bass line: below it, the sound is mono
 STR(CaptionShiftOf, "{1}  ·  of {2}")
 STR(CaptionHold, "hold {1}")
+STR(CaptionRatePoint, "R{1} {2}  ·  L{1} {3}  ·  {4}") // a Rate/Level breakpoint's rate, level and its segment's time
 STR(CaptionKeyBreak, "break {1}") // keyboard scaling's handles, over its display
 STR(CaptionKeyDepth, "{1} an octave {2}") // a depth, then below or above
 STR(CaptionKeyBelow, "below")
@@ -1250,6 +1272,7 @@ STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
 STR(TipEnvAdsr, "Attack, hold, decay, sustain and release") // an operator's ENVELOPE tab's ADSR | Curve
 STR(TipEnvCurve, "Custom curve")
+STR(TipEnvRates, "Rate/Level: four rates and four levels, as a DX7's envelope")
 STR(TipEnvOneShot, "One-Shot: Play the envelope once")
 STR(TipEnvSync, "Sync length to tempo")
 STR(TipSlope, "Filter slope")

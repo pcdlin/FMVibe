@@ -14,6 +14,7 @@
 #include "routing.h"
 #include "shapeeditor.h"
 #include "theme.h"
+#include "../rateenvelope.h"
 #include "../uistrings.h"
 #include "../unison.h"
 #include "../warp.h"
@@ -31,6 +32,11 @@ namespace fmvibe::gui {
 using namespace detail;
 
 namespace {
+// A Rate/Level envelope's rate and level of segment `k` (0-3).
+int rateParam(int op, int k) { return paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k)); }
+int rateLevelParam(int op, int k) {
+    return paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvLevel1) + k));
+}
 
 // `value` as `format` prints it, for the numbers a wording takes.
 std::string number(const char *format, double value) {
@@ -284,6 +290,9 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             const Str labels[] = {Str::LabelBreak, Str::LabelLeftDepth, Str::LabelRightDepth};
             for (int i = 0; i < 3; ++i)
                 knob(params[i], keyScaleKnob(i), kOpKnobD, tr(labels[i]));
+            // The Rate/Level envelope's Rate Scaling, faint while the envelope is another (where it does nothing).
+            knob(paramIndex(op, OpParam::EnvRateScale), keyScaleKnob(3), kOpKnobD, tr(Str::LabelRateScale));
+            list.back().faint = !opEnvRates(op);
             add(Kind::Toggle, keyCurveButton(0), paramIndex(op, OpParam::KeyLeftCurve));
             add(Kind::Toggle, keyCurveButton(1), paramIndex(op, OpParam::KeyRightCurve));
             for (int b : {1, 2, 0}) { // the breakpoint last, so it wins where they meet
@@ -295,10 +304,33 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
             // ADSR over Curve; for a drawn envelope, One-Shot | Sustain, its sync switch, its Length and its pencil,
             // else the AHDSR's knobs: along the row under the well.
             const size_t modes = list.size();
-            for (int curve = 0; curve < 2; ++curve)
-                add(Kind::Choice, opEnvModeButton(curve), paramIndex(op, OpParam::EnvMode), op, curve);
+            for (int mode = 0; mode < static_cast<int>(OpEnvMode::Count); ++mode)
+                add(Kind::Choice, opEnvModeButton(mode), paramIndex(op, OpParam::EnvMode), op, mode);
             merge(modes);
-            if (opEnvDrawn(op)) {
+            if (opEnvRates(op)) { // 1 | 2 | 3 | 4, the segment's rate and level, and the breakpoints
+                const size_t segments = list.size();
+                for (int k = 0; k < 4; ++k)
+                    add(Kind::RateSegment, rateSegmentButton(k), -1, op, k);
+                merge(segments);
+                const Str rates[] = {Str::LabelRate1, Str::LabelRate2, Str::LabelRate3, Str::LabelRate4};
+                const Str levels[] = {Str::LabelLevel1, Str::LabelLevel2, Str::LabelLevel3, Str::LabelLevel4};
+                const int k = rateSegment_;
+                knob(rateParam(op, k), opRateKnob(0), kOpKnobD, tr(rates[k]));
+                knob(rateLevelParam(op, k), opRateKnob(1), kOpKnobD, tr(levels[k]));
+                const RateShape &shape = rateShape(op);
+                for (int b = 0; b < 4; ++b) { // the display between two breakpoints, under them, picks its segment
+                    const float from = b == 0 ? kOpEnvRect.x : shape.points[b - 1].x;
+                    const float to = b == 3 ? kOpEnvRect.right() : shape.points[b].x;
+                    add(Kind::RateArea, {from, kOpEnvRect.y, to - from, kOpEnvRect.h}, -1, op, b);
+                }
+                for (int b : {0, 1, 2, 3}) // the picked one last, so it wins where they meet
+                    if (b != k) {
+                        const Point at = shape.points[b];
+                        add(Kind::RatePoint, {at.x - 7.0f, at.y - 7.0f, 14.0f, 14.0f}, rateLevelParam(op, b), op, b);
+                    }
+                const Point at = shape.points[k];
+                add(Kind::RatePoint, {at.x - 7.0f, at.y - 7.0f, 14.0f, 14.0f}, rateLevelParam(op, k), op, k);
+            } else if (opEnvDrawn(op)) {
                 const size_t sustain = list.size();
                 for (int s = 0; s < 2; ++s)
                     add(Kind::Choice, opEnvSustainButton(s), paramIndex(op, OpParam::EnvSustain), op, s);
@@ -357,7 +389,7 @@ void InspectorPanel::widgets(std::vector<Widget> &list) const {
         inputKnobs(node);
     }
     // The operator's envelope's handles, on its ENVELOPE tab, as the View lists every envelope's.
-    if (node < kOps && opTabShown(node) == InspectorTab::Envelope && !opEnvDrawn(node))
+    if (node < kOps && opTabShown(node) == InspectorTab::Envelope && !opEnvDrawn(node) && !opEnvRates(node))
         host_.envelopeWidgets(list, node);
 }
 
@@ -522,7 +554,9 @@ void InspectorPanel::paintBack(Canvas &c) {
                 paintUnison(c, kUnisonRect, op);
             break;
         case InspectorTab::Envelope:
-            if (opEnvDrawn(op))
+            if (opEnvRates(op))
+                paintRateEnvelope(c, op);
+            else if (opEnvDrawn(op))
                 shapes_.paintOpEnvelope(c, op);
             else
                 host_.paintEnvelope(c, kOpEnvRect, op, kAccent, true);
@@ -802,7 +836,77 @@ void InspectorPanel::paintKeyReadout(Canvas &c, const Widget &w) {
 }
 
 bool InspectorPanel::opEnvDrawn(int op) const {
-    return value(paramIndex(op, OpParam::EnvMode)) >= 0.5;
+    return opEnvMode(value(paramIndex(op, OpParam::EnvMode))) == OpEnvMode::Curve;
+}
+
+bool InspectorPanel::opEnvRates(int op) const {
+    return opEnvMode(value(paramIndex(op, OpParam::EnvMode))) == OpEnvMode::Rates;
+}
+
+const RateShape &InspectorPanel::rateShape(int op) const {
+    RateEnvelope::Settings s;
+    std::vector<double> key{static_cast<double>(op)};
+    for (int k = 0; k < 4; ++k) {
+        s.rates[k] = value(rateParam(op, k));
+        s.levels[k] = value(rateLevelParam(op, k));
+        key.insert(key.end(), {s.rates[k], s.levels[k]});
+    }
+    s.scaling = RateEnvelope::scalingSpeeds(value(paramIndex(op, OpParam::EnvRateScale)), 60.0);
+    key.push_back(s.scaling);
+    if (key != rateKey_) {
+        rateKey_ = key;
+        rateShape_ = rateShapeOf(s, kOpRatePlot);
+    }
+    return rateShape_;
+}
+
+// The operator's Rate/Level envelope as it runs from a note at C4, laid out as the AHDSR's display is: the grid's
+// lines, the curve over a faint fill, the segment its knobs set lit behind, a dashed line where it holds at L3 while
+// the key is down, and while notes play a line across at the newest voice's level and a dot where it is on the curve.
+// Its handles are widgets.
+void InspectorPanel::paintRateEnvelope(Canvas &c, int op) {
+    const Rect r = kOpEnvRect;
+    for (int i = 1; i < 4; ++i)
+        c.line({r.x + 8.0f, r.y + r.h * i / 4.0f}, {r.right() - 8.0f, r.y + r.h * i / 4.0f}, kBorder.alpha(0.6f), 1.0f);
+    const RateShape &s = rateShape(op);
+    const Rect plot = kOpRatePlot;
+    const int k = rateSegment_;
+    const float from = k == 0 ? plot.x : k == 3 ? s.release.front().x : s.points[k - 1].x;
+    c.fillRect({from, r.y + 4.0f, s.points[k].x - from, r.h - 8.0f}, kAccent.alpha(0.07f), kRadiusMark);
+    std::vector<Point> area = s.rise;
+    area.insert(area.end(), s.release.begin(), s.release.end());
+    area.push_back({s.release.back().x, plot.bottom()});
+    area.push_back({plot.x, plot.bottom()});
+    c.fillPolygon(area.data(), area.size(), kAccent.alpha(0.12f));
+    plotLine(c, s.rise.data(), s.rise.size(), kAccent, 2.0f);
+    c.line(s.rise.back(), s.release.front(), kAccent.alpha(0.6f), 1.5f, true); // held at L3 while the key is down
+    plotLine(c, s.release.data(), s.release.size(), kAccent, 2.0f);
+    const Telemetry &t = host_.telemetry();
+    if (t.voices > 0 && routing_.nodeOn(op)) { // as the AHDSR's: a line at its level, and a dot on the curve
+        const float y = rateY(plot, rateUnitsOfGain(std::clamp(t.opEnvLevels[op], 0.0f, 1.0f)));
+        c.line({r.x + 8.0f, y}, {r.right() - 8.0f, y}, kAccent.alpha(0.35f), 1.0f, true);
+        if (Point dot; s.dotAt(t.opEnvPhase[op], dot)) {
+            c.fillCircle(dot, 7.0f, kAccent.alpha(0.25f));
+            c.fillCircle(dot, 3.5f, kText);
+        }
+    }
+}
+
+// A breakpoint's readout while it is under the mouse or held: its segment's rate and level, and how long the segment
+// takes from a C4, at the display's top right as the AHDSR's readouts are.
+void InspectorPanel::paintRateReadout(Canvas &c, const Widget &w) {
+    const int op = w.a, k = w.b;
+    char rate[32], level[32], time[32];
+    formatParam(rateParam(op, k), value(rateParam(op, k)), rate, sizeof(rate));
+    formatParam(w.param, value(w.param), level, sizeof(level));
+    const double seconds = rateShape(op).seconds[k];
+    std::snprintf(time, sizeof(time), seconds < 1.0 ? "%.0f ms" : seconds < 10.0 ? "%.2f s" : "%.1f s",
+                  seconds < 1.0 ? seconds * 1000.0 : seconds);
+    const std::string text = trf(Str::CaptionRatePoint, {std::to_string(k + 1), rate, level, time});
+    const Rect r = kOpEnvRect;
+    const float right = r.right() - 8.0f, width = c.textWidth(text, kTextLabel);
+    c.fillRect({right - width - 5.0f, r.y + 2.0f, width + 10.0f, 14.0f}, kDisplayColor.alpha(0.85f), kRadiusMark);
+    c.text({r.x, r.y + 2.0f, right - r.x, 14.0f}, text, kTextLabel, kText, Align::Right);
 }
 
 InspectorTab InspectorPanel::opTabShown(int op) const {
@@ -819,7 +923,10 @@ bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
         params = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::UnisonBlend),
                   paramIndex(op, OpParam::PhaseRandom)};
-    if (tab == InspectorTab::Envelope)
+    if (tab == InspectorTab::Envelope && opEnvRates(op))
+        for (int k = 0; k < 8; ++k)
+            params.push_back(paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k)));
+    else if (tab == InspectorTab::Envelope)
         params = opEnvDrawn(op) ? std::vector<int>{paramIndex(op, value(paramIndex(op, OpParam::EnvSync)) >= 0.5
                                                                   ? OpParam::EnvDivision // the Length knob, synced
                                                                   : OpParam::EnvLength),
@@ -831,7 +938,7 @@ bool InspectorPanel::opTabModulated(int op, InspectorTab tab) const {
         params = {paramIndex(op, OpParam::WarpAmount)};
     if (tab == InspectorTab::Keys)
         params = {paramIndex(op, OpParam::KeyBreak), paramIndex(op, OpParam::KeyLeftDepth),
-                  paramIndex(op, OpParam::KeyRightDepth)};
+                  paramIndex(op, OpParam::KeyRightDepth), paramIndex(op, OpParam::EnvRateScale)};
     for (const Assignment &m : assignments())
         if (std::find(params.begin(), params.end(), m.target) != params.end())
             return true;
@@ -1113,6 +1220,25 @@ bool InspectorPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         c.fillRect(inputsThumb(controller().layout().selectedNode), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
+    case Kind::RateSegment: { // as the scope's cycles
+        const bool selected = rateSegment_ == w.b;
+        host_.paintButtonFace(c, w, selected, hovered, kAccent, 0.22f, kRadiusControl);
+        c.text(w.rect, std::to_string(w.b + 1), kTextLabel, selected ? litInk(kText) : (hovered ? kText : kDim),
+               Align::Center, selected);
+        break;
+    }
+    case Kind::RateArea: // lit faintly under the mouse, as the picked segment is (see paintRateEnvelope())
+        if (hovered && rateSegment_ != w.b)
+            c.fillRect({w.rect.x, w.rect.y + 4.0f, w.rect.w, w.rect.h - 8.0f}, kAccent.alpha(0.04f), kRadiusMark);
+        break;
+    case Kind::RatePoint: { // as an envelope's points are; the picked segment's filled
+        const Point center = w.rect.center();
+        const bool focused = hovered || active, picked = rateSegment_ == w.b;
+        const float radius = focused ? 5.5f : 4.0f;
+        c.fillCircle(center, radius, focused || picked ? kAccent : kPanel);
+        c.strokeCircle(center, radius, kAccent, 1.8f);
+        break; // its readout goes over the other handles (paintRateReadout())
+    }
     case Kind::KeyPoint: { // as an envelope's points are; the breakpoint's a ring with a dot in it
         const Point center = w.rect.center();
         const bool focused = hovered || active;
@@ -1143,6 +1269,8 @@ void InspectorPanel::paintOverWidgets(Canvas &c) {
         for (const Widget &k : own)
             if (k.kind == Kind::KeyPoint && (host_.isHovered(k) || host_.isActive(k)))
                 paintKeyReadout(c, k);
+            else if (k.kind == Kind::RatePoint && (host_.isHovered(k) || host_.isActive(k)))
+                paintRateReadout(c, k);
     }
     const std::optional<Widget> &w = host_.hovered();
     if (!w || (w->kind != Kind::WaveButton && w->kind != Kind::WaveMore) || waveMenu_ >= 0 || !host_.isHovered(*w) ||
@@ -1210,6 +1338,10 @@ std::optional<CursorKind> InspectorPanel::cursor(const Widget &w) const {
         return CursorKind::Arrow;
     if (w.kind == Kind::KeyPoint) // the breakpoint across, a depth up and down
         return w.b == 0 ? CursorKind::Horizontal : CursorKind::Vertical;
+    if (w.kind == Kind::RatePoint) // its level up and down, its rate across
+        return CursorKind::Move;
+    if (w.kind == Kind::RateArea)
+        return CursorKind::Hand;
     return std::nullopt;
 }
 
@@ -1304,6 +1436,18 @@ bool InspectorPanel::press(const Widget &w, Point p, Modifiers) {
         }
         break;
     }
+    case Kind::RateSegment:
+    case Kind::RateArea:
+        rateSegment_ = w.b;
+        break;
+    case Kind::RatePoint: // picks its segment; its level and rate in one gesture
+        rateSegment_ = w.b;
+        drag_ = {DragKind::RatePoint, w, static_cast<float>(value(rateParam(w.a, w.b))),
+                 static_cast<float>(value(w.param))};
+        controller().beginEdit(rateParam(w.a, w.b));
+        controller().beginEdit(w.param);
+        host_.startDrag(*this, w, p, false);
+        break;
     case Kind::KeyPoint:
         drag_ = {DragKind::KeyPoint, w, 0.0f};
         controller().beginEdit(w.param);
@@ -1351,6 +1495,17 @@ void InspectorPanel::drag(const DragState &d) {
             controller().setValue(index, v);
         break;
     }
+    case DragKind::RatePoint: { // from where it was: its level up and down on the display, its rate a step every 2 px
+        const int rate = rateParam(drag_.widget.a, drag_.widget.b), level = drag_.widget.param;
+        const double units = rateUnits(drag_.startLevel) + (d.start.y - p.y) / kOpRatePlot.h * RateEnvelope::kFullUnits;
+        const double l = std::round(rateLevelOf(std::clamp(units, 0.0, RateEnvelope::kFullUnits)));
+        const double r = std::clamp(std::round(drag_.startValue - (p.x - d.start.x) * 0.5), 0.0, 99.0);
+        if (l != value(level))
+            controller().setValue(level, l);
+        if (r != value(rate)) // across: right is slower, so later
+            controller().setValue(rate, r);
+        break;
+    }
     case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
         const int op = controller().layout().selectedNode;
         const float room = inputsScrollTrack().h - inputsThumb(op).h;
@@ -1372,11 +1527,15 @@ void InspectorPanel::release() {
     }
     if (drag_.kind == DragKind::KeyPoint)
         controller().endEdit(drag_.widget.param);
+    if (drag_.kind == DragKind::RatePoint) {
+        controller().endEdit(rateParam(drag_.widget.a, drag_.widget.b));
+        controller().endEdit(drag_.widget.param);
+    }
     drag_ = Drag{};
 }
 
 bool InspectorPanel::dragsOnTouch(const Widget &w) const {
-    return w.kind == Kind::InputsScroll || w.kind == Kind::KeyPoint;
+    return w.kind == Kind::InputsScroll || w.kind == Kind::KeyPoint || w.kind == Kind::RatePoint;
 }
 
 bool InspectorPanel::doubleClick(const Widget &w, Point, Modifiers) {

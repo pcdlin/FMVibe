@@ -211,7 +211,9 @@ int ShapeEditor::shapeEditing() const {
     if (isStripCurve(shapeEditor_)) // open until it is closed
         return shapeEditor_;
     if (isOpEnvCurve(shapeEditor_)) // while its operator plays its drawn envelope
-        return value(paramIndex(opOfEnvCurve(shapeEditor_), OpParam::EnvMode)) >= 0.5 ? shapeEditor_ : -1;
+        return opEnvMode(value(paramIndex(opOfEnvCurve(shapeEditor_), OpParam::EnvMode))) == OpEnvMode::Curve
+                   ? shapeEditor_
+                   : -1;
     if (isShaperCurve(shapeEditor_)) {
         const int shaper = shapeEditor_ - kMaxSources - kFxSlots;
         return clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom ? shapeEditor_ : -1;

@@ -448,7 +448,7 @@ private:
     void setLfoClock(int lfo, LfoClock clock);
     // An operator's ADSR | Curve, picked by a click or the wheel: its Curve drawn from its AHDSR the first time (see
     // ShapeEditor::drawEnvelope()), its AHDSR shutting its drawn envelope's editor.
-    void pickEnvMode(int op, bool curve);
+    void pickEnvMode(int op, OpEnvMode mode);
     // What a list's entry (or its arrows, or the wheel) picks: its param's value, or a Curve's clock mode through
     // setLfoClock() (see detail::isCurveClock()).
     void pickListValue(int param, int to);

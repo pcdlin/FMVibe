@@ -545,6 +545,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     struct Joined {
         std::array<Envelope, kOps> ops;
         std::array<DrawnEnvelope, kOps> drawn;
+        std::array<RateEnvelope, kOps> rateEnvs;
         std::array<Envelope, kMaxSources> modEnvs;
         std::array<Lfo, kMaxSources> lfos;
         std::array<double, kMaxSources> follow; // its Curves' Slew, where it has run a block (else none yet)
@@ -564,6 +565,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
             for (int op = 0; op < kOps; ++op)
                 joined->ops[op] = with->ops[op].env;
             joined->drawn = with->drawn; // its Envelopes follow these from its first block on
+            joined->rateEnvs = with->rateEnvs;
             joined->modEnvs = with->modEnvs;
             joined->lfos = with->lfos;
             joined->follow = with->follow;
@@ -598,6 +600,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         for (int op = 0; op < kOps; ++op)
             v.ops[op].env = joined->ops[op];
         v.drawn = joined->drawn;
+        v.rateEnvs = joined->rateEnvs;
         v.modEnvs = joined->modEnvs;
         v.lfos = joined->lfos;
         v.keepLfos = true;
@@ -613,6 +616,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         op.env.start();
     for (DrawnEnvelope &drawn : v.drawn)
         drawn.start();
+    for (RateEnvelope &rates : v.rateEnvs)
+        rates.start();
     for (Envelope &env : v.modEnvs)
         env.start();
     // The first step and the start phase come in the voice's first block. The places past the first kFirstSources draw
@@ -844,6 +849,8 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
             op.env.start();
         for (DrawnEnvelope &drawn : v.drawn)
             drawn.start();
+        for (RateEnvelope &rates : v.rateEnvs)
+            rates.start();
         for (Envelope &env : v.modEnvs)
             env.start();
         for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds (standing still, takes a new one)
@@ -870,6 +877,8 @@ void Synth::releaseVoice(Voice &v) {
         op.env.release();
     for (DrawnEnvelope &drawn : v.drawn)
         drawn.release();
+    for (RateEnvelope &rates : v.rateEnvs)
+        rates.release();
     for (Envelope &env : v.modEnvs)
         env.release();
     for (Lfo &lfo : v.lfos) // a Curve in Sustain leaves its loop in its next block (see leaveLoop())
@@ -1898,7 +1907,9 @@ void Synth::telemetry(Telemetry &out) const {
         out.opLevels[i] = static_cast<float>(std::min(newest->ops[i].env.level() * newest->levels.keyLevel[i], 1.0));
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
-        out.opEnvPhase[i] = newest->ops[i].env.following() ? static_cast<float>(newest->drawn[i].phase()) : -1.0f;
+        out.opEnvPhase[i] = newest->ops[i].env.following()        ? static_cast<float>(newest->drawn[i].phase())
+                            : newest->ops[i].env.followingRates() ? static_cast<float>(newest->rateEnvs[i].progress())
+                                                                  : -1.0f;
     }
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);
@@ -3007,13 +3018,38 @@ FMVIBE_NOINLINE double Synth::curveSlew(double &out, double in, double slew, boo
     return out;
 }
 
+// Out of renderBlock(), as only some patches play a Rate/Level envelope. Switched to another, its AHDSR (or its drawn
+// envelope, which follows it as it is then) goes on from where it is.
+FMVIBE_NOINLINE void Synth::followRates(Voice &v, int op, const double *p, const ParamValues &params) {
+    Envelope &env = v.ops[op].env;
+    RateEnvelope &rates = v.rateEnvs[op];
+    if (opEnvMode(p[paramIndex(op, OpParam::EnvMode)]) != OpEnvMode::Rates) {
+        const bool held = rates.held();
+        rates.stop();
+        if (env.followingRates())
+            env.unfollow(held);
+        return;
+    }
+    RateEnvelope::Settings s;
+    for (int k = 0; k < 4; ++k) {
+        s.rates[k] = p[paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k))];
+        s.levels[k] = p[paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvLevel1) + k))];
+    }
+    // Rate Scaling by the key played, transposed by the global Pitch as set (not as its modulation bends it).
+    s.scaling = RateEnvelope::scalingSpeeds(p[paramIndex(op, OpParam::EnvRateScale)],
+                                            v.glide + params[paramIndex(GlobalParam::Pitch)]);
+    rates.prepare(s, rate_, env.level());
+    env.follow(rates);
+}
+
 // Out of renderBlock(), as only some patches play a drawn envelope.
 FMVIBE_NOINLINE void Synth::followDrawn(Voice &v, int op, const double *p, const ParamValues &params) {
     Envelope &env = v.ops[op].env;
     DrawnEnvelope &drawn = v.drawn[op];
-    if (p[paramIndex(op, OpParam::EnvMode)] < 0.5) { // switched back to its AHDSR, which goes on from where it is
-        drawn.stop();
-        env.unfollow(drawn.held());
+    if (opEnvMode(p[paramIndex(op, OpParam::EnvMode)]) != OpEnvMode::Curve) { // switched to another, which goes on
+        drawn.stop();                                                          // from where it is
+        if (env.following())
+            env.unfollow(drawn.held());
         return;
     }
     const double seconds = p[paramIndex(op, OpParam::EnvSync)] >= 0.5
@@ -3474,8 +3510,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
         const std::array<double, 8> times = opEnvFields(p, i);
         rates[i] = op.rates.get(times, [&] { return envRatesOf(times, rate_); });
-        if (p[paramIndex(i, OpParam::EnvMode)] >= 0.5 || op.env.following()) // its drawn envelope instead
+        const OpEnvMode envMode = opEnvMode(p[paramIndex(i, OpParam::EnvMode)]);
+        if (envMode == OpEnvMode::Curve || op.env.following()) // its drawn envelope instead
             followDrawn(v, i, p, params);
+        if (envMode == OpEnvMode::Rates || op.env.followingRates()) // or its Rate/Level envelope
+            followRates(v, i, p, params);
         // Keyboard level scaling, by the key the voice plays (gliding with it): what it puts out (to the output, the
         // filters, the shapers and the operators it modulates) up or down. Exactly 1 while it is off.
         target.keyLevel[i] = keyScaleGain(keyScaleDb(

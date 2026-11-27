@@ -8,6 +8,7 @@
 #include "gui/canvas.h"
 #include "gui/layout.h"
 #include "gui/lists.h"
+#include "gui/rateshape.h"
 #include "gui/routing.h"
 #include "gui/shapeclip.h"
 #include "gui/theme.h"
@@ -5622,6 +5623,119 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
 // the first time (and not again once drawn); One-Shot | Sustain; its sync switch, its Length knob then setting its note
 // value; its loop's bar on the tab's display dragged, one undo step; the newest voice's dot on it (read off the
 // rendered pixels); and the pencil opening its full-size editor, which a view tab closes.
+// An operator's Rate/Level envelope: the ENVELOPE tab's third mode button picking it in one undo step, the wheel over
+// the modes held at their ends, its display drawing it where the AHDSR's was (read off the rendered pixels), 1 | 2 | 3 |
+// 4 picking the segment whose Rate and Level the knobs set (R2's knob dragged, one undo step), a breakpoint dragged
+// setting its level up and down and its rate across in one undo step, and a click on a breakpoint picking its segment
+// for the knobs, changing nothing.
+void testOpEnvRates(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.ui.opTab = InspectorTab::Envelope;
+    auto rateOf = [](int k) { return paramIndex(0, static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k)); };
+    auto levelOf = [](int k) { return paramIndex(0, static_cast<OpParam>(static_cast<int>(OpParam::EnvLevel1) + k)); };
+    const int mode = paramIndex(0, OpParam::EnvMode);
+    const double rates[] = {70.0, 45.0, 40.0, 55.0}, levels[] = {99.0, 80.0, 70.0, 0.0};
+    for (int k = 0; k < 4; ++k) {
+        model.set(rateOf(k), rates[k]);
+        model.set(levelOf(k), levels[k]);
+    }
+    view.poll();
+    view.mouseMove({600.0f, 468.0f}, {});
+    renderer.save(view, dir / "3h-env-rates-adsr.png");
+    auto plotPixels = [&] {
+        std::vector<uint32_t> pixels;
+        const Rect plot = detail::kOpRatePlot;
+        for (float y = plot.y + 4.0f; y < plot.bottom() - 4.0f; y += 3.0f)
+            for (float x = plot.x + 4.0f; x < plot.right() - 4.0f; x += 3.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    const std::vector<uint32_t> adsr = plotPixels();
+    click(view, detail::opEnvModeButton(2).center());
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool shot = renderer.save(view, dir / "3h-env-rates.png");
+    const bool picked = model.value(mode) == static_cast<double>(OpEnvMode::Rates);
+    const bool drawn = plotPixels() != adsr;
+    RateEnvelope::Settings settings;
+    for (int k = 0; k < 4; ++k) {
+        settings.rates[k] = rates[k];
+        settings.levels[k] = levels[k];
+    }
+    const RateShape shape = rateShapeOf(settings, detail::kOpRatePlot);
+    // While a note plays, a dot where the newest voice is along it: half way to L2, then held at L3, then let go.
+    bool dots = true;
+    Point held;
+    dots = shape.dotAt(3.0, held) && held.x == shape.rise.back().x && held.y == shape.rise.back().y; // under L3's handle
+    for (const float at : {1.5f, 4.5f}) {
+        Point dot;
+        if (!shape.dotAt(at, dot)) {
+            dots = false;
+            continue;
+        }
+        const uint32_t before = renderer.pixel(dot);
+        model.live.voices = 1;
+        model.live.opEnvPhase[0] = at;
+        model.live.opEnvLevels[0] = 0.5f;
+        view.poll();
+        renderer.save(view, dir / (at == 1.5f ? "3h-env-rates-dot.png" : "3h-env-rates-dot-later.png"));
+        dots = dots && renderer.pixel(dot) != before && levelOf(renderer.pixel(dot)) > 180;
+        model.live.voices = 0;
+        model.live.opEnvPhase[0] = -1.0f;
+        view.poll();
+        renderer.save(view, dir / "3h-env-rates.png");
+    }
+    // Segment 2 picked: the first knob is R2, dragged down slower, one undo step.
+    click(view, detail::rateSegmentButton(1).center());
+    const Point knob = detail::opRateKnob(0);
+    drag(view, knob, {knob.x, knob.y + 30.0f});
+    const double dragged = model.value(rateOf(1));
+    const bool knobbed = dragged < rates[1] && model.value(rateOf(0)) == rates[0] && model.openEdits == 0;
+    view.undo();
+    const bool knobBack = model.value(rateOf(1)) == rates[1];
+    // L2's breakpoint dragged down and right: L2 lower, R2 slower, together; one undo step takes both back.
+    const Point l2 = shape.points[1];
+    view.mouseMove(l2, {});
+    view.mouseDown(l2, {});
+    view.mouseMove({l2.x + 10.0f, l2.y + 6.0f}, {});
+    view.mouseMove({l2.x + 20.0f, l2.y + 12.0f}, {});
+    renderer.save(view, dir / "3h-env-rates-point.png");
+    view.mouseUp({l2.x + 20.0f, l2.y + 12.0f}, {});
+    const double l2Now = model.value(levelOf(1)), r2Now = model.value(rateOf(1));
+    const bool pointed = l2Now < levels[1] && r2Now == rates[1] - 10.0 && model.openEdits == 0;
+    view.undo();
+    const bool pointBack = model.value(levelOf(1)) == levels[1] && model.value(rateOf(1)) == rates[1];
+    // A click on L4's breakpoint picks segment 4, changing nothing: the second knob is then L4.
+    click(view, shape.points[3]);
+    const bool still = model.value(levelOf(3)) == levels[3] && model.value(rateOf(3)) == rates[3];
+    const Point second = detail::opRateKnob(1);
+    drag(view, second, {second.x, second.y - 30.0f});
+    const bool l4 = model.value(levelOf(3)) > levels[3] && model.value(levelOf(1)) == levels[1];
+    // A click on the display between L2's and L3's breakpoints picks segment 3: the first knob is then Rate 3.
+    click(view, {0.5f * (shape.points[1].x + shape.points[2].x), detail::kOpRatePlot.center().y});
+    const bool between = model.value(rateOf(2)) == rates[2] && model.value(levelOf(2)) == levels[2];
+    drag(view, knob, {knob.x, knob.y + 30.0f});
+    const bool area = between && model.value(rateOf(2)) < rates[2] && model.value(rateOf(1)) == rates[1];
+    view.undo();
+    view.mouseMove({600.0f, 468.0f}, {});
+    renderer.save(view, dir / "3h-env-rates-l4.png");
+    view.undo();
+    view.undo();
+    const bool modeBack = model.value(mode) == static_cast<double>(OpEnvMode::Adsr) && model.value(levelOf(3)) == 0.0;
+    // The wheel steps the modes, held at Rate/Level.
+    for (int i = 0; i < 3; ++i)
+        view.wheel(detail::opEnvModeButton(0).center(), 1.0f, {});
+    const bool wheeled = model.value(mode) == static_cast<double>(OpEnvMode::Rates);
+    std::printf("      Rate/Level: picked %d, drawn %d, dots %d, R2's knob to %.0f (back %d), L2's point to L %.0f R %.0f (back %d), "
+                "a click on L4's changing nothing %d and its knob turning %d, a click between L2 and L3 picking Rate 3 %d, "
+                "undone %d, wheeled %d\n",
+                picked, drawn, dots, dragged, knobBack, l2Now, r2Now, pointBack, still, l4, area, modeBack, wheeled);
+    check(shot && picked && drawn && dots && knobbed && knobBack && pointed && pointBack && still && l4 && area && modeBack && wheeled,
+          "an operator's ENVELOPE tab picks its Rate/Level envelope, a dot on it where the newest voice is, its "
+          "segments picked for its knobs (and by a click between two breakpoints) and its breakpoints dragged on its "
+          "display");
+}
+
 void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -17310,6 +17424,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testWideLfoCard(dir, renderer);
     testCurveLoop(dir, renderer);
     testOpEnvCurve(dir, renderer);
+    testOpEnvRates(dir, renderer);
     testShapeCopyPaste(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);

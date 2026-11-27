@@ -35,6 +35,18 @@ What the plugin does and how its editor works, in full. Building and installing 
     The knob's stretch from 0 to 1 ms lies below where it used to stop, so patches saved before it (state version 3
     and earlier) keep their times, and their modulation depths on these times load scaled to swing them as far as
     before);
+  - **Rate/Level envelopes** (EnvMode's third, `OpEnvMode::Rates`): an operator's envelope can instead be a DX7's,
+    four rates and four levels (0-99 each) and a Rate Scaling (0-7), ids 83000 + 20·op, hidden, modulated as any
+    param. It rises or falls to L1 at R1, L2 at R2 and L3 at R3, holds at L3 while the key is down, and, let go, goes
+    to L4 at R4 from where it is; a segment between two equal levels waits as long as the DX7's does. Levels are in
+    the DX7's steps of 1/256 of a doubling (99 full, each step about 0.75 dB below 20, more under it), a rise jumps
+    from silence to 40 dB under full and slows as it nears the top, a rate moving its level a set number of those
+    steps a tick (1.45 ms, the DX7's 64 samples at 44.1 kHz) with the gain ramped across each tick, so no segment has
+    a longest time: rate 0 takes minutes. Rate Scaling speeds every rate up for higher keys, by the key played
+    (with the global Pitch), as the DX7's does. Done (let go and at L4), it fades out over 5 ms if L4 is heard, so
+    the voice ends. `RateEnvelope` in `src/rateenvelope.h`, which `Envelope` follows in a stage of its own, as a
+    drawn envelope; switched to another mode under a note, that one goes on from the level it is at. A new patch has
+    the DX7's INIT VOICE's: R 99 99 99 99, L 99 99 99 0. The DX7 importer plays every operator's envelope this way.
   - **Drawn envelopes** (EnvMode, ADSR to begin with): an operator's envelope can be a drawn curve instead of its
     AHDSR, a shape of up to 64 points (`opEnvShapeIndex()`, ids 81000 + 200·op) whose level goes from 0 at its
     bottom to full at its top, played over its **Length** (1 ms to 10 s, about a second to begin with), or synced to
@@ -2057,8 +2069,8 @@ what it started goes on.
     - **Envelope** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does. The curve has the whole display; its controls are in the row under the well, which starts with **ADSR**
-      over **Curve**, one pill of two icons (an AHDSR's shape, and a curve through its points, named in their
-      tooltips), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
+      over **Curve** over **Rate/Level**, one pill of three icons (an AHDSR's shape, a curve through its points and
+      four rising and falling steps, named in their tooltips; the wheel steps them), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
       Curve source's icons), its sync switch (the metronome), Length, Slew and, at the right, a pencil. Switched to Curve
       the first time (its shape still
       as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold (none while Off) and decay, a
@@ -2073,7 +2085,19 @@ what it started goes on.
       Slew in its title row where a Curve's has its clock list, sync, Rate and Slew (it has no Unipolar switch and no
       Phase), the loop's strip and ruler over the plot, Points | Steps, Snap and the grid under it, the point under
       the mouse in numbers, and the point menu's Set as Loop Start and Set as Loop End; Done or a view's tab closes
-      it.
+      it. With Rate/Level, the display draws the envelope as a C4 plays it (`rateShapeOf()` in
+      `src/gui/rateshape.h`, traced by the engine's own `RateEnvelope`), as the AHDSR's is drawn: its levels up the
+      display on the DX7's scale (evenly in dB), its rise to L3 over the left 70 %, each segment as wide as the square
+      root of its time (at least 14 px), a dashed line where it holds while the key is down, and its release to L4
+      on the right, and while notes play a dashed line at the newest voice's level and a dot where it is on the
+      curve (`RateEnvelope::progress()` in the telemetry's `opEnvPhase`: its segment and how far along it is, by its
+      level, or by its time where it waits, which `RateShape::dotAt()` finds on the curve). Its four breakpoints are handles:
+      dragged up and down, a breakpoint sets its level, and across its segment's rate (a step every 2 px, right
+      slower), in one undo step, from where they were, so a click on one picks its segment and changes nothing; under
+      the mouse or held, its rate, level and time read at the display's top right. Right of the modes, **1 | 2 | 3 |
+      4** picks the segment (lit behind it on the display; a breakpoint pressed picks its own, and a click on the display between two
+      breakpoints the segment between them, lit faintly under the mouse), whose rate and
+      level the two knobs after it set (**Rate 2** and **Level 2**, say). Its Rate Scaling is on the KEYS tab.
     - **Unison**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
       and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
       its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,
@@ -2103,8 +2127,9 @@ what it started goes on.
       line, dragged across onto whole notes, and each side's depth an octave out, dragged up and down, each drag one
       gesture and a double-click putting it back (C4, or no depth), its value over the display's middle while the mouse
       is on it or holds it; an **Exp** switch in each top corner, a side's curve; while notes play, the newest voice's
-      key as a dot on the curve; and **Break**, **L Depth** and **R Depth** as knobs under the well. The MODS view's
-      target menu lists the three under KEYS;
+      key as a dot on the curve; and **Break**, **L Depth**, **R Depth** and **Rate Scaling** (the Rate/Level
+      envelope's, keyboard scaling on a DX7, faint while the envelope is another) as knobs under the well. The MODS
+      view's target menu lists the three under KEYS;
     - **Inputs**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
@@ -2683,18 +2708,11 @@ what it started goes on.
       100) Hz (on Mult x10 above 2 kHz), the pitch envelope, the LFO's pitch modulation and the pitch bend (by Bend
       Range) on a fixed operator's own Pitch too, as they bend the DX7's, its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
       Pitch (24 in tune); with oscillator key sync off, Rnd Phase at 100 %;
-    - each operator's **envelope** as a drawn envelope in Sustain, traced step by step as the DX7 runs it (from
-      silence to L1, L2 and L3, held there by a loop of no length, then on to L4 once let go): a decay falling evenly
-      in dB at its rate's speed (doubling every four of its 64 speeds), cut off 80 dB down; an attack jumping up and
-      then rising as the DX7's does, fast and slowing toward full level; a segment that stays at its level waiting as
-      long as its rate says. Each segment is drawn as up to four pieces whose bends follow the trace (a decay's exact,
-      an exponential in dB). One longer than 10 s, the Length's top, is shortened to fit;
+    - each operator's **envelope** as its Rate/Level envelope (see Rate/Level envelopes, under the operators), its
+      four rates, four levels and rate scaling as the voice has them, which runs them as the DX7 does;
     - **velocity sensitivity** as a slot of the velocity source on each of the operator's levels (its Out, or the
       amounts of its routes), the level at velocity 0, the slot's depth and curve fitted to the DX7's velocity curve
       at that sensitivity (about 16 dB from 127 down to 64 at 7);
-    - **rate scaling** as slots of the note source, set to run from A0 to the note 114 in a straight line, on each
-      scaled operator's envelope Length, shortening it by 2^(-scaling x 31/32) at the top as the DX7 speeds its
-      rates;
     - the **LFO** as an LFO (or, for sample and hold, a Random source) at the DX7's speed (0.06 Hz at 0, 5.6 Hz at 35,
       49 Hz at 99), Global while its key sync is on (every note starting it again for every voice, as the DX7's one
       LFO), else Free: one, bipolar, on Pitch by the pitch mod depth and sensitivity (up
@@ -2831,7 +2849,7 @@ switched off and on again, say) allocates the voices again and ends the notes pl
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 2,057 of FMVibe's 52,172 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,057 of FMVibe's 52,258 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

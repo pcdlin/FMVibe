@@ -133,8 +133,27 @@ enum class OpParam {
     KeyRightDepth, // likewise an octave above it
     KeyLeftCurve,  // KeyCurve, by number: how it goes on past that octave
     KeyRightCurve,
+    // Its Rate/Level envelope (see RateEnvelope), which plays in place of its AHDSR while EnvMode is Rates: four rates
+    // and four levels, 0-99 each, as a DX7's envelope has them, and its Rate Scaling, 0-7, speeding its rates up for
+    // higher keys. The editor's alone, as the drawn envelope's fields are; they take modulation. Past the 50 ids the
+    // operators had, from 83000 + 20·op (see kSplitSections).
+    EnvRate1,
+    EnvRate2,
+    EnvRate3,
+    EnvRate4,
+    EnvLevel1,
+    EnvLevel2,
+    EnvLevel3,
+    EnvLevel4,
+    EnvRateScale,
     Count
 };
+// What an operator's envelope is (OpParam::EnvMode): its AHDSR, a drawn curve (DrawnEnvelope) or a Rate/Level envelope
+// (RateEnvelope). Stored in projects by number: only append (0 and 1 were its Toggle's off and on).
+enum class OpEnvMode { Adsr, Curve, Rates, Count };
+inline OpEnvMode opEnvMode(double value) {
+    return static_cast<OpEnvMode>(std::clamp(std::lround(value), 0L, static_cast<long>(OpEnvMode::Count) - 1L));
+}
 // How keyboard scaling goes on past the first octave from the breakpoint: Linear adds the depth again every octave (a
 // straight line in dB); Exp doubles all it has moved every octave, as the classic FM synths' exponential curves do
 // (see keyScaleDb()). Each side's sign is its depth's. Stored in projects by number: only append.
@@ -1730,7 +1749,6 @@ struct Section {
 
 constexpr Section kSections[] = {
     {0, 1, kGlobalCount, 0, 100},
-    {kOpBase, kOps, kOpParamCount, 100, 50},
     {kMatrixBase, kOps, kOps, 400, 10},
     {kFilterModBase, kFilters, kOps, 500, 10},
     {kFilterBase, kFilters, kFilterParamCount, 800, 20},
@@ -1823,6 +1841,8 @@ struct SplitSection {
 };
 
 constexpr SplitSection kSplitSections[] = {
+    // Operators: their first 50 fields from 100 + 50·op, the Rate/Level envelope's and those after from 83000 + 20·op.
+    {kOpBase, kOps, kOpParamCount, {{50, 100, 50}, {kRestFields, 83000, 20}}},
     // Effect slots: the fields added once the 80 had run out, those added once the next 20 had too, those added once
     // the next 40 had, and those added once the next 20 had. The slots past the kFirstFxSlots the chain had at first
     // have every field in a range of their own.
@@ -2013,12 +2033,14 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(0, OpParam::Sync)) == 131 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 &&
                   idOfIndex(paramIndex(0, OpParam::UnisonCurve)) == 134 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::UnisonBlend)) == 386 && kOpParamCount <= 50 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::UnisonBlend)) == 386 &&
                   idOfIndex(paramIndex(0, OpParam::EnvMode)) == 137 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::EnvDivision)) == 393 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::EnvSlew)) == 394 &&
                   idOfIndex(paramIndex(0, OpParam::KeyBreak)) == 145 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::KeyRightCurve)) == 399,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::KeyRightCurve)) == 399 &&
+                  idOfIndex(paramIndex(0, OpParam::EnvRate1)) == 83000 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::EnvRateScale)) == 83108 && kOpParamCount - 50 <= 20,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -2293,6 +2315,8 @@ static_assert(numberedInOrder({ReverbType::Hall, ReverbType::Room, ReverbType::P
 static_assert(numberedInOrder({RouteMode::Phase, RouteMode::LinearFm, RouteMode::ExpFm, RouteMode::Ring,
                                RouteMode::Count}),
               "RouteMode is stored by number: only append");
+static_assert(numberedInOrder({OpEnvMode::Adsr, OpEnvMode::Curve, OpEnvMode::Rates, OpEnvMode::Count}),
+              "OpEnvMode is stored by number: only append");
 static_assert(numberedInOrder({KeyCurve::Linear, KeyCurve::Exp, KeyCurve::Count}),
               "KeyCurve is stored by number: only append");
 static_assert(numberedInOrder({FeedbackMode::Smooth, FeedbackMode::Dx7, FeedbackMode::Count}),
@@ -3011,6 +3035,8 @@ enum class ParamKind {
     KeyDepth,     // bipolar dB: a keyboard scaling depth, an octave from the breakpoint (see keyScaleDb())
     KeyCurve,     // stepped: a keyboard scaling side's curve (see KeyCurve)
     FeedbackMode, // stepped: how an operator's feedback hears it (see FeedbackMode)
+    OpEnvMode,    // stepped: what an operator's envelope is (see OpEnvMode)
+    Dx7Value,     // a Rate/Level envelope's rate, level or Rate Scaling, shown as a whole number
 };
 // The name of a feedback's mode (see FeedbackMode).
 std::string feedbackModeName(FeedbackMode mode);

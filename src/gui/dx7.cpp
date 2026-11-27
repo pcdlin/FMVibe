@@ -52,22 +52,6 @@ double envUnits(int level, double out) {
 double unitGain(double units) {
     return std::exp2(units / 256.0 - 14.0);
 }
-// How far below its full envelope an operator is no longer heard: there its envelope's decays are cut off.
-constexpr double kSilent = 1e-4; // -80 dB
-
-// The envelope steps once a block of 64 samples at 44.1 kHz.
-constexpr double kStepSeconds = 64.0 / 44100.0;
-// How far a segment of rate 0-99 moves a step, in units: doubling every four of its 64 speeds.
-double stepUnits(int rate, double scaling = 0.0) {
-    const int q = std::min(63, ((rate * 41) >> 6) + static_cast<int>(scaling));
-    return (4 + (q & 3)) * std::exp2((q >> 2) - 8.0);
-}
-// How long a segment that stays at its level waits at rate 0-99: 40 s at rate 0, halving about every six rates, a
-// little over 10 ms at 76, then 20 samples a rate to 99.
-double staticSeconds(int rate) {
-    return rate < 77 ? 40.0 * std::exp2(-0.158 * rate) : 20.0 * (99 - rate) / 44100.0;
-}
-
 // The velocity curve, 0-127: at sensitivity s, a velocity moves an operator 2 s times this many units (see
 // velocityGain()); 15 up at 127, about none at 100, 246 down at 0.
 double velocityValue(int velocity) {
@@ -140,112 +124,6 @@ constexpr double kDetuneCents = 1.2;
 
 // FM Amount, at its top: so a modulator at the DX7's full level, 4 pi, fits a route's 8 radians.
 constexpr double kFmAmount = 2.0;
-
-// --- An operator's envelope, traced as the DX7 runs it and drawn as points.
-
-struct EnvPoint {
-    double t;     // seconds from the note's start
-    double level; // 0..1 of the operator at its full envelope
-    double curve; // the bend of the segment that leaves it
-};
-struct DrawnEnv {
-    std::vector<EnvPoint> points;
-    double hold = 0.0; // where it holds while the key is down (L3), seconds
-    double length = 0.0;
-};
-
-// The gain at `t` along a segment's trace of (seconds, units), `gain` of each step's units: straight in gain between
-// the steps, as the DX7 ramps an operator's gain across each step of its envelope (in its log units, a fast attack's
-// one step would stay near nothing and then leap up at its end, a click).
-template <class Gain>
-double traceAt(const std::vector<std::pair<double, double>> &trace, double t, const Gain &gain) {
-    if (t <= trace.front().first)
-        return gain(trace.front().second);
-    for (size_t i = 1; i < trace.size(); ++i)
-        if (t <= trace[i].first) {
-            const auto &[t0, u0] = trace[i - 1];
-            const auto &[t1, u1] = trace[i];
-            const double g0 = gain(u0), g1 = gain(u1);
-            return t1 - t0 <= 0.0 ? g1 : g0 + (g1 - g0) * (t - t0) / (t1 - t0);
-        }
-    return gain(trace.back().second);
-}
-
-// The envelope of DX7 operator `dxOp` of `voice`, at its output level: from silence up to L1, L2 and L3, held there,
-// then on to L4, each of its segments in pieces whose bends (see shapeBend()) follow the DX7's curve: a decay falls
-// evenly in dB, an attack rises as the DX7's rises, quickly from a jump and slowing toward full level.
-DrawnEnv traceEnvelope(const Voice &voice, int dxOp) {
-    const double out = scaledLevel(voice.op(dxOp, OutputLevel)) * 32.0;
-    const double full = unitGain(envUnits(99, out));
-    const double floorUnits = 256.0 * (std::log2(full * kSilent) + 14.0);
-    auto level = [&](double units) {
-        const double g = unitGain(units) / full;
-        return g < kSilent ? 0.0 : std::min(g, 1.0);
-    };
-    DrawnEnv env;
-    double units = 0.0, t = 0.0;
-    env.points.push_back({0.0, 0.0, 0.0});
-    for (int ix = 0; ix < 4; ++ix) {
-        if (ix == 3)
-            env.hold = t;
-        const int rate = voice.op(dxOp, static_cast<OpField>(Rate1 + ix));
-        const int to = voice.op(dxOp, static_cast<OpField>(Level1 + ix));
-        const double target = envUnits(to, out);
-        std::vector<std::pair<double, double>> trace{{0.0, units}};
-        const bool still = std::abs(target - units) < 0.5 || (ix == 0 && to == 0);
-        bool rising = false;
-        if (still) {
-            trace.push_back({staticSeconds(rate) / (ix == 0 && to == 0 && rate < 77 ? 20.0 : 1.0), units});
-        } else {
-            const double step = stepUnits(rate);
-            rising = target > units;
-            for (int n = 1;; ++n) {
-                bool done = false;
-                if (rising) {
-                    units = std::max(units, 1716.0); // an attack jumps up from below this first
-                    units += std::floor(17.0 - units / 256.0) * step;
-                    done = units >= target;
-                } else {
-                    units -= step;
-                    // A fall past hearing toward a level that isn't heard either ends there.
-                    done = units <= target || (units < floorUnits && target < floorUnits);
-                }
-                if (done || n * kStepSeconds > 60.0)
-                    units = target;
-                trace.push_back({n * kStepSeconds, units});
-                if (done || n * kStepSeconds > 60.0)
-                    break;
-            }
-        }
-        const double length = trace.back().first;
-        const double from = level(trace.front().second), end = level(units);
-        int pieces = 1;
-        if (!still && length > 0.0) {
-            if (rising) {
-                pieces = std::clamp(static_cast<int>(std::ceil(length / 0.003)), 1, 4);
-            } else {
-                const double db = 20.0 * std::log10(std::max(from, kSilent) / std::max(end, kSilent));
-                pieces = std::clamp(static_cast<int>(std::ceil(db / 40.0)), 1, 4);
-            }
-        }
-        for (int k = 0; k < pieces; ++k) {
-            const double ta = length * k / pieces, tb = length * (k + 1) / pieces;
-            const double ya = traceAt(trace, ta, level), yb = k + 1 == pieces ? end : traceAt(trace, tb, level);
-            const double ym = traceAt(trace, 0.5 * (ta + tb), level);
-            double curve = 0.0;
-            if (!still && std::abs(yb - ya) > 1e-6) {
-                // shapeBend() is halfway along at 1 / (exp(a / 2) + 1), for a = 8 curve.
-                const double frac = std::clamp((ym - ya) / (yb - ya), 1e-3, 1.0 - 1e-3);
-                curve = std::clamp(2.0 * std::log(1.0 / frac - 1.0) / 8.0, -1.0, 1.0);
-            }
-            env.points.back().curve = curve;
-            env.points.push_back({t + tb, yb, 0.0});
-        }
-        t += length;
-    }
-    env.length = t;
-    return env;
-}
 
 // --- The patch, edited through the editor's models as the editor edits one.
 
@@ -605,25 +483,15 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
         p[paramIndex(op, OpParam::KeyLeftCurve)] = leftCurve;
         p[paramIndex(op, OpParam::KeyRightCurve)] = rightCurve;
 
-        // Its envelope, drawn.
-        DrawnEnv env = traceEnvelope(voice, dxOp);
-        const double scale = env.length > kMaxEnvTime ? kMaxEnvTime / env.length : 1.0;
-        const double length = std::max(env.length * scale, kMinTime);
-        const int base = opEnvShapeIndex(op);
-        const int count = std::min(static_cast<int>(env.points.size()), kMaxShapePoints);
-        p[base] = count;
-        for (int i = 0; i < count; ++i) {
-            const EnvPoint &pt = env.points[i];
-            const double x = i + 1 == count ? 1.0 : env.length > 0.0 ? pt.t / env.length : 0.0;
-            setPoint(p, base, i, x, 2.0 * pt.level - 1.0, pt.curve);
+        // Its envelope, as the DX7's: its rates and levels, and its rate scaling (see RateEnvelope).
+        p[paramIndex(op, OpParam::EnvMode)] = static_cast<double>(OpEnvMode::Rates);
+        for (int k = 0; k < 4; ++k) {
+            p[paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k))] =
+                voice.op(dxOp, static_cast<OpField>(Rate1 + k));
+            p[paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvLevel1) + k))] =
+                voice.op(dxOp, static_cast<OpField>(Level1 + k));
         }
-        const double hold = env.length > 0.0 ? env.hold / env.length : 1.0;
-        p[paramIndex(op, OpParam::EnvMode)] = 1.0;
-        p[paramIndex(op, OpParam::EnvSustain)] = 1.0;
-        p[paramIndex(op, OpParam::EnvLoopStart)] = hold;
-        p[paramIndex(op, OpParam::EnvLoopEnd)] = hold;
-        p[paramIndex(op, OpParam::EnvSync)] = 0.0;
-        p[paramIndex(op, OpParam::EnvLength)] = std::clamp(normFromTime(length), 0.0, kMaxEnvNorm);
+        p[paramIndex(op, OpParam::EnvRateScale)] = voice.op(dxOp, RateScaling);
     }
     // The carriers together about as loud as one at full level.
     p[paramIndex(GlobalParam::Volume)] = table[paramIndex(GlobalParam::Volume)].def -
@@ -647,24 +515,6 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
             modulate(p, kVelocitySource, param, fit[1], fit[2]);
             value = std::clamp(fit[0] + fit[1] * envCurve(100.0 / 127.0, fit[2]), 0.0, 1.0);
         }
-    }
-
-    // Rate scaling: the note source, along the keys from A0 up, shortening each envelope it scales by as much as the
-    // DX7 speeds its rates.
-    bool scaled = false;
-    for (int op = 0; op < kOps; ++op)
-        if (const int rs = voice.op(op + 1, RateScaling); rs > 0) {
-            scaled = true;
-            const double norm = -(rs * 31.0 / 32.0) * std::numbers::ln2 / std::log(kMaxTime / kMinTime);
-            modulate(p, kNoteSource, paramIndex(op, OpParam::EnvLength), norm / kMaxEnvNorm);
-        }
-    if (scaled) {
-        p[paramIndex(NoteParam::Low)] = 21.0;
-        p[paramIndex(NoteParam::High)] = 114.0;
-        const int curve = paramIndex(NoteParam::Curve);
-        p[curve] = 2.0;
-        setPoint(p, curve, 0, 0.0, -1.0, 0.0);
-        setPoint(p, curve, 1, 1.0, 1.0, 0.0);
     }
 
     // The LFO: one for the pitch, one for the level (each source swinging its targets one way or both), faded in
