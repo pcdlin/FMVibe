@@ -69,6 +69,55 @@ void resetIcon(Canvas &c, Point center, Color color) {
     c.fillPolygon(head, std::size(head), color);
 }
 
+// An open folder: a tab on the back, the front tilted forward.
+void folderIcon(Canvas &c, Point m, Color color) {
+    const Point back[] = {{m.x - 7.0f, m.y + 5.0f}, {m.x - 7.0f, m.y - 5.0f}, {m.x - 2.5f, m.y - 5.0f},
+                          {m.x - 1.0f, m.y - 3.5f}, {m.x + 5.0f, m.y - 3.5f}, {m.x + 5.0f, m.y - 1.0f}};
+    const Point front[] = {{m.x - 7.0f, m.y + 5.0f}, {m.x - 4.5f, m.y - 1.0f}, {m.x + 7.5f, m.y - 1.0f},
+                           {m.x + 5.0f, m.y + 5.0f}, {m.x - 7.0f, m.y + 5.0f}};
+    c.polyline(back, std::size(back), color, 1.4f);
+    c.polyline(front, std::size(front), color, 1.4f);
+}
+
+// A floppy disk: a clipped corner, the shutter at the top and the label below; or, for a new file, its bottom right
+// corner left open for a plus.
+void saveIcon(Canvas &c, Point m, Color color, bool plus) {
+    if (!plus) {
+        const Point body[] = {{m.x - 6.5f, m.y - 6.5f}, {m.x + 3.5f, m.y - 6.5f}, {m.x + 6.5f, m.y - 3.5f},
+                              {m.x + 6.5f, m.y + 6.5f}, {m.x - 6.5f, m.y + 6.5f}, {m.x - 6.5f, m.y - 6.5f}};
+        c.polyline(body, std::size(body), color, 1.4f);
+        c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
+        c.strokeRect({m.x - 3.5f, m.y + 1.0f, 7.0f, 5.5f}, color, 1.2f);
+        return;
+    }
+    const Point body[] = {{m.x + 6.5f, m.y + 1.0f}, {m.x + 6.5f, m.y - 3.5f}, {m.x + 3.5f, m.y - 6.5f},
+                          {m.x - 6.5f, m.y - 6.5f}, {m.x - 6.5f, m.y + 6.5f}, {m.x + 1.0f, m.y + 6.5f}};
+    c.polyline(body, std::size(body), color, 1.4f);
+    c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
+    const Point cross{m.x + 5.0f, m.y + 5.0f};
+    c.line({cross.x - 3.5f, cross.y}, {cross.x + 3.5f, cross.y}, color, 1.5f);
+    c.line({cross.x, cross.y - 3.5f}, {cross.x, cross.y + 3.5f}, color, 1.5f);
+}
+
+// A cog: eight teeth around a ring, its hole left open, so it sits on any face.
+void cogIcon(Canvas &c, Point center, Color color) {
+    constexpr float kTau = 6.2831853f;
+    for (int tooth = 0; tooth < 8; ++tooth) {
+        const float angle = tooth * kTau / 8.0f;
+        const float half = 0.2f;
+        const Point outline[] = {Canvas::onCircle(center, 5.5f, angle - half * 1.3f),
+                                 Canvas::onCircle(center, 8.0f, angle - half), Canvas::onCircle(center, 8.0f, angle + half),
+                                 Canvas::onCircle(center, 5.5f, angle + half * 1.3f)};
+        c.fillPolygon(outline, std::size(outline), color);
+    }
+    c.strokeCircle(center, 4.3f, color, 3.4f); // from the hole, 2.6 across, out to 6
+}
+
+void moreIcon(Canvas &c, Point center, Color color) {
+    for (const float dx : {-5.0f, 0.0f, 5.0f})
+        c.fillCircle({center.x + dx, center.y}, 1.6f, color);
+}
+
 // A die showing five: a rounded square with a pip in each corner and one in the middle.
 void diceIcon(Canvas &c, Point center, Color color) {
     c.strokeRect({center.x - 6.0f, center.y - 6.0f, 12.0f, 12.0f}, color, 1.3f, kRadiusMark);

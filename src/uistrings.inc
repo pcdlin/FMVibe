@@ -1177,9 +1177,13 @@ STR(TipInit, "Initialize patch")
 STR(TipLoad, "Load preset")
 STR(TipSave, "Save changes to {1}")
 STR(TipSaveUnchanged, "No changes to save")
-STR(TipSaveNoFile, "No preset loaded. Use Save As...")
 STR(TipSaveAs, "Save as a new preset")
-STR(TipSettings, "Settings")
+STR(TipMore, "More: load, save, settings") // the overflow menu's button after Init and Save
+STR(MenuInitPreset, "Init preset") // the overflow menu's entries, each beside its icon
+STR(MenuLoadPreset, "Load preset...")
+STR(MenuSavePreset, "Save preset")
+STR(MenuSavePresetAs, "Save preset as...")
+STR(MenuSettings, "Settings")
 STR(TipManual, "Open the user manual") // the book in the settings dialog's title row, which opens it online
 STR(TipSettingsHue, "Accent color. Double-click resets") // the settings dialog's sliders, under them
 STR(TipSettingsGlow, "Glow effect strength. Double-click resets")

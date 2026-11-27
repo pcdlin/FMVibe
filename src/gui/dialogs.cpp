@@ -165,15 +165,32 @@ void View::paintSettings(Canvas &c) {
     }
 }
 
-// Save only for a preset loaded from a file and changed since; Save As for any preset, but for Init only once changed.
+// Save only once the patch has changed since its preset (or Init, where it saves as a new preset, as Save As does);
+// Save As for any preset, but for Init only once changed.
 bool View::presetActionOn(PresetAction action) const {
     switch (action) {
     case PresetAction::Save:
-        return controller_.presetHasFile() && controller_.patchEdited();
+        return controller_.patchEdited();
     case PresetAction::SaveAs:
         return controller_.presetHasFile() || controller_.patchEdited();
     default:
         return true;
+    }
+}
+
+void View::pressPreset(PresetAction action) {
+    if (!presetActionOn(action))
+        return;
+    const bool overwrites = presetStore().writesPresetFiles() && presetStore().presetWritable();
+    const bool ask = action == PresetAction::Save     ? overwrites
+                     : action == PresetAction::SaveAs ? false
+                                                      : controller_.patchEdited();
+    if (ask) {
+        confirm_ = static_cast<int>(action);
+        confirmFrom_ = nullptr;
+        hover_.reset();
+    } else {
+        runPreset(action);
     }
 }
 
@@ -185,7 +202,7 @@ void View::runPreset(PresetAction action) {
     case PresetAction::Load: // a file (a preset from the library loads through the browser: see PresetBrowser)
         presetStore().choosePreset(false);
         break;
-    case PresetAction::Save: // over the preset's file; with none to write (the demo, a factory preset), as Save As
+    case PresetAction::Save: // over the preset's file; with none to write (the demo, Init, a factory preset), as Save As
         if (!presetStore().writesPresetFiles())
             presetStore().choosePreset(true);
         else if (!presetStore().presetWritable())

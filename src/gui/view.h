@@ -143,6 +143,7 @@ public:
     bool infoCardShown() const { return presets_.infoCardShown(); }
     bool confirmShown() const { return confirm_ >= 0; }
     bool settingsShown() const { return settingsOpen_; }
+    bool moreMenuShown() const { return moreMenuOpen_; } // the overflow menu after Init and Save
     int settingsTabShown() const { return settingsTab_; } // detail::kSettingsVisualTab or kSettingsEngineTab
     bool saveShown() const { return presets_.saveShown(); }
     bool saveFolderListShown() const { return presets_.saveFolderListShown(); }
@@ -179,6 +180,9 @@ private:
     // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
     // changed; Save As picks a file in the dialog, and is off for Init until it changes.
     enum class PresetAction { Init, Load, Save, SaveAs };
+    // Init, Load, Save or Save As pressed, on the title bar or in the overflow menu: does nothing while it is greyed
+    // out, and asks first where it would throw changes away or overwrite a preset's file.
+    void pressPreset(PresetAction action);
 
     using Widget = gui::Widget;
 
@@ -788,6 +792,7 @@ private:
     float modListScroll_ = 0.0f;             // rows a pill's open list is scrolled to, before clamping
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
+    bool moreMenuOpen_ = false;              // the overflow menu, under its button after Init and Save
     int settingsTab_ = 0;                    // the settings dialog's tab shown: 0 VISUAL, 1 ENGINE (see layout.h)
     int theme_ = 0;                          // the theme painted last
     // A running random LFO's last cycles, for its display: each one's glide (from, to) at its place in a

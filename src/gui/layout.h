@@ -1478,10 +1478,25 @@ constexpr float kWhiteW = kKeys.w / kWhiteKeys;
 constexpr float kBlackW = kWhiteW * 0.6f;
 constexpr float kBlackH = kKeys.h * 0.6f;
 constexpr int kBaseNote = 24; // C1, where the keyboard starts before any octave shift
-// Init, Load, Save, Save As and the settings cog: icons at the right end of the title bar.
+// Init, Save and the overflow menu's button: icons at the right end of the title bar.
+constexpr int kToolbarInit = 0, kToolbarSave = 1, kToolbarMore = 2, kToolbarButtons = 3;
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
-    return {kFxPanel.right() - (5 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
+    return {kFxPanel.right() - (kToolbarButtons - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
+}
+// The overflow menu, under its button, its right edge on the button's: Init, Load, Save and Save As (by
+// View::PresetAction), then, after a line, Settings (kMoreSettings).
+constexpr int kMoreSettings = 4, kMoreItems = 5;
+constexpr float kMoreRowH = 26.0f, kMoreLineH = 9.0f;
+inline Rect moreMenu() {
+    const Rect button = toolbarButton(kToolbarMore);
+    constexpr float kW = 190.0f;
+    return {button.right() - kW, button.bottom() + 4.0f, kW, 8.0f + kMoreItems * kMoreRowH + kMoreLineH};
+}
+inline Rect moreMenuItem(int item) {
+    const Rect menu = moreMenu();
+    return {menu.x + 4.0f, menu.y + 4.0f + item * kMoreRowH + (item >= kMoreSettings ? kMoreLineH : 0.0f), menu.w - 8.0f,
+            kMoreRowH - 2.0f};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {

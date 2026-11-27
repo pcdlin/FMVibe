@@ -216,7 +216,9 @@ enum class WidgetKind {
     SearchField,  // a = Field: a text field (the browser's search, the MODS view's filter, the target menu's
                   // search): click to put the caret there, drag to select, double-click for a word
     SearchClear,  // a = Field: the x in a text field: empties it
-    SettingsButton, // the cog next to the preset buttons: opens the settings dialog
+    MoreButton,     // the overflow menu's button after Init and Save: opens or closes the menu
+    MoreMenu,       // a = 1 on the open overflow menu, 0 around it (a click there closes it)
+    MoreMenuItem,   // a = what it does: a View::PresetAction, or kMoreSettings (opens the settings dialog)
     ConfirmBackdrop, // a = 1 on the dialog asking before Init, Load or Save, 0 around it (a click there cancels)
     ConfirmButton,  // a = 1 goes ahead, 0 cancels
     SettingsBackdrop, // a = 1 on the dialog itself, 0 around it (a click there closes it)

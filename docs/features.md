@@ -1078,7 +1078,7 @@ sweeps and spectra the panels' row. What may show anywhere repaints the whole of
 changing, the first note or the last ending, and the host's tempo. It looks over the params for changes only when
 one may have changed since it last did.
 
-Its buttons look as what they do, wherever they are. An action (undo and redo, the preset buttons, the cog, the bins,
+Its buttons look as what they do, wherever they are. An action (undo and redo, the preset buttons, the **...**, the bins,
 the Seq view's copy and stretch, a shape's tools) is an icon alone, named in its tooltip, on a raised face; the small
 ones in a card's title row, its fold and its x, show that face only under the mouse itself, as tall as the power switch
 beside them, and the fold shows at all only while the mouse is over the card (an effect's, a source's or a split's
@@ -1931,7 +1931,7 @@ what it started goes on.
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens in the same panel the
     same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
-  redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). Between the
+  redo, Init, Save and the overflow menu's **...** at its right (see Presets and Settings, below). Between the
   name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
   host tempo"), then a field with the tempo in BPM (20–999). With the H on, as it starts, the synth plays at the
   host's tempo, which the field shows dimmed (as the synth last played it) and which takes no edits there. With the
@@ -2596,7 +2596,12 @@ what it started goes on.
       copy, cut and paste (line breaks pasted as spaces, up to 40 characters in all). A search longer than the field
       scrolls to keep the caret in sight. A value typed into a knob copies and pastes too, while all of it is
       selected, and its caret steps a word at a time with Ctrl too. The Save dialog's fields edit the same way.
-  - **Save As** (a disk with a plus) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as
+  - The **...** after Init and Save, lit while it is open, opens the **overflow menu** under it, drawn as the
+    editor's lists are: **Init preset**, **Load preset...**, **Save preset** and **Save preset as...**, each beside its
+    icon (Init's arrow, an open folder, a disk, a disk with a plus), then, after a line, **Settings** (a cog). Each does
+    what Init's and Save's buttons do, and a greyed-out one (as Save and Save As are below) passes the mouse by. A
+    click on an entry, around the menu or on the ... again closes it, as Escape does.
+  - **Save As** (a disk with a plus; **Save preset as...** in the overflow menu) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as
     the info card does: **Name** (the preset's, all selected, to type over) and **Author**, **Category** (a chip for
     each, **None**, and **+ New**, which opens the New Category form), **Description** (with how many of its 80
     characters are used) and **Folder**. The author is the preset's (a factory preset's copy's FMVibe); for a preset
@@ -2623,15 +2628,15 @@ what it started goes on.
     too. **Load**, and Save to File in the Save dialog, read and write a `.fmv` file through the standard file dialog,
     which always starts in the preset folder, wherever the host's last file dialog was left; Save to File suggests the
     current preset's name. The file holds the same data as the host's saved state, apart from the settings.
-  - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
+  - **Save** (the disk, on the title bar and as **Save preset** in the overflow menu) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
     tells in a message only if it couldn't (the Save dialog and Edit Info likewise). It is on only for a preset loaded (or saved) that has
-    changed since; otherwise, and always for Init, it is greyed out and does nothing. On a factory preset, which is
-    built in, it asks nothing and opens the Save dialog instead. Save As is greyed out too on
+    changed since; otherwise it is greyed out and does nothing. On a factory preset, which is built in, and on Init,
+    which has no file, it asks nothing and opens the Save dialog instead, as Save As does. Save As is greyed out too on
     Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
     since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.
-- **Settings** (the cog after Save As), in two tabs: **Visual**, the editor's look (Theme, under its heading, then
+- **Settings** (the overflow menu's last entry), in two tabs: **Visual**, the editor's look (Theme, under its heading, then
   Hue, Glow, Lines, Grid, Handles and Cards), and **Engine**, the instance's settings (Oversampling and MPE). The
   dialog opens on Visual and then on the tab shown last while the editor is open, one height for both, the version
   and the license at the bottom of each. **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
