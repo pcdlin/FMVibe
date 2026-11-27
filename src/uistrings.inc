@@ -608,8 +608,8 @@ STR(SourceNameBend, "Pitch Bend")
 STR(SourceNameOp, "Op {1}") // an operator's output as a modulation source
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
-STR(PresetDx7Voice, "DX7 voice {1} from {2}") // an imported voice's description: its place in the file, the file
-STR(PresetsDx7Folder, "DX7") // the folder of the preset folder imported DX7 files go into
+STR(PresetDx7Voice, "Voice {1} from {2}") // an imported voice's description: its place in the file, the file
+STR(PresetsDx7Folder, "Syx") // the folder of the preset folder imported DX7 files go into
 
 STR(ThemeMidnight, "Midnight")
 STR(ThemeLight, "Light")
@@ -906,6 +906,8 @@ STR(MatrixClickThen, "Click again to toggle.")
 
 // The settings dialog.
 STR(SettingsTitle, "Settings")
+STR(SettingsTabEngine, "Engine") // the settings dialog's tabs: the sound engine's settings (oversampling, MPE)
+STR(SettingsTabVisual, "Visual") // and the editor's look (theme, hue, glow, lines, grid, handles, cards)
 STR(SettingsOversampling, "OVERSAMPLING")
 STR(SettingsOversamplingWhat, "Runs the voices at a multiple of the sample rate.")
 STR(SettingsOversamplingWhy, "Higher values reduce aliasing but use more CPU.")
@@ -915,7 +917,7 @@ STR(SettingsMpeBend, "BEND") // the member channels' bend range, beside its butt
 STR(SettingsMpeRange, "{1} st") // a bend range in semitones, on its button
 STR(SettingsMpeWhat, "Requires MPE in the host, unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
-STR(SettingsLook, "LOOK")
+STR(SettingsTheme, "THEME") // the heading over the settings dialog's theme buttons
 STR(SettingsHue, "HUE") // the theme's main color, beside its slider
 STR(SettingsHueDefault, "Default") // the hue slider left at the theme's own color, after it
 STR(SettingsGlow, "GLOW")
@@ -1186,7 +1188,7 @@ STR(TipSeqPattern, "Pattern {1}")
 STR(TipSeqTile, "Pattern {1}: click to edit, drag onto another pattern to copy it there")
 STR(TipRemoveSplit, "Remove split")
 STR(TipRemoveJoin, "Remove join")
-STR(TipFeedbackMode, "{1} feedback. Click to pick how it runs") // the mode part of a feedback's pill
+STR(TipFeedbackMode, "{1} feedback. Click to change") // the mode part of a feedback's pill
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
 STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
 STR(TipRoutePhase, "Phase: adds to where the wave is read")
@@ -1222,9 +1224,15 @@ STR(TipInit, "Initialize patch")
 STR(TipLoad, "Load preset")
 STR(TipSave, "Save changes to {1}")
 STR(TipSaveUnchanged, "No changes to save")
-STR(TipSaveNoFile, "No preset loaded. Use Save As...")
 STR(TipSaveAs, "Save as a new preset")
-STR(TipSettings, "Settings")
+STR(TipMore, "More: load, save, settings") // the overflow menu's button after Init and Save
+STR(MenuInitPreset, "Init preset") // the overflow menu's entries, each beside its icon
+STR(MenuLoadPreset, "Load preset...")
+STR(MenuSavePreset, "Save preset")
+STR(MenuSavePresetAs, "Save preset as...")
+STR(MenuImportDx7, "Import sysex...") // DX7 voices from a sysex file, each saved as a preset
+STR(MenuUserManual, "User manual") // opens the user manual in the web browser
+STR(MenuSettings, "Settings")
 STR(TipManual, "Open the user manual") // the book in the settings dialog's title row, which opens it online
 STR(TipSettingsHue, "Accent color. Double-click resets") // the settings dialog's sliders, under them
 STR(TipSettingsGlow, "Glow effect strength. Double-click resets")
@@ -1272,7 +1280,7 @@ STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
 STR(TipEnvAdsr, "Attack, hold, decay, sustain and release") // an operator's ENVELOPE tab's ADSR | Curve
 STR(TipEnvCurve, "Custom curve")
-STR(TipEnvRates, "Rate/Level: four rates and four levels, as a DX7's envelope")
+STR(TipEnvRates, "Rate/Level: four rates and levels")
 STR(TipEnvOneShot, "One-Shot: Play the envelope once")
 STR(TipEnvSync, "Sync length to tempo")
 STR(TipSlope, "Filter slope")
@@ -1294,7 +1302,7 @@ STR(TipPrevAlgorithm, "Previous algorithm")
 STR(TipNextAlgorithm, "Next algorithm")
 STR(TipRetrigger, "Restart with each note") // an LFO's clock modes
 STR(TipFree, "Free")
-STR(TipGlobal, "Global: one LFO for every voice, each new note restarting it")
+STR(TipGlobal, "Global: one shared LFO, each new note restarting it")
 STR(TipOneShot, "One shot")
 STR(TipAnchor, "Anchor to song position") // an LFO's switch: its phase follows the host's transport
 STR(TipSustain, "Loop while the key is down, then play on") // a Curve's fifth clock mode
@@ -1439,12 +1447,12 @@ STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
 STR(DialogSavePreset, "Save preset")
 STR(DialogLoadPreset, "Load preset")
 STR(DialogPresetFiles, "FMVibe preset (*.fmv)")
-STR(DialogLoadFiles, "FMVibe preset or DX7 sysex (*.fmv, *.syx)") // Load's file types
-STR(DialogDx7Files, "DX7 sysex (*.syx)")
+STR(DialogImportDx7, "Import sysex") // the overflow menu's Import DX7 sysex's file dialog
+STR(DialogDx7Files, "sysex (*.syx)")
 STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
-STR(DialogNotDx7, "No DX7 voices in this file, or they could not be saved into the preset folder.")
+STR(DialogNotDx7, "No voices in this file, or they could not be saved into the preset folder.")
 
 // --- The editor on Linux, where the dialogs are the desktop's (zenity, else kdialog)
 

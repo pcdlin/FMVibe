@@ -90,6 +90,14 @@ void powerIcon(Canvas &c, Point center, Color color);
 void transportIcon(Canvas &c, Point center, Color color, bool stop);
 void keyboardIcon(Canvas &c, Point center, Color color, bool crossed);
 void resetIcon(Canvas &c, Point center, Color color);
+// About 15 x 13: an open folder (Load), a floppy disk (Save; with a plus in its corner, Save As), a cog (Settings)
+// and three dots across (the overflow menu's button).
+void folderIcon(Canvas &c, Point center, Color color);
+void saveIcon(Canvas &c, Point center, Color color, bool plus);
+void cogIcon(Canvas &c, Point center, Color color);
+void moreIcon(Canvas &c, Point center, Color color);
+// About 14 x 14: an arrow down into an open tray (the overflow menu's Import sysex).
+void importIcon(Canvas &c, Point center, Color color);
 // A die showing five, about 12 x 12: the partial editor's random button.
 void diceIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);
@@ -115,7 +123,7 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);
 void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale = 1.0f);
 // An operator's envelope's two kinds, about 16 x 10 around `m`: an AHDSR's shape (attack, hold, decay, sustain and
 // release), or a curve through its points (a drawn one).
-// An operator's envelope mode (0 ADSR, 1 Curve, 2 Rate/Level: a DX7's four segments, a dot at each end).
+// An operator's envelope mode (0 ADSR, 1 Curve, 2 Rate/Level: its four levels as bars on a baseline, tall to short).
 void envModeIcon(Canvas &c, Point m, int mode, Color color, float scale = 1.0f);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.

@@ -301,6 +301,10 @@ struct PresetEntry {
     PresetInfo info;    // as its file has it
 };
 
+// The file dialogs a host window opens for the presets: Load's and Save's (a preset's file), and the overflow menu's
+// Import sysex (a DX7 sysex file, see PluginCore::importDx7()).
+enum class PresetDialog { Load, Save, ImportDx7 };
+
 // The preset library and the patch as a file: what the preset bar, the preset browser and the Save dialog need from
 // the plugin, reached through Controller::presetStore(). Main thread only. Which preset the patch is, and whether it
 // changed since, is not the store's but the undo history's (see UndoHistory::presetFile()): an edit changes it, and
@@ -314,8 +318,10 @@ public:
     virtual void resetPreset() = 0;
     virtual bool loadPreset(const std::wstring &path) = 0;
     virtual bool savePreset(const std::wstring &path) = 0;
-    // Asks the host window for a file dialog; the result comes back through load/savePreset.
-    virtual void choosePreset(bool save) = 0;
+    // Asks the host window for a file dialog; the result comes back through loadPreset(), savePreset() or importDx7().
+    virtual void choosePreset(PresetDialog dialog) = 0;
+    // Imports a DX7 sysex file: its voices saved as presets and the first loaded. False where none could be.
+    virtual bool importDx7(const std::wstring &) { return false; }
     // Whether presets are files that can be written (not in the browser demo, whose dialog only says so).
     virtual bool writesPresetFiles() const { return true; }
     // Whether Save can write over the patch's preset file: there is one (not Init), and it isn't a factory preset's,
@@ -384,7 +390,7 @@ public:
     void resetPreset() override {}
     bool loadPreset(const std::wstring &) override { return false; }
     bool savePreset(const std::wstring &) override { return false; }
-    void choosePreset(bool) override {}
+    void choosePreset(PresetDialog) override {}
     bool writesPresetFiles() const override { return false; }
     bool presetWritable() const override { return false; }
     void rescanPresets() override {}

@@ -5204,7 +5204,7 @@ int main(int argc, char **argv) {
                                from(kFxOutNode) == fxPortValue(fxSlotPort(0));
             const int askedMoving = restartRequests;
 
-            click(952.0f, 18.0f); // undo: the shaper first again
+            click(1020.0f, 18.0f); // undo: the shaper first again
             plugin->on_main_thread(plugin);
             const bool undone = from(0) == fxPortValue(kFxPortIn) && from(kFxOutNode) == fxPortValue(fxSlotPort(1));
             const int askedUndoing = restartRequests;

@@ -69,6 +69,65 @@ void resetIcon(Canvas &c, Point center, Color color) {
     c.fillPolygon(head, std::size(head), color);
 }
 
+// An open folder: a tab on the back, the front tilted forward.
+void folderIcon(Canvas &c, Point m, Color color) {
+    const Point back[] = {{m.x - 7.0f, m.y + 5.0f}, {m.x - 7.0f, m.y - 5.0f}, {m.x - 2.5f, m.y - 5.0f},
+                          {m.x - 1.0f, m.y - 3.5f}, {m.x + 5.0f, m.y - 3.5f}, {m.x + 5.0f, m.y - 1.0f}};
+    const Point front[] = {{m.x - 7.0f, m.y + 5.0f}, {m.x - 4.5f, m.y - 1.0f}, {m.x + 7.5f, m.y - 1.0f},
+                           {m.x + 5.0f, m.y + 5.0f}, {m.x - 7.0f, m.y + 5.0f}};
+    c.polyline(back, std::size(back), color, 1.4f);
+    c.polyline(front, std::size(front), color, 1.4f);
+}
+
+// A floppy disk: a clipped corner, the shutter at the top and the label below; or, for a new file, its bottom right
+// corner left open for a plus.
+void saveIcon(Canvas &c, Point m, Color color, bool plus) {
+    if (!plus) {
+        const Point body[] = {{m.x - 6.5f, m.y - 6.5f}, {m.x + 3.5f, m.y - 6.5f}, {m.x + 6.5f, m.y - 3.5f},
+                              {m.x + 6.5f, m.y + 6.5f}, {m.x - 6.5f, m.y + 6.5f}, {m.x - 6.5f, m.y - 6.5f}};
+        c.polyline(body, std::size(body), color, 1.4f);
+        c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
+        c.strokeRect({m.x - 3.5f, m.y + 1.0f, 7.0f, 5.5f}, color, 1.2f);
+        return;
+    }
+    const Point body[] = {{m.x + 6.5f, m.y + 1.0f}, {m.x + 6.5f, m.y - 3.5f}, {m.x + 3.5f, m.y - 6.5f},
+                          {m.x - 6.5f, m.y - 6.5f}, {m.x - 6.5f, m.y + 6.5f}, {m.x + 1.0f, m.y + 6.5f}};
+    c.polyline(body, std::size(body), color, 1.4f);
+    c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
+    const Point cross{m.x + 5.0f, m.y + 5.0f};
+    c.line({cross.x - 3.5f, cross.y}, {cross.x + 3.5f, cross.y}, color, 1.5f);
+    c.line({cross.x, cross.y - 3.5f}, {cross.x, cross.y + 3.5f}, color, 1.5f);
+}
+
+// An open tray, and an arrow coming down into it.
+void importIcon(Canvas &c, Point m, Color color) {
+    const Point tray[] = {{m.x - 7.0f, m.y + 1.0f}, {m.x - 7.0f, m.y + 6.5f}, {m.x + 7.0f, m.y + 6.5f},
+                          {m.x + 7.0f, m.y + 1.0f}};
+    c.polyline(tray, std::size(tray), color, 1.4f);
+    c.line({m.x, m.y - 7.0f}, {m.x, m.y + 3.0f}, color, 1.5f);
+    const Point head[] = {{m.x - 3.5f, m.y - 0.5f}, {m.x, m.y + 3.0f}, {m.x + 3.5f, m.y - 0.5f}};
+    c.polyline(head, std::size(head), color, 1.5f);
+}
+
+// A cog: eight teeth around a ring, its hole left open, so it sits on any face.
+void cogIcon(Canvas &c, Point center, Color color) {
+    constexpr float kTau = 6.2831853f;
+    for (int tooth = 0; tooth < 8; ++tooth) {
+        const float angle = tooth * kTau / 8.0f;
+        const float half = 0.2f;
+        const Point outline[] = {Canvas::onCircle(center, 5.5f, angle - half * 1.3f),
+                                 Canvas::onCircle(center, 8.0f, angle - half), Canvas::onCircle(center, 8.0f, angle + half),
+                                 Canvas::onCircle(center, 5.5f, angle + half * 1.3f)};
+        c.fillPolygon(outline, std::size(outline), color);
+    }
+    c.strokeCircle(center, 4.3f, color, 3.4f); // from the hole, 2.6 across, out to 6
+}
+
+void moreIcon(Canvas &c, Point center, Color color) {
+    for (const float dx : {-5.0f, 0.0f, 5.0f})
+        c.fillCircle({center.x + dx, center.y}, 1.6f, color);
+}
+
 // A die showing five: a rounded square with a pip in each corner and one in the middle.
 void diceIcon(Canvas &c, Point center, Color color) {
     c.strokeRect({center.x - 6.0f, center.y - 6.0f, 12.0f, 12.0f}, color, 1.3f, kRadiusMark);
@@ -400,12 +459,11 @@ void noteIcon(Canvas &c, Point m, Color color) {
 
 void envModeIcon(Canvas &c, Point m, int mode, Color color, float scale) {
     auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
-    if (mode == 2) { // up fast, down in two slopes to a level held, then down
-        const Point points[] = {at(-8.0f, 4.5f), at(-5.5f, -4.5f), at(-2.0f, -1.5f), at(1.0f, -0.5f), at(4.5f, -0.5f),
-                                at(7.5f, 4.5f)};
-        c.polyline(points, std::size(points), color, 1.3f);
-        for (const Point &p : {points[1], points[2], points[3]})
-            c.fillCircle(p, 1.3f * scale, color);
+    if (mode == 2) { // its four levels, L1 to L4, as bars on a baseline
+        c.line(at(-8.0f, 5.0f), at(8.0f, 5.0f), color.alpha(0.5f), 1.0f);
+        const float x[] = {-5.25f, -1.75f, 1.75f, 5.25f}, top[] = {-5.0f, -1.5f, 0.0f, 2.5f};
+        for (int k = 0; k < 4; ++k)
+            c.line(at(x[k], 4.5f), at(x[k], top[k]), color, 2.4f);
         return;
     }
     if (mode == 0) {

@@ -6908,6 +6908,31 @@ void dx7Checks() {
         check(at(bent, hz) - at(bent, 440.0) > 40.0, "a DX7 voice's pitch envelope bends its pitch");
     }
 
+    // Amp modulation at full depth and sensitivity 3, the LFO at speed 10 (a cycle of 0.64 s): the DX7 turns the level
+    // down the most where its LFO is lowest, so a saw up's level rises across the cycle and a saw down's falls.
+    {
+        auto tremolo = [&](int wave) {
+            const std::vector<float> out = run(patch(1, [&](dx7::Voice &v) {
+                                                   set(v, 1, dx7::AmpModSens, 3);
+                                                   v.data[dx7::kVoiceFields + dx7::LfoAmpDepth] = 99;
+                                                   v.data[dx7::kVoiceFields + dx7::LfoSpeed] = 10;
+                                                   v.data[dx7::kVoiceFields + dx7::LfoWave] = static_cast<uint8_t>(wave);
+                                               }),
+                                               69, 1.0 / 1.575); // a cycle, at lfoHz(10)
+            auto rms = [&](double from, double to) { // over a share of the cycle, in dB
+                const size_t a = static_cast<size_t>(from * out.size()), b = static_cast<size_t>(to * out.size());
+                double sum = 0.0;
+                for (size_t i = a; i < b; ++i)
+                    sum += static_cast<double>(out[i]) * out[i];
+                return 10.0 * std::log10(sum / static_cast<double>(b - a) + 1e-30);
+            };
+            return rms(0.75, 0.95) - rms(0.05, 0.25); // its last fifth against its first, past the attack
+        };
+        const double up = tremolo(2), down = tremolo(1);
+        std::printf("      tremolo across a cycle: saw up %+.1f dB, saw down %+.1f dB\n", up, down);
+        check(up > 10.0 && down < -10.0, "a DX7 voice's amp modulation turns its level down where its LFO is lowest");
+    }
+
     // The LFO at speed 35 runs at about 5.6 Hz (5.62 on the DX7), its pitch depth on Pitch; and the presets made of a
     // bank are named for their voices, in order, and read back as made.
     {
@@ -6929,7 +6954,7 @@ void dx7Checks() {
             MemoryReader reader{presets[0].bytes.data(), presets[0].bytes.size(), 0};
             const clap_istream_t in = memoryIn(reader);
             const auto loaded = std::make_unique<ParamValues>();
-            same = readParams(&in, *loaded) && readLayout(&in).presetInfo.description == "DX7 voice 01 from Rom 1A";
+            same = readParams(&in, *loaded) && readLayout(&in).presetInfo.description == trf(Str::PresetDx7Voice, {"01", "Rom 1A"});
             for (int i = 0; i < kParamCount && same; ++i)
                 same = std::abs((*loaded)[i] - (*values)[i]) <= 1e-6 * std::max(1.0, std::abs((*values)[i]));
         }

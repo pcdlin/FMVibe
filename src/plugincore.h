@@ -98,7 +98,11 @@ public:
     bool presetWritable() const override {
         return presetHasFile() && !presetFile().starts_with(PresetLibrary::kFactoryPrefix);
     }
-    void choosePreset(bool save) override;
+    void choosePreset(gui::PresetDialog dialog) override;
+    // Imports a DX7 sysex file (see gui/dx7.h): each of its voices saved as a preset into the preset folder's Syx
+    // folder, in a folder named as the file (over the presets an earlier import of it saved), and the first loaded,
+    // so the preset bar's arrows step through the rest. False where it holds no voices or none could be saved.
+    bool importDx7(const std::wstring &path) override;
     void rescanPresets() override { // the favorites and categories other instances changed show along with their files
         presets_.rescan();
         readUserSettings();
@@ -335,10 +339,6 @@ private:
     void keepEditorLayout(const gui::UiLayout &from);
     // Loads a preset's bytes, which came from `path` (a file, or a factory preset's), as the patch's preset.
     bool loadPresetFrom(const clap_istream_t *stream, const std::wstring &path);
-    // Imports a DX7 sysex file (see gui/dx7.h): each of its voices saved as a preset into the preset folder's DX7
-    // folder, in a folder named as the file (over the presets an earlier import of it saved), and the first loaded,
-    // so the preset bar's arrows step through the rest. False where it holds no voices or none could be saved.
-    bool importDx7(const std::wstring &path);
     // What follows a preset folder renamed to `to`, or deleted (an empty `to`).
     void presetFolderMoved(const std::wstring &from, const std::wstring &to);
     // Puts the preset loaded from `path` first among the recent ones, in the user's settings.

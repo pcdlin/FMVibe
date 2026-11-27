@@ -30,19 +30,27 @@ std::vector<View::Widget> View::settingsWidgets() const {
     };
     add(Kind::SettingsBackdrop, {0.0f, 0.0f, View::kWidth, height()}, 0);
     add(Kind::SettingsBackdrop, panel, 1);
-    // Each row of buttons in one pill, as Poly | Mono.
+    for (int tab = 0; tab < kSettingsTabCount; ++tab)
+        add(Kind::SettingsTab, settingsTab(panel, tab), -1, tab);
+    add(Kind::SettingsManual, settingsManual(panel));
+    add(Kind::SettingsClose, settingsClose(panel));
+    // Each row of buttons in one pill, as Poly | Mono. ENGINE: the oversampling and MPE.
     size_t row = list.size();
-    for (int i = 0; i < static_cast<int>(std::size(kOversamplingFactors)); ++i)
-        add(Kind::SettingsOption, settingsOption(panel, i), -1, kOversamplingFactors[i]);
-    mergeButtons(list, row);
-    row = list.size();
-    for (int on = 0; on < 2; ++on)
-        add(Kind::SettingsMpe, settingsMpe(panel, on), -1, on);
-    mergeButtons(list, row);
-    row = list.size();
-    for (int i = 0; i < static_cast<int>(std::size(kMpeBendRanges)); ++i)
-        add(Kind::SettingsMpeRange, settingsMpeRange(panel, i), -1, kMpeBendRanges[i]);
-    mergeButtons(list, row);
+    if (settingsTab_ == kSettingsEngineTab) {
+        for (int i = 0; i < static_cast<int>(std::size(kOversamplingFactors)); ++i)
+            add(Kind::SettingsOption, settingsOption(panel, i), -1, kOversamplingFactors[i]);
+        mergeButtons(list, row);
+        row = list.size();
+        for (int on = 0; on < 2; ++on)
+            add(Kind::SettingsMpe, settingsMpe(panel, on), -1, on);
+        mergeButtons(list, row);
+        row = list.size();
+        for (int i = 0; i < static_cast<int>(std::size(kMpeBendRanges)); ++i)
+            add(Kind::SettingsMpeRange, settingsMpeRange(panel, i), -1, kMpeBendRanges[i]);
+        mergeButtons(list, row);
+        return list;
+    }
+    // VISUAL: the themes, the sliders, the depth handles' size and the cards.
     for (int i = 0; i < kThemeCount; ++i)
         add(Kind::SettingsTheme, settingsTheme(panel, i), -1, i);
     add(Kind::SettingsHue, settingsHue(panel));
@@ -59,8 +67,6 @@ std::vector<View::Widget> View::settingsWidgets() const {
         list.back().disabled = !cardsTintable(); // dimmed, and the mouse passes it by
     }
     mergeButtons(list, row);
-    add(Kind::SettingsManual, settingsManual(panel));
-    add(Kind::SettingsClose, settingsClose(panel));
     return list;
 }
 
@@ -81,61 +87,71 @@ void View::paintSettings(Canvas &c) {
     paintDialogPanel(c, panel);
     c.text({panel.x + 24.0f, panel.y + 14.0f, 200.0f, 24.0f}, tr(Str::SettingsTitle), kTextHeading, kText, Align::Left, true);
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, panel.y + 60.0f, 200.0f, 16.0f}, tr(Str::SettingsOversampling), kTextLabel, kFaint, Align::Left,
-           true);
-    c.text({panel.x + 24.0f, panel.y + 122.0f, panel.w - 48.0f, 16.0f},
-           tr(Str::SettingsOversamplingWhat), kTextLabel, kDim, Align::Left);
-    c.text({panel.x + 24.0f, panel.y + 140.0f, panel.w - 48.0f, 16.0f},
-           tr(Str::SettingsOversamplingWhy), kTextLabel, kDim, Align::Left);
-    c.text({panel.x + 24.0f, panel.y + 158.0f, panel.w - 48.0f, 16.0f},
-           tr(Str::SettingsOversamplingSaved), kTextLabel, kFaint, Align::Left);
-    // MPE: Off | On, then BEND and its ranges, and what it does under them.
-    const float mpeY = panel.y + kSettingsMpeY;
-    c.line({panel.x + 24.0f, mpeY + 0.5f}, {panel.right() - 24.0f, mpeY + 0.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, mpeY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsMpe), kTextLabel, kFaint, Align::Left, true);
-    c.text(settingsMpeBendLabel(panel), tr(Str::SettingsMpeBend), kTextLabel, controller_.mpe() ? kDim : kFaint,
-           Align::Left, true);
-    c.text({panel.x + 24.0f, mpeY + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhat), kTextLabel, kDim,
-           Align::Left);
-    c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
-           Align::Left);
-    // LOOK: the themes, their main color's hue, the glow, the sources' lines, the depth handles' size and the cards.
-    const float lookY = panel.y + kSettingsLookY;
-    c.line({panel.x + 24.0f, lookY + 0.5f}, {panel.right() - 24.0f, lookY + 0.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), kTextLabel, kFaint, Align::Left, true);
-    // A slider's name before it, and its amount after (Off at 0).
-    auto slider = [&](Rect track, Str name, float amount) {
-        c.text({panel.x + 24.0f, track.y, kSettingsLabelW, track.h}, tr(name), kTextLabel, kDim, Align::Left, true);
-        char text[16];
-        std::snprintf(text, sizeof(text), "%.0f %%", amount * 100.0f);
-        c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
-               amount > 0.0f ? text : tr(Str::ValueOff), kTextLabel, amount > 0.0f ? kText : kDim, Align::Left);
-    };
-    { // HUE, and its hue in degrees after it, or Default while it is the theme's own
-        const Rect track = settingsHue(panel);
-        c.text({panel.x + 24.0f, track.y, kSettingsLabelW, track.h}, tr(Str::SettingsHue), kTextLabel, kDim, Align::Left,
+    // The tabs' line, under VISUAL and ENGINE (painted with the widgets below).
+    c.line({panel.x + 1.0f, panel.y + kSettingsBodyY + 0.5f}, {panel.right() - 1.0f, panel.y + kSettingsBodyY + 0.5f},
+           kBorder, 1.0f);
+    if (settingsTab_ == kSettingsEngineTab) {
+        // ENGINE: OVERSAMPLING and what it does under its buttons.
+        const float bodyY = panel.y + kSettingsBodyY;
+        c.text({panel.x + 24.0f, bodyY + 10.0f, 200.0f, 16.0f}, tr(Str::SettingsOversampling), kTextLabel, kFaint,
+               Align::Left, true);
+        c.text({panel.x + 24.0f, bodyY + 72.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsOversamplingWhat), kTextLabel,
+               kDim, Align::Left);
+        c.text({panel.x + 24.0f, bodyY + 90.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsOversamplingWhy), kTextLabel,
+               kDim, Align::Left);
+        c.text({panel.x + 24.0f, bodyY + 108.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsOversamplingSaved), kTextLabel,
+               kFaint, Align::Left);
+        // MPE: Off | On, then BEND and its ranges, and what it does under them.
+        const float mpeY = panel.y + kSettingsMpeY;
+        c.line({panel.x + 24.0f, mpeY + 0.5f}, {panel.right() - 24.0f, mpeY + 0.5f}, kBorder, 1.0f);
+        c.text({panel.x + 24.0f, mpeY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsMpe), kTextLabel, kFaint, Align::Left, true);
+        c.text(settingsMpeBendLabel(panel), tr(Str::SettingsMpeBend), kTextLabel, controller_.mpe() ? kDim : kFaint,
+               Align::Left, true);
+        c.text({panel.x + 24.0f, mpeY + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhat), kTextLabel, kDim,
+               Align::Left);
+        c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
+               Align::Left);
+    } else {
+        // VISUAL: THEME and the themes, their main color's hue, the glow, the sources' lines, the roll's grid, the depth handles'
+        // size and the cards.
+        const float lookY = panel.y + kSettingsLookY;
+        c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsTheme), kTextLabel, kFaint, Align::Left,
                true);
-        const double hue = shownHue();
-        char text[16];
-        std::snprintf(text, sizeof(text), "%.0f\xC2\xB0", hue * 360.0);
-        c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
-               hue >= 0.0 ? text : tr(Str::SettingsHueDefault), kTextLabel, hue >= 0.0 ? kText : kDim, Align::Left);
+        // A slider's name before it, and its amount after (Off at 0).
+        auto slider = [&](Rect track, Str name, float amount) {
+            c.text({panel.x + 24.0f, track.y, kSettingsLabelW, track.h}, tr(name), kTextLabel, kDim, Align::Left, true);
+            char text[16];
+            std::snprintf(text, sizeof(text), "%.0f %%", amount * 100.0f);
+            c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
+                   amount > 0.0f ? text : tr(Str::ValueOff), kTextLabel, amount > 0.0f ? kText : kDim, Align::Left);
+        };
+        { // HUE, and its hue in degrees after it, or Default while it is the theme's own
+            const Rect track = settingsHue(panel);
+            c.text({panel.x + 24.0f, track.y, kSettingsLabelW, track.h}, tr(Str::SettingsHue), kTextLabel, kDim,
+                   Align::Left, true);
+            const double hue = shownHue();
+            char text[16];
+            std::snprintf(text, sizeof(text), "%.0f\xC2\xB0", hue * 360.0);
+            c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
+                   hue >= 0.0 ? text : tr(Str::SettingsHueDefault), kTextLabel, hue >= 0.0 ? kText : kDim, Align::Left);
+        }
+        slider(settingsGlow(panel), Str::SettingsGlow, shownGlow());
+        slider(settingsLinks(panel), Str::SettingsLinks, shownLinks());
+        slider(settingsGrid(panel), Str::SettingsGrid, shownGrid());
+        const Rect handles = settingsHandles(panel, 0);
+        c.text({panel.x + 24.0f, handles.y, kSettingsLabelW, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim,
+               Align::Left, true);
+        // CARDS, faint in a theme that outlines its cards, where tinting does nothing (its buttons disabled).
+        const Rect cards = settingsCards(panel, 0);
+        c.text({panel.x + 24.0f, cards.y, kSettingsLabelW, cards.h}, tr(Str::SettingsCards), kTextLabel,
+               cardsTintable() ? kDim : kFaint, Align::Left, true);
+        c.text({panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
+               Align::Left);
     }
-    slider(settingsGlow(panel), Str::SettingsGlow, shownGlow());
-    slider(settingsLinks(panel), Str::SettingsLinks, shownLinks());
-    slider(settingsGrid(panel), Str::SettingsGrid, shownGrid());
-    const Rect handles = settingsHandles(panel, 0);
-    c.text({panel.x + 24.0f, handles.y, kSettingsLabelW, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim,
-           Align::Left, true);
-    // CARDS, faint in a theme that outlines its cards, where tinting does nothing (its buttons disabled).
-    const Rect cards = settingsCards(panel, 0);
-    c.text({panel.x + 24.0f, cards.y, kSettingsLabelW, cards.h}, tr(Str::SettingsCards), kTextLabel,
-           cardsTintable() ? kDim : kFaint, Align::Left, true);
-    c.text({panel.x + 24.0f, lookY + 278.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
-           Align::Left);
-    // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, lookY + 304.5f}, {panel.right() - 24.0f, lookY + 304.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, lookY + 312.0f, panel.w - 48.0f, 16.0f};
+    // The version and the license, at the bottom of either tab.
+    const float footY = panel.y + kSettingsFootY;
+    c.line({panel.x + 24.0f, footY + 0.5f}, {panel.right() - 24.0f, footY + 0.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, footY + 8.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
     // A disabled one (CARDS' buttons in a theme that outlines its cards) under a layer, as the editor dims its disabled
@@ -149,15 +165,32 @@ void View::paintSettings(Canvas &c) {
     }
 }
 
-// Save only for a preset loaded from a file and changed since; Save As for any preset, but for Init only once changed.
+// Save only once the patch has changed since its preset (or Init, where it saves as a new preset, as Save As does);
+// Save As for any preset, but for Init only once changed.
 bool View::presetActionOn(PresetAction action) const {
     switch (action) {
     case PresetAction::Save:
-        return controller_.presetHasFile() && controller_.patchEdited();
+        return controller_.patchEdited();
     case PresetAction::SaveAs:
         return controller_.presetHasFile() || controller_.patchEdited();
     default:
         return true;
+    }
+}
+
+void View::pressPreset(PresetAction action) {
+    if (!presetActionOn(action))
+        return;
+    const bool overwrites = presetStore().writesPresetFiles() && presetStore().presetWritable();
+    const bool ask = action == PresetAction::Save     ? overwrites
+                     : action == PresetAction::SaveAs ? false
+                                                      : controller_.patchEdited();
+    if (ask) {
+        confirm_ = static_cast<int>(action);
+        confirmFrom_ = nullptr;
+        hover_.reset();
+    } else {
+        runPreset(action);
     }
 }
 
@@ -167,11 +200,11 @@ void View::runPreset(PresetAction action) {
         presetStore().resetPreset();
         break;
     case PresetAction::Load: // a file (a preset from the library loads through the browser: see PresetBrowser)
-        presetStore().choosePreset(false);
+        presetStore().choosePreset(PresetDialog::Load);
         break;
-    case PresetAction::Save: // over the preset's file; with none to write (the demo, a factory preset), as Save As
+    case PresetAction::Save: // over the preset's file; with none to write (the demo, Init, a factory preset), as Save As
         if (!presetStore().writesPresetFiles())
-            presetStore().choosePreset(true);
+            presetStore().choosePreset(PresetDialog::Save);
         else if (!presetStore().presetWritable())
             presets_.openSave();
         else if (!controller_.overwritePreset()) // saved, it says nothing: Save greys out again
@@ -181,7 +214,10 @@ void View::runPreset(PresetAction action) {
         if (presetStore().writesPresetFiles())
             presets_.openSave();
         else
-            presetStore().choosePreset(true);
+            presetStore().choosePreset(PresetDialog::Save);
+        break;
+    case PresetAction::ImportDx7: // a sysex file, whose first voice replaces the patch
+        presetStore().choosePreset(PresetDialog::ImportDx7);
         break;
     }
 }

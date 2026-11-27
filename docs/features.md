@@ -1118,7 +1118,7 @@ sweeps and spectra the panels' row. What may show anywhere repaints the whole of
 changing, the first note or the last ending, and the host's tempo. It looks over the params for changes only when
 one may have changed since it last did.
 
-Its buttons look as what they do, wherever they are. An action (undo and redo, the preset buttons, the cog, the bins,
+Its buttons look as what they do, wherever they are. An action (undo and redo, the preset buttons, the **...**, the bins,
 the Seq view's copy and stretch, a shape's tools) is an icon alone, named in its tooltip, on a raised face; the small
 ones in a card's title row, its fold and its x, show that face only under the mouse itself, as tall as the power switch
 beside them, and the fold shows at all only while the mouse is over the card (an effect's, a source's or a split's
@@ -1971,7 +1971,7 @@ what it started goes on.
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens in the same panel the
     same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
-  redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). Between the
+  redo, Init, Save and the overflow menu's **...** at its right (see Presets and Settings, below). Between the
   name and the preset bar sits the **tempo** every synced LFO, delay and sweep follows: a switch, **H** ("Sync to
   host tempo"), then a field with the tempo in BPM (20–999). With the H on, as it starts, the synth plays at the
   host's tempo, which the field shows dimmed (as the synth last played it) and which takes no edits there. With the
@@ -2070,7 +2070,7 @@ what it started goes on.
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does. The curve has the whole display; its controls are in the row under the well, which starts with **ADSR**
       over **Curve** over **Rate/Level**, one pill of three icons (an AHDSR's shape, a curve through its points and
-      four rising and falling steps, named in their tooltips; the wheel steps them), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
+      four bars, its four levels, named in their tooltips; the wheel steps them), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
       Curve source's icons), its sync switch (the metronome), Length, Slew and, at the right, a pencil. Switched to Curve
       the first time (its shape still
       as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold (none while Off) and decay, a
@@ -2087,9 +2087,10 @@ what it started goes on.
       the mouse in numbers, and the point menu's Set as Loop Start and Set as Loop End; Done or a view's tab closes
       it. With Rate/Level, the display draws the envelope as a C4 plays it (`rateShapeOf()` in
       `src/gui/rateshape.h`, traced by the engine's own `RateEnvelope`), as the AHDSR's is drawn: its levels up the
-      display on the DX7's scale (evenly in dB), its rise to L3 over the left 70 %, each segment as wide as the square
-      root of its time (at least 14 px), a dashed line where it holds while the key is down, and its release to L4
-      on the right, and while notes play a dashed line at the newest voice's level and a dot where it is on the
+      display on the DX7's scale (evenly in dB), its rise to L3 and its release to L4 on one time scale, each segment
+      as wide as its time (on a log scale past a tenth of a second, so a long one doesn't crowd the others out, and at
+      least 4 px: a segment at rate 99 all but upright), a dashed line between them where it holds while the key is
+      down, and while notes play a dashed line at the newest voice's level and a dot where it is on the
       curve (`RateEnvelope::progress()` in the telemetry's `opEnvPhase`: its segment and how far along it is, by its
       level, or by its time where it waits, which `RateShape::dotAt()` finds on the curve). Its four breakpoints are handles:
       dragged up and down, a breakpoint sets its level, and across its segment's rate (a step every 2 px, right
@@ -2659,7 +2660,14 @@ what it started goes on.
       copy, cut and paste (line breaks pasted as spaces, up to 40 characters in all). A search longer than the field
       scrolls to keep the caret in sight. A value typed into a knob copies and pastes too, while all of it is
       selected, and its caret steps a word at a time with Ctrl too. The Save dialog's fields edit the same way.
-  - **Save As** (a disk with a plus) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as
+  - The **...** after Init and Save, lit while it is open, opens the **overflow menu** under it, drawn as the
+    editor's lists are: **Init preset**, **Load preset...**, **Save preset**, **Save preset as...** and **Import
+    sysex...**, each beside its icon (Init's arrow, an open folder, a disk, a disk with a plus, an arrow down into a
+    tray), then, after a line, **User manual** (a book, opening the user manual in the web browser, as the settings
+    dialog's book does) and **Settings** (a cog). Each does what Init's and Save's buttons do (Import sysex: see
+    DX7 import, below), and a greyed-out one (as Save and Save As are below) passes the mouse by. A
+    click on an entry, around the menu or on the ... again closes it, as Escape does.
+  - **Save As** (a disk with a plus; **Save preset as...** in the overflow menu) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as
     the info card does: **Name** (the preset's, all selected, to type over) and **Author**, **Category** (a chip for
     each, **None**, and **+ New**, which opens the New Category form), **Description** (with how many of its 80
     characters are used) and **Folder**. The author is the preset's (a factory preset's copy's FMVibe); for a preset
@@ -2686,12 +2694,13 @@ what it started goes on.
     too. **Load**, and Save to File in the Save dialog, read and write a `.fmv` file through the standard file dialog,
     which always starts in the preset folder, wherever the host's last file dialog was left; Save to File suggests the
     current preset's name. The file holds the same data as the host's saved state, apart from the settings.
-    Load also takes a DX7 sysex file (`.syx`), its file types listing both to begin with (see DX7 import, below).
-  - **DX7 import** (`src/gui/dx7.cpp`, `PluginCore::importDx7()`): Load given a `.syx` file reads every 32-voice bank
-    dump and single-voice dump in it (or a bank's 4096 bytes without their header; checksums aren't required, as many
-    banks in circulation have wrong ones), saves each voice as a sparse preset into the preset folder's **DX7**
+  - **DX7 import** (`src/gui/dx7.cpp`, `PluginCore::importDx7()`): the overflow menu's **Import sysex...** asks
+    first while the patch has changed, as Load does, then opens the standard file dialog on DX7 sysex files (`.syx`),
+    in the preset folder, titled Import sysex. It reads every 32-voice bank dump and single-voice dump in the
+    file picked (or a bank's 4096 bytes without their header; checksums aren't required, as many
+    banks in circulation have wrong ones), saves each voice as a sparse preset into the preset folder's **Syx**
     folder, in a folder named as the file (over the presets an earlier import of it saved), named by its place in the
-    file and its name ("07 E.PIANO 1"), its description "DX7 voice 07 from <file>", and loads the first, so the preset
+    file and its name ("07 E.PIANO 1"), its description "Voice 07 from <file>", and loads the first, so the preset
     bar's arrows step through the rest. A file without voices, or none saved, says so. `fmvibe-presettool
     --dx7=<folder> <file.syx>...` imports the same way into a folder. A voice plays, from Init, as the DX7 plays it,
     as near as the engine takes it: its level scale, envelope speeds, rate scaling, LFO delay, fixed frequencies and
@@ -2716,8 +2725,9 @@ what it started goes on.
     - the **LFO** as an LFO (or, for sample and hold, a Random source) at the DX7's speed (0.06 Hz at 0, 5.6 Hz at 35,
       49 Hz at 99), Global while its key sync is on (every note starting it again for every voice, as the DX7's one
       LFO), else Free: one, bipolar, on Pitch by the pitch mod depth and sensitivity (up
-      to an octave), and one, unipolar, turning each operator with amp mod sensitivity down at the LFO's trough by a
-      model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down to silence at 3); its delay a Global Curve source, silent, fading in and then holding (looping its last tenth), which every
+      to an octave), and one, unipolar, turning each operator with amp mod sensitivity down at the LFO's trough (the
+      pitch's LFO upside down: half a cycle on, a Saw for a saw down and, for a saw up, a Curve source falling across
+      its cycle) by a model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down to silence at 3); its delay a Global Curve source, silent, fading in and then holding (looping its last tenth), which every
       note starts again, as the DX7's delay, as the aux of
       both;
     - the **pitch envelope** as a Curve source in Sustain on Pitch (bipolar), its levels on the DX7's curve (3/8 of a
@@ -2730,15 +2740,18 @@ what it started goes on.
       held so it goes no higher at the end of the keys (A0 or C8) than the DX7's top level, which it can't pass.
 
     What a DX7's controllers do isn't taken over, since its voices don't hold it.
-  - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
+  - **Save** (the disk, on the title bar and as **Save preset** in the overflow menu) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
     tells in a message only if it couldn't (the Save dialog and Edit Info likewise). It is on only for a preset loaded (or saved) that has
-    changed since; otherwise, and always for Init, it is greyed out and does nothing. On a factory preset, which is
-    built in, it asks nothing and opens the Save dialog instead. Save As is greyed out too on
+    changed since; otherwise it is greyed out and does nothing. On a factory preset, which is built in, and on Init,
+    which has no file, it asks nothing and opens the Save dialog instead, as Save As does. Save As is greyed out too on
     Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
     since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.
-- **Settings** (the cog after Save As): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
+- **Settings** (the overflow menu's last entry), in two tabs: **Visual**, the editor's look (Theme, under its heading, then
+  Hue, Glow, Lines, Grid, Handles and Cards), and **Engine**, the instance's settings (Oversampling and MPE). The
+  dialog opens on Visual and then on the tab shown last while the editor is open, one height for both, the version
+  and the license at the bottom of each. **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,

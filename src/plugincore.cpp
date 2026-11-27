@@ -710,11 +710,6 @@ void PluginCore::resetPreset() {
 
 // A preset file holds the same bytes as the host's state; a factory preset's are built in.
 bool PluginCore::loadPreset(const std::wstring &chosen) {
-    std::wstring extension = wideOf(pathOf(chosen).extension());
-    for (wchar_t &c : extension)
-        c = c >= L'A' && c <= L'Z' ? static_cast<wchar_t>(c - L'A' + L'a') : c;
-    if (extension == L".syx")
-        return importDx7(chosen);
     const std::wstring path = PresetLibrary::resolve(chosen);
     if (const FactoryPreset *preset = PresetLibrary::factoryPreset(path)) {
         MemoryReader reader{preset->data.data(), preset->data.size()};
@@ -835,10 +830,10 @@ bool PluginCore::savePreset(const std::wstring &path) {
     return true;
 }
 
-void PluginCore::choosePreset(bool save) {
+void PluginCore::choosePreset(gui::PresetDialog dialog) {
     PresetLibrary::makeFolder(); // where the dialogs start
     if (editor_)
-        editor_->choosePreset(save);
+        editor_->choosePreset(dialog);
 }
 
 std::wstring PluginCore::presetFolder() const {

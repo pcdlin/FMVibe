@@ -548,7 +548,12 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
     }
     auto lfo = [&](bool bipolar) {
         const bool random = wave == 5;
-        const int s = modulation.addSource(random ? SourceType::Random : SourceType::Lfo);
+        // The DX7 turns an operator down the most where its LFO is lowest, so the level's LFO is the pitch's upside
+        // down, which the slot's depth, turning one way only, can't do: half a cycle on for the waves that are
+        // symmetric (below), an LFO's Saw, rising, for a saw down, and for a saw up a Curve source falling from its top
+        // to its foot across the cycle, unipolar.
+        const bool fall = !bipolar && wave == 2;
+        const int s = modulation.addSource(random ? SourceType::Random : fall ? SourceType::Curve : SourceType::Lfo);
         if (s < 0)
             return s;
         static constexpr LfoShape kShapes[5] = {LfoShape::Triangle, LfoShape::Saw, LfoShape::Saw, LfoShape::Square,
@@ -557,7 +562,12 @@ void toPatch(const Voice &dxVoice, ParamValues &p, UiLayout &layout) {
         p[paramIndex(s, SourceParam::Rate)] = std::clamp(normFromRate(hz), 0.0, 1.0);
         // Key sync on, every note starts it again for every voice, as the DX7's one LFO is; off, it runs free.
         p[paramIndex(s, free ? SourceParam::Free : SourceParam::Global)] = 1.0;
-        if (random) {
+        if (fall) {
+            const int shape = shapeCountIndex(s);
+            p[shape] = 2.0;
+            setPoint(p, shape, 0, 0.0, 1.0, 0.0);
+            setPoint(p, shape, 1, 1.0, -1.0, 0.0);
+        } else if (random) {
             p[paramIndex(s, SourceParam::RandomChaos)] = 1.0;
             p[paramIndex(s, SourceParam::RandomSmooth)] = 0.0;
             p[paramIndex(s, SourceParam::Bipolar)] = bipolar ? 1.0 : 0.0;

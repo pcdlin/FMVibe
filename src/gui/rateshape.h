@@ -70,8 +70,8 @@ struct RateShape {
     }
 };
 
-// In `plot`: its rise over the left 70 %, each segment as wide as the square root of its time (but at least 14 px, so
-// a segment at once keeps its points apart), the hold a gap of 8 %, and its release over the rest.
+// In `plot`: its rise and its release on one scale, each segment as wide as its time (on a log scale past a tenth of a
+// second, and at least 4 px, so a segment at once keeps its points apart), the hold a gap of 8 % between them.
 inline RateShape rateShapeOf(const RateEnvelope::Settings &s, Rect plot) {
     const double tickRate = 1.0 / RateEnvelope::kTickSeconds;
     constexpr int kMostTicks = static_cast<int>(360.0 / RateEnvelope::kTickSeconds); // six minutes a part
@@ -114,19 +114,26 @@ inline RateShape rateShapeOf(const RateEnvelope::Settings &s, Rect plot) {
             return std::abs(end - from) < 1e-9 ? 1.0 : std::clamp((units - from) / (end - from), 0.0, 1.0);
         };
     };
-    const float riseW = plot.w * 0.7f, gap = plot.w * 0.08f, fallW = plot.w - riseW - gap;
-    constexpr float kLeast = 14.0f;
-    double weights[3], sum = 0.0;
-    for (int k = 0; k < 3; ++k) {
-        const size_t from = k > 0 ? ends[k - 1] : 0;
-        weights[k] = std::sqrt(static_cast<double>(ends[k] - from));
+    // Every segment, the release too, on one scale: as wide as its time up to a tenth of a second or so, and on by its
+    // logarithm past that (so a long one doesn't crowd the rest out), but at least kLeast, so a segment at once is
+    // all but upright and still keeps its points apart.
+    const float gap = plot.w * 0.08f;
+    constexpr float kLeast = 4.0f;
+    constexpr double kLinear = 0.1; // seconds
+    double weights[4], sum = 0.0;
+    for (int k = 0; k < 4; ++k) {
+        const size_t ticks = k == 3 ? fall.size() - 1 : ends[k] - (k > 0 ? ends[k - 1] : 0);
+        shape.seconds[k] = static_cast<double>(ticks) * RateEnvelope::kTickSeconds;
+        weights[k] = std::log1p(shape.seconds[k] / kLinear);
         sum += weights[k];
-        shape.seconds[k] = static_cast<double>(ends[k] - from) * RateEnvelope::kTickSeconds;
     }
+    float spans[4];
+    for (int k = 0; k < 4; ++k)
+        spans[k] = kLeast + (plot.w - gap - 4.0f * kLeast) * static_cast<float>(sum > 0.0 ? weights[k] / sum : 0.25);
     float x = plot.x;
     shape.rise.push_back({x, rateY(plot, rise[0])});
     for (int k = 0; k < 3; ++k) {
-        const float span = kLeast + (riseW - 3.0f * kLeast) * static_cast<float>(sum > 0.0 ? weights[k] / sum : 1.0 / 3.0);
+        const float span = spans[k];
         const size_t from = k > 0 ? ends[k - 1] : 0;
         const double ticks = static_cast<double>(ends[k] - from);
         const int steps = std::max(1, static_cast<int>(std::min(ticks, 48.0)));
@@ -142,18 +149,17 @@ inline RateShape rateShapeOf(const RateEnvelope::Settings &s, Rect plot) {
         x += span;
         shape.points[k] = {x, rateY(plot, rateUnits(s.levels[k]))};
     }
-    const float x0 = plot.x + riseW + gap;
+    const float x0 = x + gap, fallW = plot.right() - x0; // spans[3], to the plot's end
     const double ticks = static_cast<double>(fall.size() - 1);
     const int steps = std::max(1, static_cast<int>(std::min(ticks, 64.0)));
     const auto progress = counted(fall.front(), fall.back(), std::abs(fall.back() - fall.front()) < 0.5);
-    for (int i = 0; i <= steps; ++i) { // along the square root of its time, as a long tail would crowd the rest out
+    for (int i = 0; i <= steps; ++i) { // along the square root of its time, as a long tail would crowd its start out
         const double share = static_cast<double>(i) / steps;
         const double units = along(fall, share * share * ticks);
         shape.release.push_back({x0 + fallW * static_cast<float>(share), rateY(plot, units)});
         shape.along[3].push_back({progress(units, share * share), shape.release.back()});
     }
     shape.points[3] = {plot.right(), rateY(plot, rateUnits(s.levels[3]))};
-    shape.seconds[3] = ticks * RateEnvelope::kTickSeconds;
     return shape;
 }
 

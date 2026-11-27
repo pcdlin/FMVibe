@@ -379,16 +379,17 @@ public:
         }
     }
 
-    void openFile(const std::string &title, const std::string &folder, Then then) {
+    // A preset's file, or a DX7 sysex file to import (see PluginCore::importDx7()).
+    void openFile(const std::string &title, const std::string &folder, bool sysex, Then then) {
         auto answer = pathThen(std::move(then));
         if (which() == Tool::Zenity)
-            start({"zenity", "--file-selection", "--title=" + title, "--file-filter=" + loadFilter(),
-                   "--file-filter=" + presetFilter(), "--file-filter=" + dx7Filter(), "--file-filter=All files | *",
+            start({"zenity", "--file-selection", "--title=" + title,
+                   "--file-filter=" + (sysex ? dx7Filter() : presetFilter()), "--file-filter=All files | *",
                    "--filename=" + startFolder(folder)},
                   answer);
         else if (which() == Tool::KDialog)
             start({"kdialog", "--title", title, "--getopenfilename", startFolder(folder),
-                   "*.fmv *.syx|" + std::string(tr(Str::DialogLoadFiles))},
+                   sysex ? "*.syx|" + dx7Filter() : "*.fmv|" + presetFilter()},
                   answer);
         else
             noTool();
@@ -457,8 +458,6 @@ private:
 
     // zenity's filter is its name, a bar and its patterns; the wording alone is the name, the patterns come after.
     static std::string presetFilter() { return std::string(tr(Str::DialogPresetFiles)) + " | *.fmv"; }
-    // Load takes a DX7 sysex file too (see PluginCore::importDx7()), listed with the presets to begin with.
-    static std::string loadFilter() { return std::string(tr(Str::DialogLoadFiles)) + " | *.fmv *.syx"; }
     static std::string dx7Filter() { return std::string(tr(Str::DialogDx7Files)) + " | *.syx"; }
 
     static std::string startFolder(const std::string &folder) {
@@ -894,7 +893,7 @@ bool Editor::show(bool visible) {
     return true;
 }
 
-void Editor::choosePreset(bool save) { pendingPreset_ = save ? 1 : 0; }
+void Editor::choosePreset(PresetDialog dialog) { pendingPreset_ = static_cast<int>(dialog); }
 
 bool Editor::modal() const { return menu_ || (dialogs_ && dialogs_->busy()); }
 
@@ -933,39 +932,39 @@ void Editor::pump() {
         dialogs_->poll();
     // The directory dialog opens once the mouse gesture that asked for it is over: from here, after the events.
     if (pendingPreset_ >= 0 && dialogs_ && !dialogs_->busy()) {
-        const int save = pendingPreset_;
+        const auto dialog = static_cast<PresetDialog>(pendingPreset_);
         pendingPreset_ = -1;
-        startPresetDialog(save != 0);
+        startPresetDialog(dialog);
     }
     tick();
     paint();
 }
 
-void Editor::startPresetDialog(bool save) {
+void Editor::startPresetDialog(PresetDialog what) {
     if (!dialogs_)
         return;
+    const bool save = what == PresetDialog::Save, sysex = what == PresetDialog::ImportDx7;
     PresetStore &store = controller_.presetStore();
     store.rescanPresets();
     const std::string folder = utf8Text(store.presetFolder());
     const std::string name = save && store.presetIndex() >= 0 ? store.presetName() : std::string();
-    const std::string title = tr(save ? Str::DialogSavePreset : Str::DialogLoadPreset);
-    auto then = [this, save](const std::string &path) {
+    const std::string title = tr(save ? Str::DialogSavePreset : sysex ? Str::DialogImportDx7 : Str::DialogLoadPreset);
+    auto then = [this, save, sysex](const std::string &path) {
         if (path.empty() || !dialogs_)
             return;
         PresetStore &store = controller_.presetStore();
         if (save) {
             if (!store.savePreset(widePath(path)))
                 dialogs_->message("FMVibe", tr(Str::DialogWriteFailed), true, false);
-        } else if (!store.loadPreset(widePath(path))) {
-            const bool syx = path.size() >= 4 && strcasecmp(path.c_str() + path.size() - 4, ".syx") == 0;
-            dialogs_->message("FMVibe", tr(syx ? Str::DialogNotDx7 : Str::DialogNotPreset), true, false);
+        } else if (sysex ? !store.importDx7(widePath(path)) : !store.loadPreset(widePath(path))) {
+            dialogs_->message("FMVibe", tr(sysex ? Str::DialogNotDx7 : Str::DialogNotPreset), true, false);
         }
         invalidate();
     };
     if (save)
         dialogs_->saveFile(title, folder, name, then);
     else
-        dialogs_->openFile(title, folder, then);
+        dialogs_->openFile(title, folder, sysex, then);
 }
 
 void Editor::pumpEvents() {

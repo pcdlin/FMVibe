@@ -2112,7 +2112,7 @@ bool PresetBrowser::press(const Widget &w, Point p, Modifiers) {
             presetStore().setPresetAuthor(trimmed(saveAuthor_.text));
         saveMode_ = SaveMode::None;
         host_.resetHover();
-        presetStore().choosePreset(true);
+        presetStore().choosePreset(PresetDialog::Save);
         return true;
     case Kind::SaveButton:
         if (w.a == 1)

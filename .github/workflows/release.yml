@@ -1,11 +1,14 @@
-# Builds a release whenever a version tag (v0.1, v1.2.3, ...) is pushed: the plugins, CLAP and VST3, built and tested
+# Builds a release whenever a version tag (v0.1, v0.14.1, v0.18-beta.1, ...) is pushed: the plugins, CLAP and VST3, built and tested
 # on Windows and run through clap-validator and Steinberg's VST3 validator, go into a GitHub release as two zips, one
 # per format with the user manual; built and tested on Linux (build.sh, Steinberg's validator among its tests), they
 # go in beside them as two tarballs; and the browser demo (web/, see AGENTS.md) goes on GitHub Pages with the manual
 # beside it. Nothing is published unless all three build.
 # Needs Pages set to deploy from GitHub Actions, and the github-pages environment to allow v* tags (see "Releasing" in
 # AGENTS.md). Run by hand on a branch (Actions > Release > Run workflow), it builds, tests and packs everything as a
-# dry run, keeping the packages as the run's artifacts, and publishes nothing.
+# dry run, keeping the packages as the run's artifacts, and publishes nothing. A tag below the newest version (a patch
+# release of an older one, v0.14.1 after v0.17) gets its release, not marked Latest, and leaves GitHub Pages alone. A
+# tag with a label after a dash (v0.18-beta.1, from FMVIBE_PRERELEASE in CMakeLists.txt) is published as a
+# pre-release, never Latest, and leaves GitHub Pages alone too.
 name: Release
 
 on:
@@ -27,13 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The version is set once, in project() in CMakeLists.txt; the tag has to name the same one.
+      # The version is set once, in project() in CMakeLists.txt, with a pre-release's label in FMVIBE_PRERELEASE;
+      # the tag has to name the same one.
       - name: Check the tag against the version
         if: github.ref_type == 'tag'
         run: |
           $match = Select-String -Path CMakeLists.txt -Pattern '^project\(FMVibe VERSION ([0-9.]+)'
           if (-not $match) { throw 'No version found in project() in CMakeLists.txt.' }
           $version = $match.Matches[0].Groups[1].Value
+          $label = Select-String -Path CMakeLists.txt -Pattern '^set\(FMVIBE_PRERELEASE "([^"]*)"\)'
+          if (-not $label) { throw 'No set(FMVIBE_PRERELEASE "...") found in CMakeLists.txt.' }
+          $label = $label.Matches[0].Groups[1].Value
+          if ($label) { $version = "$version-$label" }
           if ("v$version" -ne $env:GITHUB_REF_NAME) {
             throw "The tag $env:GITHUB_REF_NAME doesn't match the version $version in CMakeLists.txt (expected v$version)."
           }
@@ -198,8 +206,37 @@ jobs:
         with:
           path: build/web/site
 
+  # What the tag is among the repository's version tags: a pre-release (a label after a dash), the newest release
+  # (only then is it Latest and its demo and manual the ones on GitHub Pages), and the release before it, below its
+  # version, which its notes start from (so a release after its betas lists everything since the release before).
+  tag:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      newest: ${{ steps.check.outputs.newest }}
+      previous: ${{ steps.check.outputs.previous }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$GITHUB_REF_NAME
+          base=${tag%%-*}
+          if [ "$base" != "$tag" ]; then prerelease=true; else prerelease=false; fi
+          releases=$( (gh api --paginate "repos/$GITHUB_REPOSITORY/tags" --jq '.[].name'; echo "$base") |
+            grep -E '^v[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -uV || true)
+          newest=false
+          if [ $prerelease = false ] && [ "$(echo "$releases" | tail -1)" = "$tag" ]; then newest=true; fi
+          previous=$(echo "$releases" | grep -B1 -x -F "$base" | head -1 || true)
+          if [ "$previous" = "$base" ]; then previous=; fi
+          echo "pre-release: $prerelease, newest release: $newest, previous release: ${previous:-none}"
+          { echo "prerelease=$prerelease"; echo "newest=$newest"; echo "previous=$previous"; } >> "$GITHUB_OUTPUT"
+
   release:
-    needs: [plugin, plugin-linux, web]
+    needs: [plugin, plugin-linux, web, tag]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -210,15 +247,26 @@ jobs:
           pattern: plugin-*
           merge-multiple: true
 
-      # The notes list the pull requests and commits since the previous tag; they can be edited on GitHub afterwards.
+      # The notes list the pull requests and commits since the release before; they can be edited on GitHub
+      # afterwards. Only the newest release is marked Latest, so a patch release of an older one or a pre-release
+      # doesn't take that from it.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" FMVibe-*.zip FMVibe-*.tar.gz --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+          PRERELEASE: ${{ needs.tag.outputs.prerelease }}
+          LATEST: ${{ needs.tag.outputs.newest }}
+          PREVIOUS: ${{ needs.tag.outputs.previous }}
+        run: |
+          args=(--verify-tag --generate-notes --latest="$LATEST")
+          if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
+          if [ -n "$PREVIOUS" ]; then args+=(--notes-start-tag "$PREVIOUS"); fi
+          gh release create "$GITHUB_REF_NAME" FMVibe-*.zip FMVibe-*.tar.gz --repo "$GITHUB_REPOSITORY" "${args[@]}"
 
+  # The demo and the manual online are the newest release's: a patch release of an older one or a pre-release doesn't
+  # replace them.
   pages:
-    needs: [plugin, plugin-linux, web]
-    if: github.ref_type == 'tag'
+    needs: [plugin, plugin-linux, web, tag]
+    if: github.ref_type == 'tag' && needs.tag.outputs.newest == 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write

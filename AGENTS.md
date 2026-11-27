@@ -879,11 +879,17 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels; the sources' closing
     at a click around it, and shutting for good as the SEQ view covers their panel), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list), Cards' Plain | Tinted (disabled in Midnight) and the depth handles'
-    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), its book opening the user manual and
+    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider, the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels) and the grid slider, a double-click putting each back where it starts and each showing its tooltip under it while the mouse rests on it and not while it is dragged (read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), opening on its Visual tab (a THEME heading over the themes), its Engine tab showing the oversampling and MPE in its place, back on Visual a click where a bend range was picking nothing (the tab's accent under it, read off the rendered pixels), the tab shown kept as the dialog closes and opens again, its book opening the user manual and
     leaving it open, closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
+  - the title bar's overflow menu (... after Init and Save): its button lit while it is open, its rows lit under the
+    mouse (read off the rendered pixels), closing at a click around it, Escape and its button again, a separator before
+    its User manual and Settings standing out from its face (read off the rendered pixels), its User manual opening the
+    manual, its Init asking first as Init's button does, its Import sysex asking first while the patch has changed
+    (as Load does) and else opening its dialog at once, and its Save greyed out beside Save As while the preset is unchanged (read off the
+    rendered pixels); Save on a changed Init, on the bar and in the menu, saving it as a new preset as Save As does;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file loads);
     its category's dot at its left, its name in the middle and its author at its right (read off the rendered pixels),
     and its tooltip; its info card's star making the preset a favorite, Edit Info, Show in Browser, Escape
@@ -1376,15 +1382,33 @@ the tag with the zips, the tarballs and notes generated from the commits since t
 the browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
 (`https://pcdlin.github.io/FMVibe/`), with the manual beside it as `manual.html`, which the README links to: the
 manual online is the released version's, as the download is. Nothing goes out unless the plugins on both systems and
-the demo build.
+the demo build. A pre-release, whose tag has a label after a dash (`v0.18-beta.1`), is published on GitHub as a
+pre-release, never Latest, and leaves GitHub Pages alone, so the demo and the manual online stay the last release's.
 
-`.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
-raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
+`.\release.ps1` does all of it: it needs `main`, a clean working tree, the branch level with origin and a free tag. It
+raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Patch` the third number, 0.17 to 0.17.1 and
+0.17.1 to 0.17.2, and `-Version 1.0` or `-Version 0.14.1` picks another, above the one there), runs
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
 Screamer's routing view over `docs/editor.png`, Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
 Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`, and Future Plucks' SEQ view over `docs/seq.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the four screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
-Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
+Any other answer puts those files back as they were. A patch release (a third number above 0) may also be made from
+another branch: to fix an older version while `main` has moved on, branch from its tag (`git switch -c release/0.14
+v0.14`), commit the fix there and run `.\release.ps1 -Patch` on that branch, which commits, tags and pushes it (the
+branch too, new on origin or not). The workflow marks a release Latest and deploys its demo and manual to GitHub Pages
+only when its tag is the newest version among the repository's version tags (its `newest` job), so `v0.14.1` after
+`v0.17` gets its release and leaves Latest and the site on 0.17. A fix wanted on `main` as well is merged or
+cherry-picked there.
+
+`.\release.ps1 -Prerelease beta.1` makes a pre-release: the version as the script would pick it otherwise (0.17 to
+0.18), with the label in `FMVIBE_PRERELEASE` in `CMakeLists.txt`, so the plugins report `0.18-beta.1` and the tag is
+`v0.18-beta.1`. From a pre-release the version stays where it is unless `-Patch` or `-Version` moves it on: another
+`-Prerelease rc.1` makes `v0.18-rc.1`, and `.\release.ps1` alone the release `v0.18`, clearing the label. The
+workflow's `tag` job tells a pre-release by its dash, and starts every release's notes at the release below its
+version, so `v0.18` after its betas lists everything since `v0.17`. A pre-release may be made from any branch (a
+feature branch, to hand out a test build): the script commits the version there and pushes the branch and the tag.
+The tag keeps those commits, so a branch rebased or squash-merged afterwards leaves the tag on commits no branch holds;
+the release that follows is made from `main` (or, for a patch, its release branch) as ever. `.\release.ps1 -Screenshots` does only the screenshots, on any
 branch: it builds and runs `fmvibe-uishot` and copies its renders over the four, leaving the version, the other tests
 and git alone.
 
@@ -1392,7 +1416,8 @@ By hand, instead:
 
 1. Set the new version in `project()` at the top of `CMakeLists.txt` (and where `docs/features.md` names it), and
    commit.
-2. Tag that commit with the same version and a `v` before it, and push the tag:
+2. Tag that commit with the same version and a `v` before it (`v0.2`, `v0.2.1` for a patch release, or
+   `v0.2-beta.1` for a pre-release, with `beta.1` in `FMVIBE_PRERELEASE`), and push the tag:
 
    ```powershell
    git tag v0.2
@@ -1526,8 +1551,10 @@ itself.
   changes first; past the first 4096 (`kMaxChanges`), the rest apply after them, in the host's order. While
   processing, the host's values reach the params through `process()` only: its copy for the controller
   (`setParamNormalized()`) may come late, and is taken only while not processing.
-- The version number is set once, in `project()` at the top of `CMakeLists.txt`. It reaches the code as
-  `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
+- The version number is set once, in `project()` at the top of `CMakeLists.txt`, with a pre-release's label
+  (`beta.1`) in `FMVIBE_PRERELEASE` below it, empty for a release. It reaches the code as `FMVIBE_VERSION`
+  (`0.18`, or `0.18-beta.1`): the plugin descriptor and the Linux bundle's `moduleinfo.json` report it to hosts and
+  the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,

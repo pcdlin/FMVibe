@@ -424,7 +424,7 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         followDpi();
         return 0;
     case kPresetMessage:
-        browsePreset(wParam != 0);
+        browsePreset(static_cast<PresetDialog>(wParam));
         return 0;
     case WM_MOUSEMOVE: {
         if (!trackingLeave_) {
@@ -983,9 +983,9 @@ void Editor::syncFocus() {
     }
 }
 
-void Editor::choosePreset(bool save) {
+void Editor::choosePreset(PresetDialog dialog) {
     if (hwnd_)
-        PostMessageW(hwnd_, kPresetMessage, save ? 1 : 0, 0);
+        PostMessageW(hwnd_, kPresetMessage, static_cast<WPARAM>(dialog), 0);
 }
 
 namespace {
@@ -993,9 +993,9 @@ namespace {
 // The shell's file dialog, opened in `folder` every time. (An OPENFILENAME's initial folder gives way to the folder the
 // host's last file dialog was left in, whatever plugin opened it.) The path picked, empty if the user cancels; nullopt
 // where the dialog can't run on this thread (COM set up for another apartment, say), for the older one instead.
-std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::wstring &folder, const std::wstring &name,
-                                            const std::wstring &title, const std::wstring &presets,
-                                            const std::wstring &all) {
+std::optional<std::wstring> shellFileDialog(HWND owner, PresetDialog what, const std::wstring &folder,
+                                            const std::wstring &name, const std::wstring &title) {
+    const bool save = what == PresetDialog::Save, sysex = what == PresetDialog::ImportDx7;
     const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     if (FAILED(com))
         return std::nullopt;
@@ -1006,16 +1006,12 @@ std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::ws
     if (FAILED(CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
                                 IID_PPV_ARGS(&dialog))))
         return std::nullopt;
-    // Load takes a DX7 sysex file too (see PluginCore::importDx7()), listed with the presets to begin with.
-    const std::wstring both = widen(tr(Str::DialogLoadFiles)), dx7 = widen(tr(Str::DialogDx7Files));
-    const COMDLG_FILTERSPEC saveTypes[] = {{presets.c_str(), L"*.fmv"}, {all.c_str(), L"*.*"}};
-    const COMDLG_FILTERSPEC loadTypes[] = {
-        {both.c_str(), L"*.fmv;*.syx"}, {presets.c_str(), L"*.fmv"}, {dx7.c_str(), L"*.syx"}, {all.c_str(), L"*.*"}};
-    if (save)
-        dialog->SetFileTypes(2, saveTypes);
-    else
-        dialog->SetFileTypes(4, loadTypes);
-    dialog->SetDefaultExtension(L"fmv");
+    // A preset's file, or a DX7 sysex file to import (see PluginCore::importDx7()); then any file.
+    const std::wstring files = widen(tr(sysex ? Str::DialogDx7Files : Str::DialogPresetFiles));
+    const std::wstring all = widen(tr(Str::DialogAllFiles));
+    const COMDLG_FILTERSPEC types[] = {{files.c_str(), sysex ? L"*.syx" : L"*.fmv"}, {all.c_str(), L"*.*"}};
+    dialog->SetFileTypes(2, types);
+    dialog->SetDefaultExtension(sysex ? L"syx" : L"fmv");
     dialog->SetTitle(title.c_str());
     FILEOPENDIALOGOPTIONS options = 0;
     dialog->GetOptions(&options);
@@ -1049,25 +1045,25 @@ std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::ws
 
 } // namespace
 
-void Editor::browsePreset(bool save) {
+void Editor::browsePreset(PresetDialog what) {
+    const bool save = what == PresetDialog::Save, sysex = what == PresetDialog::ImportDx7;
     const ModalGuard guard(alive_); // the dialogs below run modal loops
     // Both start in the preset folder (the scan makes it if need be); saving suggests the preset's name.
     PresetStore &store = controller_.presetStore();
     store.rescanPresets();
     const std::wstring folder = store.presetFolder();
     const std::wstring name = save && store.presetIndex() >= 0 ? widen(store.presetName()) : std::wstring();
-    const std::wstring title = widen(tr(save ? Str::DialogSavePreset : Str::DialogLoadPreset));
-    const std::wstring presets = widen(tr(Str::DialogPresetFiles)), all = widen(tr(Str::DialogAllFiles));
-    std::optional<std::wstring> picked = shellFileDialog(hwnd_, save, folder, name, title, presets, all);
+    const std::wstring title =
+        widen(tr(save ? Str::DialogSavePreset : sysex ? Str::DialogImportDx7 : Str::DialogLoadPreset));
+    std::optional<std::wstring> picked = shellFileDialog(hwnd_, what, folder, name, title);
     if (!guard.alive())
         return;
     if (!picked) { // the older dialog, which starts there unless the host's last dialog was left elsewhere
         // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
-        const std::wstring both = widen(tr(Str::DialogLoadFiles)), dx7 = widen(tr(Str::DialogDx7Files));
+        const std::wstring files = widen(tr(sysex ? Str::DialogDx7Files : Str::DialogPresetFiles));
+        const std::wstring all = widen(tr(Str::DialogAllFiles));
         const std::wstring filter =
-            save ? presets + L'\0' + L"*.fmv" + L'\0' + all + L'\0' + L"*.*" + L'\0'
-                 : both + L'\0' + L"*.fmv;*.syx" + L'\0' + presets + L'\0' + L"*.fmv" + L'\0' + dx7 + L'\0' +
-                       L"*.syx" + L'\0' + all + L'\0' + L"*.*" + L'\0';
+            files + L'\0' + (sysex ? L"*.syx" : L"*.fmv") + L'\0' + all + L'\0' + L"*.*" + L'\0';
         wchar_t path[MAX_PATH] = L"";
         wcsncpy_s(path, name.c_str(), _TRUNCATE);
         OPENFILENAMEW dialog{};
@@ -1077,7 +1073,7 @@ void Editor::browsePreset(bool save) {
         dialog.lpstrFile = path;
         dialog.nMaxFile = MAX_PATH;
         dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
-        dialog.lpstrDefExt = L"fmv";
+        dialog.lpstrDefExt = sysex ? L"syx" : L"fmv";
         dialog.lpstrTitle = title.c_str();
         dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
         const bool ok = save ? GetSaveFileNameW(&dialog) : GetOpenFileNameW(&dialog);
@@ -1090,9 +1086,8 @@ void Editor::browsePreset(bool save) {
     if (save) {
         if (!store.savePreset(*picked))
             MessageBoxW(hwnd_, widen(tr(Str::DialogWriteFailed)).c_str(), L"FMVibe", MB_ICONWARNING);
-    } else if (!store.loadPreset(*picked)) {
-        const bool syx = picked->size() >= 4 && _wcsicmp(picked->c_str() + picked->size() - 4, L".syx") == 0;
-        MessageBoxW(hwnd_, widen(tr(syx ? Str::DialogNotDx7 : Str::DialogNotPreset)).c_str(), L"FMVibe",
+    } else if (sysex ? !store.importDx7(*picked) : !store.loadPreset(*picked)) {
+        MessageBoxW(hwnd_, widen(tr(sysex ? Str::DialogNotDx7 : Str::DialogNotPreset)).c_str(), L"FMVibe",
                     MB_ICONWARNING);
     }
     if (guard.alive())
