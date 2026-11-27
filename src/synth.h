@@ -261,6 +261,14 @@ public:
         tuning_ = tuning;
         tuneContinuous_ = continuous;
     }
+    // The patch's own tuning worked out from `params` at once, for the notes that start before the next render(): the
+    // plugins call it as they take a block's params and as a host's event in the block moves a tuning param, so a note
+    // in the same block as the change plays in the tuning it brings. render() works it out as its params change too,
+    // unless this did since the last render().
+    void retunePatch(const ParamValues &params) {
+        tuningTable(params, patchTuning_);
+        patchTuningRead_ = patchTuningFresh_ = true;
+    }
     // The sustain pedal on `channel`: while it is down, a key let go leaves its note sounding as if still held, until
     // the pedal comes up. In mono, a key let go still hands the voice back to an earlier key held down, as without the
     // pedal; with none down, the pedal holds the note. A note the pedal holds counts as held for legato and glide:
@@ -737,6 +745,7 @@ private:
     // The patch's own tuning, key by key, worked out again as its params change (see render()).
     TuningTable patchTuning_;
     bool patchTuningRead_ = false;
+    bool patchTuningFresh_ = false; // retunePatch() worked it out since the last render()
     // Whether a tuning tunes the notes: the one set or the patch's.
     bool tuned() const { return tuning_ || patchTuning_.on; }
     int tuningChannel(const NoteRef &note) const;

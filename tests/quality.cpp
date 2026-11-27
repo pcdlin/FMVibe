@@ -7196,6 +7196,30 @@ void tuningChecks() {
               continuous ? "retuning continuously, a held note follows its tuning as it changes"
                          : "retuning on note on, a held note keeps the tuning it started in");
     }
+    // A patch's tuning taken up before the render that would see it change (as the plugins do as they take a block's
+    // params, see Synth::retunePatch()): a note at the block's start, retuning on note on, plays in it from its start,
+    // an A4 in 24-EDO 9 quarter tones over C4, key 64.5; one before the change is heard plays in 12-TET.
+    {
+        Engine e(2), late(2);
+        for (Engine *engine : {&e, &late}) {
+            engine->synth().setTuning(nullptr, false);
+            engine->render(256); // its params heard once, 12-TET
+            check(loadTuning(engine->p, "! 24.scl\n24-EDO\n24\n!\n" + [] {
+                std::string degrees;
+                for (int d = 1; d <= 24; ++d)
+                    degrees += std::to_string(50 * d) + ".0\n";
+                return degrees;
+            }(), TuningFile::Scala), "a 24-EDO scale reads");
+        }
+        e.synth().retunePatch(e.p);
+        e.noteOn(69);
+        late.noteOn(69);
+        const double at = semitones(hzBetween(e.render(12000), 2400.0, 12000.0));
+        const double before = semitones(hzBetween(late.render(12000), 2400.0, 12000.0));
+        std::printf("      a note as the patch's tuning comes: key %.3f, %.3f before it is taken up\n", at, before);
+        check(std::abs(at - 64.5) < 0.01 && std::abs(before - 69.0) < 0.01,
+              "a patch's tuning taken up with the block's params tunes a note at the block's start");
+    }
     // Mono legato with a glide, from an A4 a quarter tone up into a B4 a quarter tone down: from 69.5 to 70.5.
     {
         TestTuning tuning;

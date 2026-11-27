@@ -360,6 +360,8 @@ void PluginCore::beginBlock() {
         for (int i = 0; i < kParamCount; ++i)
             snapshot_[i] = values_[i].load(std::memory_order_relaxed);
         snapshotChanged_ = true;
+        // The patch's own tuning, which this block's notes play in from their start: they come before its render().
+        synth_.retunePatch(snapshot_);
     }
 }
 
@@ -462,6 +464,8 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
         if (snapshot_[index] != value) {
             snapshot_[index] = value;
             synth_.paramChanged(index);
+            if (index >= kTuningBase && index < kTuningBase + kTuningParamCount)
+                synth_.retunePatch(snapshot_); // for the notes after it in the block
         }
     } else {
         valuesChanged(); // the next block's snapshot takes it

@@ -1053,10 +1053,11 @@ void Synth::applyMacros(const ParamValues &params) {
 
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
     // The patch's own tuning, key by key, as its params may have changed: what the notes started from here play in.
-    if (!sameParams || !patchTuningRead_) {
+    if ((!sameParams || !patchTuningRead_) && !patchTuningFresh_) {
         tuningTable(params, patchTuning_);
         patchTuningRead_ = true;
     }
+    patchTuningFresh_ = false;
     // The sequencer plans its notes a stretch at a time, and the voices render up to each note it starts or ends, at
     // its sample, and up to where its curves move on; through the stretches between, they run on. Its pattern is read
     // again only when its params may have changed.
