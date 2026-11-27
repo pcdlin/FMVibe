@@ -4,17 +4,18 @@
 // picked (an operator, a filter or a shaper) on a page of its own: the nodes' tabs along its top, its title (the node's
 // letter, what it is and what it is routed to) beside its on/off switch, and its page. An operator's: its waves (the
 // common ones as buttons, the rest in a list), its Ratio readout or, fixed, its Freq and Mult, its knobs, and its tabs:
-// UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over its scope), INPUTS (a
-// row per route into it) and KEYS (its keyboard level scaling, its level across the keys with handles on it). A filter's: its type's and slope's lists, its response with its handle, and its knobs. A
-// shaper's: its curve's list and switches, its curve (drawn in place, see ShapeEditor), and its knobs. A filter's and a
-// shaper's page end with knobs for what feeds them. The View lists its widgets in the panels' row while it shows (see
-// covered()), and its popups (the list of more waves, its pages' lists) with the others'.
+// UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over its scope), I/O (a row
+// per route into and out of it) and KEYS (its keyboard level scaling, its level across the keys with handles on it).
+// A filter's: its type's and slope's lists, its response with its handle, and its knobs. A shaper's: its curve's list
+// and switches, its curve (drawn in place, see ShapeEditor), and its knobs. A filter's and a shaper's page end with
+// knobs for what feeds them. The View lists its widgets in the panels' row while it shows (see covered()), and its
+// popups (the list of more waves, its pages' lists) with the others'.
 //
-// Its knobs, switches, lists, a route's depth on an INPUTS row and the envelope on the ENVELOPE tab are the View's to
+// Its knobs, switches, lists, a route's depth on an I/O row and the envelope on the ENVELOPE tab are the View's to
 // paint and edit, as they are wherever they show (the envelope's handles and zoom are shared with the mod envelopes'
 // cards, see PanelHost::envelopeWidgets()); the panel adds what is its own: the tabs, the waves and their list, the
-// scope's cycles, the INPUTS rows' scrolling, the filter's handle, the Fixed switch's Freq and Mult, and a node's tab
-// or its name wherever it shows (the matrix's, an INPUTS row's), whose click shows that node.
+// scope's cycles, the I/O rows' scrolling, the filter's handle, the Fixed switch's Freq and Mult, and a node's tab
+// or its name wherever it shows (the matrix's, an I/O row's), whose click shows that node.
 
 #include "modulationmodel.h"
 #include "panel.h"
@@ -72,8 +73,8 @@ private:
     void edit(int index, double v) { mods_.edit(index, v); }
 
     // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), a keyboard scaling
-    // handle on the KEYS tab, and the INPUTS tab's scrollbar's thumb. What each holds and where the thumb's rows were
-    // when it was grabbed.
+    // handle on the KEYS tab, a Rate/Level envelope's point, and the I/O tab's scrollbar's thumb. What each holds and
+    // where the thumb's rows were when it was grabbed.
     enum class DragKind { None, FilterPoint, KeyPoint, InputsScroll, RatePoint };
     struct Drag {
         DragKind kind = DragKind::None;
@@ -104,17 +105,29 @@ private:
     OpWarp opWarp(int op) const;
     bool opSynced(int op) const;
     std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;
-    // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order. Its rows (the feedback's
-    // among them), how far they scroll at most and where they are scrolled to, in rows; the place a row is drawn at,
-    // and the scrollbar's thumb.
-    std::vector<int> inputsOf(int op) const;
-    int inputsRows(int op) const;
-    float inputsEnd(int op) const;
-    float inputsFirst(int op) const;
-    float inputsRowY(int op, int row) const;
-    Rect inputsThumb(int op) const;
-    // Whether the rows of the operator shown's INPUTS tab show at `p`, scrolling (more than fit).
-    bool inputsScrollAt(Point p) const;
+    // A row of a node's I/O list (an operator's on its I/O tab, a filter's or a shaper's under its display): a section's
+    // heading (INPUTS or OUTPUTS), its line saying it has no route, a route in from `node`, its feedback, a route out to
+    // `node` or its line to OUT; `at` its top, in px down the list.
+    struct IoRow {
+        enum class Kind { Heading, None, In, Feedback, Out, Bus };
+        Kind kind;
+        int node;
+        bool outputs; // in the OUTPUTS section
+        float at;
+    };
+    // Its rows, the nodes that are on in the graph's order: the inputs, the feedback, then the outputs and OUT. How
+    // long they are, how far they scroll at most and where they are scrolled to, in rows of kInputsStep; where a row
+    // is drawn, and the scrollbar's thumb.
+    std::vector<IoRow> ioRows(int node) const;
+    static float ioLength(const std::vector<IoRow> &rows);
+    static float ioTop(int node); // where its list starts (see kInputsTop, kBoxIoTop)
+    bool ioShown(int node) const; // its list shows: a filter's and a shaper's always, an operator's on its I/O tab
+    float ioEnd(int node) const;
+    float ioFirst(int node) const;
+    float ioY(int node, float at) const;
+    Rect ioThumb(int node) const;
+    // Whether the rows of the node shown's I/O list show at `p`, scrolling (more than fit).
+    bool ioScrollAt(Point p) const;
     // What a filter's display reads (see FilterReads): the values, where modulation takes them now and how far.
     std::pair<double, double> reach(int param, double set) const;
 
@@ -126,7 +139,7 @@ private:
     void paintUnison(Canvas &c, Rect r, int op);
     void paintScope(Canvas &c, Rect r, int op);
     void paintNoiseSlope(Canvas &c, Rect r, int op);
-    void paintInputs(Canvas &c, int op);
+    void paintIo(Canvas &c, int node);
     // The KEYS tab: where a handle sits (0 the breakpoint, 1 and 2 the left and right depth, an octave out), the
     // operator's level across the keys, and a handle's readout over the display while it is under the mouse or held.
     Point keyPoint(int op, int handle) const;
@@ -146,7 +159,7 @@ private:
     const ParamTable &table_;
     Drag drag_;
     int waveMenu_ = -1;          // the operator whose list of more waves is open, or -1
-    float inputsScroll_ = 0.0f;  // rows the INPUTS tab is scrolled to, before clamping
+    float ioScroll_ = 0.0f;      // rows the I/O list is scrolled to, before clamping
     float opScopeLevel_ = 0.0f;  // the operator scope's level, following its spans' peaks, which its dB readout shows
     ScopeCache<std::vector<Assignment>> assignments_;
     mutable std::vector<double> rateKey_; // what rateShape_ was traced from

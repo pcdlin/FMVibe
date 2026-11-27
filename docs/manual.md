@@ -358,6 +358,23 @@ combined.
 
 The summary line names the warp and says "note sync" while either is active.
 
+### I/O tab
+
+**I/O** lists the operator's routes in two parts. **Inputs** has one row for every node routed into the operator:
+
+- the node's name (click it to show that node);
+- four buttons for the route's **mode** (Phase, Linear FM, Exp FM, Ring), with the active one lit;
+- the route's depth, which you can drag, type and modulate like a wire label in the graph.
+
+The operator's feedback comes last and is always Phase.
+
+**Outputs** has one row for every node the operator is routed into, set the same way. A route into a filter or a
+shaper has no mode, so its row shows the node's name instead of the buttons. The last row is the operator's line to
+**OUT**: its depth is how loud the operator goes out.
+
+While you drag a modulation source's handle, hold it over one of these tabs for half a second to open it and drop
+the handle on its controls.
+
 ### Keys tab
 
 The **KEYS** tab sets keyboard level scaling: how the operator's level changes across the keyboard. On a modulator,
@@ -367,19 +384,6 @@ that changes how bright the sound is, so you can keep high notes from getting ha
 - **L Depth** and **R Depth** set how far the level moves one octave below and above Break, from −24 to +24 dB.
 - **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
 - **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.
-
-### Inputs tab
-
-**Inputs** lists every node routed into the operator, one row each:
-
-- the node's name (click it to show that node);
-- four buttons for the route's **mode** (Phase, Linear FM, Exp FM, Ring), with the active one lit;
-- the route's depth, which you can drag, type and modulate like a wire label in the graph.
-
-The operator's feedback comes last and is always Phase.
-
-While you drag a modulation source's handle, hold it over one of these tabs for half a second to open it and drop
-the handle on its controls.
 
 ### Noise operators
 
@@ -474,7 +478,7 @@ Every route into an operator works in one of four modes (Phase by default):
 | **Exp FM** | Modulates the operator's pitch in octaves, like the FM input of an analog synth (up to 4 octaves at 100 %). Deeper settings pull the pitch upward. |
 | **Ring** | Multiplies the operator's output by the source. At 100 % you hear only the sum and difference frequencies; at 50 % they are mixed with the original tone (amplitude modulation). |
 
-Set the mode from a wire's label, the right-click menu of a wire or matrix cell, or the operator's Inputs tab. Feedback
+Set the mode from a wire's label, the right-click menu of a wire or matrix cell, or the I/O tab of either operator it joins. Feedback
 is always Phase. Route amounts give finer control at low settings, and **FM Amount** scales all of them.
 
 ### Feedback and loops
@@ -573,13 +577,17 @@ high-pass.
 - **Drive**: saturation before the filter. It changes the tone, not the level. On the Ladder and Diode models, a loud
   sound driven hard also pulls the resonance down, as on an analog ladder.
 - **Mix**: blends the filter's input with its output (100 % = fully filtered).
-- **Model** and **Slope**: lists under the response display.
+- **Model** and **Slope**: lists beside the type's list, in the same row.
 - **Vowel** (Formant) or **Morph** and the notch switch (Morph).
 
 The **response display** shows the filter's curve with its Mix applied. Drag its handle sideways for cutoff and up or
 down for resonance. Faint curves show the reach of any modulation on cutoff or resonance, and while notes play the
-curve follows the most recent voice. Behind the curve, a spectrum analyzer shows what the filter puts out. Under the
-display, knobs set the send levels of everything that feeds the filter.
+curve follows the most recent voice. Behind the curve, a spectrum analyzer shows what the filter puts out.
+
+Under the display, the filter's **I/O** list works like an operator's [I/O tab](#io-tab): **Inputs** has a row for each
+node routed into the filter, with its depth, and **Outputs** a row for each node it feeds and its line to **OUT**. A
+route into an operator has mode buttons; a route into a filter or a shaper has none. To add a route, connect the nodes
+in the routing graph or the matrix.
 
 **Tracking the note exactly**: to make a filter (for example a comb) follow the note's pitch exactly, set its Cutoff to 0
 and assign the **Note** source to it at 100 %, leaving Key Track at 0.
@@ -611,8 +619,8 @@ effect.
 - **Stack** (Stack only): the number left of Link, 1–8 stages. Click its − or +, or drag the number up or down.
 
 The page shows the transfer curve. A Custom curve can be drawn right there, or in the larger curve editor opened with
-the **pencil** button (see [Shape editors](#shape-editors)). Under the curve are the send knobs of the operators and
-filters that feed the shaper.
+the **pencil** button (see [Shape editors](#shape-editors)). Under the curve is the shaper's **I/O** list, the same
+as a filter's.
 
 ## 10. Modulation
 
