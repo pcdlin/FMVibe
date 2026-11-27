@@ -358,6 +358,16 @@ combined.
 
 The summary line names the warp and says "note sync" while either is active.
 
+### Keys tab
+
+The **KEYS** tab sets keyboard level scaling: how the operator's level changes across the keyboard. On a modulator,
+that changes how bright the sound is, so you can keep high notes from getting harsh.
+
+- **Break** is the note where scaling starts.
+- **L Depth** and **R Depth** set how far the level moves one octave below and above Break, from −24 to +24 dB.
+- **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
+- **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.
+
 ### I/O tab
 
 **I/O** lists the operator's routes in two parts. **Inputs** has one row for every node routed into the operator:
@@ -374,16 +384,6 @@ shaper has no mode, so its row shows the node's name instead of the buttons. The
 
 While you drag a modulation source's handle, hold it over one of these tabs for half a second to open it and drop
 the handle on its controls.
-
-### Keys tab
-
-The **KEYS** tab sets keyboard level scaling: how the operator's level changes across the keyboard. On a modulator,
-that changes how bright the sound is, so you can keep high notes from getting harsh.
-
-- **Break** is the note where scaling starts.
-- **L Depth** and **R Depth** set how far the level moves one octave below and above Break, from −24 to +24 dB.
-- **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
-- **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.
 
 ### Noise operators
 

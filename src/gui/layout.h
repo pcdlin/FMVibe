@@ -167,11 +167,11 @@ constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpD
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
 constexpr float kOpControlsY = kOpDisplay.y + kOpDisplay.h + 25.0f; // the controls' knobs' centers
 inline Rect opTab(int tab, bool noise = false) {
-    // UNISON, ENVELOPE, SCOPE, I/O, WARP, KEYS by InspectorTab; along the line ENVELOPE, UNISON, WARP, I/O, KEYS, a
+    // UNISON, ENVELOPE, SCOPE, I/O, WARP, KEYS by InspectorTab; along the line ENVELOPE, UNISON, WARP, KEYS, I/O, a
     // fifth of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it
-    // opens WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place), I/O and
-    // KEYS, a quarter each.
-    constexpr int kPlace[] = {1, 0, 2, 3, 2, 4}, kNoisePlace[] = {1, 0, 2, 2, 2, 3};
+    // opens WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place), KEYS and
+    // I/O, a quarter each.
+    constexpr int kPlace[] = {1, 0, 2, 4, 2, 3}, kNoisePlace[] = {1, 0, 2, 3, 2, 2};
     const float w = (kOpWell.w - 8.0f) / (noise ? 4.0f : 5.0f);
     return {kOpWell.x + 4.0f + (noise ? kNoisePlace : kPlace)[tab] * w, kOpTabsY, w, kOpTabH};
 }

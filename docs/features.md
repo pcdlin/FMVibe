@@ -2121,6 +2121,16 @@ what it started goes on.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
+    - **Keys**: keyboard level scaling (see Keyboard scaling, under the operators), after Warp, the tabs a fifth of
+      the well each (a noise operator's four, a quarter each): the operator's level across the keys (MIDI 0 to 127,
+      +24 dB at the display's top to -48 at its bottom), a line at 0 dB, faint lines at each C (C4 marked), the
+      breakpoint's dashed line and the curve with the area under it filled; handles on it, the breakpoint's on its 0 dB
+      line, dragged across onto whole notes, and each side's depth an octave out, dragged up and down, each drag one
+      gesture and a double-click putting it back (C4, or no depth), its value over the display's middle while the mouse
+      is on it or holds it; an **Exp** switch in each top corner, a side's curve; while notes play, the newest voice's
+      key as a dot on the curve; and **Break**, **L Depth**, **R Depth** and **Rate Scaling** (the Rate/Level
+      envelope's, keyboard scaling on a DX7, faint while the envelope is another) as knobs under the well. The MODS
+      view's target menu lists the three under KEYS;
     - **I/O** (the list a filter's and a shaper's page show under their displays too): under an INPUTS heading, a
       row per node routed into the operator (the nodes that are on, in the
       graph's order): its name, which shows it in the inspector as a tab does; four buttons with the modes' glyphs,
@@ -2132,16 +2142,6 @@ what it started goes on.
       saying so ("No inputs", "No outputs"), fainter than the headings. The rows sit 30 px apart,
       room for a modulated depth's dots under it; past what the tab holds, they scroll, by the wheel over them, by
       dragging with the middle button held, or by the scrollbar at their right.
-    - **Keys**: keyboard level scaling (see Keyboard scaling, under the operators), after I/O, the tabs a fifth of
-      the well each (a noise operator's four, a quarter each): the operator's level across the keys (MIDI 0 to 127,
-      +24 dB at the display's top to -48 at its bottom), a line at 0 dB, faint lines at each C (C4 marked), the
-      breakpoint's dashed line and the curve with the area under it filled; handles on it, the breakpoint's on its 0 dB
-      line, dragged across onto whole notes, and each side's depth an octave out, dragged up and down, each drag one
-      gesture and a double-click putting it back (C4, or no depth), its value over the display's middle while the mouse
-      is on it or holds it; an **Exp** switch in each top corner, a side's curve; while notes play, the newest voice's
-      key as a dot on the curve; and **Break**, **L Depth**, **R Depth** and **Rate Scaling** (the Rate/Level
-      envelope's, keyboard scaling on a DX7, faint while the envelope is another) as knobs under the well. The MODS
-      view's target menu lists the three under KEYS;
 
     A noise operator shows Slope and Spread in the Ratio readout's place, and no Pitch, Detune or Phase; its first tab is
     **Spectrum**, its spectrum against white, pink and brown, and it has no Warp tab (picked, it shows its
