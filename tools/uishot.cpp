@@ -10587,8 +10587,9 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
               "the octave shift's buttons under the keys move them an octave up and back");
     }
 
-    // A key plays as hard as where it is clicked: velocity 1 at its top, 127 at its bottom, a black key's along its
-    // own height; and a drag across the keys strikes each key it enters as hard as where the mouse enters it.
+    // A key plays as hard as where it is clicked: velocity 1 at its top, rising evenly to 127 a tenth of its height above
+    // its bottom and 127 below that, a black key's along its own height (a white key's middle 71, a black key's quarter down 35); and a drag
+    // across the keys strikes each key it enters as hard as where the mouse enters it.
     {
         const float top = detail::keyboardTop() + detail::kKeys.y;
         const float bottom = top + detail::kKeys.h, blackBottom = top + detail::kBlackH;
@@ -10608,9 +10609,9 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseUp({d1, bottom - 1.0f}, {});
         std::printf("      key velocities: top %d, middle %d, bottom %d, black key's bottom %d and quarter %d, slid %d\n",
                     atTop.second, atMiddle.second, atBottom.second, black.second, blackTop.second, slid.second);
-        check(atTop == std::pair{24, 1} && atMiddle == std::pair{24, 64} && atBottom == std::pair{24, 127} &&
-                  black == std::pair{25, 127} && blackTop == std::pair{25, 32} && pressed == 1 &&
-                  slid.first == 26 && slid.second == 126,
+        check(atTop == std::pair{24, 1} && atMiddle == std::pair{24, 71} && atBottom == std::pair{24, 127} &&
+                  black == std::pair{25, 127} && blackTop == std::pair{25, 35} && pressed == 1 &&
+                  slid.first == 26 && slid.second == 127,
               "a key clicked plays at velocity 1 at its top and 127 at its bottom, a key slid onto as hard as where");
     }
 
