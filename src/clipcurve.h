@@ -235,7 +235,7 @@ private:
 
 inline ClipMode clipMode(double value) {
     return static_cast<ClipMode>(
-        std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(ClipMode::Count) - 1));
+        std::clamp(static_cast<int>(roundFast(value)), 0, static_cast<int>(ClipMode::Count) - 1));
 }
 
 // What follows runs a shaper, the effect's and the voices' alike (see shaperParams()).
@@ -261,7 +261,7 @@ inline double shaperBetween(double driveDb) {
 }
 // A Stack param's value as a count of stages.
 inline int shaperStack(double value) {
-    return value == value ? std::clamp(static_cast<int>(std::lround(value)), 1, kMaxShaperStack) : 1;
+    return value == value ? std::clamp(static_cast<int>(roundFast(value)), 1, kMaxShaperStack) : 1;
 }
 
 template <class Get>

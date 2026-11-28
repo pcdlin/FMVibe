@@ -54,7 +54,7 @@ const double kCutoffOctaves = std::log2(kMaxCutoff / kMinCutoff);
 constexpr double kFxFmJump = 0.005;
 // Whether a filter of this type follows filter FM: the Formant type's cutoff stays with the control blocks.
 bool followsCutoffFm(double type) {
-    return std::clamp(static_cast<int>(std::lround(type)), 0, static_cast<int>(FilterType::Count) - 1) !=
+    return std::clamp(static_cast<int>(roundFast(type)), 0, static_cast<int>(FilterType::Count) - 1) !=
            static_cast<int>(FilterType::Formant);
 }
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
@@ -136,7 +136,7 @@ double nextRandom(uint32_t &state) {
 }
 
 int stepped(double value, int max) {
-    return std::clamp(static_cast<int>(std::lround(value)), 0, max);
+    return std::clamp(static_cast<int>(roundFast(value)), 0, max);
 }
 
 // Cycles per second of the LFO in place `source`, reading its params through `get`: 0 at its lowest Rate.
@@ -406,7 +406,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     noiseColor_.prepare(rate_, sampleRate);
     volumeGlide_ = 1.0 - std::exp(-1.0 / (kVolumeGlide * sampleRate));
     voiceFmRange_ = cutoffFmRange(rate_);
-    fxFmDelay_ = std::clamp(static_cast<int>(std::lround(decimatorDelay(sampleRate, oversampling_))), 0, kFxFmDelay - 1);
+    fxFmDelay_ = std::clamp(static_cast<int>(roundFast(decimatorDelay(sampleRate, oversampling_))), 0, kFxFmDelay - 1);
     fxFmDecay_ = std::exp(-1.0 / (kFxFmJump * sampleRate));
     { // the DC blocker's high-pass (see DcBlocker)
         const double k = std::tan(std::numbers::pi * 5.0 / sampleRate), norm = 1.0 / (1.0 + std::sqrt(2.0) * k + k * k);
@@ -1561,7 +1561,7 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
         const double cycles =
             shared(paramIndex(s, SourceParam::Sync)) >= 0.5
                 ? (songBeats_ + seconds * tempo_ / 60.0) /
-                      divisionBeats(static_cast<int>(std::lround(shared(paramIndex(s, SourceParam::Division)))))
+                      divisionBeats(static_cast<int>(roundFast(shared(paramIndex(s, SourceParam::Division)))))
                 : (songSeconds_ + seconds) * sweepRateHz(shared(paramIndex(s, SourceParam::Rate)));
         lfo.hz = lfoHz(shared, s, tempo_);
         lfo.phase = anchoredPhase(cycles, shared(paramIndex(s, SourceParam::Phase)), loop);
@@ -1643,7 +1643,7 @@ void Synth::captureOutput(const float *left, const float *right, uint32_t frames
         for (;;) {
             while (s.next < kOutScopeBins && place(s.next) <= to) {
                 const double at = std::clamp((place(s.next) - from) / inc, 0.0, 1.0);
-                const auto &weights = kOutScopeKernel[static_cast<int>(std::lround(at * kOutScopeRows))];
+                const auto &weights = kOutScopeKernel[static_cast<int>(roundFast(at * kOutScopeRows))];
                 float value = 0.0f;
                 for (int k = 0; k < kOutScopeTaps; ++k) // oldest first
                     value += weights[k] * s.history[(s.newest + 1 + k) % kOutScopeTaps];
@@ -2909,6 +2909,26 @@ std::array<double, kMaxUnison> Synth::unisonDetunes(int index, int copies, const
     return unisonSpread(copies, modes.curve, modes.pan, modes.blend, modes.seed, index).detune;
 }
 
+FMVIBE_NOINLINE Synth::OpTune Synth::opTuneOf(const std::array<double, 6> &in) {
+    const auto [fixed, ratio, freq, mult, semitones, cents] = in;
+    OpTune t;
+    t.fixed = fixed >= 0.5;
+    if (!t.fixed) {
+        t.ratio = ratioFromNorm(std::clamp(ratio, 0.0, kRatioModNorm));
+        t.transpose = std::exp2(semitones / 12.0 + cents / 1200.0);
+    } else {
+        t.hz = fixedHz(freq, mult);
+        if (semitones != 0.0 || cents != 0.0)
+            t.hz *= std::exp2(semitones / 12.0 + cents / 1200.0);
+    }
+    return t;
+}
+
+FMVIBE_NOINLINE Synth::PanTurn Synth::panTurnOf(double pan) {
+    const double angle = (pan + 1.0) * std::numbers::pi / 4.0;
+    return {std::cos(angle), std::sin(angle)};
+}
+
 // Takes what the last block's ramp moved operator `i`'s wave by into its copies' phases, and returns how far its Phase,
 // modulated as the voice has it, still is from where the wave stands, the short way round (100 % is 0 % again), for
 // this block's ramp.
@@ -3476,17 +3496,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const double gain = kVoiceLevel * v.exprGain;
     // Equal-power pan, unity at the center.
     const double pan = std::clamp(p[paramIndex(GlobalParam::Pan)] + v.exprPan, -1.0, 1.0);
-    const double angle = (pan + 1.0) * std::numbers::pi / 4.0;
+    const PanTurn &turn = v.pan.get({pan}, [&] { return panTurnOf(pan); });
     // A new voice starts at its gains and FM amount, as at its levels (below): its envelopes alone shape its start,
     // so a 0 ms attack starts at full level at once.
     if (starting) {
         v.fmScale = fmTarget;
-        v.gainL = gain * std::numbers::sqrt2 * std::cos(angle);
-        v.gainR = gain * std::numbers::sqrt2 * std::sin(angle);
+        v.gainL = gain * std::numbers::sqrt2 * turn.cos;
+        v.gainR = gain * std::numbers::sqrt2 * turn.sin;
     }
     const double fmStep = (fmTarget - v.fmScale) * ramp;
-    const double gainLStep = (gain * std::numbers::sqrt2 * std::cos(angle) - v.gainL) * ramp;
-    const double gainRStep = (gain * std::numbers::sqrt2 * std::sin(angle) - v.gainR) * ramp;
+    const double gainLStep = (gain * std::numbers::sqrt2 * turn.cos - v.gainL) * ramp;
+    const double gainRStep = (gain * std::numbers::sqrt2 * turn.sin - v.gainR) * ramp;
     // A stolen voice fades out, then ends; one joining a held note in poly legato fades in.
     const double fadeStep = v.fading ? -1.0 / (kStealFade * rate_) : v.fade < 1.0 ? 1.0 / (kJoinFade * rate_) : 0.0;
     // White noise is as loud in the audible band as when it runs at the host rate.
@@ -3557,15 +3577,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // Fixed, it plays at its Freq x Mult: the note, bend, glide, tuning and the global Pitch and its ratio don't move
         // it, its own Pitch and Detune and their modulation do (a pitch envelope or vibrato of its own); its unison
         // copies still spread about it.
-        double hz = fixedHz(p[paramIndex(i, OpParam::FixedFreq)], p[paramIndex(i, OpParam::FixedMult)]);
-        const double cents = p[paramIndex(i, OpParam::Detune)];
-        const double semitones = p[paramIndex(i, OpParam::Transpose)];
-        if (p[paramIndex(i, OpParam::Fixed)] < 0.5) {
-            const double ratio = ratioFromNorm(std::clamp(p[paramIndex(i, OpParam::Ratio)], 0.0, kRatioModNorm));
-            hz = noteHz * ratio * std::exp2(semitones / 12.0 + cents / 1200.0);
-        } else if (semitones != 0.0 || cents != 0.0) {
-            hz *= std::exp2(semitones / 12.0 + cents / 1200.0);
-        }
+        const std::array<double, 6> tuneBy{p[paramIndex(i, OpParam::Fixed)],     p[paramIndex(i, OpParam::Ratio)],
+                                           p[paramIndex(i, OpParam::FixedFreq)], p[paramIndex(i, OpParam::FixedMult)],
+                                           p[paramIndex(i, OpParam::Transpose)], p[paramIndex(i, OpParam::Detune)]};
+        const OpTune &tune = v.opTune[i].get(tuneBy, [&] { return opTuneOf(tuneBy); });
+        const double hz = tune.fixed ? tune.hz : noteHz * tune.ratio * tune.transpose;
         const double inc = std::min(hz / rate_, 0.5);
         const auto shape = static_cast<OpWave>(
             stepped(p[paramIndex(i, OpParam::Wave)], static_cast<int>(OpWave::Count) - 1));
@@ -3589,9 +3605,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // Its Pan, equal-power and unity at the center, as the voice's (above): on what it puts out, to the output,
         // the filters and the shapers; what other operators hear of it stays mono.
         const double opPan = std::clamp(p[paramIndex(i, OpParam::Pan)], -1.0, 1.0);
-        const double opAngle = (opPan + 1.0) * std::numbers::pi / 4.0;
-        target.panL[i] = std::numbers::sqrt2 * std::cos(opAngle);
-        target.panR[i] = std::numbers::sqrt2 * std::sin(opAngle);
+        const PanTurn &opTurn = v.opPan[i].get({opPan}, [&] { return panTurnOf(opPan); });
+        target.panL[i] = std::numbers::sqrt2 * opTurn.cos;
+        target.panR[i] = std::numbers::sqrt2 * opTurn.sin;
         double heard = target.out[i];
         for (int f = 0; f < kFilters; ++f) {
             target.send[i][f] = filterEnabled[f] ? p[sendIndex(i, f)] : 0.0;
@@ -3605,7 +3621,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // Copies spread from -1 to 1 as Unison Curve and Unison Pan say (see unison.h): detuned by up to Unison
         // Detune cents and panned by up to Unison Spread, Blend turning the outer ones down.
         copies[i] = noise[i] ? 1
-                             : std::clamp(static_cast<int>(std::lround(p[paramIndex(i, OpParam::Unison)])), 1,
+                             : std::clamp(static_cast<int>(roundFast(p[paramIndex(i, OpParam::Unison)])), 1,
                                           kMaxUnison);
         monoGain[i] = 1.0 / std::sqrt(static_cast<double>(copies[i]));
         const double detune = p[paramIndex(i, OpParam::UnisonDetune)];
