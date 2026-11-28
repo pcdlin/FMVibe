@@ -4,6 +4,13 @@ A six-operator FM synthesizer as a [CLAP](https://github.com/free-audio/clap) an
 [VST3](https://github.com/steinbergmedia/vst3sdk) instrument plugin for Windows and Linux. It works in the spirit of
 other popular FM synths.
 
+- 6-operator FM with free routing
+- Easy modulation with drag and drop, even at audio rate
+- 17 audio effects as a chain or a multiband graph
+- Step sequencer with macro automation and per-note bends
+- DX7 sysex import
+- MPE and microtuning (MTS-ESP, Scala)
+
 In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMVibe/)
 
 User manual: [https://pcdlin.github.io/FMVibe/manual.html](https://pcdlin.github.io/FMVibe/manual.html)

@@ -32,7 +32,7 @@ changing a feature. How to use it, for the plugin's users, is in the user manual
   [docs/manual.md](docs/manual.md), where it says how to use what changed: the manual is for the plugin's users, so
   it says what a control does and how to work it, not how the engine does it, in short, plain sentences. It is
   professional and to the point: no colloquial wording, nothing self-evident and no internals users don't need. Keep
-  `README.md` to its short description and the build and install instructions.
+  `README.md` to its short description, its short list of standout features and the build and install instructions.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
 - The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
   demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`) and Cairo for the Linux development
