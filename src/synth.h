@@ -742,8 +742,7 @@ private:
     // leaves the key unmapped, asked with the channel the tuning takes for it.
     Tuning *tuning_ = nullptr;
     bool tuneContinuous_ = true;
-    // The patch's own tuning, key by key, worked out again as its params change (see render()).
-    TuningTable patchTuning_;
+    // The patch's own tuning: see patchTuning_, at the end.
     bool patchTuningRead_ = false;
     bool patchTuningFresh_ = false; // retunePatch() worked it out since the last render()
     // Whether a tuning tunes the notes: the one set or the patch's.
@@ -751,6 +750,8 @@ private:
     int tuningChannel(const NoteRef &note) const;
     double retuneOf(const NoteRef &note) const;
     bool unmapped(const NoteRef &note) const;
+    // A voice's note retuned as its tuning is now, what is left of its glide staying where it was from the note.
+    void retuneVoice(Voice &v) const;
     ParamValues globalMod_{};
     // What the macros and the mod wheel add to their targets, for every voice and the effects alike, worked out at
     // the start of each render; the targets touched last time, so they can be cleared again.
@@ -1238,6 +1239,9 @@ private:
     Levels audioTo_{}, audioBy_{}; // the block's levels and steps with that reach, which renderBlock() checks
     double audioFmReach_ = 0.0;
     AudioRun audioRun_;
+    // The patch's own tuning, key by key, worked out again as its params change (see render()). Last too, so as not to
+    // move the fields the voices read.
+    TuningTable patchTuning_;
 };
 
 } // namespace fmvibe

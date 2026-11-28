@@ -1999,6 +1999,12 @@ double Synth::retuneOf(const NoteRef &note) const {
     return std::isfinite(retune) ? std::clamp(retune, -128.0, 128.0) : 0.0;
 }
 
+FMVIBE_NOINLINE void Synth::retuneVoice(Voice &v) const {
+    const double retune = retuneOf(v.note);
+    v.glide += retune - v.retune;
+    v.retune = retune;
+}
+
 bool Synth::unmapped(const NoteRef &note) const {
     if (note.key < 0 || note.key > 127)
         return false;
@@ -3343,11 +3349,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
     // Retuning continuously, the note follows its tuning as it changes, at once: what is left of a glide stays where
     // it was from the note. Without a tuning (taken away, or out of the patch), it goes back to 12-TET.
-    if (tuneContinuous_ || !tuned()) {
-        const double retune = retuneOf(v.note);
-        v.glide += retune - v.retune;
-        v.retune = retune;
-    }
+    // Out of line, and only where a tuning plays or a note goes back from one: the voices' loop is the plain patches'.
+    if (tuned() ? tuneContinuous_ : v.retune != 0.0)
+        retuneVoice(v);
     // Glide: the pitch closes 99 % of the gap to the note in the glide time.
     const double tuned = v.note.key + v.retune;
     const double glideTime = p[paramIndex(GlobalParam::Glide)];
