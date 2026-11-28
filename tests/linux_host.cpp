@@ -44,6 +44,11 @@ void check(bool ok, const char *what) {
         ++failures;
 }
 
+// The host's connection to the X server, open for the whole run as a host's is (null without a display). An X server
+// with no client left resets, refusing connections for a moment: Xvfb's does, and the editor opens and closes one of
+// its own as it is made, so a connection the host opened only then could find the server resetting.
+Display *hostDisplay = nullptr;
+
 int ignoreXError(Display *, XErrorEvent *) { return 0; }
 
 // What a window shows, up to `width` × `height` from its top left, once it shows. Under a window manager (a desktop's,
@@ -501,12 +506,12 @@ void testClap(const char *path) {
     loaded.bytes = saved.bytes;
     check(state && state->load(plugin, &loaded.in), "its state loads back");
 
-    if (gui && std::getenv("DISPLAY")) {
+    if (gui && hostDisplay) {
         check(gui->is_api_supported(plugin, CLAP_WINDOW_API_X11, false), "its editor takes an X11 window");
         check(gui->create(plugin, CLAP_WINDOW_API_X11, false), "its editor is made");
         uint32_t width = 0, height = 0;
         check(gui->get_size(plugin, &width, &height) && width > 100 && height > 100, "it has a size");
-        Display *display = XOpenDisplay(nullptr);
+        Display *display = hostDisplay;
         const Window parent = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, 1300, 1080, 0, 0, 0);
         XStoreName(display, parent, "FMVibe editor host");
         XMapWindow(display, parent);
@@ -607,13 +612,12 @@ void testClap(const char *path) {
             host.pluginTimer->on_timer(plugin, 1); // the editor's events, on a window that is gone
         gui->destroy(plugin);
         check(true, "an editor whose host window went first closes, the host still running");
-        XCloseDisplay(display);
     }
 
     plugin->stop_processing(plugin);
     plugin->deactivate(plugin);
     plugin->destroy(plugin);
-    if (std::getenv("DISPLAY"))
+    if (hostDisplay)
         testSettingsLocale(factory, descriptor->id);
     entry->deinit();
     check(true, "it closes");
@@ -989,12 +993,12 @@ void testVst3(const char *path) {
         component->queryInterface(IEditController::iid, reinterpret_cast<void **>(&edit));
         IPlugView *view = edit ? edit->createView(ViewType::kEditor) : nullptr;
         check(view != nullptr, "its VST3 editor view is made");
-        if (view && std::getenv("DISPLAY")) {
+        if (view && hostDisplay) {
             TestFrame frame;
             check(view->setFrame(&frame) == kResultOk, "the host's frame takes");
             check(view->isPlatformTypeSupported(kPlatformTypeX11EmbedWindowID) == kResultTrue,
                   "the view takes an X11 window");
-            Display *display = XOpenDisplay(nullptr);
+            Display *display = hostDisplay;
             const Window parent = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, 1300, 1080, 0, 0, 0);
             XMapWindow(display, parent);
             XSync(display, False);
@@ -1025,7 +1029,7 @@ void testVst3(const char *path) {
             view->removed();
             view->setFrame(nullptr); // while the frame and its run loop are alive, as a host does
             XDestroyWindow(display, parent);
-            XCloseDisplay(display);
+            XSync(display, False);
         }
         if (view) {
             view->setFrame(nullptr);
@@ -1050,10 +1054,16 @@ int main(int argc, char **argv) {
         return 2;
     }
     testMtsTuning();
+    if (std::getenv("DISPLAY")) {
+        hostDisplay = XOpenDisplay(nullptr);
+        check(hostDisplay != nullptr, "the host connects to the display");
+    }
     std::printf("== CLAP\n");
     testClap(argv[1]);
     std::printf("== VST3\n");
     testVst3(argv[2]);
+    if (hostDisplay)
+        XCloseDisplay(hostDisplay);
     std::printf(failures == 0 ? "all checks passed\n" : "%d checks failed\n", failures);
     return failures == 0 ? 0 : 1;
 }
