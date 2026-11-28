@@ -6130,6 +6130,8 @@ int main(int argc, char **argv) {
             for (int k = 0; k < 64; ++k)
                 layout.push_back(static_cast<float>(32 + (k * 5 + file) % 95));
         }
+        // Every node hidden from the routing graph while off.
+        layout.push_back(static_cast<float>((1 << (kOps + kFilters + kShapers)) - 1));
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

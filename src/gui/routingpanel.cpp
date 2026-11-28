@@ -28,6 +28,9 @@ using namespace detail;
 
 namespace {
 
+// How strongly a node shown dim (off, but still wired: see graphNodes()) and its wires and labels are drawn.
+constexpr float kDimNode = 0.4f;
+
 // A route's depth as its label shows it.
 std::string percent(double value) {
     char text[16];
@@ -317,8 +320,9 @@ int RoutingPanel::rerouting() const {
 }
 
 int RoutingPanel::nodeAt(Point p) const {
+    const std::vector<int> shown = routing_.shownNodes(); // a dim operator's too
     for (int node = kNodes - 1; node >= 0; --node) {
-        if (!routing_.nodeOn(node))
+        if (std::find(shown.begin(), shown.end(), node) == shown.end())
             continue;
         const Point c = routing_.nodeCenter(node);
         const bool inside = isBoxNode(node)
@@ -368,7 +372,7 @@ Point RoutingPanel::labelAlong(Point start, Point control, Point end, Point midd
     constexpr float kClear = kSelectedRing + 1.0f; // clear of a selected node's ring too
     constexpr float kStep = 0.035f;                // along the curve, either way from its middle
     constexpr int kSteps = 8;                      // and no further than a fifth of it from either end
-    const std::vector<int> nodes = routing_.enabledNodes();
+    const std::vector<int> nodes = routing_.shownNodes();
     std::vector<Point> centers;
     centers.reserve(nodes.size());
     for (int node : nodes)
@@ -382,23 +386,68 @@ Point RoutingPanel::labelAlong(Point start, Point control, Point end, Point midd
     };
     const Rect inside{kRouting.x + 0.5f * width + 4.0f, kRouting.y + 12.0f, kRouting.w - width - 8.0f,
                       kRouting.h - 24.0f}; // where its center keeps the chip in the panel, as wireInside() has it
+    auto at = [&](float t) {
+        const float s = 1.0f - t;
+        return Point{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
+                     s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
+    };
+    // Beside the wire at `t`, on its left (`side` 1) or right: the chip's edge kBesideGap off the wire, or a row of
+    // labels further out for each `ring`, whichever way the wire runs there.
+    constexpr float kBesideGap = 3.0f;
+    auto beside = [&](float t, float side, int ring) {
+        const float s = 1.0f - t;
+        const Point d = normalize({2.0f * s * (control.x - start.x) + 2.0f * t * (end.x - control.x),
+                                   2.0f * s * (control.y - start.y) + 2.0f * t * (end.y - control.y)});
+        const Point n{d.y * side, -d.x * side};
+        const float out = 0.5f * (width * std::abs(n.x) + kWireLabelH * std::abs(n.y)) + kBesideGap +
+                          static_cast<float>(ring) * (kWireLabelH + kBesideGap);
+        const Point p = at(t);
+        return Point{p.x + n.x * out, p.y + n.y * out};
+    };
+    // The spots beside the wire, from about a tenth of the way along to nine tenths, nearest its middle first (on its
+    // left where two are as near), off OUT's disc.
+    struct Spot {
+        Point at;
+        float distance;
+    };
+    std::vector<Spot> spots; // worked out only once nowhere along the wire will do
+    auto besideSpots = [&] {
+        constexpr int kBesideSteps = 11, kRings = 4;
+        for (int ring = 0; ring < kRings; ++ring)
+            for (int k = -kBesideSteps; k <= kBesideSteps; ++k)
+                for (const float side : {1.0f, -1.0f}) {
+                    const Point p = beside(0.5f + kStep * static_cast<float>(k), side, ring);
+                    spots.push_back({p, std::hypot(p.x - middle.x, p.y - middle.y)});
+                }
+        std::stable_sort(spots.begin(), spots.end(),
+                         [](const Spot &a, const Spot &b) { return a.distance < b.distance; });
+    };
+    auto offOut = [&](Point p) {
+        const Rect r = chip(p, width);
+        const float dx = std::max({r.x - kOutCore.x, 0.0f, kOutCore.x - r.right()});
+        const float dy = std::max({r.y - kOutCore.y, 0.0f, kOutCore.y - r.bottom()});
+        return std::hypot(dx, dy) > kOutCoreRadius + kClear;
+    };
     for (const bool ofLabels : {true, false}) {
         if (clear(middle, ofLabels))
             return middle;
         for (int k = 1; k <= kSteps; ++k)
-            for (const float side : {-1.0f, 1.0f}) {
-                const float t = 0.5f + side * kStep * static_cast<float>(k), s = 1.0f - t;
-                const Point p{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
-                              s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
-                if (inside.contains(p) && clear(p, ofLabels))
+            for (const float side : {-1.0f, 1.0f})
+                if (const Point p = at(0.5f + side * kStep * static_cast<float>(k));
+                    inside.contains(p) && clear(p, ofLabels))
                     return p;
-            }
+        // Nowhere along it (a node across a short wire): beside it, as near its middle as it can.
+        if (spots.empty())
+            besideSpots();
+        for (const Spot &spot : spots)
+            if (inside.contains(spot.at) && offOut(spot.at) && clear(spot.at, ofLabels))
+                return spot.at;
     }
     return middle;
 }
 
 std::vector<std::pair<int, Rect>> RoutingPanel::routeLabels() const {
-    const std::vector<int> on = routing_.enabledNodes();
+    const std::vector<int> on = routing_.shownNodes();
     const int moving = rerouting();
     std::vector<std::pair<int, Rect>> labels;
     std::vector<Rect> taken; // each at rest, a mode's glyph widening it about its middle (see labelPill())
@@ -514,10 +563,10 @@ int RoutingPanel::hoveredNode() const {
     if (host_.dragging() || !hover) // not while anything is dragged
         return -1;
     const Kind k = hover->kind;
-    return k == Kind::Node || k == Kind::Port || k == Kind::NodeDelete ? hover->a : -1;
+    return k == Kind::Node || k == Kind::Port || k == Kind::NodePower ? hover->a : -1;
 }
 
-Point RoutingPanel::nodeDeleteAt(int node, Point center) {
+Point RoutingPanel::nodePowerAt(int node, Point center) {
     if (!isBoxNode(node)) // on the circle, up and to the right
         return {center.x + 0.72f * kNodeRadius, center.y - 0.72f * kNodeRadius};
     return {center.x + kFilterHalfW - 2.0f, center.y - kFilterHalfH + 2.0f}; // at a box's corner
@@ -568,9 +617,10 @@ bool RoutingPanel::followRoutes() {
     for (int node = 0; node < kNodes; ++node)
         track(nodeGlow_[node], nodeGlowTarget(node));
     std::vector<int> wired;
-    for (int from : routing_.enabledNodes()) {
-        for (int to = 0; to < kNodes; ++to)
-            if (routing_.nodeOn(to) && routing_.wired(routeParam(from, to)))
+    const std::vector<int> shown = routing_.shownNodes();
+    for (int from : shown) {
+        for (int to : shown)
+            if (routing_.wired(routeParam(from, to)))
                 wired.push_back(routeParam(from, to));
         if (routing_.goesOut(from))
             wired.push_back(outParam(from));
@@ -684,8 +734,9 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
         return;
     add(Kind::AlgorithmButton, kAlgorithmButton);
     const RoutingView view = controller().layout().view;
-    // Switched-off nodes are left out of the graph, and greyed out in the matrix; their tabs switch them back on.
-    const std::vector<int> on = routing_.enabledNodes();
+    // Switched-off nodes are greyed out in the matrix, and in the graph a node still wired shows dim in its place
+    // (see graphNodes()); the others are left out of it, docked as ghosts. Their tabs switch them back on.
+    const std::vector<int> on = routing_.shownNodes();
     if (view == RoutingView::Matrix) {
         // Rows feed columns; the last column is the output. The rows' and columns' names work like the
         // nodes' tabs.
@@ -788,20 +839,22 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
             add(Kind::WireStart, startGrip(w.start, w.control), outParam(from), from, kNodes);
         }
     }
-    // The node under the mouse: an x in a circle at its upper right, over its edge, which switches it off.
+    // The node under the mouse: a power symbol in a circle at its upper right, over its edge, which switches it off,
+    // or a node shown dim on.
     for (int node : on)
         if (node == hoveredNode()) {
-            const Point x = nodeDeleteAt(node, routing_.nodeCenter(node));
-            add(Kind::NodeDelete, {x.x - 8.0f, x.y - 8.0f, 16.0f, 16.0f}, -1, node);
+            const Point x = nodePowerAt(node, routing_.nodeCenter(node));
+            add(Kind::NodePower, {x.x - 8.0f, x.y - 8.0f, 16.0f, 16.0f}, -1, node);
         }
-    // The nodes that are off, as dashed ghosts docked under OUT, in the graph's bottom right, over any node moved
-    // there.
+    // The nodes that are off and not shown dim, as dashed ghosts docked under OUT, in the graph's bottom right, over
+    // any node moved there.
+    auto docked = [&](int node) { return std::find(on.begin(), on.end(), node) == on.end(); };
     float x = kRouting.right() - 16.0f + 6.0f;
     for (int node = 0; node < kNodes; ++node)
-        if (!routing_.nodeOn(node))
+        if (docked(node))
             x -= (isBoxNode(node) ? 34.0f : 24.0f) + 6.0f;
     for (int node = 0; node < kNodes; ++node) {
-        if (routing_.nodeOn(node))
+        if (!docked(node))
             continue;
         const float w = isBoxNode(node) ? 34.0f : 24.0f;
         add(Kind::NodeGhost, {x, kRouting.bottom() - 34.0f, w, 24.0f}, -1, node);
@@ -842,7 +895,7 @@ void RoutingPanel::popups(std::vector<Widget> &list) const {
     // View picks from as it picks every list's (see PanelHost::openList()).
     const int open = host_.openList();
     if (const int from = routeModeFrom(open), to = routeModeTo(open);
-        from >= 0 && graphShown() && routing_.nodeOn(from) && routing_.nodeOn(to) &&
+        from >= 0 && graphShown() && routing_.nodeShown(from) && routing_.nodeShown(to) &&
         routing_.wired(routeParam(from, to)) && rerouting() != routeParam(from, to)) {
         Rect idle;
         for (const auto &[param, rect] : routeLabels())
@@ -902,8 +955,9 @@ void RoutingPanel::paintRouting(Canvas &c) {
     paintOutCore(c, busTarget);
 
     // The operators' halos and unison copies, under the wires, so an arrowhead coming in at a node's side shows over
-    // the copies peeking out there.
-    const std::vector<int> on = routing_.enabledNodes();
+    // the copies peeking out there. A node shown dim, which is off, and its wires, in and out, are drawn faint.
+    const std::vector<int> on = routing_.shownNodes();
+    auto dim = [&](int node) { return node < kNodes && !routing_.nodeOn(node) ? kDimNode : 1.0f; };
     for (int node : on)
         if (node < kOps)
             paintOpBacking(c, node, routing_.nodeCenter(node));
@@ -923,7 +977,7 @@ void RoutingPanel::paintRouting(Canvas &c) {
             continue;
         const float out = shownAmount(param);
         const OutWire w = outWireOf(node, routing_.nodeCenter(node), routing_.wireBend(param));
-        const Color color = focused(param) ? kText : nodeColor(node).alpha(0.35f + 0.65f * out);
+        const Color color = focused(param) ? kText : nodeColor(node).alpha((0.35f + 0.65f * out) * dim(node));
         c.curve(w.start, w.control, w.end, color, 1.2f + 2.4f * out);
         arrowHead(c, w.end, w.dir, color);
     }
@@ -935,7 +989,8 @@ void RoutingPanel::paintRouting(Canvas &c) {
                 continue;
             const float amount = shownAmount(param);
             const Color base = routeColor(from, to);
-            const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
+            const Color color =
+                focused(param) ? kText : base.alpha((0.35f + 0.65f * amount) * std::min(dim(from), dim(to)));
             const float width = 1.2f + 2.4f * amount;
             if (from == to) {
                 c.strokeCircle(loopCenter(from, routing_.nodeCenter(from)), 9.0f, color, width);
@@ -952,7 +1007,8 @@ void RoutingPanel::paintRouting(Canvas &c) {
 void RoutingPanel::paintMatrixLabels(Canvas &c) {
     // A node that is off has its name greyed out, like its row and column of cells; the name under the mouse
     // lights up. The node the inspector shows has its names on a plate, like its tab: a click on them switches
-    // it off or on again, as on the tab, and a click on another name selects that node (switching it on).
+    // it off or on again, as on the tab, and a click on another name selects that node (switching it on, unless
+    // the graph shows it dim).
     const int selected = controller().layout().selectedNode;
     auto nameColor = [&](int node) {
         if (const std::optional<Widget> &hover = host_.hovered();
@@ -1054,6 +1110,7 @@ bool RoutingPanel::opHeard(int op) const {
 // modulation takes them now: one an LFO opens from 0 % lights up too), and with unison a stack of copies peeking out
 // on both sides, past the selection ring, outlined as the node is.
 void RoutingPanel::paintOpBacking(Canvas &c, int op, Point center) {
+    const float fade = routing_.nodeOn(op) ? 1.0f : kDimNode; // shown dim
     const Color color = nodeColor(op);
     if (const float level = nodeGlow_[op]; level > 0.01f) {
         if (glowing > 0.0f) // feathered, as strongly as the glow is set
@@ -1062,11 +1119,10 @@ void RoutingPanel::paintOpBacking(Canvas &c, int op, Point center) {
             c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
     }
     if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
-        const Color outline = opHeard(op) ? color : color.alpha(0.45f);
         for (const float dx : {-9.0f, 9.0f}) {
             const Point copy{center.x + dx, center.y};
             c.fillCircle(copy, kNodeRadius, kPanel);
-            c.strokeCircle(copy, kNodeRadius, outline.alpha(0.6f), 1.5f);
+            c.strokeCircle(copy, kNodeRadius, color.alpha((opHeard(op) ? 0.6f : 0.27f) * fade), 1.5f);
         }
     }
 }
@@ -1079,7 +1135,8 @@ void RoutingPanel::paintNode(Canvas &c, const Widget &w, bool hover) {
     if (isBoxNode(w.a)) { // a filter's box with its type, or a shaper's, squarer, with its curve's name
         const bool shaper = isShaperNode(w.a);
         const float corner = shaper ? kRadiusMark : kRadiusControl;
-        const Color color = nodeColor(w.a);
+        const float fade = routing_.nodeOn(w.a) ? 1.0f : kDimNode; // faint while it is shown dim, being off
+        const Color color = nodeColor(w.a).alpha(fade);
         const bool live = routing_.boxHasInput(w.a);
         // Its halo, as an operator's: as bright as what goes through it and on to the output (see nodeGlowTarget()),
         // feathered as the glow setting says, a plain ring of light with it off.
@@ -1091,7 +1148,9 @@ void RoutingPanel::paintNode(Canvas &c, const Widget &w, bool hover) {
         }
         // Filled with the panel's color and outlined in its own, faintly while nothing goes into it; the node the
         // inspector shows filled solid with its color, its name and type in the panel's, and ringed in it.
-        c.fillRect(w.rect, nodeFace(color, selected, hovered), corner);
+        // Shown dim, its face is too, solid as an operator's (see below).
+        const Color face = nodeFace(nodeColor(w.a), selected, hovered);
+        c.fillRect(w.rect, fade < 1.0f && selected ? mix(kPanel, face, fade) : face, corner);
         if (!selected)
             c.strokeRect(w.rect, live ? color : color.alpha(0.45f), 1.5f, corner);
         else
@@ -1103,24 +1162,29 @@ void RoutingPanel::paintNode(Canvas &c, const Widget &w, bool hover) {
             shaper ? clipModeName(clipMode(value(paramIndex(shaperOfNode(w.a), ShaperParam::Mode))))
                    : filterLabel(static_cast<FilterType>(std::lround(value(paramIndex(box, FilterParam::Type)))),
                                  value(paramIndex(box, FilterParam::Slope)));
-        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, kTextLabel, selected ? kPanel.alpha(0.7f) : kDim);
+        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, kTextLabel,
+               selected ? kPanel.alpha(0.7f) : kDim.alpha(fade));
         return;
     }
 
     const int op = w.a;
-    const Color color = nodeColor(op); // the accent, or in a theme that colors each operator its own
+    // The accent, or in a theme that colors each operator its own; faint while it is shown dim, being off.
+    const float fade = routing_.nodeOn(op) ? 1.0f : kDimNode;
+    const Color color = nodeColor(op).alpha(fade);
     // A silent one's outline: its color, faintly. (Its halo and unison copies are under the wires: see
     // paintOpBacking().)
-    const Color outline = opHeard(op) ? color : color.alpha(0.45f);
+    const Color outline = opHeard(op) ? color : nodeColor(op).alpha(0.45f * fade);
     // Filled with the panel's color and outlined in its own; the node the inspector shows filled solid with its color,
     // its wave, letter and ratio in the panel's, and ringed in it.
-    c.fillCircle(center, kNodeRadius, nodeFace(color, selected, hovered));
+    // Shown dim, its face is too: solid, so the wires under it stay hidden, the panel's color showing through its own.
+    const Color face = nodeFace(nodeColor(op), selected, hovered);
+    c.fillCircle(center, kNodeRadius, fade < 1.0f && selected ? mix(kPanel, face, fade) : face);
     if (!selected)
         c.strokeCircle(center, kNodeRadius, outline, 1.5f);
     else
         c.strokeCircle(center, kNodeRadius + kSelectedRing, color.alpha(0.8f), 1.5f);
     const Color ink = selected ? kPanel : color;
-    const Color caption = selected ? kPanel.alpha(0.7f) : kDim; // its ratio
+    const Color caption = selected ? kPanel.alpha(0.7f) : kDim.alpha(fade); // its ratio
     // Wave glyph above the letter, ratio below it.
     const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
     const std::vector<Point> glyph = waveIcon(wave, {center.x - 6.0f, center.y - 16.0f, 12.0f, 5.0f});
@@ -1255,13 +1319,12 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
     case Kind::Node:
         paintNode(c, w, hovered);
         break;
-    case Kind::NodeDelete: { // as on the effects graph's nodes (see FxPanel::paintFxGraph())
+    case Kind::NodePower: { // as an effect's node's (see FxPanel::paintFxGraph()): its symbol in its color while on
         const Point x = w.rect.center();
         const Color ink = hovered ? kText : kDim;
         c.fillCircle(x, 7.5f, nodeDiscFill(hovered));
         c.strokeCircle(x, 7.5f, ink, 1.2f);
-        c.line({x.x - 3.0f, x.y - 3.0f}, {x.x + 3.0f, x.y + 3.0f}, ink, 1.4f);
-        c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
+        nodePowerIcon(c, x, routing_.nodeOn(w.a) ? nodeColor(w.a) : ink);
         break;
     }
     case Kind::NodeGhost: {
@@ -1309,7 +1372,10 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         const bool focused = hovered || active;
         // Filled solid with its route's color (a line to OUT's with its node's), its depth in the panel's; a little
         // lighter while the mouse is on its depth or drags it.
-        const Color color = w.kind == Kind::OutLabel ? nodeColor(w.a) : routeColor(w.a, w.b);
+        // Faint where an end is off, as its wire is (a node shown dim).
+        const bool off = !routing_.nodeOn(w.a) || (w.kind != Kind::OutLabel && !routing_.nodeOn(w.b));
+        const Color color =
+            (w.kind == Kind::OutLabel ? nodeColor(w.a) : routeColor(w.a, w.b)).alpha(off ? kDimNode : 1.0f);
         // As a pill, it draws all of it, its parts' lines and its own lit part; its parts draw what is on them.
         const bool pill = w.group.w > 0.0f;
         const Rect body = pill ? w.group : w.rect;
@@ -1493,8 +1559,8 @@ std::string RoutingPanel::tooltip(const Widget &w) const {
         return algorithmMenuOpen_ ? std::string() : std::string(tr(Str::TipAlgorithm));
     case Kind::WireStart:
         return tr(Str::TipWireStart);
-    case Kind::NodeDelete:
-        return trf(Str::MenuSwitchOff, {nodeTitle(w.a)});
+    case Kind::NodePower:
+        return trf(routing_.nodeOn(w.a) ? Str::MenuSwitchOff : Str::MenuSwitchOn, {nodeTitle(w.a)});
     case Kind::WireEnd:
         return tr(Str::TipWireEnd);
     case Kind::Port:
@@ -1529,7 +1595,7 @@ std::optional<CursorKind> RoutingPanel::cursor(const Widget &w) const {
         return CursorKind::Move;
     case Kind::Port:
     case Kind::NodeGhost:
-    case Kind::NodeDelete:
+    case Kind::NodePower:
     case Kind::WireEnd:
     case Kind::WireStart:
     case Kind::LabelMode:
@@ -1588,8 +1654,8 @@ bool RoutingPanel::press(const Widget &w, Point p, Modifiers mods) {
     case Kind::Port:
         startDrag(DragKind::Connect, w, p, false);
         break;
-    case Kind::NodeDelete:
-        edit(enabledParam(w.a), 0.0); // switch it off, as its menu does
+    case Kind::NodePower: // switch it off, or a node shown dim on, as its menu does
+        edit(enabledParam(w.a), routing_.nodeOn(w.a) ? 0.0 : 1.0);
         host_.resetHover();
         break;
     case Kind::WireEnd:
@@ -1840,8 +1906,8 @@ void addRouteModes(std::vector<MenuItem> &items, int route, double mode) {
 
 } // namespace
 
-// A node's (or its edge's): Switch Off. A label's mode or x, an arrowhead or a wire: the route's modes, Reset Bend for
-// a wire bent, and Disconnect.
+// A node's (or its edge's): Switch Off, or for a node shown dim, Switch On and Hide. A label's mode or x, an arrowhead
+// or a wire: the route's modes, Reset Bend for a wire bent, and Disconnect.
 bool RoutingPanel::contextMenu(const std::optional<Widget> &hit, Point, std::vector<MenuItem> &items) {
     menuRoute_ = menuNode_ = -1;
     if (!hit)
@@ -1854,7 +1920,12 @@ bool RoutingPanel::contextMenu(const std::optional<Widget> &hit, Point, std::vec
     case Kind::Node: // the node, or its edge
     case Kind::Port:
         menuNode_ = hit->a;
-        items.push_back({kMenuSwitchOff, trf(Str::MenuSwitchOff, {nodeTitle(hit->a)})});
+        if (routing_.nodeOn(hit->a)) {
+            items.push_back({kMenuSwitchOff, trf(Str::MenuSwitchOff, {nodeTitle(hit->a)})});
+        } else {
+            items.push_back({kMenuSwitchOn, trf(Str::MenuSwitchOn, {nodeTitle(hit->a)})});
+            items.push_back({kMenuHide, trf(Str::MenuHideNode, {nodeTitle(hit->a)})});
+        }
         return true;
     case Kind::LabelMode:
     case Kind::LabelRemove:
@@ -1895,6 +1966,11 @@ bool RoutingPanel::menuCommand(int command) {
         routing_.disconnect(menuRoute_);
     } else if (command == kMenuSwitchOff && menuNode_ >= 0) {
         edit(enabledParam(menuNode_), 0.0); // switch a node off
+    } else if (command == kMenuSwitchOn && menuNode_ >= 0) {
+        edit(enabledParam(menuNode_), 1.0); // a node shown dim, where it is
+    } else if (command == kMenuHide && menuNode_ >= 0) {
+        routing_.hideNode(menuNode_); // docked as a ghost under OUT
+        host_.resetHover();
     } else if (command >= kRouteModeCommand && command < kRouteModeCommand + static_cast<int>(RouteMode::Count) &&
                menuRoute_ >= 0 && modeParamOf(menuRoute_) >= 0 &&
                command - kRouteModeCommand < listCount(modeParamOf(menuRoute_))) {

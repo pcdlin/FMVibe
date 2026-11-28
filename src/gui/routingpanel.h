@@ -50,11 +50,14 @@ public:
     void paintFxBackdrop(Canvas &c, Rect area, Point out);
 
     // Its context menus' commands, apart from the View's and the other panels' (see View::menuCommand()): Disconnect,
-    // a node's Switch Off, Reset Bend, and from kRouteModeCommand on each of a route's modes.
+    // a node's Switch Off (a node shown dim's Switch On and Hide), Reset Bend, and from kRouteModeCommand on each of
+    // a route's modes.
     static constexpr int kMenuDisconnect = 3;
     static constexpr int kMenuSwitchOff = 4;
     static constexpr int kMenuResetBend = 14;
     static constexpr int kRouteModeCommand = 16;
+    static constexpr int kMenuSwitchOn = 24;
+    static constexpr int kMenuHide = 25;
 
     // The routing graph's glow behind it (see paintBack()): its shape at this zoom, over the part of the panel it
     // reaches, and its pixels for the strength and accent it was filled with last.
@@ -136,8 +139,9 @@ private:
     double outLevel(int node) const;
     // Where a label `width` wide goes on a wire, a quadratic curve from `start` by `control` to `end` whose middle is
     // `middle`: there, unless that puts it over a node or one of the labels `taken`; then slid along the wire, either
-    // way, as little as clears every node shown and those labels, staying inside the panel. Where nowhere does, as
-    // little as clears the nodes alone; where nowhere does that, at the middle.
+    // way, as little as clears every node shown and those labels, staying inside the panel; where nowhere along it
+    // does (a node across a short wire), just beside it, either side, as near its middle as clears them. Where nowhere
+    // does, the same, as little as clears the nodes alone; where nowhere does that, at the middle.
     Point labelAlong(Point start, Point control, Point end, Point middle, float width,
                      const std::vector<Rect> &taken = {}) const;
     // Where the graph's labels rest, by route (and OUT line): the feedback loops' first, then each wire's and each OUT
@@ -154,10 +158,10 @@ private:
         bool glyph = false;
     };
     LabelPill labelPill(int param, int mode, Rect idle) const;
-    // The routing graph's nodes under the mouse, or whose x is (see Kind::NodeDelete), -1 for none; and where its x
-    // goes, at its upper right.
+    // The routing graph's nodes under the mouse, or whose power switch is (see Kind::NodePower), -1 for none; and where
+    // its power switch goes, at its upper right.
     int hoveredNode() const;
-    static Point nodeDeleteAt(int node, Point center);
+    static Point nodePowerAt(int node, Point center);
     // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
     // clear of the other nodes; and whether the grid's points show now.
     Point gridPointFor(int node, Point want) const;

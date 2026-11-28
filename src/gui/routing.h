@@ -112,6 +112,33 @@ inline int outParam(int node) {
                                 : paramIndex(node, OpParam::Out);
 }
 
+// The nodes the routing graph shows in their places, by node: those that are on (`on`), and a node (an operator, a
+// filter or a shaper) that is off but still wired (`wired`: a route above 0 % or kept at 0 %) to OUT or to another node
+// shown, unless it was hidden (`hidden`, UiLayout::hiddenNodes), which shows dim. Two nodes off that are wired only to
+// each other show both. The others are docked under OUT as ghosts.
+template <class On, class Wired>
+std::array<bool, kNodes> graphNodes(On on, Wired wired, uint32_t hidden) {
+    std::array<bool, kNodes> shown{};
+    for (int node = 0; node < kNodes; ++node)
+        shown[node] = on(node) || !((hidden >> node) & 1u);
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (int node = 0; node < kNodes; ++node) {
+            if (!shown[node] || on(node) || wired(outParam(node)))
+                continue;
+            bool joined = false;
+            for (int other = 0; other < kNodes && !joined; ++other)
+                joined = other != node && shown[other] &&
+                         (wired(routeParam(node, other)) || wired(routeParam(other, node)));
+            if (!joined) {
+                shown[node] = false;
+                changed = true;
+            }
+        }
+    }
+    return shown;
+}
+
 // The route from `from` into `to`, kNodes standing for the output.
 inline int routeTo(int from, int to) {
     return to == kNodes ? outParam(from) : routeParam(from, to);
@@ -157,9 +184,9 @@ inline bool isPowerParam(int param) {
 }
 
 // The inspector's lens's leader: from the node it shows (`node`), while the routing graph shows it (`graphShown`) and it
-// is on, level across to the lens; where it starts, that node's left side.
+// is in its place there (on, or dim), level across to the lens; where it starts, that node's left side.
 inline std::optional<Point> lensLeaderStart(const RoutingModel &routing, int node, bool graphShown) {
-    if (!graphShown || !routing.nodeOn(node))
+    if (!graphShown || !routing.nodeShown(node))
         return std::nullopt;
     const Point center = routing.nodeCenter(node);
     const float extent = (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + kSelectedRing + 2.0f;

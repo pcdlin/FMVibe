@@ -34,6 +34,12 @@ void powerIcon(Canvas &c, Point center, Color color) {
     c.line({center.x, center.y - kRadius - 1.5f}, {center.x, center.y - 0.5f}, color, 1.6f);
 }
 
+void nodePowerIcon(Canvas &c, Point center, Color color) {
+    constexpr float kRadius = 3.2f, kGap = 0.75f;
+    c.arc(center, kRadius, kGap, 2.0f * std::numbers::pi_v<float> - kGap, color, 1.3f);
+    c.line({center.x, center.y - kRadius - 1.0f}, {center.x, center.y - 0.3f}, color, 1.3f);
+}
+
 void transportIcon(Canvas &c, Point center, Color color, bool stop) {
     if (stop) {
         c.fillRect({center.x - 4.0f, center.y - 4.0f, 8.0f, 8.0f}, color, kRadiusMark);

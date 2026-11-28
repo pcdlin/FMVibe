@@ -197,7 +197,8 @@ the top of the inspector. The inspector then shows its page.
 
 The inspector has a tab for each node: operators A–F, filters F1 and F2, and shapers S1 and S2.
 
-- Tabs of switched-off nodes are dimmed; clicking one switches the node on.
+- Tabs of switched-off nodes are dimmed; clicking one switches the node on. A node shown dimmed in the routing graph
+  is only shown, and stays off.
 - Clicking the selected tab switches its node off, or on again. The power switch on the page's title line does the
   same.
 - A dot in a tab's corner means the node is sent to the output (see [the tabs' marks](#4-the-plugin-window-at-a-glance)).
@@ -428,7 +429,10 @@ that are on, or as a grid, which lists every node.
 - Each node is outlined in its own color: fully while it reaches the output, faintly while it doesn't.
 - **OUT** is the disc at the right. It glows with the level of what the nodes send to the output. Sounding nodes
   glow too, as brightly as they sound.
-- Switched-off nodes wait as dashed ghosts below OUT. Click one to switch it on.
+- A switched-off node that is still connected stays in its place, dimmed, with its connections. Right-click it
+  and choose **Switch on**, or **Hide** to move it below OUT with the other switched-off nodes. Removing its last
+  connection hides it too.
+- Other switched-off nodes wait as dashed ghosts below OUT. Click one to switch it on.
 
 **Connecting**: drag from a node's **edge** (a band around its outline, which glows under the mouse) onto:
 
@@ -466,8 +470,8 @@ together with its modulation.
 - Drag a wire sideways to bend it, so wires don't overlap. Double-click a wire, or choose **Reset Bend**, to restore
   its original curve. Lines to OUT can be bent the same way.
 
-**Switching nodes on and off**: use the inspector's tabs, the **×** in a circle at a node's upper right (visible
-under the mouse), or the node's right-click menu.
+**Switching nodes on and off**: use the inspector's tabs, the power button at a node's upper right (visible under
+the mouse; it also switches a dimmed node back on), or the node's right-click menu.
 
 A modulated wire swells and thins with its modulation while notes play.
 
@@ -506,7 +510,8 @@ six operators, F1, F2, S1, S2 and OUT). The diagonal is each node's feedback.
 - Right-click a cell for its route mode.
 
 Rows and columns of switched-off nodes are greyed out; editing a cell switches on the nodes it joins. Clicking a
-row's or column's name shows that node in the inspector, switching it on if needed.
+row's or column's name shows that node in the inspector, switching it on if needed (a node shown dimmed in the
+graph stays off).
 
 ### Algorithms
 

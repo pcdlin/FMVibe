@@ -1126,8 +1126,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   oversampling). Levels, sends and
   routing amounts ramp sample by sample, and the ramps don't depend on how the host splits the block.
 
-An operator or filter that is switched off is silent and costs no CPU. It is left out of the routing graph and
-greyed out in the matrix, but its settings and connections are kept for when it comes back. A new instance starts with only operator A switched on,
+An operator, filter or shaper that is switched off is silent and costs no CPU. It is greyed out in the matrix and,
+in the routing graph, one still wired shows dim in its place and the others are left out (see the routing panel
+below), but its settings and connections are kept for when it comes back. A new instance starts with only operator A switched on,
 as a plain sine carrier; the other operators share A's defaults (except that they don't go to the output), so
 switching one on and wiring it in is the whole job.
 
@@ -1378,11 +1379,13 @@ what it started goes on.
     what is picked): **Cut**, **Copy**, **Paste** (where the menu was opened, on the grid), **Duplicate** (as Ctrl+D does) and **Delete**; **Select All**; **Slide** and
     **Mute** (checked while every note picked has it), and **Quantize**, which puts the notes picked on the snap's
     grid. It offers only what applies: the notes' entries while notes are picked, Paste once something is copied.
-- **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows only what is
-  switched on, the matrix everything, greyed out where it is off.
+- **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows what is
+  switched on and the nodes switched off that are still wired, dim, the matrix everything, greyed out where it is
+  off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph, and the
-  x in a circle a node shows at its upper right (a box's corner) while the mouse is over it, as the effects graph's
-  nodes do.
+  power symbol in a circle a node shows at its upper right (a box's corner) while the mouse is over it, as an effect's
+  node in the effects graph shows one: in the node's color while it is on, the dim text's on a node shown dim,
+  which it switches on.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
     type) and squarer boxes the shapers (with their curve), each filled with the panel's color and outlined in its own
     color (each operator's, the filters' purple, the shapers' red): fully while the node is heard, as its routes are
@@ -1407,9 +1410,17 @@ what it started goes on.
     an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
     opens; a filter's or shaper's the same way, as loud as what goes through it: the loudest of what feeds it, each
     source as loud as it is (an operator by its envelope, a filter or shaper by this in turn) as far as its route lets
-    it through. A glow rises from nothing at its outer edge as a smoothstep, so it fades out without an edge or steps. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an
-    operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
-    graph, and shows it in the inspector. In a new patch, each node's place is a point of the grid Ctrl+drag snaps to,
+    it through. A glow rises from nothing at its outer edge as a smoothstep, so it fades out without an edge or steps. A node (an
+    operator, a filter or a shaper) that is off but still wired (a route above 0 % or kept at 0 %) to OUT or to another
+    node the graph shows (two nodes off wired only to each other both count) stays in its place, dim: it, its wires in
+    and out and their labels drawn at 40 % (its face solid, so the wires under it stay hidden). It is picked, moved, connected and
+    rerouted as a node that is on; its right-click menu offers Switch On and Hide instead of Switch Off.
+    Hide docks it with the other nodes that are off, as one undo step, as disconnecting its last route (or moving it
+    off it) does in the same step as the edit, until it is switched on again, however that is done (a route set again
+    by a host's automation leaves it docked): switched off once more, it shows dim again (the layout keeps which are hidden, `UiLayout::hiddenNodes`,
+    saved with the patch). The nodes that are off and not shown dim wait docked under OUT, in the graph's bottom
+    right, as dashed ghosts, a circle with an operator's letter or a box with a filter's or shaper's name; a click
+    switches one on, back where it was in the graph, and shows it in the inspector. In a new patch, each node's place is a point of the grid Ctrl+drag snaps to,
     mirrored about OUT's row: the operators on the left (F and E in the second column at the top and bottom, C and B in
     the fourth a row in from them, D and A in the seventh at the top and bottom), then the shapers (S2 above OUT's row,
     S1 below it) and nearest OUT the filters (F2 at the top, F1 at the bottom). However it is switched on (its ghost, its tab, the matrix), a node whose
@@ -1465,8 +1476,11 @@ what it started goes on.
       its label and arrowhead going along. A label that would sit over a node (one placed where the wire's middle
       runs) or over another label slides along its wire, either way, as little as clears every node and the labels
       placed before it (the feedback loops' first, then the wires' in the graph's order, then the lines' to OUT), and
-      goes back to the middle once that is clear; a line's label to OUT does the same. Where no place along its wire
-      clears the other labels too, it clears the nodes alone. A feedback loop's label sits on the loop's right, or,
+      goes back to the middle once that is clear; a line's label to OUT does the same. Where no place along its middle
+      half is clear (a node sitting across a short wire), it goes just beside the wire, on either side, from about a
+      tenth of the way along to nine tenths, a row further out where that has no room (up to three), at the place
+      nearest the wire's middle that clears them, and off OUT's disc. Where no place along or beside its wire clears
+      the other labels too, it clears the nodes alone. A feedback loop's label sits on the loop's right, or,
       where that would meet another node, another loop's label or where a wire's label rests, on its left, above it
       or at an upper corner, inside the panel. A wire that would spill out of the routing panel bows only as far as
       keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
@@ -1495,7 +1509,8 @@ what it started goes on.
     glyph in its cell's top left corner, and the cell's right-click menu lists the modes. Drag cells
     vertically; double-click toggles a cell on or off; Ctrl+Click types an amount. Dragging a cell, or toggling it
     on, switches on the nodes it joins. A row's or column's name works like the node's tab in the
-    inspector: clicking it shows that node there, switching it on if it is off, and the names of the node shown
+    inspector: clicking it shows that node there, switching it on if it is off (but for a node the graph shows
+    dim), and the names of the node shown
     sit on a plate, like its tab, where a click switches it off, or on again.
   - **Algorithms**: **Algorithm**, at the right end of the tabs' row while Routing or Matrix is shown, opens a panel
     of the classic FM algorithms over the graph or matrix (the inspector left in view), in four sets that the switch
@@ -2063,7 +2078,8 @@ what it started goes on.
   the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
   and S2, in three groups with a hairline between two, on a band a shade darker across the card's top with a
   hairline under it parting them from the page, pick what it shows; tabs of switched-off nodes are
-  dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
+  dimmed, and clicking one switches its operator, filter or shaper on (a node the graph shows dim only shows,
+  left off); the names of switched-on ones take a little
   of their node's color. A dot in a tab's top right corner says the
   node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes
   into it). Clicking the

@@ -91,11 +91,12 @@ std::pair<double, double> InspectorPanel::reach(int param, double set) const {
 
 void InspectorPanel::showNode(int node) {
     // The selected tab switches its operator or filter on and off; another tab selects that one,
-    // switching it on if it was off. A name in the matrix does the same.
+    // switching it on if it was off, but for a node the graph shows dim (see graphNodes()), which stays off. A name
+    // in the matrix does the same.
     UiLayout &layout = controller().layout();
     if (layout.selectedNode == node)
         edit(enabledParam(node), routing_.nodeOn(node) ? 0.0 : 1.0);
-    else if (!routing_.nodeOn(node))
+    else if (!routing_.nodeOn(node) && !routing_.nodeDim(node))
         edit(enabledParam(node), 1.0);
     layout.selectedNode = node;
     shapes_.closePartialsBut(node); // another node shown closes the partial editor
@@ -1338,7 +1339,7 @@ std::string InspectorPanel::tooltip(const Widget &w) const {
         const bool on = routing_.nodeOn(w.a);
         const std::string title = nodeTitle(w.a);
         return controller().layout().selectedNode != w.a
-                   ? trf(on ? Str::TipShowNode : Str::TipSwitchOnAndShow, {title})
+                   ? trf(on || routing_.nodeDim(w.a) ? Str::TipShowNode : Str::TipSwitchOnAndShow, {title})
                    : trf(on ? Str::TipSwitchNodeOff : Str::TipSwitchNodeOn, {title});
     }
     if (w.kind != Kind::Choice && w.kind != Kind::Toggle)

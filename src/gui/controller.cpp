@@ -12,7 +12,7 @@ bool samePatchLayout(const UiLayout &a, const UiLayout &b) {
     return a.nodeX == b.nodeX && a.nodeY == b.nodeY && a.boxX == b.boxX && a.boxY == b.boxY &&
            a.sourceOrder == b.sourceOrder && a.keptRoutes == b.keptRoutes && a.macroNames == b.macroNames &&
            a.wireBends == b.wireBends && a.emptyMods == b.emptyMods && a.tuningName == b.tuningName &&
-           a.mappingName == b.mappingName;
+           a.mappingName == b.mappingName && a.hiddenNodes == b.hiddenNodes;
 }
 
 void restorePatchLayout(UiLayout &to, const UiLayout &from) {
@@ -27,6 +27,7 @@ void restorePatchLayout(UiLayout &to, const UiLayout &from) {
     to.emptyMods = from.emptyMods;
     to.tuningName = from.tuningName;
     to.mappingName = from.mappingName;
+    to.hiddenNodes = from.hiddenNodes;
 }
 
 } // namespace

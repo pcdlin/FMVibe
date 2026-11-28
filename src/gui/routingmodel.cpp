@@ -76,6 +76,7 @@ void RoutingModel::rerouteFrom(int from, int to, int source) {
 
 void RoutingModel::moveRoute(int param, int next, int goesOut) {
     const UndoScope step(controller_); // with the routes it keeps
+    const std::vector<int> shown = shownNodes();
     const ParamDef &def = table_[next];
     std::vector<std::pair<int, double>> changes{{next, def.min + norm(param) * (def.max - def.min)}, {param, 0.0}};
     // Its mode goes along while it still goes into an operator; elsewhere a route has none, and the one it leaves is
@@ -98,7 +99,17 @@ void RoutingModel::moveRoute(int param, int next, int goesOut) {
     kept.push_back(next); // shown even at 0 %, as the route was
     if (goesOut >= 0 && std::find(kept.begin(), kept.end(), outParam(goesOut)) == kept.end())
         kept.push_back(outParam(goesOut));
+    hideUnwired(shown);
     controller_.layoutChanged();
+}
+
+// A node shown dim that an edit left without a connection is hidden, as its menu's Hide hides it: a route coming
+// back without switching it on (a host's automation) leaves it docked.
+void RoutingModel::hideUnwired(const std::vector<int> &before) {
+    const std::vector<int> now = shownNodes();
+    for (int node : before)
+        if (!nodeOn(node) && std::find(now.begin(), now.end(), node) == now.end())
+            controller_.layout().hiddenNodes |= 1u << node;
 }
 
 // Filters and shapers can feed each other round in a loop, so each is looked at once.
@@ -148,6 +159,7 @@ void RoutingModel::keepRoutes() {
 // Its modulation goes with it, or the route would still open and close unseen.
 void RoutingModel::disconnect(int param) {
     const UndoScope step(controller_);
+    const std::vector<int> shown = shownNodes();
     for (const Assignment &m : modulation().assignments())
         if (m.target == param)
             modulation().removeSlot(m.source, m.slot);
@@ -156,6 +168,7 @@ void RoutingModel::disconnect(int param) {
         edit(mode, 0.0);
     std::erase(controller_.layout().keptRoutes, param);
     std::erase_if(controller_.layout().wireBends, [&](const auto &bend) { return bend.first == param; });
+    hideUnwired(shown);
 }
 
 bool RoutingModel::nodeOn(int node) const {
@@ -175,6 +188,42 @@ std::vector<int> RoutingModel::enabledNodes() const {
         if (nodeOn(node))
             nodes.push_back(node);
     return nodes;
+}
+
+std::vector<int> RoutingModel::shownNodes() const {
+    const std::array<bool, kNodes> shown = graphNodes([&](int node) { return nodeOn(node); },
+                                                      [&](int param) { return wired(param); },
+                                                      controller_.layout().hiddenNodes);
+    std::vector<int> nodes;
+    for (int node = 0; node < kNodes; ++node)
+        if (shown[node])
+            nodes.push_back(node);
+    return nodes;
+}
+
+bool RoutingModel::nodeShown(int node) const {
+    if (nodeOn(node))
+        return true;
+    const std::vector<int> nodes = shownNodes();
+    return std::find(nodes.begin(), nodes.end(), node) != nodes.end();
+}
+
+void RoutingModel::hideNode(int node) {
+    if (!nodeDim(node))
+        return;
+    const UndoScope step(controller_);
+    const std::vector<int> shown = shownNodes();
+    controller_.layout().hiddenNodes |= 1u << node;
+    hideUnwired(shown); // a node that shows only through this one docks with it, as disconnecting its route does
+    controller_.layoutChanged();
+}
+
+// A node that is on has its hidden mark gone, however it was switched on: an edit clears it (PatchEdits::edit()), a
+// host's automation does not, so the editor looks at every poll that sees a change.
+void RoutingModel::unhideOnNodes() {
+    for (int node = 0; node < kNodes; ++node)
+        if (nodeOn(node))
+            controller_.layout().hiddenNodes &= ~(1u << node);
 }
 
 // Filters and shapers can feed each other round in a loop, so each is looked at once.
@@ -225,7 +274,7 @@ Point RoutingModel::nodePlace(int node, Point want, bool *found) const {
     auto inGraph = [](Point at) {
         return Point{std::clamp(at.x, kGraph.x, kGraph.right()), std::clamp(at.y, kGraph.y, kGraph.bottom())};
     };
-    const std::vector<int> on = enabledNodes();
+    const std::vector<int> on = shownNodes(); // clear of the nodes shown dim too
     Point at = inGraph(want);
     for (int pass = 0; pass < 8; ++pass) {
         bool clear = true;

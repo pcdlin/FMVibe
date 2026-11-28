@@ -1413,6 +1413,8 @@ STR(MenuPasteShape, "Paste Shape")
 STR(MenuSetLoopStart, "Set as Loop Start") // a Curve's point: its loop starts there
 STR(MenuSetLoopEnd, "Set as Loop End")
 STR(MenuSwitchOff, "Switch off {1}")
+STR(MenuSwitchOn, "Switch on {1}") // a node shown dim in the routing graph, being off
+STR(MenuHideNode, "Hide {1}") // the same: docks it as a ghost under OUT
 STR(MenuDisconnect, "Disconnect")
 STR(MenuEditValue, "Edit value…")
 STR(MenuResetDefault, "Reset to default")

@@ -2502,6 +2502,7 @@ void effectsChainChecks() {
         std::reverse(ui.sourceOrder.begin(), ui.sourceOrder.end());
         ui.sourcesFolded = 1u | 1u << last | 1u << later;
         ui.emptyMods = {{later, -1}, {macro, paramIndex(0, OpParam::Detune)}, {-1, -1}};
+        ui.hiddenNodes = 1u << 1 | 1u << 5 | 1u << (kOps + kFilters); // B, F and S1 hidden from the graph while off
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, ui, true);
@@ -2533,6 +2534,7 @@ void effectsChainChecks() {
               "a patch using the places past the 16th loads back as saved, its auxes stored by the sources' stored numbers");
         check(back.sourceOrder == ui.sourceOrder && back.sourcesFolded == ui.sourcesFolded && back.emptyMods == ui.emptyMods,
               "the editor's layout keeps the later places' order and folds, and an empty modulation's source");
+        check(back.hiddenNodes == ui.hiddenNodes, "the editor's layout keeps the nodes hidden from the routing graph");
     }
     {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
@@ -6307,8 +6309,9 @@ void sequencerChecks() {
 }
 
 // The layout chunk's floats after the preset's info: the order of the places past the first 16 and their folds,
-// whether the SEQ view's roll bends notes, and the names of the tuning's files (two empty texts, a float each).
-constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1 + 1 + 2;
+// whether the SEQ view's roll bends notes, the names of the tuning's files (two empty texts, a float each) and the
+// nodes hidden from the routing graph.
+constexpr uint32_t kAfterInfo = kMaxSources - kFirstSources + 1 + 1 + 2 + 1;
 
 // The layout chunk, the patch's last, cut short by its last `floats` floats: as saved before they came.
 void cutLayout(std::vector<unsigned char> &bytes, uint32_t floats) {
