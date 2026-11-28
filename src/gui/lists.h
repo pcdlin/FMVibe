@@ -50,8 +50,8 @@ inline bool isLfoShape(int param) {
 inline bool isCurveClock(int param) {
     return sourceFieldOf(param) == SourceParam::Free;
 }
-constexpr Str kCurveClockNames[] = {Str::SwitchRetrigger, Str::SwitchFree, Str::SwitchAnchor, Str::SwitchOneShot,
-                                    Str::SwitchSustain};
+constexpr Str kCurveClockNames[] = {Str::SwitchRetrigger, Str::SwitchFree,    Str::SwitchGlobal,
+                                    Str::SwitchAnchor,    Str::SwitchOneShot, Str::SwitchSustain};
 static_assert(std::size(kCurveClockNames) == static_cast<size_t>(kCurveModes));
 
 // An operator's drawn envelope's One-Shot | Sustain as a list, in its full-size editor's title row where a Curve's
@@ -253,6 +253,7 @@ inline int listItemValue(int param, int item, int shown = 0, bool model = false)
 // A filter's type list offers its families, its Model list (`model`) the models of `shown`'s family.
 inline int listCount(int param, int shown = 0, bool model = false) {
     return param == paramIndex(SeqParam::Scale)       ? static_cast<int>(SeqScale::Count)
+           : isFeedbackModeParam(param)               ? static_cast<int>(FeedbackMode::Count)
            : routeModeFrom(param) >= 0                ? static_cast<int>(RouteMode::Count)
            : isSlopeList(param)                       ? kFilterSlopes
            : isFilterTypeList(param)                  ? (model ? filterFamilyTypes(filterTypeAt(shown)).count
@@ -269,6 +270,8 @@ inline int listCount(int param, int shown = 0, bool model = false) {
 inline std::string listItemName(int param, int value, bool model = false) {
     if (param == paramIndex(SeqParam::Scale))
         return seqScaleName(value);
+    if (isFeedbackModeParam(param))
+        return feedbackModeName(static_cast<FeedbackMode>(value));
     if (routeModeFrom(param) >= 0)
         return routeModeName(static_cast<RouteMode>(value));
     if (isSlopeList(param))

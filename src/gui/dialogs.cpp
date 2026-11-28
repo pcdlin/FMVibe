@@ -200,11 +200,11 @@ void View::runPreset(PresetAction action) {
         presetStore().resetPreset();
         break;
     case PresetAction::Load: // a file (a preset from the library loads through the browser: see PresetBrowser)
-        presetStore().choosePreset(false);
+        presetStore().choosePreset(PresetDialog::Load);
         break;
     case PresetAction::Save: // over the preset's file; with none to write (the demo, Init, a factory preset), as Save As
         if (!presetStore().writesPresetFiles())
-            presetStore().choosePreset(true);
+            presetStore().choosePreset(PresetDialog::Save);
         else if (!presetStore().presetWritable())
             presets_.openSave();
         else if (!controller_.overwritePreset()) // saved, it says nothing: Save greys out again
@@ -214,9 +214,28 @@ void View::runPreset(PresetAction action) {
         if (presetStore().writesPresetFiles())
             presets_.openSave();
         else
-            presetStore().choosePreset(true);
+            presetStore().choosePreset(PresetDialog::Save);
+        break;
+    case PresetAction::ImportDx7: // a sysex file, whose first voice replaces the patch
+        presetStore().choosePreset(PresetDialog::ImportDx7);
+        break;
+    case PresetAction::ImportOverwrite: // the sysex file picked, over the folder an earlier import made
+        if (!presetStore().importDx7(importPath_))
+            flash(tr(Str::DialogNotDx7));
         break;
     }
+}
+
+bool View::askImportOverwrite(const std::wstring &path) {
+    std::string folder = presetStore().existingDx7Folder(path);
+    if (folder.empty())
+        return false;
+    importPath_ = path;
+    importFolder_ = std::move(folder);
+    confirm_ = static_cast<int>(PresetAction::ImportOverwrite);
+    confirmFrom_ = nullptr;
+    hover_.reset();
+    return true;
 }
 
 // What a panel's question says is the panel's (the preset browser's: the preset picked from the library that replaces
@@ -230,6 +249,8 @@ std::string View::confirmWhat() const {
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))
         return tr(Str::ConfirmOverwrite);
+    if (confirm_ == static_cast<int>(PresetAction::ImportOverwrite))
+        return tr(Str::ConfirmImportExists);
     return std::string();
 }
 
@@ -617,11 +638,13 @@ void View::paintConfirm(Canvas &c) {
     const Rect panel = bands ? confirmBandsPanel(height()) : confirmPanel(height(), confirmShorter());
     paintDialogPanel(c, panel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
+    const bool import = confirm_ == static_cast<int>(PresetAction::ImportOverwrite);
     // What goes, undo brings back; or a category or folder, which nothing of the patch's needs.
     const bool clear = words && !words->saveFirst;
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
            words       ? words->title
            : overwrite ? trf(Str::ConfirmOverwriteTitle, {presetStore().presetName()})
+           : import    ? trf(Str::ConfirmOverwriteTitle, {importFolder_})
                        : std::string(tr(Str::ConfirmTitle)),
            kTextHeading, kText, Align::Left, true);
     float y = panel.y + 48.0f;
@@ -629,7 +652,10 @@ void View::paintConfirm(Canvas &c) {
         c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, what, kTextLabel, kDim, Align::Left);
         y += kConfirmLine;
     }
-    if (!overwrite && !clear) // nothing is thrown away by overwriting but the file, nor by clearing (undo has it)
+    if (import) // the patch was asked about before the file was picked
+        c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmImportOverwrite), kTextLabel, kDim,
+               Align::Left);
+    else if (!overwrite && !clear) // nothing is thrown away by overwriting but the file, nor by clearing (undo has it)
         c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), kTextLabel, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
         paintWidget(c, w);

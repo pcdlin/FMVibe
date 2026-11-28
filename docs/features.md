@@ -35,6 +35,21 @@ What the plugin does and how its editor works, in full. Building and installing 
     The knob's stretch from 0 to 1 ms lies below where it used to stop, so patches saved before it (state version 3
     and earlier) keep their times, and their modulation depths on these times load scaled to swing them as far as
     before);
+  - **Rate/Level envelopes** (EnvMode's third, `OpEnvMode::Rates`): an operator's envelope can instead be a DX7's,
+    four rates and four levels (0-99 each) and a Rate Scaling (0-7), ids 83000 + 20·op, hidden, modulated as any
+    param. It rises or falls to L1 at R1, L2 at R2 and L3 at R3, holds at L3 while the key is down, and, let go, goes
+    to L4 at R4 from where it is; a segment between two equal levels waits as long as the DX7's does. Its rates,
+    levels and Rate Scaling turned or modulated under a note take effect at once: the segment it is on goes on at
+    its rate and toward its level as they are then (a wait for as much of its new time as was left), and held at L3,
+    it follows L3 at R3. Levels are in
+    the DX7's steps of 1/256 of a doubling (99 full, each step about 0.75 dB below 20, more under it), a rise jumps
+    from silence to 40 dB under full and slows as it nears the top, a rate moving its level a set number of those
+    steps a tick (1.45 ms, the DX7's 64 samples at 44.1 kHz) with the gain ramped across each tick, so no segment has
+    a longest time: rate 0 takes minutes. Rate Scaling speeds every rate up for higher keys, by the key played
+    (with the global Pitch), as the DX7's does. Done (let go and at L4), it fades out over 5 ms if L4 is heard, so
+    the voice ends. `RateEnvelope` in `src/rateenvelope.h`, which `Envelope` follows in a stage of its own, as a
+    drawn envelope; switched to another mode under a note, that one goes on from the level it is at. A new patch has
+    the DX7's INIT VOICE's: R 99 99 99 99, L 99 99 99 0. The DX7 importer plays every operator's envelope this way.
   - **Drawn envelopes** (EnvMode, ADSR to begin with): an operator's envelope can be a drawn curve instead of its
     AHDSR, a shape of up to 64 points (`opEnvShapeIndex()`, ids 81000 + 200·op) whose level goes from 0 at its
     bottom to full at its top, played over its **Length** (1 ms to 10 s, about a second to begin with), or synced to
@@ -53,9 +68,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     modulated, at the control rate. An operator on its AHDSR costs what it did;
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
-    global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
-    its unison copies still spread about it. Freq can be modulated (a pitch sweep on a fixed operator is a mod
-    envelope on it); Mult, a few steps, can't. Below about 20 Hz a fixed modulator gives a wobble that ignores
+    global Pitch and the note's tuning don't move it, nor does its ratio; its own **Pitch** and **Detune** do, and the
+    modulation on them, so a pitch envelope, vibrato or bend of its own moves it from its Freq x Mult (a DX7 voice's
+    pitch envelope, LFO and bend reach its fixed operators so). Its unison copies still spread about it. Freq can be
+    modulated too (a sweep across its range); Mult, a few steps, can't. Patches saved while Pitch and Detune did
+    nothing on a fixed operator (state version 17 and earlier) load with them at 0 and their modulation modulating
+    nothing, playing as they played. Below about 20 Hz a fixed modulator gives a wobble that ignores
     the note;
   - **Hold**: every envelope (operators and mod envelopes alike) can stay at full level for a while after its
     attack, before the decay starts (off by default);
@@ -65,6 +83,20 @@ What the plugin does and how its editor works, in full. Building and installing 
     decay and release sit at +50 %, an exponential fall of 60 dB over the segment's time.
   - Out (level straight to the audio output) and sends into the two filters and the two shapers, set in the
     routing graph and the matrix;
+  - **Keyboard scaling** (off to begin with), as the classic FM synths have it, so a modulator's index can fall away up
+    the keyboard, or a carrier be louder low down: a **Key Break** (a note, C4 to begin with) and, for each side of it,
+    a **Depth** (−24 to +24 dB, 0 to begin with) and a **Curve** (Linear, to begin with, or Exp). The operator's level
+    moves by a side's depth an octave from the breakpoint, evenly in dB on the way (down for a negative depth, up for
+    a positive one); past that, a Linear side adds its depth again every octave (a straight line in dB), an Exp one
+    doubles all it has moved every octave (at −6 dB: 12, 24 and 48 dB down two, three and four octaves out), as the
+    DX7's exponential curves do. It is held between −96 dB and +24 dB. It scales all the operator puts out (to the
+    output, the filters and shapers, and the operators it modulates, so on a modulator it is the index), by the key the
+    voice plays, gliding with it, and transposed by the global Pitch as set (as the Rate/Level envelope's Rate
+    Scaling is; Pitch's modulation and the pitch bend leave it alone), and moves smoothly when it changes. The depths and
+    the breakpoint can be modulated and automated; the curves are switches. Off (no depth), wherever its breakpoint is,
+    the operator plays exactly as it did, so projects and presets from before it sound as they did (ids 145 to 149 +
+    50·op, `OpParam::KeyBreak` to `KeyRightCurve`; the curves' list, `KeyCurve`, is stored by number). The KEYS tab
+    edits it (see the operator page, under Editor);
   - **Pan**: where the operator sits in the stereo field, L100 to R100 (centered by default), equal-power and at
     full level in the middle, as the global Pan. It places all the operator puts out, to the output and into the
     filters and shapers (which are stereo, so a panned operator stays where it is through them), and its unison
@@ -160,7 +192,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     sound, at 50 % the operator stays at half its level with them beside it, as amplitude modulation.
 
   Like Phase, Linear and Exp FM take their amounts squared, and all four are scaled by FM Amount. An operator's
-  feedback is always Phase. An operator that Linear or Exp FM can take higher reads a wavetable with fewer
+  feedback is always Phase, and has a mode of its own instead (`FeedbackMode`, held in its route's mode param, hidden
+  from hosts and the editor's alone, as that was), picked from its label's pill as a route's mode is (its list, or the
+  wheel over it, each pick an undo step; resting, a label in Classic shows its glyph, a wave in steps): **Smooth** (to begin
+  with, as feedback always played) hears the average of its last two samples at the voices' oversampled rate; **Classic**
+  hears the average of its last two at the DX7's rate, 49,096 Hz, held between them, so its loop runs as the DX7's does
+  whatever the voices' rate (its harmonics within 0.1 dB at 2x and 4x), and high feedback breaks up into noise as it does
+  there. An operator that Linear or Exp FM can take higher reads a wavetable with fewer
   harmonics, so it stays below Nyquist at the top of its swing. The mode is a param of its own for hosts (`B → A
   Mode`), stepped and automatable, and changes at once.
 - **Filters F1 and F2**, per voice, each switchable on and off (a new instance starts with both off). Any
@@ -292,7 +330,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
     in quarter notes, as an LFO does), and takes a new value every cycle. Of the clock modes it has only
     **Retrigger** and **Free**: its values can't be told ahead, so standing where the transport puts it or running
-    one cycle means nothing to it (a patch or host that sets its Anchor runs it free, and its One-Shot retriggers it). **Chaos** sets
+    one cycle means nothing to it (a patch or host that sets its Anchor runs it free, and its One-Shot retriggers
+    it); Global restarts its clock with each note, taking a new value. **Chaos** sets
     how far it may move from the last one: up to a tenth of the range either way at 0 %, so it wanders, rising to
     anywhere at all at 100 % (the default), like sample and hold. **Smooth** glides to each new value instead of
     jumping: over that share of the cycle, easing in and out, then it holds (0 %, the default, steps). Unsynced at
@@ -436,13 +475,18 @@ What the plugin does and how its editor works, in full. Building and installing 
     all the voices together, follows the newest voice's operator, as the effects' other modulation does, and takes
     over from one note to the next over about 5 ms, so a new note doesn't click; an operator at a fixed frequency
     moves it alike whichever note is newest. The filter effect's Formant type's cutoff stays with the 32-sample blocks.
-  - An LFO runs in one of four clock modes, picked from a list: **Retrigger** (the default), **Free**, **Anchor** or
-    **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
-    hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
-    wins, then Anchor. A Random source has only Retrigger and Free (see Random above). A Curve source has a fifth,
-    **Sustain** (below), which wins over the other three.
+  - An LFO runs in one of five clock modes, picked from a list: **Retrigger** (the default), **Free**, **Global**,
+    **Anchor** or **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the others is a
+    switch of its own (Free, Anchor and One-Shot hosts see; Global, added later, is the editor's); the editor turns the
+    others off as it picks one. Should a host or a state turn on more than one, Global wins, then One-Shot, then
+    Anchor. A Random source has only Retrigger, Free and Global (see Random above). A Curve source has a sixth,
+    **Sustain** (below), which wins over the others.
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes.
+  - **Global** runs on that shared clock too, as the DX7's one LFO does, but every note (a key struck, legato or not)
+    starts it again from its Phase, for every voice playing: a held note's vibrato starts over with each new one. A
+    Random source takes its next value there; a Curve plays from its Phase into its loop, as retriggered. (`SourceParam::
+    Global`, after the fields there were, off to begin with, so a patch from before plays as it did.)
   - **Anchor** ties an LFO to the host's transport: while it plays, the LFO stands where it would had it started at
     its Phase at the very start of the song and run ever since, so it lands on the same spot of its cycle at the same
     place in the song however playback started (a synced LFO counts in beats, so a quarter-note one is at its Phase
@@ -2029,8 +2073,8 @@ what it started goes on.
     - **Envelope** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
       it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
       does. The curve has the whole display; its controls are in the row under the well, which starts with **ADSR**
-      over **Curve**, one pill of two icons (an AHDSR's shape, and a curve through its points, named in their
-      tooltips), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
+      over **Curve** over **Rate/Level**, one pill of three icons (an AHDSR's shape, a curve through its points and
+      four bars, its four levels, named in their tooltips; the wheel steps them), then the AHDSR's five knobs, a little closer together for it; with Curve, One-Shot | Sustain (the
       Curve source's icons), its sync switch (the metronome), Length, Slew and, at the right, a pencil. Switched to Curve
       the first time (its shape still
       as a new patch has it), the curve is drawn from the AHDSR in the same undo step: the attack, hold (none while Off) and decay, a
@@ -2045,7 +2089,20 @@ what it started goes on.
       Slew in its title row where a Curve's has its clock list, sync, Rate and Slew (it has no Unipolar switch and no
       Phase), the loop's strip and ruler over the plot, Points | Steps, Snap and the grid under it, the point under
       the mouse in numbers, and the point menu's Set as Loop Start and Set as Loop End; Done or a view's tab closes
-      it.
+      it. With Rate/Level, the display draws the envelope as a C4 plays it (`rateShapeOf()` in
+      `src/gui/rateshape.h`, traced by the engine's own `RateEnvelope`), as the AHDSR's is drawn: its levels up the
+      display on the DX7's scale (evenly in dB), its rise to L3 and its release to L4 on one time scale, each segment
+      as wide as its time (on a log scale past a tenth of a second, so a long one doesn't crowd the others out, and at
+      least 4 px: a segment at rate 99 all but upright), a dashed line between them where it holds while the key is
+      down, and while notes play a dashed line at the newest voice's level and a dot where it is on the
+      curve (`RateEnvelope::progress()` in the telemetry's `opEnvPhase`: its segment and how far along it is, by its
+      level, or by its time where it waits, which `RateShape::dotAt()` finds on the curve). Its four breakpoints are handles:
+      dragged up and down, a breakpoint sets its level, and across its segment's rate (a step every 2 px, right
+      slower), in one undo step, from where they were, so a click on one picks its segment and changes nothing; under
+      the mouse or held, its rate, level and time read at the display's top right. Right of the modes, **1 | 2 | 3 |
+      4** picks the segment (lit behind it on the display; a breakpoint pressed picks its own, and a click on the display between two
+      breakpoints the segment between them, lit faintly under the mouse), whose rate and
+      level the two knobs after it set (**Rate 2** and **Level 2**, say). Its Rate Scaling is on the KEYS tab.
     - **Unison**: a display of where the copies sit (left/right by spread, up/down by detune, each drawn as large
       and as strong as Blend leaves it; a Random mode as one note might spread them), with a row of buttons along
       its bottom, each an icon named in its tooltip: the four Unison Curves (five copies' pitches as ticks), then,
@@ -2068,6 +2125,16 @@ what it started goes on.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
+    - **Keys**: keyboard level scaling (see Keyboard scaling, under the operators), after Warp, the tabs a fifth of
+      the well each (a noise operator's four, a quarter each): the operator's level across the keys (MIDI 0 to 127,
+      +24 dB at the display's top to -48 at its bottom), a line at 0 dB, faint lines at each C (C4 marked), the
+      breakpoint's dashed line and the curve with the area under it filled; handles on it, the breakpoint's on its 0 dB
+      line, dragged across onto whole notes, and each side's depth an octave out, dragged up and down, each drag one
+      gesture and a double-click putting it back (C4, or no depth), its value over the display's middle while the mouse
+      is on it or holds it; an **Exp** switch in each top corner, a side's curve; while notes play, the newest voice's
+      key as a dot on the curve; and **Break**, **L Depth**, **R Depth** and **Rate Scaling** (the Rate/Level
+      envelope's, keyboard scaling on a DX7, faint while the envelope is another) as knobs under the well. The MODS
+      view's target menu lists the three under KEYS;
     - **I/O** (the list a filter's and a shaper's page show under their displays too): under an INPUTS heading, a
       row per node routed into the operator (the nodes that are on, in the
       graph's order): its name, which shows it in the inspector as a tab does; four buttons with the modes' glyphs,
@@ -2207,8 +2274,9 @@ what it started goes on.
     button shows the mode it runs in, its icon and name, with arrows that step along the list, round its ends, and the
     wheel over it steps along it too; its list shows the modes with their icons, the one in force checked (the button
     shows no tooltip, as the shape list doesn't). Its icons: a rise that starts again at each dot for **Retrigger**,
-    an infinity sign for **Free**, an anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. An
-    LFO has those four, a Random source the first two and a Curve card five, with **Sustain** last (a rise, a level
+    an infinity sign for **Free**, one with a dot at its crossing for **Global**, an anchor for **Anchor** and a single
+    cycle that ends in a dot for **One-Shot**. An LFO has those five, a Random source the first three and a Curve card
+    six, with **Sustain** last (a rise, a level
     between two ticks and a fall); a Random's and a Curve's list is where an LFO's shape list is. Each pick, step or
     wheel notch is one undo step. Right of the two rows, centered on them, are an LFO's Rate and Phase knobs.
     Between an LFO's shape list and Rate, level with the list, is the
@@ -2608,10 +2676,11 @@ what it started goes on.
       scrolls to keep the caret in sight. A value typed into a knob copies and pastes too, while all of it is
       selected, and its caret steps a word at a time with Ctrl too. The Save dialog's fields edit the same way.
   - The **...** after Init and Save, lit while it is open, opens the **overflow menu** under it, drawn as the
-    editor's lists are: **Init preset**, **Load preset...**, **Save preset** and **Save preset as...**, each beside its
-    icon (Init's arrow, an open folder, a disk, a disk with a plus), then, after a line, **User manual** (a book, opening
-    the user manual in the web browser, as the settings dialog's book does) and **Settings** (a cog). Each does
-    what Init's and Save's buttons do, and a greyed-out one (as Save and Save As are below) passes the mouse by. A
+    editor's lists are: **Init preset**, **Load preset...**, **Save preset**, **Save preset as...** and **Import
+    sysex...**, each beside its icon (Init's arrow, an open folder, a disk, a disk with a plus, an arrow down into a
+    tray), then, after a line, **User manual** (a book, opening the user manual in the web browser, as the settings
+    dialog's book does) and **Settings** (a cog). Each does what Init's and Save's buttons do (Import sysex: see
+    DX7 import, below), and a greyed-out one (as Save and Save As are below) passes the mouse by. A
     click on an entry, around the menu or on the ... again closes it, as Escape does.
   - **Save As** (a disk with a plus; **Save preset as...** in the overflow menu) opens the **Save dialog**, one column 540 px wide dropping from the preset bar as
     the info card does: **Name** (the preset's, all selected, to type over) and **Author**, **Category** (a chip for
@@ -2640,6 +2709,55 @@ what it started goes on.
     too. **Load**, and Save to File in the Save dialog, read and write a `.fmv` file through the standard file dialog,
     which always starts in the preset folder, wherever the host's last file dialog was left; Save to File suggests the
     current preset's name. The file holds the same data as the host's saved state, apart from the settings.
+  - **DX7 import** (`src/gui/dx7.cpp`, `PluginCore::importDx7()`): the overflow menu's **Import sysex...** asks
+    first while the patch has changed, as Load does, then opens the standard file dialog on DX7 sysex files (`.syx`),
+    in the preset folder, titled Import sysex. It reads every 32-voice bank dump and single-voice dump in the
+    file picked (or a bank's 4096 bytes without their header; checksums aren't required, as many
+    banks in circulation have wrong ones), saves each voice as a sparse preset into the preset folder's **Syx**
+    folder, in a folder named as the file (where that folder exists already, from an earlier import, the confirm dialog
+    asks first that the import will overwrite all files in it; `PresetStore::existingDx7Folder()`), named by its place in the
+    file and its name ("07 E.PIANO 1"), its description "Voice 07 from <file>", and loads the first, so the preset
+    bar's arrows step through the rest. A file without voices, or none saved, says so. `fmvibe-presettool
+    --dx7=<folder> <file.syx>...` imports the same way into a folder. A voice plays, from Init, as the DX7 plays it,
+    as near as the engine takes it: its level scale, envelope speeds, rate scaling, LFO delay, fixed frequencies and
+    keyboard scaling as the DX7's chip was found to run them (Raph Levien's reverse engineering, published with msfa),
+    the rest fits of our own to the DX7's measured behaviour, no code taken from msfa or Dexed:
+    - its **algorithm** set as ALGORITHM sets it (operators A to F the DX7's 1 to 6), every route Phase, with **FM
+      Amount** at 200 % so that a modulator at the DX7's full level, two cycles (4 pi) of phase into its carrier, fits
+      a route's 8 radians; a route's amount is then the square root of its share, from the operator's output level on
+      the DX7's level curve (0.75 dB a step from 20 up, steeper below). **Feedback** 1-7 moves an operator's phase by
+      2^(feedback - 8) of its last two samples' average, as the DX7's does, its feedback in Classic mode, at the DX7's rate
+      (the feedback up a stack in algorithms 4 and 6 a route from D into F); a carrier's Out is its gain at full envelope, and Volume comes down by as much as its
+      carriers add up past one at full level;
+    - each operator's **pitch**: its coarse (0 for 0.5) and fine ratio, or a fixed Freq of 10^(coarse mod 4 + fine /
+      100) Hz (on Mult x10 above 2 kHz), the pitch envelope, the LFO's pitch modulation and the pitch bend (by Bend
+      Range, a Pitch Bend modulation that an edit of Bend Range in the editor takes along, as it does any Pitch Bend
+      modulation of a fixed operator's Pitch that bends it as far as Bend Range: `UndoHistory::bendFollowers()`; a
+      host's automation of Bend Range leaves it as it is) on a fixed operator's own Pitch too, as they bend the DX7's, its detune at 1.2 cents a step (the DX7's steps near C4) and Transpose on
+      Pitch (24 in tune); with oscillator key sync off, Rnd Phase at 100 %;
+    - each operator's **envelope** as its Rate/Level envelope (see Rate/Level envelopes, under the operators), its
+      four rates, four levels and rate scaling as the voice has them, which runs them as the DX7 does;
+    - **velocity sensitivity** as a slot of the velocity source on each of the operator's levels (its Out, or the
+      amounts of its routes), the level at velocity 0, the slot's depth and curve fitted to the DX7's velocity curve
+      at that sensitivity (about 16 dB from 127 down to 64 at 7);
+    - the **LFO** as an LFO (or, for sample and hold, a Random source) at the DX7's speed (0.06 Hz at 0, 5.6 Hz at 35,
+      49 Hz at 99), Global while its key sync is on (every note starting it again for every voice, as the DX7's one
+      LFO), else Free: one, bipolar, on Pitch by the pitch mod depth and sensitivity (up
+      to an octave), and one, unipolar, turning each operator with amp mod sensitivity down at the LFO's trough (the
+      pitch's LFO upside down: half a cycle on, a Saw for a saw down and, for a saw up, a Curve source falling across
+      its cycle) by a model of ours (at full depth 4 and 8 dB at sensitivities 1 and 2, down to silence at 3); its delay a Global Curve source, silent, fading in and then holding (looping its last tenth), which every
+      note starts again, as the DX7's delay, as the aux of
+      both;
+    - the **pitch envelope** as a Curve source in Sustain on Pitch (bipolar), its levels on the DX7's curve (3/8 of a
+      semitone a step about 50, out to four octaves either way) and its segments straight at its rates' speeds.
+
+    - each operator's **keyboard level scaling** as its own (see Keyboard scaling, under the operators): its Key Break
+      17 keys over the DX7's break point, less the voice's transpose (the DX7 scales the key it plays transposed), its
+      depths at the DX7's 0.241 dB an octave a unit (linear) or 0.030 (exponential, doubling past the first octave, as
+      FMVibe's Exp does), the DX7's -LIN, -EXP, +EXP and +LIN by their signs and curves; a side that lifts the level is
+      held so it goes no higher at the end of the keys (A0 or C8) than the DX7's top level, which it can't pass.
+
+    What a DX7's controllers do isn't taken over, since its voices don't hold it.
   - **Save** (the disk, on the title bar and as **Save preset** in the overflow menu) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
     tells in a message only if it couldn't (the Save dialog and Edit Info likewise). It is on only for a preset loaded (or saved) that has
     changed since; otherwise it is greyed out and does nothing. On a factory preset, which is built in, and on Init,
@@ -2762,7 +2880,7 @@ switched off and on again, say) allocates the voices again and ends the notes pl
 next block. A VST3 host stopping processing ends them too, unless a restart was asked for: then they end only if
 processing starts again without it.
 
-Hosts are given 2,027 of FMVibe's 52,142 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 2,057 of FMVibe's 52,258 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's, the pitch bend's and the
 operators' own as sources, and every modulation's depth and Amount (16 slots for each of the 50 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

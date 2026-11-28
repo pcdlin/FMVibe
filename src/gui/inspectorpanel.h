@@ -4,11 +4,12 @@
 // picked (an operator, a filter or a shaper) on a page of its own: the nodes' tabs along its top, its title (the node's
 // letter, what it is and what it is routed to) beside its on/off switch, and its page. An operator's: its waves (the
 // common ones as buttons, the rest in a list), its Ratio readout or, fixed, its Freq and Mult, its knobs, and its tabs:
-// UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over its scope) and I/O (a
-// row per route into and out of it). A filter's: its type's and slope's lists, its response with its handle, and its
-// knobs. A shaper's: its curve's list and switches, its curve (drawn in place, see ShapeEditor), and its knobs. A
-// filter's and a shaper's page end with knobs for what feeds them. The View lists its widgets in the panels' row while
-// it shows (see covered()), and its popups (the list of more waves, its pages' lists) with the others'.
+// UNISON (where the copies sit; a noise operator's spectrum), ENVELOPE, WARP (its warps over its scope), I/O (a row
+// per route into and out of it) and KEYS (its keyboard level scaling, its level across the keys with handles on it).
+// A filter's: its type's and slope's lists, its response with its handle, and its knobs. A shaper's: its curve's list
+// and switches, its curve (drawn in place, see ShapeEditor), and its knobs. A filter's and a shaper's page end with
+// knobs for what feeds them. The View lists its widgets in the panels' row while it shows (see covered()), and its
+// popups (the list of more waves, its pages' lists) with the others'.
 //
 // Its knobs, switches, lists, a route's depth on an I/O row and the envelope on the ENVELOPE tab are the View's to
 // paint and edit, as they are wherever they show (the envelope's handles and zoom are shared with the mod envelopes'
@@ -18,6 +19,7 @@
 
 #include "modulationmodel.h"
 #include "panel.h"
+#include "rateshape.h"
 #include "routingmodel.h"
 
 #include <optional>
@@ -53,6 +55,7 @@ public:
     void forgetScoped() override;
     void poll(const Telemetry &now, std::vector<Rect> &repaint) override;
     bool press(const Widget &w, Point p, Modifiers mods) override;
+    bool doubleClick(const Widget &w, Point p, Modifiers mods) override;
     void drag(const DragState &d) override;
     void release() override;
     bool dragsOnTouch(const Widget &w) const override;
@@ -69,13 +72,15 @@ private:
     double value(int index) const { return mods_.value(index); }
     void edit(int index, double v) { mods_.edit(index, v); }
 
-    // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), and the I/O tab's
-    // scrollbar's thumb. What each holds and where the thumb's rows were when it was grabbed.
-    enum class DragKind { None, FilterPoint, InputsScroll };
+    // Its drags: the filter's handle (its cutoff across, its resonance up and down, one gesture), a keyboard scaling
+    // handle on the KEYS tab, a Rate/Level envelope's point, and the I/O tab's scrollbar's thumb. What each holds and
+    // where the thumb's rows were when it was grabbed.
+    enum class DragKind { None, FilterPoint, KeyPoint, InputsScroll, RatePoint };
     struct Drag {
         DragKind kind = DragKind::None;
         Widget widget;
         float startValue = 0.0f;
+        float startLevel = 0.0f; // a Rate/Level breakpoint's level, startValue its rate
     };
 
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
@@ -94,6 +99,7 @@ private:
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
     bool opEnvDrawn(int op) const; // its ENVELOPE tab shows its drawn envelope (Curve), not its AHDSR
+    bool opEnvRates(int op) const; // or its Rate/Level envelope
     // Whether a source modulates one of the knobs on an operator's tab, which shows a ring on the tab.
     bool opTabModulated(int op, InspectorTab tab) const;
     OpWarp opWarp(int op) const;
@@ -134,6 +140,15 @@ private:
     void paintScope(Canvas &c, Rect r, int op);
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintIo(Canvas &c, int node);
+    // The KEYS tab: where a handle sits (0 the breakpoint, 1 and 2 the left and right depth, an octave out), the
+    // operator's level across the keys, and a handle's readout over the display while it is under the mouse or held.
+    Point keyPoint(int op, int handle) const;
+    void paintKeyScale(Canvas &c, int op);
+    void paintRateEnvelope(Canvas &c, int op);
+    void paintRateReadout(Canvas &c, const Widget &w);
+    // Its Rate/Level envelope as the display draws it (see rateShapeOf()), kept while its settings stay.
+    const RateShape &rateShape(int op) const;
+    void paintKeyReadout(Canvas &c, const Widget &w);
 
     PanelHost &host_;
     ShapeEditor &shapes_;
@@ -147,6 +162,9 @@ private:
     float ioScroll_ = 0.0f;      // rows the I/O list is scrolled to, before clamping
     float opScopeLevel_ = 0.0f;  // the operator scope's level, following its spans' peaks, which its dB readout shows
     ScopeCache<std::vector<Assignment>> assignments_;
+    mutable std::vector<double> rateKey_; // what rateShape_ was traced from
+    mutable RateShape rateShape_;
+    int rateSegment_ = 0; // the segment of a Rate/Level envelope its knobs set (0-3)
 };
 
 } // namespace fmvibe::gui

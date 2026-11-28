@@ -967,22 +967,23 @@ int View::lfoClockCount(int lfo) const {
                                                            : kLfoModes;
 }
 
-void View::pickEnvMode(int op, bool curve) {
+void View::pickEnvMode(int op, OpEnvMode mode) {
     const int param = paramIndex(op, OpParam::EnvMode);
-    if (curve == (value(param) >= 0.5))
+    if (mode == opEnvMode(value(param)))
         return;
-    if (curve) {
+    if (mode == OpEnvMode::Curve) {
         shapes_.drawEnvelope(op);
         return;
     }
     if (shapeEditing() == opEnvCurve(op))
         shapes_.close();
-    edit(param, 0.0);
+    edit(param, static_cast<double>(mode));
 }
 
-// Free, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
+// Free, Global, Anchor, One-Shot and a Curve's Sustain set for `clock` alone (none for Retrigger), in one undo step.
 void View::setLfoClock(int lfo, LfoClock clock) {
     const std::pair<SourceParam, LfoClock> modes[] = {{SourceParam::Free, LfoClock::Free},
+                                                      {SourceParam::Global, LfoClock::Global},
                                                       {SourceParam::Anchor, LfoClock::Anchor},
                                                       {SourceParam::OneShot, LfoClock::OneShot},
                                                       {SourceParam::CurveSustain, LfoClock::Sustain}};
@@ -1018,7 +1019,8 @@ bool View::lfoInTail(const Telemetry &t, int lfo) {
 bool View::lfoPhaseUsed(int lfo) const {
     // An anchored LFO stood at its Phase at the song's start.
     auto get = [this](int i) { return value(i); };
-    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo)) && mods_.lfoShapeOf(lfo) != LfoShape::Random;
+    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo) || lfoGlobal(get, lfo)) &&
+           mods_.lfoShapeOf(lfo) != LfoShape::Random;
 }
 
 double View::lfoValueNow(int lfo) const {
@@ -1948,14 +1950,14 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::PresetButton, toolbarButton(kToolbarInit), -1, static_cast<int>(PresetAction::Init));
     add(Kind::PresetButton, toolbarButton(kToolbarSave), -1, static_cast<int>(PresetAction::Save));
     add(Kind::MoreButton, toolbarButton(kToolbarMore));
-    // The overflow menu under it: Init, Load, Save and Save As (Save and Save As greyed out, and passed by, while they
-    // have nothing to save), then Settings.
+    // The overflow menu under it: Init, Load, Save, Save As (Save and Save As greyed out, and passed by, while they
+    // have nothing to save) and Import sysex, then the user manual and Settings.
     if (moreMenuOpen_) {
         add(Kind::MoreMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::MoreMenu, moreMenu(), -1, 1);
         for (int item = 0; item < kMoreItems; ++item) {
             add(Kind::MoreMenuItem, moreMenuItem(item), -1, item);
-            list.back().disabled = item < kMoreManual && !presetActionOn(static_cast<PresetAction>(item));
+            list.back().disabled = item < kMoreImport && !presetActionOn(static_cast<PresetAction>(item));
         }
     }
 
@@ -4379,6 +4381,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
                            : field == FxParam::FlangerThroughZero ? tr(Str::SwitchThroughZero)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
+                           : isKeyCurveParam(w.param)                                           ? tr(Str::SwitchExp)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;
@@ -4403,8 +4406,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
             warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
                      on ? litInk(color) : (hovered ? kText : kDim));
-        else if (opOfField(w.param, OpParam::EnvMode) >= 0) // an AHDSR's shape, or a curve through its points
-            envModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
+        else if (opOfField(w.param, OpParam::EnvMode) >= 0) // an AHDSR's shape, a curve through its points, a DX7's
+            envModeIcon(c, w.rect.center(), w.b, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale() * 0.95f);
         else if (opOfField(w.param, OpParam::UnisonCurve) >= 0) // where five copies' pitches go
             uniCurveIcon(c, w.rect.center(), static_cast<UniCurve>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (opOfField(w.param, OpParam::UnisonPan) >= 0) // and where they sit
@@ -4898,7 +4901,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             filterIcon(c, filterTypeIconRect(w.rect),
                        isModelList(w) ? filterTypeAt(w.b) : filterFamilyTypes(filterTypeAt(w.b)).types[0],
                        selected ? listColor(w.param) : kDim);
-        if (modeChoice)
+        if (modeChoice && isFeedbackModeParam(w.param))
+            feedbackModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<FeedbackMode>(w.b),
+                             selected ? listColor(w.param) : kDim);
+        else if (modeChoice)
             routeModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<RouteMode>(w.b),
                           selected ? listColor(w.param) : kDim);
         c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h},
@@ -4944,8 +4950,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintMenuRow(c, w.rect, hovered, false);
         const Color ink = hovered ? kText : kDim;
         const Point icon{w.rect.x + 17.0f, w.rect.center().y};
-        static constexpr Str kNames[] = {Str::MenuInitPreset, Str::MenuLoadPreset, Str::MenuSavePreset,
-                                         Str::MenuSavePresetAs, Str::MenuUserManual, Str::MenuSettings};
+        static constexpr Str kNames[] = {Str::MenuInitPreset,   Str::MenuLoadPreset, Str::MenuSavePreset,
+                                         Str::MenuSavePresetAs, Str::MenuImportDx7,  Str::MenuUserManual,
+                                         Str::MenuSettings};
         static_assert(std::size(kNames) == kMoreItems);
         switch (w.a) {
         case static_cast<int>(PresetAction::Init):
@@ -4957,6 +4964,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         case static_cast<int>(PresetAction::Save):
         case static_cast<int>(PresetAction::SaveAs):
             saveIcon(c, icon, ink, w.a == static_cast<int>(PresetAction::SaveAs));
+            break;
+        case kMoreImport:
+            importIcon(c, icon, ink);
             break;
         case kMoreManual:
             bookIcon(c, icon, ink);
@@ -5134,8 +5144,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool lit = ok && (!words || words->lit); // none lit where no way is more likely than the others
         const Color ink = face(lit, kAccent);
         const Str ahead = confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
-                          : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
-                                                                             : Str::ButtonLoad;
+                          : confirm_ == static_cast<int>(PresetAction::Save) ||
+                                  confirm_ == static_cast<int>(PresetAction::ImportOverwrite)
+                              ? Str::ButtonOverwrite
+                              : Str::ButtonLoad;
         const std::string label = !ok          ? std::string(tr(Str::ButtonCancel))
                                   : words        ? words->ok // a panel's question's
                                                  : std::string(tr(ahead));
@@ -5749,6 +5761,8 @@ void View::paintTooltip(Canvas &c) {
         case PresetAction::SaveAs:
             text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
             break;
+        case PresetAction::ImportDx7: // only in the overflow menu, which shows its name
+            break;
         }
     else if (hover_->kind == Kind::MoreButton)
         text = tr(Str::TipMore);
@@ -5789,7 +5803,7 @@ void View::paintTooltip(Canvas &c) {
     else if (isLfoSync(param))
         text = tr(Str::TipLfoSync);
     else if (opOfField(param, OpParam::EnvMode) >= 0)
-        text = tr(hover_->b == 0 ? Str::TipEnvAdsr : Str::TipEnvCurve);
+        text = tr(hover_->b == 0 ? Str::TipEnvAdsr : hover_->b == 1 ? Str::TipEnvCurve : Str::TipEnvRates);
     else if (hover_->kind == Kind::Choice && opOfField(param, OpParam::EnvSustain) >= 0)
         text = tr(hover_->b == 1 ? Str::TipSustain : Str::TipEnvOneShot);
     else if (opOfField(param, OpParam::EnvSync) >= 0)
@@ -5813,7 +5827,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0) ? Str::TipSlope
                                                                                                   : Str::TipSlopeBand);
     else if (isLfoClockChoice(*hover_)) {
-        const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot, Str::TipSustain};
+        const Str tips[] = {Str::TipRetrigger, Str::TipFree,    Str::TipGlobal,
+                            Str::TipAnchor,    Str::TipOneShot, Str::TipSustain};
         static_assert(std::size(tips) == static_cast<size_t>(kCurveModes));
         text = tr(tips[std::clamp(hover_->b, 0, kCurveModes - 1)]);
     }
@@ -6814,7 +6829,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (isLfoClockChoice(w))
             setLfoClock(w.a, static_cast<LfoClock>(w.b));
         else if (const int op = opOfField(w.param, OpParam::EnvMode); op >= 0)
-            pickEnvMode(op, w.b == 1);
+            pickEnvMode(op, static_cast<OpEnvMode>(w.b));
         else
             edit(w.param, w.b);
         break;
@@ -6886,7 +6901,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::MoreMenuItem:
         moreMenuOpen_ = false;
         hover_.reset();
-        if (w.a == kMoreManual)
+        if (w.a == kMoreImport)
+            pressPreset(PresetAction::ImportDx7);
+        else if (w.a == kMoreManual)
             controller_.openManual();
         else if (w.a == kMoreSettings)
             settingsOpen_ = true;
@@ -7763,9 +7780,11 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     // A switch and the partial counts move as a click on them does: a switch on upward and off downward, with what
     // the symmetric switches bring along (the Fixed switch's, the inspector's), and a count to the next one offered.
-    if (const int op = opOfField(hit->param, OpParam::EnvMode); op >= 0) { // ADSR | Curve, as a click picks them
-        if (whole != 0)
-            pickEnvMode(op, whole > 0);
+    if (const int op = opOfField(hit->param, OpParam::EnvMode); op >= 0) { // ADSR | Curve | Rate/Level, as clicks
+        const int now = static_cast<int>(opEnvMode(value(hit->param)));   // pick them, held at their ends
+        const int to = std::clamp(now + whole, 0, static_cast<int>(OpEnvMode::Count) - 1);
+        if (to != now)
+            pickEnvMode(op, static_cast<OpEnvMode>(to));
         return;
     }
     if (hit->kind == Kind::Toggle) {

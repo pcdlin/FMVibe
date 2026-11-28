@@ -8,6 +8,7 @@
 #include "gui/canvas.h"
 #include "gui/layout.h"
 #include "gui/lists.h"
+#include "gui/rateshape.h"
 #include "gui/routing.h"
 #include "gui/shapeclip.h"
 #include "gui/theme.h"
@@ -108,6 +109,10 @@ public:
     PresetStore &presetStore() override { return *this; }
     void resetPreset() override { ++resets; }
     bool loadPreset(const std::wstring &) override { return false; }
+    // Import sysex: every file's folder exists already, from an earlier import.
+    bool importDx7(const std::wstring &) override { return ++sysexImports > 0; }
+    std::string existingDx7Folder(const std::wstring &) const override { return "Syx/rom1a"; }
+    int sysexImports = 0; // files imported (imports counts the dialogs asked for)
     // As the plugin does: a preset saved is the patch's preset, unchanged. Unless writing is to fail.
     bool savePreset(const std::wstring &path) override {
         ++writes;
@@ -119,8 +124,10 @@ public:
     }
     // As the plugin does: a factory preset's "file" can't be written over.
     bool presetWritable() const override { return presetHasFile() && !presetFile().starts_with(L"factory:"); }
-    void choosePreset(bool save) override { ++(save ? saves : loads); }
-    int resets = 0, loads = 0, saves = 0, writes = 0;
+    void choosePreset(PresetDialog dialog) override {
+        ++(dialog == PresetDialog::Save ? saves : dialog == PresetDialog::Load ? loads : imports);
+    }
+    int resets = 0, loads = 0, saves = 0, writes = 0, imports = 0;
     std::wstring written; // the file savePreset() was given last
     bool writeFails = false;
     // A small library: one preset at the top, two in a subfolder.
@@ -630,12 +637,12 @@ constexpr Point kMatrixTab{160.0f, 116.0f};
 constexpr Point kFxTab{240.0f, 116.0f};
 const Point kF1Tab = detail::nodeTabRect(kOps).center();
 // Init and Save at the right end of the title bar, then the overflow menu's button. The menu holds Init, Load, Save,
-// Save As and Settings (see clickMenu()).
+// Save As, Import sysex, the user manual and Settings (see clickMenu()).
 const Point kInitButton = detail::toolbarButton(detail::kToolbarInit).center();
 const Point kSaveButton = detail::toolbarButton(detail::kToolbarSave).center();
 const Point kMoreButton = detail::toolbarButton(detail::kToolbarMore).center();
-constexpr int kMenuInit = 0, kMenuLoad = 1, kMenuSave = 2, kMenuSaveAs = 3, kMenuManual = detail::kMoreManual,
-              kMenuSettings = detail::kMoreSettings;
+constexpr int kMenuInit = 0, kMenuLoad = 1, kMenuSave = 2, kMenuSaveAs = 3, kMenuImport = detail::kMoreImport,
+              kMenuManual = detail::kMoreManual, kMenuSettings = detail::kMoreSettings;
 const Point kOpFTab = detail::nodeTabRect(kOps - 1).center();
 constexpr Point kModTitle{60.0f, 541.0f}; // the modulation panel's title, which takes no click
 const Point kKeysToggle = detail::keysToggle(detail::keyboardTop()).center();
@@ -685,7 +692,7 @@ Point shapeItem(float card, LfoShape shape) {
 // A Curve card's list of clock modes, where an LFO's shape list is: a mode in the list it opens, its arrows (-1 the left
 // one), and a pick from it.
 Point clockItem(float card, LfoClock clock) {
-    return {shapeButton(card).x, 647.0f + static_cast<float>(clock) * 22.0f};
+    return detail::listMenuItem(detail::lfoShapeButton(card), detail::kCurveModes, static_cast<int>(clock)).center();
 }
 Point clockArrow(float card, int dir) {
     return detail::listStepButton(detail::lfoShapeButton(card), dir).center();
@@ -693,11 +700,11 @@ Point clockArrow(float card, int dir) {
 void pickClock(View &view, float card, LfoClock clock);
 
 // An LFO card's clock modes, a list under its shape list (a Random card's under its polarity), and a pick from it: an
-// LFO's four modes, a Random's two.
+// LFO's five modes, a Random's three.
 Point lfoClockPoint(float card) {
     return detail::lfoClockButton(card).center();
 }
-void pickLfoClock(View &view, float card, LfoClock clock, int modes = 4);
+void pickLfoClock(View &view, float card, LfoClock clock, int modes = detail::kLfoModes);
 
 // The Unipolar switch beside an LFO's shape list.
 Point unipolarToggle(float card) {
@@ -918,8 +925,8 @@ Point waveMenuItem(int item) {
     return detail::waveMenuItem(item).center();
 }
 const Point kNoiseButton = waveButton(4);
-// An operator page's tabs, ENVELOPE, UNISON, I/O and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
-// and 4 cycles in its display's top right corner.
+// An operator page's tabs (by InspectorTab), and the scope's buttons for 1, 2 and 4 cycles in its display's top right
+// corner.
 Point opTabPoint(InspectorTab tab) {
     return detail::opTab(static_cast<int>(tab)).center();
 }
@@ -1225,6 +1232,30 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         view.wheel(kOpPhaseKnob, 1.0f, {});
     view.undo();
     check(std::abs(model.value(opPhase) - 0.2) < 1e-6, "a run of wheel notches is one undo step");
+    {
+        // Bend Range edited takes along the Pitch Bend's depth on a fixed operator's Pitch that bends it as far (as an
+        // imported DX7 voice's does), in the same gesture and undo step, and leaves one set otherwise alone.
+        const int bendRange = paramIndex(GlobalParam::BendRange);
+        const int follows = slotAmountIndex(kBendSource, 0), apart = slotAmountIndex(kBendSource, 1);
+        model.beginStep();
+        model.setValue(paramIndex(1, OpParam::Fixed), 1.0);
+        model.setValue(paramIndex(2, OpParam::Fixed), 1.0);
+        model.setValue(slotTargetIndex(kBendSource, 0), slotTargetValue(paramIndex(1, OpParam::Transpose)));
+        model.setValue(follows, -2.0 * 2.0 / 96.0); // bending it down by the 2 semitones Bend Range starts at
+        model.setValue(slotTargetIndex(kBendSource, 1), slotTargetValue(paramIndex(2, OpParam::Transpose)));
+        model.setValue(apart, 0.3);
+        model.endStep();
+        model.beginEdit(bendRange);
+        model.setValue(bendRange, 7.0);
+        model.setValue(bendRange, 12.0);
+        model.endEdit(bendRange);
+        const bool followed = std::abs(model.value(follows) + 2.0 * 12.0 / 96.0) < 1e-12 &&
+                              model.value(apart) == 0.3 && model.openEdits == 0;
+        view.undo();
+        check(followed && model.value(bendRange) == 2.0 && std::abs(model.value(follows) + 4.0 / 96.0) < 1e-12,
+              "Bend Range takes a fixed operator's Pitch Bend depth that bends it as far along, in one undo step");
+        view.undo();
+    }
     // Moving a node is a step too.
     const Point a = nodeCenter(model.layout(), 0);
     const float wasX = model.layout().nodeX[0];
@@ -1352,33 +1383,36 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
-    // Its clock modes are Retrigger and Free alone, in a list where an LFO's shape list is, as a Curve card's: the
-    // wheel over its list stops at Free, and the list holds the two (a click where a third would be picks nothing),
-    // each picked with Anchor and One-Shot left off.
+    // Its clock modes are Retrigger, Free and Global alone, in a list where an LFO's shape list is, as a Curve card's:
+    // the wheel over its list stops at Global, and the list holds the three (a click where a fourth would be picks
+    // nothing), each picked with Anchor and One-Shot left off.
     {
         auto clocks = [&] {
             return std::array{model.value(paramIndex(1, SourceParam::Free)),
+                              model.value(paramIndex(1, SourceParam::Global)),
                               model.value(paramIndex(1, SourceParam::Anchor)),
                               model.value(paramIndex(1, SourceParam::OneShot))};
         };
-        using Clocks = std::array<double, 3>;
+        using Clocks = std::array<double, 4>;
         const Rect clockList = detail::lfoShapeButton(1.0f);
         auto pickRandomClock = [&](LfoClock clock) {
             click(view, clockList.center());
-            click(view, detail::listMenuItem(clockList, 2, static_cast<int>(clock)).center());
+            click(view, detail::listMenuItem(clockList, kRandomClocks, static_cast<int>(clock)).center());
         };
-        view.wheel(clockList.center(), 3.0f, {});
-        const bool wheeled = clocks() == Clocks{1.0, 0.0, 0.0};
+        view.wheel(clockList.center(), 4.0f, {});
+        const bool wheeled = clocks() == Clocks{0.0, 1.0, 0.0, 0.0};
         pickRandomClock(LfoClock::Retrigger);
         const bool retriggered = clocks() == Clocks{};
         pickRandomClock(LfoClock::Free);
-        const bool freed = clocks() == Clocks{1.0, 0.0, 0.0};
+        const bool freed = clocks() == Clocks{1.0, 0.0, 0.0, 0.0};
+        pickRandomClock(LfoClock::Global);
+        const bool global = clocks() == Clocks{0.0, 1.0, 0.0, 0.0};
         click(view, clockList.center());
-        click(view, detail::listMenuItem(clockList, 2, 2).center());
-        const bool freeAgain = clocks() == Clocks{1.0, 0.0, 0.0};
+        click(view, detail::listMenuItem(clockList, kRandomClocks, kRandomClocks).center());
+        const bool globalAgain = clocks() == Clocks{0.0, 1.0, 0.0, 0.0};
         pickRandomClock(LfoClock::Retrigger);
-        check(wheeled && retriggered && freed && freeAgain && clocks() == Clocks{},
-              "a Random source's clock modes are Retrigger and Free alone");
+        check(wheeled && retriggered && freed && global && globalAgain && clocks() == Clocks{},
+              "a Random source's clock modes are Retrigger, Free and Global alone");
     }
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed Random source");
@@ -1851,6 +1885,14 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.presetIndex() == -1 && renderer.save(view, dir / "22-preset-confirm.png"),
           "the next-preset arrow asks first while the patch has changed");
     click(view, {confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f});
+    // A sysex file into the folder an earlier import made: asked first in the confirm dialog, Overwrite imports it.
+    {
+        const bool asked = view.askImportOverwrite(L"rom1a.syx") && view.confirmShown() && model.sysexImports == 0;
+        check(asked && renderer.save(view, dir / "22-import-overwrite.png"),
+              "importing into an existing folder asks first");
+        click(view, {confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f});
+        check(!view.confirmShown() && model.sysexImports == 1, "Overwrite imports the file");
+    }
     click(view, nextPreset);
     const bool stepped = model.presetIndex() == 1;
     click(view, previousPreset);
@@ -5376,17 +5418,17 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     const Rect titleList = kTitleList; // after its name
     auto titleClock = [&](int mode) {
         click(view, titleList.center());
-        click(view, detail::listMenuItem(titleList, 5, mode).center());
+        click(view, detail::listMenuItem(titleList, detail::kCurveModes, mode).center());
         view.mouseMove({600.0f, 500.0f}, {});
     };
-    titleClock(4);
+    titleClock(static_cast<int>(LfoClock::Sustain));
     const bool titleSustain = model.value(sustain) == 1.0;
-    titleClock(0);
+    titleClock(static_cast<int>(LfoClock::Retrigger));
     const bool titleRetrigger = model.value(sustain) == 0.0 && model.value(oneShot) == 0.0;
     // Its list alone opens, not its card's too: One-Shot's place in the card's list takes nothing.
     click(view, titleList.center());
     const Rect cardList = detail::lfoShapeButton(0);
-    click(view, detail::listMenuItem(cardList, 5, static_cast<int>(LfoClock::OneShot)).center());
+    click(view, detail::listMenuItem(cardList, detail::kCurveModes, static_cast<int>(LfoClock::OneShot)).center());
     const bool titleOwn = model.value(oneShot) == 0.0;
     const int titlePolarity = paramIndex(0, SourceParam::Unipolar);
     const double wasUnipolar = model.value(titlePolarity);
@@ -5535,13 +5577,13 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "10h-curve-loop-retrigger.png");
     const uint32_t retriggerAfter = renderer.pixel(after), retriggerBefore = renderer.pixel(before),
                    retriggerBar = renderer.pixel(bar);
-    titleClock(1);
+    titleClock(static_cast<int>(LfoClock::Free));
     renderer.save(view, dir / "10h-curve-loop-free.png");
     const uint32_t freeBefore = renderer.pixel(before);
-    titleClock(4);
+    titleClock(static_cast<int>(LfoClock::Sustain));
     renderer.save(view, dir / "10h-curve-loop-sustain.png");
     const uint32_t sustainAfter = renderer.pixel(after), sustainBefore = renderer.pixel(before);
-    titleClock(3);
+    titleClock(static_cast<int>(LfoClock::OneShot));
     renderer.save(view, dir / "10h-curve-loop-one-shot.png");
     const uint32_t oneShotAfter = renderer.pixel(after), oneShotBar = renderer.pixel(bar);
     drag(view, stripAt(0.5), stripAt(0.75));
@@ -5553,7 +5595,7 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
 
     // A point's menu: Set as Loop Start and End, exactly at the point (off the grid too), each one undo step, left out
     // where that end would cross the other; Delete point as before.
-    titleClock(4); // Sustain
+    titleClock(static_cast<int>(LfoClock::Sustain));
     view.doubleClick(shapeAt(0.37, 0.0), {}); // a point off the grid, the second of three
     const double pointX = model.value(shapePointIndex(0, 1, PointField::X));
     auto labels = [&](Point at) {
@@ -5653,6 +5695,132 @@ void testCurveLoop(const std::filesystem::path &dir, Renderer &renderer) {
 // the first time (and not again once drawn); One-Shot | Sustain; its sync switch, its Length knob then setting its note
 // value; its loop's bar on the tab's display dragged, one undo step; the newest voice's dot on it (read off the
 // rendered pixels); and the pencil opening its full-size editor, which a view tab closes.
+// An operator's Rate/Level envelope: the ENVELOPE tab's third mode button picking it in one undo step, the wheel over
+// the modes held at their ends, its display drawing it where the AHDSR's was (read off the rendered pixels), 1 | 2 | 3 |
+// 4 picking the segment whose Rate and Level the knobs set (R2's knob dragged, one undo step), a breakpoint dragged
+// setting its level up and down and its rate across in one undo step, and a click on a breakpoint picking its segment
+// for the knobs, changing nothing.
+void testOpEnvRates(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.ui.opTab = InspectorTab::Envelope;
+    auto rateOf = [](int k) { return paramIndex(0, static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k)); };
+    auto levelOf = [](int k) { return paramIndex(0, static_cast<OpParam>(static_cast<int>(OpParam::EnvLevel1) + k)); };
+    const int mode = paramIndex(0, OpParam::EnvMode);
+    const double rates[] = {70.0, 45.0, 40.0, 55.0}, levels[] = {99.0, 80.0, 70.0, 0.0};
+    for (int k = 0; k < 4; ++k) {
+        model.set(rateOf(k), rates[k]);
+        model.set(levelOf(k), levels[k]);
+    }
+    view.poll();
+    view.mouseMove({600.0f, 468.0f}, {});
+    renderer.save(view, dir / "3h-env-rates-adsr.png");
+    auto plotPixels = [&] {
+        std::vector<uint32_t> pixels;
+        const Rect plot = detail::kOpRatePlot;
+        for (float y = plot.y + 4.0f; y < plot.bottom() - 4.0f; y += 3.0f)
+            for (float x = plot.x + 4.0f; x < plot.right() - 4.0f; x += 3.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    const std::vector<uint32_t> adsr = plotPixels();
+    click(view, detail::opEnvModeButton(2).center());
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool shot = renderer.save(view, dir / "3h-env-rates.png");
+    const bool picked = model.value(mode) == static_cast<double>(OpEnvMode::Rates);
+    const bool drawn = plotPixels() != adsr;
+    RateEnvelope::Settings settings;
+    for (int k = 0; k < 4; ++k) {
+        settings.rates[k] = rates[k];
+        settings.levels[k] = levels[k];
+    }
+    const RateShape shape = rateShapeOf(settings, detail::kOpRatePlot);
+    // While a note plays, a dot where the newest voice is along it: half way to L2, then held at L3, then let go.
+    bool dots = true;
+    Point held;
+    dots = shape.dotAt(3.0, held) && held.x == shape.rise.back().x && held.y == shape.rise.back().y; // under L3's handle
+    for (const float at : {1.5f, 4.5f}) {
+        Point dot;
+        if (!shape.dotAt(at, dot)) {
+            dots = false;
+            continue;
+        }
+        const uint32_t before = renderer.pixel(dot);
+        model.live.voices = 1;
+        model.live.opEnvPhase[0] = at;
+        model.live.opEnvLevels[0] = 0.5f;
+        view.poll();
+        renderer.save(view, dir / (at == 1.5f ? "3h-env-rates-dot.png" : "3h-env-rates-dot-later.png"));
+        dots = dots && renderer.pixel(dot) != before && levelOf(renderer.pixel(dot)) > 180;
+        model.live.voices = 0;
+        model.live.opEnvPhase[0] = -1.0f;
+        view.poll();
+        renderer.save(view, dir / "3h-env-rates.png");
+    }
+    // Segment 2 picked: the first knob is R2, dragged down slower, one undo step.
+    click(view, detail::rateSegmentButton(1).center());
+    const Point knob = detail::opRateKnob(0);
+    drag(view, knob, {knob.x, knob.y + 30.0f});
+    const double dragged = model.value(rateOf(1));
+    const bool knobbed = dragged < rates[1] && model.value(rateOf(0)) == rates[0] && model.openEdits == 0;
+    view.undo();
+    const bool knobBack = model.value(rateOf(1)) == rates[1];
+    // L2's breakpoint dragged down and right: L2 lower, R2 slower, together; one undo step takes both back.
+    const Point l2 = shape.points[1];
+    view.mouseMove(l2, {});
+    view.mouseDown(l2, {});
+    view.mouseMove({l2.x + 10.0f, l2.y + 6.0f}, {});
+    view.mouseMove({l2.x + 20.0f, l2.y + 12.0f}, {});
+    renderer.save(view, dir / "3h-env-rates-point.png");
+    view.mouseUp({l2.x + 20.0f, l2.y + 12.0f}, {});
+    const double l2Now = model.value(levelOf(1)), r2Now = model.value(rateOf(1));
+    const bool pointed = l2Now < levels[1] && r2Now == rates[1] - 10.0 && model.openEdits == 0;
+    view.undo();
+    const bool pointBack = model.value(levelOf(1)) == levels[1] && model.value(rateOf(1)) == rates[1];
+    // A click on L4's breakpoint picks segment 4, changing nothing: the second knob is then L4.
+    click(view, shape.points[3]);
+    const bool still = model.value(levelOf(3)) == levels[3] && model.value(rateOf(3)) == rates[3];
+    const Point second = detail::opRateKnob(1);
+    drag(view, second, {second.x, second.y - 30.0f});
+    const bool l4 = model.value(levelOf(3)) > levels[3] && model.value(levelOf(1)) == levels[1];
+    // A click on the display between L2's and L3's breakpoints picks segment 3: the first knob is then Rate 3.
+    click(view, {0.5f * (shape.points[1].x + shape.points[2].x), detail::kOpRatePlot.center().y});
+    const bool between = model.value(rateOf(2)) == rates[2] && model.value(levelOf(2)) == levels[2];
+    drag(view, knob, {knob.x, knob.y + 30.0f});
+    const bool area = between && model.value(rateOf(2)) < rates[2] && model.value(rateOf(1)) == rates[1];
+    view.undo();
+    view.mouseMove({600.0f, 468.0f}, {});
+    renderer.save(view, dir / "3h-env-rates-l4.png");
+    view.undo();
+    view.undo();
+    const bool modeBack = model.value(mode) == static_cast<double>(OpEnvMode::Adsr) && model.value(levelOf(3)) == 0.0;
+    // The wheel steps the modes, held at Rate/Level.
+    for (int i = 0; i < 3; ++i)
+        view.wheel(detail::opEnvModeButton(0).center(), 1.0f, {});
+    const bool wheeled = model.value(mode) == static_cast<double>(OpEnvMode::Rates);
+    std::printf("      Rate/Level: picked %d, drawn %d, dots %d, R2's knob to %.0f (back %d), L2's point to L %.0f R %.0f (back %d), "
+                "a click on L4's changing nothing %d and its knob turning %d, a click between L2 and L3 picking Rate 3 %d, "
+                "undone %d, wheeled %d\n",
+                picked, drawn, dots, dragged, knobBack, l2Now, r2Now, pointBack, still, l4, area, modeBack, wheeled);
+    // The rise and the release on one time scale: R1 and R4 at 99 all but upright, at 0 far wider.
+    auto widths = [&](double rate) {
+        RateEnvelope::Settings at = settings;
+        at.rates[0] = at.rates[3] = rate;
+        const RateShape s = rateShapeOf(at, detail::kOpRatePlot);
+        return std::pair{s.points[0].x - detail::kOpRatePlot.x, s.points[3].x - s.release.front().x};
+    };
+    const auto [fastRise, fastFall] = widths(99.0);
+    const auto [slowRise, slowFall] = widths(0.0);
+    std::printf("      R1 and R4 drawn %.0f and %.0f px wide at 99, %.0f and %.0f at 0\n", fastRise, fastFall, slowRise,
+                slowFall);
+    const bool scaled = fastRise < 10.0f && fastFall < 16.0f && slowRise > 8.0f * fastRise && slowFall > 8.0f * fastFall;
+    check(shot && picked && drawn && dots && knobbed && knobBack && pointed && pointBack && still && l4 && area && modeBack &&
+              wheeled && scaled,
+          "an operator's ENVELOPE tab picks its Rate/Level envelope, drawn on one time scale, a dot on it where the newest "
+          "voice is, its segments picked for its knobs (and by a click between two breakpoints) and its breakpoints "
+          "dragged on its display");
+}
+
 void testOpEnvCurve(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -12317,6 +12485,86 @@ void testLabelsClearOfEachOther(const std::filesystem::path &dir, Renderer &rend
           "wire labels that would overlap slide apart along their wires, the first placed staying at its middle");
 }
 
+// A feedback's mode (FeedbackMode): its loop's label, under the mouse, opens into a pill whose mode part lists Smooth
+// and DX7 and nothing after them (a click where a third would be picking nothing), a pick an undo step, and resting, a
+// label in DX7 shows its glyph (read off the rendered pixels); its right-click menu offering the two alone. The label
+// is found by its right-click menu, as below.
+void testFeedbackMode(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    const int feedback = matrixIndex(1, 1), mode = feedbackModeIndex(1);
+    model.set(feedback, 0.4);
+    layout.nodeX[1] = 0.5f;
+    layout.nodeY[1] = 0.6f;
+    view.poll();
+    const Point b = nodeCenter(layout, 1);
+    // Where the loop's label is: the points around B's loop whose right-click menu offers Reset to Default, the middle
+    // of their span across.
+    float leftmost = 1e9f, rightmost = -1e9f, row = 0.0f;
+    for (float y = b.y - 70.0f; y <= b.y - 10.0f; y += 2.0f)
+        for (float x = b.x - 90.0f; x <= b.x + 90.0f; x += 1.0f) {
+            bool label = false;
+            for (const MenuItem &item : view.contextMenu({x, y}))
+                label = label || item.label == tr(Str::MenuResetDefault);
+            if (label && (row == 0.0f || std::abs(y - row) < 0.5f)) {
+                row = y;
+                leftmost = std::min(leftmost, x);
+                rightmost = std::max(rightmost, x);
+            }
+        }
+    const Point label{0.5f * (leftmost + rightmost), row};
+    const Point modePart{label.x - 0.5f * detail::kWireLabelW - 0.5f * detail::kLabelModeW, label.y};
+    const Point glyph{label.x - 0.5f * detail::kWireLabelW - 0.5f * detail::kLabelGlyphW + 16.0f, label.y};
+    auto pixelsAround = [&](Point at) {
+        std::vector<uint32_t> pixels;
+        for (float y = at.y - 5.0f; y <= at.y + 5.0f; y += 1.0f)
+            for (float x = at.x - 5.0f; x <= at.x + 5.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 468.0f}, {});
+    renderer.save(view, dir / "2k3-feedback-smooth.png");
+    const std::vector<uint32_t> smooth = pixelsAround(glyph);
+    view.mouseMove(label, {});
+    view.mouseMove(modePart, {});
+    click(view, modePart);
+    const float listTop = label.y + 0.5f * detail::kWireLabelH + 4.0f;
+    const Point dx7Item{modePart.x - 0.5f * detail::kLabelModeW + 56.0f, listTop + 4.0f + 22.0f + 11.0f};
+    view.mouseMove(dx7Item, {});
+    const bool listShot = renderer.save(view, dir / "2k3-feedback-mode-list.png");
+    click(view, dx7Item);
+    const bool picked = model.value(mode) == static_cast<double>(FeedbackMode::Dx7);
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool restShot = renderer.save(view, dir / "2k3-feedback-dx7.png");
+    const bool shows = pixelsAround(glyph) != smooth;
+    view.undo();
+    const bool undone = model.value(mode) == static_cast<double>(FeedbackMode::Smooth);
+    // Its right-click menu offers the two alone, Smooth checked.
+    int modes = 0, smoothes = 0;
+    for (const MenuItem &item : view.contextMenu(label)) {
+        modes += item.label == feedbackModeName(FeedbackMode::Smooth) ||
+                 item.label == feedbackModeName(FeedbackMode::Dx7) || item.label == routeModeName(RouteMode::Ring);
+        smoothes += item.label == feedbackModeName(FeedbackMode::Smooth) && item.checked;
+    }
+    // The list open again, a click where a third mode would be picks none (the list closing).
+    view.mouseMove({600.0f, 468.0f}, {});
+    view.mouseMove(label, {});
+    view.mouseMove(modePart, {});
+    click(view, modePart);
+    view.mouseMove({dx7Item.x, dx7Item.y + 22.0f}, {});
+    click(view, {dx7Item.x, dx7Item.y + 22.0f});
+    const bool none = model.value(mode) == static_cast<double>(FeedbackMode::Smooth);
+    std::printf("      feedback's label at (%.0f, %.0f): Classic picked %d, its glyph shown %d, undone %d, %d modes in its "
+                "menu (Smooth checked %d), no third in its list %d\n",
+                label.x, label.y, picked, shows, undone, modes, smoothes, none);
+    check(row > 0.0f && listShot && picked && restShot && shows && undone && modes == 2 && smoothes == 1 && none &&
+              model.value(feedback) == 0.4,
+          "a feedback's pill and menu offer Smooth and Classic alone, a pick its mode, and resting in Classic its "
+          "glyph (read off the rendered pixels)");
+}
+
 // A feedback loop's label moves off a wire's label: B feeds itself back, and A -> C runs straight above B, its label
 // resting up and to the right of B's loop, where the loop's label would sit. The loop's label goes to the loop's left;
 // the wire's stays at its middle. Labels are found and told apart by their right-click menus, as above.
@@ -14954,6 +15202,106 @@ void run(const std::filesystem::path &dir, float scale) {
               "a hidden tab with a modulated knob shows a ring, hollow, not a dot");
         check(shownShot && layout.opTab == InspectorTab::Warp && litShown > plainShown + 60 && hollowShown < litShown - 60,
               "the tab shown keeps its ring while one of its knobs is modulated");
+
+        // The KEYS tab: keyboard level scaling's display, its breakpoint dragged across onto whole notes and its
+        // depths up and down (each an undo step, closing its gesture), a double-click putting one back; a curve switch
+        // making its side exponential, read off the rendered pixels (three and a half octaves above the breakpoint the
+        // linear curve sits at 3.5 times its depth, the exponential one at 5.7 times, far under it); while a note
+        // plays, a dot on the curve at its key; and a hidden KEYS tab with a modulated knob showing its ring.
+        {
+            const Telemetry liveBefore = model.live;
+            const int brk = paramIndex(0, OpParam::KeyBreak), left = paramIndex(0, OpParam::KeyLeftDepth),
+                      right = paramIndex(0, OpParam::KeyRightDepth), rightCurve = paramIndex(0, OpParam::KeyRightCurve);
+            click(view, opTabPoint(InspectorTab::Keys));
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            const bool keysShot = layout.opTab == InspectorTab::Keys && renderer.save(view, dir / "3g-keys.png");
+            // The breakpoint from C4 to C5, let go of a little past it and below its line: onto the note, across only.
+            drag(view, {detail::keyScaleX(60.0), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(72.3), detail::keyScaleY(0.0) + 6.0f});
+            const bool moved = model.value(brk) == 72.0 && model.openEdits == 0;
+            // Its right depth's handle, an octave above it, down to -6 dB; the left one's up to +6.
+            drag(view, {detail::keyScaleX(84.0), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(84.0), detail::keyScaleY(-6.0)});
+            drag(view, {detail::keyScaleX(60.0), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(60.0), detail::keyScaleY(6.0)});
+            const bool depths = std::abs(model.value(right) + 6.0) < 0.5 && std::abs(model.value(left) - 6.0) < 0.5 &&
+                                model.openEdits == 0;
+            std::printf("      keyboard scaling dragged: break %.2f, left %.2f dB, right %.2f dB\n", model.value(brk),
+                        model.value(left), model.value(right));
+            check(keysShot && moved && depths,
+                  "the KEYS tab's breakpoint drags across onto whole notes and its depths up and down");
+            const Point upper{detail::keyScaleX(114.0), detail::keyScaleY(-21.0) - 4.0f};
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-dragged.png");
+            const int linear = ringLevel(renderer, upper, 8.0f);
+            click(view, detail::keyCurveButton(1).center());
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-exp.png");
+            const int exp = ringLevel(renderer, upper, 8.0f);
+            std::printf("      the curve 3.5 octaves up: %d linear, %d exponential\n", linear, exp);
+            check(model.value(rightCurve) == static_cast<double>(KeyCurve::Exp) && linear > exp + 60,
+                  "the KEYS tab's curve switch makes its side exponential");
+            // Undone step by step: the switch, then each drag.
+            view.undo();
+            const bool curveBack = model.value(rightCurve) == 0.0;
+            view.undo();
+            const bool leftBack = model.value(left) == 0.0 && std::abs(model.value(right) + 6.0) < 0.5;
+            view.undo();
+            view.undo();
+            check(curveBack && leftBack && model.value(right) == 0.0 && model.value(brk) == 60.0,
+                  "the KEYS tab's edits are undone one at a time");
+            view.redo();
+            // A double-click puts the breakpoint back on C4.
+            doubleClick(view, {detail::keyScaleX(72.0), detail::keyScaleY(0.0)});
+            check(model.value(brk) == 60.0, "a double-click puts the breakpoint back on C4");
+            // While a note plays, a dot on the curve at its key: at C6, two octaves above, at -12 dB, the depth at
+            // -6 dB an octave. Read off the rendered pixels: whiter there than with no note.
+            model.set(right, -6.0);
+            auto whiteAt = [&](Point p) {
+                int most = 0;
+                for (float dy = -2.0f; dy <= 2.0f; dy += 1.0f) {
+                    const uint32_t color = renderer.pixel({p.x, p.y + dy});
+                    most = std::max(most, std::min({static_cast<int>(color >> 16 & 255),
+                                                    static_cast<int>(color >> 8 & 255), static_cast<int>(color & 255)}));
+                }
+                return most;
+            };
+            const Point dot{detail::keyScaleX(84.0), detail::keyScaleY(-12.0)};
+            model.live.voices = 0;
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-idle.png");
+            const int noNote = whiteAt(dot);
+            model.live.voices = 1;
+            model.live.notePitch = 84.0f;
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-note.png");
+            const int playing = whiteAt(dot);
+            std::printf("      the note's dot on the curve: %d with no note, %d at C6\n", noNote, playing);
+            check(playing > noNote + 60, "the KEYS tab shows the newest voice's key on the curve");
+            model.live = liveBefore;
+            model.set(right, 0.0);
+            // A hidden KEYS tab with a modulated knob has its ring: LFO 1 on A's right depth.
+            click(view, opTabPoint(InspectorTab::Envelope));
+            view.poll();
+            view.mouseMove({600.0f, 328.0f}, {});
+            renderer.save(view, dir / "3g-keys-tab-ring.png");
+            const int unringed = edge(InspectorTab::Keys);
+            model.set(slotTargetIndex(0, 7), slotTargetValue(right));
+            model.set(slotAmountIndex(0, 7), 0.3);
+            view.poll();
+            renderer.save(view, dir / "3g-keys-tab-ring.png");
+            const int ringed = edge(InspectorTab::Keys);
+            model.set(slotTargetIndex(0, 7), 0.0);
+            model.set(slotAmountIndex(0, 7), 0.0);
+            view.poll();
+            std::printf("      KEYS tab's corner: %d, %d with its right depth modulated\n", unringed, ringed);
+            check(ringed > unringed + 60, "a hidden KEYS tab with a modulated knob shows its ring");
+            click(view, opTabPoint(InspectorTab::Warp));
+            view.poll();
+        }
         // A source's handle held over a tab half a second opens it (passed over one, not); let go of in empty space, it
         // assigns nothing. The editor's clock is the test's, moved on by hand.
         static double now = 0.0;
@@ -15257,7 +15605,8 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Fixed pitch: the keyboard on A's summary line switches it, setting Freq and Mult to where the ratio put A4 in
     // one undo step. Freq and Mult take the Ratio readout's place (Mult stepping, 10 px up a step), and Pitch and
-    // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).
+    // Detune, which move it from there, still turn, not dimmed (read off the rendered pixels: the Pitch knob's column
+    // as bright).
     {
         const Point kFixedSwitch = detail::kFixedSwitch.center();
         const Point pitchColumn{kPitchKnob.x, kPitchKnob.y - 0.5f * detail::kOpKnobD};
@@ -15331,9 +15680,8 @@ void run(const std::filesystem::path &dir, float scale) {
             checkFont(shot && byPlus < 140 && byMinus < 140,
                       "a stepper's number too long for - and + both moves off the one under the mouse");
         }
-        // A source's handle held meanwhile rings the knobs it can be dropped on, Freq among them, but not the dimmed
-        // Pitch, which takes no drop (read off the rendered pixels: a strip across the top of each ring, with the
-        // handle held and after the drag was called off).
+        // A source's handle held meanwhile rings the knobs it can be dropped on, Freq and Pitch among them (read off the
+        // rendered pixels: a strip across the top of each ring, with the handle held and after the drag was called off).
         {
             const Point freqKnob{kMultKnob.x - 45.0f, kMultKnob.y};
             auto strip = [&](Point knob) {
@@ -15351,8 +15699,8 @@ void run(const std::filesystem::path &dir, float scale) {
             view.cancelDrag();
             view.mouseMove({600.0f, 328.0f}, {});
             const bool freeShot = renderer.save(view, dir / "3f-fixed-no-drag.png");
-            check(heldShot && freeShot && freqHeld != strip(freqKnob) && pitchHeld == strip(kPitchKnob),
-                  "a dimmed knob isn't ringed as a drop target");
+            check(heldShot && freeShot && freqHeld != strip(freqKnob) && pitchHeld != strip(kPitchKnob),
+                  "a fixed operator's Freq and Pitch are ringed as drop targets");
         }
         drag(view, kMultKnob, {kMultKnob.x, kMultKnob.y - 10.0f}); // Mult, in the readout's right half: x1 to x10
         const double pitch = model.value(paramIndex(0, OpParam::Transpose));
@@ -15363,14 +15711,15 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove(kFixedSwitch, {});
         check(renderer.save(view, dir / "3f-fixed-tooltip.png"), "render the fixed switch's tooltip");
         const bool stepped = model.value(mult) == 4.0;
-        const bool still = model.value(paramIndex(0, OpParam::Transpose)) == pitch;
+        const bool turned = model.value(paramIndex(0, OpParam::Transpose)) != pitch;
+        view.undo(); // Pitch
         view.undo();
         const bool multBack = model.value(mult) == 3.0 && model.value(fixed) == 1.0;
         view.undo();
         std::printf("      A fixed at %.1f Hz (its ratio's at A4: %.1f); Pitch knob's column %d tracking, %d fixed\n",
                     fixedAt, tracked, lit, dim);
-        check(trackingShot && fixedShot && set && stepped && still && multBack && model.value(fixed) == 0.0 &&
-                  dim * 10 < lit * 7,
+        check(trackingShot && fixedShot && set && stepped && turned && multBack && model.value(fixed) == 0.0 &&
+                  dim * 10 > lit * 8,
               "the keyboard switch fixes an operator's pitch where its ratio was, its knobs becoming Freq and Mult");
         // The wheel over the switch does what a click does: up, it fixes the operator where its ratio was; up again,
         // nothing more; down, it follows the keyboard again.
@@ -16884,6 +17233,21 @@ void run(const std::filesystem::path &dir, float scale) {
     clickMenu(view, kMenuLoad);
     click(view, {shorter.right() - 64.0f, shorter.bottom() - 38.0f});
     check(model.loads == 2 && model.saves == 1, "Load asks first, Save As goes ahead");
+    // Import sysex asks first too while the patch has changed (its file still to be picked, so the shorter
+    // dialog), and on an unchanged patch opens its dialog at once, Load's left alone.
+    clickMenu(view, kMenuImport);
+    const bool importAsks = view.confirmShown() && model.sysexImports == 0;
+    click(view, {shorter.right() - 64.0f, shorter.bottom() - 38.0f});
+    const bool importAsked = model.imports == 1 && !view.confirmShown();
+    const bool importChanged = model.patchEdited();
+    model.setPreset(model.presetFile());
+    clickMenu(view, kMenuImport);
+    std::printf("      Import sysex asking first %d, then going ahead %d, unchanged at once %d\n", importAsks,
+                importAsked, model.imports == 2);
+    check(importAsks && importAsked && importChanged && model.imports == 2 && !view.confirmShown() &&
+              model.loads == 2,
+          "the overflow menu's Import sysex asks first while the patch has changed, as Load does");
+    model.setPreset(model.presetFile(), true);
     view.mouseMove(kMoreButton, {});
     check(renderer.save(view, dir / "15b-toolbar.png"), "render the preset icons with a tooltip");
 
@@ -17278,6 +17642,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testLabelClearOfNode(dir, renderer);
     testLabelsClearOfEachOther(dir, renderer);
     testLoopLabelClear(dir, renderer);
+    testFeedbackMode(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     testOutScope(dir, renderer);
@@ -17297,6 +17662,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testWideLfoCard(dir, renderer);
     testCurveLoop(dir, renderer);
     testOpEnvCurve(dir, renderer);
+    testOpEnvRates(dir, renderer);
     testShapeCopyPaste(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);

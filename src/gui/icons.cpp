@@ -99,6 +99,16 @@ void saveIcon(Canvas &c, Point m, Color color, bool plus) {
     c.line({cross.x, cross.y - 3.5f}, {cross.x, cross.y + 3.5f}, color, 1.5f);
 }
 
+// An open tray, and an arrow coming down into it.
+void importIcon(Canvas &c, Point m, Color color) {
+    const Point tray[] = {{m.x - 7.0f, m.y + 1.0f}, {m.x - 7.0f, m.y + 6.5f}, {m.x + 7.0f, m.y + 6.5f},
+                          {m.x + 7.0f, m.y + 1.0f}};
+    c.polyline(tray, std::size(tray), color, 1.4f);
+    c.line({m.x, m.y - 7.0f}, {m.x, m.y + 3.0f}, color, 1.5f);
+    const Point head[] = {{m.x - 3.5f, m.y - 0.5f}, {m.x, m.y + 3.0f}, {m.x + 3.5f, m.y - 0.5f}};
+    c.polyline(head, std::size(head), color, 1.5f);
+}
+
 // A cog: eight teeth around a ring, its hole left open, so it sits on any face.
 void cogIcon(Canvas &c, Point center, Color color) {
     constexpr float kTau = 6.2831853f;
@@ -375,7 +385,7 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) 
                 for (int i = 0; i <= 12; ++i)
                     points.push_back(at(-10.0f + half * 10.0f + i * (10.0f / 12.0f),
                                         4.0f - 8.0f * std::sin(i / 12.0f * 0.5f * kPi)));
-        } else if (clock == LfoClock::Free) {
+        } else if (clock == LfoClock::Free || clock == LfoClock::Global) {
             for (int i = 0; i <= 48; ++i) {
                 const float t = i / 48.0f * 2.0f * kPi, d = 1.0f + std::sin(t) * std::sin(t);
                 points.push_back(at(10.0f * std::cos(t) / d, 11.0f * std::sin(t) * std::cos(t) / d));
@@ -404,6 +414,8 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) 
         c.line(at(-2.8f, -0.8f), at(2.8f, -0.8f), color, 1.4f);
     } else if (clock == LfoClock::OneShot) {
         c.fillCircle(points.back(), 1.7f * scale, color);
+    } else if (clock == LfoClock::Global) { // the one loop, with the note that starts it again at its crossing
+        c.fillCircle(at(0.0f, 0.0f), 2.0f * scale, color);
     } else if (clock == LfoClock::Sustain) { // where its loop starts and ends, over the level
         for (const float x : {-3.0f, 3.0f})
             c.line(at(x, -6.0f), at(x, -0.5f), color, 1.1f);
@@ -445,9 +457,16 @@ void noteIcon(Canvas &c, Point m, Color color) {
     c.polyline(flag, std::size(flag), color, 1.4f);
 }
 
-void envModeIcon(Canvas &c, Point m, bool curve, Color color, float scale) {
+void envModeIcon(Canvas &c, Point m, int mode, Color color, float scale) {
     auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
-    if (!curve) {
+    if (mode == 2) { // its four levels, L1 to L4, as bars on a baseline
+        c.line(at(-8.0f, 5.0f), at(8.0f, 5.0f), color.alpha(0.5f), 1.0f);
+        const float x[] = {-5.25f, -1.75f, 1.75f, 5.25f}, top[] = {-5.0f, -1.5f, 0.0f, 2.5f};
+        for (int k = 0; k < 4; ++k)
+            c.line(at(x[k], 4.5f), at(x[k], top[k]), color, 2.4f);
+        return;
+    }
+    if (mode == 0) {
         const Point points[] = {at(-8.0f, 5.0f), at(-5.0f, -4.5f), at(-3.0f, -4.5f), at(0.5f, 0.0f), at(4.5f, 0.0f),
                                 at(7.5f, 5.0f)};
         c.polyline(points, std::size(points), color, 1.3f);
@@ -547,6 +566,25 @@ void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale)
         c.line(at(0.0f, -5.5f), at(0.0f, 5.5f), color, width - 0.1f);
         break;
     }
+}
+
+void feedbackModeIcon(Canvas &c, Point m, FeedbackMode mode, Color color, float scale) {
+    auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
+    const float width = scale < 0.9f ? 1.1f : 1.4f;
+    std::vector<Point> points;
+    if (mode == FeedbackMode::Dx7) { // a rising wave held in steps
+        constexpr float kSteps[] = {3.5f, 1.0f, -2.0f, -4.0f, -2.0f};
+        for (int k = 0; k < 5; ++k) {
+            points.push_back(at(-5.0f + 2.0f * k, kSteps[k]));
+            points.push_back(at(-3.0f + 2.0f * k, kSteps[k]));
+        }
+    } else {
+        for (int i = 0; i <= 16; ++i) {
+            const float t = i / 16.0f;
+            points.push_back(at(-5.0f + 10.0f * t, -4.0f * std::sin(t * std::numbers::pi_v<float> * 1.5f)));
+        }
+    }
+    c.polyline(points.data(), points.size(), color, width);
 }
 
 // A small picture of each effect, for its card's title and the ADD EFFECT list.

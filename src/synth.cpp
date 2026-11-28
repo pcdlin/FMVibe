@@ -510,6 +510,9 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         seq_.keyDown(note.key);
         return;
     }
+    // Every note a voice plays starts the global LFOs again (see lfoGlobal()), at the next render(), which starts at
+    // the note's frame: a host's note splits the block there, and the sequencer's notes start between spans.
+    globalRestart_ = true;
     // A velocity that isn't a number plays as 0, so the note still plays out and ends.
     const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
     // Another key is still down, or the pedal holds a note: played legato.
@@ -544,6 +547,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     struct Joined {
         std::array<Envelope, kOps> ops;
         std::array<DrawnEnvelope, kOps> drawn;
+        std::array<RateEnvelope, kOps> rateEnvs;
         std::array<Envelope, kMaxSources> modEnvs;
         std::array<Lfo, kMaxSources> lfos;
         std::array<double, kMaxSources> follow; // its Curves' Slew, where it has run a block (else none yet)
@@ -563,6 +567,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
             for (int op = 0; op < kOps; ++op)
                 joined->ops[op] = with->ops[op].env;
             joined->drawn = with->drawn; // its Envelopes follow these from its first block on
+            joined->rateEnvs = with->rateEnvs;
             joined->modEnvs = with->modEnvs;
             joined->lfos = with->lfos;
             joined->follow = with->follow;
@@ -597,6 +602,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         for (int op = 0; op < kOps; ++op)
             v.ops[op].env = joined->ops[op];
         v.drawn = joined->drawn;
+        v.rateEnvs = joined->rateEnvs;
         v.modEnvs = joined->modEnvs;
         v.lfos = joined->lfos;
         v.keepLfos = true;
@@ -612,6 +618,8 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         op.env.start();
     for (DrawnEnvelope &drawn : v.drawn)
         drawn.start();
+    for (RateEnvelope &rates : v.rateEnvs)
+        rates.start();
     for (Envelope &env : v.modEnvs)
         env.start();
     // The first step and the start phase come in the voice's first block. The places past the first kFirstSources draw
@@ -843,6 +851,8 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
             op.env.start();
         for (DrawnEnvelope &drawn : v.drawn)
             drawn.start();
+        for (RateEnvelope &rates : v.rateEnvs)
+            rates.start();
         for (Envelope &env : v.modEnvs)
             env.start();
         for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds (standing still, takes a new one)
@@ -869,6 +879,8 @@ void Synth::releaseVoice(Voice &v) {
         op.env.release();
     for (DrawnEnvelope &drawn : v.drawn)
         drawn.release();
+    for (RateEnvelope &rates : v.rateEnvs)
+        rates.release();
     for (Envelope &env : v.modEnvs)
         env.release();
     for (Lfo &lfo : v.lfos) // a Curve in Sustain leaves its loop in its next block (see leaveLoop())
@@ -1298,6 +1310,8 @@ void Synth::shareAll(const ParamValues &params) {
     for (int from = 0; from < kRouteSources; ++from)
         for (int to = 0; to < kOps; ++to)
             routeModes_[from][to] = from == to ? RouteMode::Phase : routeMode(params[routeModeIndex(from, to)]);
+    for (int op = 0; op < kOps; ++op)
+        dx7Feedback_[op] = feedbackMode(params[feedbackModeIndex(op)]) == FeedbackMode::Dx7;
     voiceBaseReady_ = false; // what the voices share is summed again for these params, once a voice needs it
     for (int op = 0; op < kOps; ++op) // the Custom waves take their partials, built again once played (renderBlock())
         customWaves_[op].update(
@@ -1512,6 +1526,16 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
         Lfo &lfo = freeLfos_[s];
         const double chaos = shared(paramIndex(s, SourceParam::RandomChaos));
         const LfoLoop loop = lfoLoop(shared, s); // a Curve's cycles only its loop region
+        // A global one, as a note starts: at its Phase again (Random its next step), for every voice.
+        if (globalRestart_ && lfoGlobal(shared, s)) {
+            if (lfoShape(shared, s) == LfoShape::Random) {
+                lfo.held = randomStep(lfo.from, chaos, freeRng_);
+                lfo.phase = 0.0;
+            } else {
+                const double start = shared(paramIndex(s, SourceParam::Phase));
+                lfo.phase = start - std::floor(start);
+            }
+        }
         if (!playing_ || !lfoAnchored(shared, s)) {
             if (frames > 0)
                 advanceLfo(lfo, lfoHz(shared, s, tempo_), frames, freeRng_, false, chaos, loop);
@@ -1528,6 +1552,7 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
         lfo.hz = lfoHz(shared, s, tempo_);
         lfo.phase = anchoredPhase(cycles, shared(paramIndex(s, SourceParam::Phase)), loop);
     }
+    globalRestart_ = false;
 }
 
 void Synth::meterOutput(const float *left, const float *right, uint32_t frames) {
@@ -1880,10 +1905,13 @@ void Synth::telemetry(Telemetry &out) const {
         out.envPos[s] = static_cast<float>(newest->modEnvs[s].position(newest->modEnvRates[s].last()));
     }
     for (int i = 0; i < kOps; ++i) {
-        out.opLevels[i] = static_cast<float>(newest->ops[i].env.level());
+        // Keyboard scaling's level on it too, as it is heard (held to full level, as the envelope is).
+        out.opLevels[i] = static_cast<float>(std::min(newest->ops[i].env.level() * newest->keyNow[i], 1.0));
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
-        out.opEnvPhase[i] = newest->ops[i].env.following() ? static_cast<float>(newest->drawn[i].phase()) : -1.0f;
+        out.opEnvPhase[i] = newest->ops[i].env.following()        ? static_cast<float>(newest->drawn[i].phase())
+                            : newest->ops[i].env.followingRates() ? static_cast<float>(newest->rateEnvs[i].progress())
+                                                                  : -1.0f;
     }
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);
@@ -2331,13 +2359,13 @@ FMVIBE_NOINLINE bool Synth::startAudioMods(Voice &v, const double *p, double pit
             if (live)
                 pitchReach[a] *= ratioFromNorm(std::clamp(high, 0.0, kRatioModNorm)) / lane.from;
             break;
-        case AudioKind::OpTranspose:
-            live = pitchedOp(a) && !run.fixed[a];
+        case AudioKind::OpTranspose: // a fixed operator's too
+            live = pitchedOp(a);
             if (live)
                 pitchReach[a] *= std::exp2((high - lane.set) / 12.0);
             break;
         case AudioKind::OpDetune:
-            live = pitchedOp(a) && !run.fixed[a];
+            live = pitchedOp(a);
             if (live)
                 pitchReach[a] *= std::exp2((high - lane.set) / 1200.0);
             break;
@@ -2992,13 +3020,38 @@ FMVIBE_NOINLINE double Synth::curveSlew(double &out, double in, double slew, boo
     return out;
 }
 
+// Out of renderBlock(), as only some patches play a Rate/Level envelope. Switched to another, its AHDSR (or its drawn
+// envelope, which follows it as it is then) goes on from where it is.
+FMVIBE_NOINLINE void Synth::followRates(Voice &v, int op, const double *p, const ParamValues &params) {
+    Envelope &env = v.ops[op].env;
+    RateEnvelope &rates = v.rateEnvs[op];
+    if (opEnvMode(p[paramIndex(op, OpParam::EnvMode)]) != OpEnvMode::Rates) {
+        const bool held = rates.held();
+        rates.stop();
+        if (env.followingRates())
+            env.unfollow(held);
+        return;
+    }
+    RateEnvelope::Settings s;
+    for (int k = 0; k < 4; ++k) {
+        s.rates[k] = p[paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvRate1) + k))];
+        s.levels[k] = p[paramIndex(op, static_cast<OpParam>(static_cast<int>(OpParam::EnvLevel1) + k))];
+    }
+    // Rate Scaling by the key played, transposed by the global Pitch as set (not as its modulation bends it).
+    s.scaling = RateEnvelope::scalingSpeeds(p[paramIndex(op, OpParam::EnvRateScale)],
+                                            v.glide + params[paramIndex(GlobalParam::Pitch)]);
+    rates.prepare(s, rate_, env.level());
+    env.follow(rates);
+}
+
 // Out of renderBlock(), as only some patches play a drawn envelope.
 FMVIBE_NOINLINE void Synth::followDrawn(Voice &v, int op, const double *p, const ParamValues &params) {
     Envelope &env = v.ops[op].env;
     DrawnEnvelope &drawn = v.drawn[op];
-    if (p[paramIndex(op, OpParam::EnvMode)] < 0.5) { // switched back to its AHDSR, which goes on from where it is
-        drawn.stop();
-        env.unfollow(drawn.held());
+    if (opEnvMode(p[paramIndex(op, OpParam::EnvMode)]) != OpEnvMode::Curve) { // switched to another, which goes on
+        drawn.stop();                                                          // from where it is
+        if (env.following())
+            env.unfollow(drawn.held());
         return;
     }
     const double seconds = p[paramIndex(op, OpParam::EnvSync)] >= 0.5
@@ -3274,6 +3327,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     if (v.fresh) {
         v.fresh = false;
         v.keepLfos = v.keepFollow = false;
+        v.dx7.fill({}); // DX7 feedback starts from silence, not from what a voice stolen for it played
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
@@ -3426,6 +3480,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // nothing (its targets stay at 0), so there is nothing more to work out for it.
             op.out = 0.0;
             op.prevOut = 0.0;
+            v.dx7[i] = {};
+            v.keyNow[i] = v.keyTo[i] = 1.0;
             op.incKnown = false;
             op.syncOn = false;
             op.syncKnown = false;
@@ -3439,14 +3495,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             v.levels.index[i].fill(0.0);
             continue;
         }
-        // Fixed, it plays at its Freq x Mult: the note, bend, glide and tuning, its ratio, Pitch and Detune don't move
-        // it; its unison copies still spread about it.
+        // Fixed, it plays at its Freq x Mult: the note, bend, glide, tuning and the global Pitch and its ratio don't move
+        // it, its own Pitch and Detune and their modulation do (a pitch envelope or vibrato of its own); its unison
+        // copies still spread about it.
         double hz = fixedHz(p[paramIndex(i, OpParam::FixedFreq)], p[paramIndex(i, OpParam::FixedMult)]);
+        const double cents = p[paramIndex(i, OpParam::Detune)];
+        const double semitones = p[paramIndex(i, OpParam::Transpose)];
         if (p[paramIndex(i, OpParam::Fixed)] < 0.5) {
             const double ratio = ratioFromNorm(std::clamp(p[paramIndex(i, OpParam::Ratio)], 0.0, kRatioModNorm));
-            const double cents = p[paramIndex(i, OpParam::Detune)];
-            const double semitones = p[paramIndex(i, OpParam::Transpose)];
             hz = noteHz * ratio * std::exp2(semitones / 12.0 + cents / 1200.0);
+        } else if (semitones != 0.0 || cents != 0.0) {
+            hz *= std::exp2(semitones / 12.0 + cents / 1200.0);
         }
         const double inc = std::min(hz / rate_, 0.5);
         const auto shape = static_cast<OpWave>(
@@ -3455,8 +3514,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
         const std::array<double, 8> times = opEnvFields(p, i);
         rates[i] = op.rates.get(times, [&] { return envRatesOf(times, rate_); });
-        if (p[paramIndex(i, OpParam::EnvMode)] >= 0.5 || op.env.following()) // its drawn envelope instead
+        const OpEnvMode envMode = opEnvMode(p[paramIndex(i, OpParam::EnvMode)]);
+        if (envMode == OpEnvMode::Curve || op.env.following()) // its drawn envelope instead
             followDrawn(v, i, p, params);
+        if (envMode == OpEnvMode::Rates || op.env.followingRates()) // or its Rate/Level envelope
+            followRates(v, i, p, params);
+        // Keyboard level scaling, by the key the voice plays (gliding with it), transposed by the global Pitch as set, as
+        // Rate Scaling takes it: what it puts out (to the output, the filters, the shapers and the operators it
+        // modulates) up or down. Exactly 1 while it is off.
+        v.keyTo[i] = keyScaleGain(keyScaleDb(
+            v.glide + params[paramIndex(GlobalParam::Pitch)], p[paramIndex(i, OpParam::KeyBreak)], p[paramIndex(i, OpParam::KeyLeftDepth)],
+            p[paramIndex(i, OpParam::KeyRightDepth)], p[paramIndex(i, OpParam::KeyLeftCurve)],
+            p[paramIndex(i, OpParam::KeyRightCurve)]));
         target.out[i] = p[paramIndex(i, OpParam::Out)];
         // Its Pan, equal-power and unity at the center, as the voice's (above): on what it puts out, to the output,
         // the filters and the shapers; what other operators hear of it stays mono.
@@ -3669,6 +3738,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
     }
     const Levels &routeBy = audioOn ? audioSteps(step) : step; // and the steps, likewise
+    // Keyboard level scaling ramps as the levels do; only the operators it scales (or one ramping back to 1) multiply
+    // their envelope by it, so a patch without it plays exactly as before and pays for no multiply.
+    uint32_t keyed = 0;
+    for (int i = 0; i < kOps; ++i) {
+        if (!opOn[i])
+            continue;
+        if (starting || std::abs(v.keyTo[i] - v.keyNow[i]) < 1e-9)
+            v.keyNow[i] = v.keyTo[i];
+        v.keyStep[i] = (v.keyTo[i] - v.keyNow[i]) * ramp;
+        if (v.keyNow[i] != 1.0 || v.keyStep[i] != 0.0)
+            keyed |= 1u << i;
+    }
     // Filters run only while something is routed into them (a route still
     // ramping down counts), and only once (on the left channel, copied right)
     // while the voice has no stereo spread.
@@ -3938,6 +4019,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     }
 
     Levels &level = v.levels;
+    // The operators whose feedback runs as the DX7's (see FeedbackMode), and its samples a sample.
+    uint32_t dx7Fed = 0;
+    for (int i = 0; i < kOps; ++i)
+        if (dx7Feedback_[i] && opOn[i])
+            dx7Fed |= 1u << i;
+    const double dx7Step = kDx7Rate / rate_;
+    const uint32_t extras = keyed | dx7Fed; // the operators with either (see the loop below)
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
@@ -4032,7 +4120,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
             // Its envelope a sample at a time, here: run a block ahead into a buffer of its own (Envelope::run()), the
             // same levels made the voices a sixth slower with one copy in the plugins' MSVC build.
-            const double envLevel = op.env.next(rates[i]);
+            double envLevel = op.env.next(rates[i]);
             // A synced operator's scope follows the note's cycles, which its own restart with.
             const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;
@@ -4110,6 +4198,28 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;
+            // Keyboard scaling and DX7 feedback, for the operators that have them, behind a single test, as two cost
+            // every patch more than their work.
+            if (extras >> i & 1u) {
+                if (keyed >> i & 1u) { // keyboard scaling's level on all it puts out
+                    v.keyNow[i] += v.keyStep[i];
+                    envLevel *= v.keyNow[i];
+                    op.out = mono * monoGain[i] * envLevel;
+                }
+                // DX7 feedback (see FeedbackMode): at each of the DX7's samples, what its feedback hears next, its last
+                // two's average, held between them; kept as the prevOut that, with its output, averages to it, so that
+                // its feedback is read as any other's (a branch there cost the voices' loop more than its work).
+                if (dx7Fed >> i & 1u) {
+                    Voice::Dx7Feed &fed = v.dx7[i];
+                    fed.tick += dx7Step;
+                    if (fed.tick >= 1.0) {
+                        fed.tick -= std::floor(fed.tick);
+                        fed.held = 0.5 * (op.out + fed.last);
+                        fed.last = op.out;
+                    }
+                    op.prevOut = 2.0 * fed.held - op.out;
+                }
+            }
             if (tapped >> i & 1u) {
                 if (i == scopeOp) {
                     const double wavePhase = op.syncOn ? scopePhase : scopePhase + level.phase[i]; // where its wave stands

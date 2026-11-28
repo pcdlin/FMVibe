@@ -48,6 +48,10 @@ enum class WidgetKind {
     AlgorithmItem, // a = index in kAlgorithms: a thumbnail of the panel; a click sets the operators to it
     OpTab,        // a = InspectorTab: picks what the lower half of an operator's page shows
     ScopeCycles,  // b = how many cycles the scope shows
+    RateSegment,  // a = op, b = 0-3: the segment of its Rate/Level envelope whose rate and level its knobs set
+    RatePoint,    // param = the level, a = op, b = 0-3: a breakpoint of its Rate/Level envelope on the display, dragged
+                  // up and down for the level, across for the rate
+    RateArea,     // a = op, b = 0-3: the display between a segment's breakpoints, whose click picks the segment
 
     NodeTab,      // a = node: selects it; the selected one switches it on and off
     MatrixLabel,  // a = node: a matrix row's or column's name; a click does what the node's tab does
@@ -103,6 +107,7 @@ enum class WidgetKind {
     SourceMods,   // a = source: the button on its card that shows its modulations in the MODS view
     ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
     EnvPoint,     // a = envelope (ops, then kOps + source), b = point
+    KeyPoint,     // param, a = op, b = 0 the keyboard scaling's breakpoint (across), 1 and 2 its left and right depth
     EnvCurve,     // param = curve, a = envelope, b = segment (attack, decay, release): bends it
     FilterPoint,  // a = filter (b = 1: the filter effect in slot a): cutoff and resonance handle
     ModDot,       // param = slot amount, a = source, b = slot: depth handle on a knob
@@ -218,7 +223,7 @@ enum class WidgetKind {
     SearchClear,  // a = Field: the x in a text field: empties it
     MoreButton,     // the overflow menu's button after Init and Save: opens or closes the menu
     MoreMenu,       // a = 1 on the open overflow menu, 0 around it (a click there closes it)
-    MoreMenuItem,   // a = what it does: a View::PresetAction, kMoreManual (opens the user manual) or kMoreSettings (opens
+    MoreMenuItem,   // a = what it does: a View::PresetAction, kMoreImport (imports a DX7 sysex file), kMoreManual (opens the user manual) or kMoreSettings (opens
                     // the settings dialog)
     ConfirmBackdrop, // a = 1 on the dialog asking before Init, Load or Save, 0 around it (a click there cancels)
     ConfirmButton,  // a = 1 goes ahead, 0 cancels

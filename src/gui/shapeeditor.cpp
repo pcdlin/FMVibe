@@ -211,7 +211,9 @@ int ShapeEditor::shapeEditing() const {
     if (isStripCurve(shapeEditor_)) // open until it is closed
         return shapeEditor_;
     if (isOpEnvCurve(shapeEditor_)) // while its operator plays its drawn envelope
-        return value(paramIndex(opOfEnvCurve(shapeEditor_), OpParam::EnvMode)) >= 0.5 ? shapeEditor_ : -1;
+        return opEnvMode(value(paramIndex(opOfEnvCurve(shapeEditor_), OpParam::EnvMode))) == OpEnvMode::Curve
+                   ? shapeEditor_
+                   : -1;
     if (isShaperCurve(shapeEditor_)) {
         const int shaper = shapeEditor_ - kMaxSources - kFxSlots;
         return clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom ? shapeEditor_ : -1;
@@ -372,7 +374,7 @@ void ShapeEditor::paintPhase(Canvas &c, int lfo, Rect r) const {
     const std::optional<Widget> held = host_.dragged();
     const int phase = paramIndex(lfo, SourceParam::Phase);
     auto get = [this](int index) { return value(index); };
-    if (lfoShared(get, lfo) && !lfoAnchored(get, lfo))
+    if (lfoShared(get, lfo) && !lfoAnchored(get, lfo) && !lfoGlobal(get, lfo))
         return; // free, not anchored: it starts nowhere in particular
     const double at = std::clamp(value(phase), 0.0, 1.0);
     const float x = r.x + static_cast<float>(at) * r.w;
@@ -412,7 +414,7 @@ void ShapeEditor::paintLoop(Canvas &c, int shape, Rect r, bool card) {
     const float x0 = r.x + static_cast<float>(loop.start) * r.w, x1 = r.x + static_cast<float>(loop.end) * r.w;
     const LfoClock clock = isOpEnvCurve(shape) ? LfoClock::Sustain // the only one it loops in
                                                : lfoClock([this](int index) { return value(index); }, shape);
-    if (clock == LfoClock::Free || clock == LfoClock::Anchor)
+    if (clock == LfoClock::Free || clock == LfoClock::Anchor) // Global plays from its Phase into it, as Retrigger
         c.fillRect({r.x, r.y, x0 - r.x, r.h}, kBackground.alpha(0.45f));
     if (clock != LfoClock::Sustain)
         c.fillRect({x1, r.y, r.right() - x1, r.h}, kBackground.alpha(0.45f));

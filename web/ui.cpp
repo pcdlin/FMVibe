@@ -151,7 +151,7 @@ public:
         setPreset(L"");
         clearHistory();
     }
-    void choosePreset(bool) override { js_toast(tr(Str::DemoNoFiles)); }
+    void choosePreset(PresetDialog) override { js_toast(tr(Str::DemoNoFiles)); }
     // Every example is built in, as a factory preset: NoPresetFiles' presetWritable() is false.
     // Favorites and the recent examples, for as long as the page.
     bool presetFavorite(int index) const override {

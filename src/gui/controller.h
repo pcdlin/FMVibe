@@ -34,11 +34,12 @@ enum class SeqLane { Velocity, Chance, Bend, ModWheel, Macro1, Count = Macro1 + 
 constexpr bool seqLaneMacro(SeqLane lane) { return lane >= SeqLane::Macro1; }
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
-// the page (Envelope, Unison, Warp, Inputs) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note
+// the page (Envelope, Unison, Warp, Inputs, Keys) is layout.h's opTab(). Warp is the WARP tab (its scope, warps and note
 // sync); Scope, which had a tab of its own, shows it too, so a layout saved on it opens WARP. A noise operator shows
 // its spectrum in Unison's place, and its envelope in Warp's (noise has no cycle to show, warp or sync).
 // Stored in the layout by number: only append.
-enum class InspectorTab { Unison, Envelope, Scope, Inputs, Warp, Count };
+// Keys is keyboard level scaling: the operator's level across the keys.
+enum class InspectorTab { Unison, Envelope, Scope, Inputs, Warp, Keys, Count };
 
 // How many of the operator's cycles the scope shows across.
 constexpr int kScopeCycleChoices[] = {1, 2, 4};
@@ -300,6 +301,10 @@ struct PresetEntry {
     PresetInfo info;    // as its file has it
 };
 
+// The file dialogs a host window opens for the presets: Load's and Save's (a preset's file), and the overflow menu's
+// Import sysex (a DX7 sysex file, see PluginCore::importDx7()).
+enum class PresetDialog { Load, Save, ImportDx7 };
+
 // The preset library and the patch as a file: what the preset bar, the preset browser and the Save dialog need from
 // the plugin, reached through Controller::presetStore(). Main thread only. Which preset the patch is, and whether it
 // changed since, is not the store's but the undo history's (see UndoHistory::presetFile()): an edit changes it, and
@@ -313,8 +318,13 @@ public:
     virtual void resetPreset() = 0;
     virtual bool loadPreset(const std::wstring &path) = 0;
     virtual bool savePreset(const std::wstring &path) = 0;
-    // Asks the host window for a file dialog; the result comes back through load/savePreset.
-    virtual void choosePreset(bool save) = 0;
+    // Asks the host window for a file dialog; the result comes back through loadPreset(), savePreset() or importDx7().
+    virtual void choosePreset(PresetDialog dialog) = 0;
+    // Imports a DX7 sysex file: its voices saved as presets and the first loaded. False where none could be.
+    virtual bool importDx7(const std::wstring &) { return false; }
+    // The folder importDx7() would save a sysex file's presets into (such as "Syx/rom1a"), where it exists
+    // already, so the import overwrites what it holds; else empty.
+    virtual std::string existingDx7Folder(const std::wstring &) const { return {}; }
     // Whether presets are files that can be written (not in the browser demo, whose dialog only says so).
     virtual bool writesPresetFiles() const { return true; }
     // Whether Save can write over the patch's preset file: there is one (not Init), and it isn't a factory preset's,
@@ -383,7 +393,7 @@ public:
     void resetPreset() override {}
     bool loadPreset(const std::wstring &) override { return false; }
     bool savePreset(const std::wstring &) override { return false; }
-    void choosePreset(bool) override {}
+    void choosePreset(PresetDialog) override {}
     bool writesPresetFiles() const override { return false; }
     bool presetWritable() const override { return false; }
     void rescanPresets() override {}
@@ -480,7 +490,8 @@ public:
     // Each gesture is an undo step, unless a beginStep() around it groups it with others. While a three-band
     // dynamics is linked, an edit of one band's threshold, ratio or gain is made to every band's (see linkedBands()).
     // An edit of a three-band split's crossover that takes it past the other pushes that one along, a third of an
-    // octave away, in the same gesture (see crossoverPartner()).
+    // octave away, in the same gesture (see crossoverPartner()). An edit of Bend Range takes along the Pitch Bend's
+    // modulations of a fixed operator's Pitch that bend it as far as Bend Range (see bendFollowers()).
     void beginEdit(int index);
     void setValue(int index, double value);
     void endEdit(int index);
@@ -525,6 +536,14 @@ private:
     int crossoverPartner(int index) const;
     // Where the other crossover goes for `index` set to `value`: pushed a third of an octave past it, or as it is.
     double pushedCrossover(int index, double value) const;
+    // For an edit of Bend Range, the depths of the Pitch Bend's modulations of a fixed operator's Pitch that bend it as
+    // far as Bend Range bends the rest (as an imported DX7 voice's do, see dx7::toPatch()), so that they keep doing so;
+    // none for any other param. A depth set to bend it otherwise is left alone.
+    std::vector<int> bendFollowers(int index) const;
+    // Such a depth for Bend Range at `range`, its sign kept (bending up where it was at 0).
+    static double bendDepth(double depth, double range);
+    // Sets those depths for Bend Range going to `value` (before it does).
+    void followBend(int index, double value);
     void apply(const UndoStep &step, bool forward);
 
     Controller &controller_;
@@ -538,6 +557,7 @@ private:
     uint64_t patchLoads_ = 0;    // see patchLoads()
     std::wstring preset_;        // see presetFile()
     bool presetSet_ = false;     // setPreset() was called in the open step
+    std::vector<int> bendGesture_; // the depths a gesture on Bend Range took along (see bendFollowers())
 };
 
 // What the editor needs from the plugin: the params and their edits, the telemetry, the layout, the keyboard and the

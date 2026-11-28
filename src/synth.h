@@ -577,6 +577,17 @@ private:
         // Its operators' drawn envelopes (see OpParam::EnvMode), which their Envelopes follow while they play one:
         // started and released with them, kept apart from them so the fields the voice's samples read stay together.
         std::array<DrawnEnvelope, kOps> drawn{};
+        std::array<RateEnvelope, kOps> rateEnvs{}; // and their Rate/Level envelopes (see RateEnvelope), likewise
+        // Its operators' DX7 feedback (see FeedbackMode): how far it is to the next of the DX7's samples, the output at
+        // the last of them, and what the feedback hears until the next, the average of the last two. Kept here, past
+        // the fields the voices' loop reads for every patch, as only some patches play it.
+        struct Dx7Feed {
+            double tick = 0.0, last = 0.0, held = 0.0;
+        };
+        std::array<Dx7Feed, kOps> dx7{};
+        // Keyboard level scaling (see keyScaleDb()): each operator's gain as it ramps sample by sample to the block's,
+        // and its step; likewise kept apart, and multiplied in only for the operators it scales (renderBlock()).
+        std::array<double, kOps> keyNow{}, keyTo{}, keyStep{};
     };
 
     struct HeldNote {
@@ -650,6 +661,8 @@ private:
     // An operator's drawn envelope for this block, its Envelope following it, or its AHDSR again once it is switched
     // back (see OpParam::EnvMode); `p` are the voice's params.
     void followDrawn(Voice &v, int op, const double *p, const ParamValues &params);
+    // Its Rate/Level envelope likewise (see RateEnvelope), at the key the voice plays for its Rate Scaling.
+    void followRates(Voice &v, int op, const double *p, const ParamValues &params);
     // Moves the free and anchored LFOs' shared clocks on by `frames`, which end `end` frames into this render(); with
     // no frames, only the anchored ones go to where the transport stands `end` frames in. Their params are what is
     // set with the host's, the macros' and the newest voice's modulation.
@@ -663,6 +676,7 @@ private:
     // How each route into an operator acts on it (see RouteMode), [from node][to operator], read once a render: these
     // params are stepped, past the ones voices read, and feedback is always Phase.
     std::array<std::array<RouteMode, kOps>, kRouteSources> routeModes_{};
+    std::array<bool, kOps> dx7Feedback_{}; // the operators whose feedback runs as the DX7's (see FeedbackMode)
     // Each shaper's drawn curve as a table, built again when its points change (see render()).
     std::array<ClipTable, kShapers> shaperTables_;
     NoiseColor noiseColor_;
@@ -703,6 +717,7 @@ private:
     double tempo_ = 120.0;     // what plays: ownTempo_, or while that is 0, hostTempo_
     double hostTempo_ = 120.0;
     double ownTempo_ = 0.0;    // see setOwnTempo()
+    bool globalRestart_ = false; // a note started since the shared LFOs last moved: the global ones start again
     bool playing_ = false;     // the host's transport, as of the start of the next render() (see setTransport())
     double songBeats_ = 0.0;   // where, in beats
     double songSeconds_ = 0.0; // and in seconds

@@ -167,12 +167,12 @@ constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpD
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
 constexpr float kOpControlsY = kOpDisplay.y + kOpDisplay.h + 25.0f; // the controls' knobs' centers
 inline Rect opTab(int tab, bool noise = false) {
-    // UNISON, ENVELOPE, SCOPE, I/O, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, I/O, a quarter
-    // of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens
-    // WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and I/O, a third
-    // each.
-    constexpr int kPlace[] = {1, 0, 2, 3, 2}, kNoisePlace[] = {1, 0, 2, 2, 2};
-    const float w = (kOpWell.w - 8.0f) / (noise ? 3.0f : 4.0f);
+    // UNISON, ENVELOPE, SCOPE, I/O, WARP, KEYS by InspectorTab; along the line ENVELOPE, UNISON, WARP, KEYS, I/O, a
+    // fifth of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it
+    // opens WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place), KEYS and
+    // I/O, a quarter each.
+    constexpr int kPlace[] = {1, 0, 2, 4, 2, 3}, kNoisePlace[] = {1, 0, 2, 3, 2, 2};
+    const float w = (kOpWell.w - 8.0f) / (noise ? 4.0f : 5.0f);
     return {kOpWell.x + 4.0f + (noise ? kNoisePlace : kPlace)[tab] * w, kOpTabsY, w, kOpTabH};
 }
 // The ring in an operator page tab's upper right while one of its controls is modulated (kTabRingRadius).
@@ -190,6 +190,40 @@ inline Rect warpButton(int warp) {
 }
 constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kOpControlsY};
 constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 32.0f, kOpControlsY - 11.0f, 32.0f, 22.0f};
+// Keys: keyboard level scaling's display, the keys across (MIDI 0 to 127) and the level up and down (kKeyScaleTopDb at
+// its top, kKeyScaleBottomDb at its bottom), each side's curve switch in its top corners; the breakpoint's and the
+// depths' knobs in the row under the well.
+constexpr Rect kKeyScaleRect = kOpDisplay;
+constexpr float kKeyScaleTopDb = 24.0f, kKeyScaleBottomDb = -48.0f;
+inline Rect keyScalePlot() {
+    return {kKeyScaleRect.x + 10.0f, kKeyScaleRect.y + 25.0f, kKeyScaleRect.w - 20.0f, kKeyScaleRect.h - 37.0f};
+}
+inline float keyScaleX(double key) {
+    const Rect r = keyScalePlot();
+    return r.x + static_cast<float>(std::clamp(key, 0.0, 127.0) / 127.0) * r.w;
+}
+inline double keyScaleKey(float x) { // the key at x, held to the keys
+    const Rect r = keyScalePlot();
+    return std::clamp(static_cast<double>((x - r.x) / r.w) * 127.0, 0.0, 127.0);
+}
+inline float keyScaleY(double db) {
+    const Rect r = keyScalePlot();
+    const double held = std::clamp(db, static_cast<double>(kKeyScaleBottomDb), static_cast<double>(kKeyScaleTopDb));
+    return r.y + static_cast<float>((kKeyScaleTopDb - held) / (kKeyScaleTopDb - kKeyScaleBottomDb)) * r.h;
+}
+inline double keyScaleDbAt(float y) {
+    const Rect r = keyScalePlot();
+    return kKeyScaleTopDb - static_cast<double>((y - r.y) / r.h) * (kKeyScaleTopDb - kKeyScaleBottomDb);
+}
+// A side's curve switch (0 the left side's, 1 the right's): EXP, lit while it is exponential.
+inline Rect keyCurveButton(int side) {
+    return {side == 0 ? kKeyScaleRect.x + 6.0f : kKeyScaleRect.right() - 6.0f - 34.0f, kKeyScaleRect.y + 5.0f, 34.0f,
+            16.0f};
+}
+// Break, L Depth, R Depth and Rate Scaling (the Rate/Level envelope's, keyboard scaling on a DX7), a quarter each.
+inline Point keyScaleKnob(int knob) {
+    return {kOpDisplay.x + kOpDisplay.w * (knob + 0.5f) / 4.0f, kOpControlsY};
+}
 // I/O: under an INPUTS heading a row per route into the node, its source's name, its mode's buttons (into an
 // operator; else the source's title in their place), the mode's name and its depth, with room under the depth for its
 // modulations' handles, and its feedback's; under an OUTPUTS heading, kIoGap further down, a row per route out of it,
@@ -213,13 +247,24 @@ inline Rect inputsName(float y) { return {kOpWell.x + 8.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsMode(float y, int mode) { return {kOpWell.x + 36.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0f}; }
 inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
-// Envelope: the curve on the whole display; in the row under the well, at its left, ADSR over Curve (their icons, one
-// pill), then the AHDSR's five knobs, or for a drawn envelope One-Shot | Sustain, its sync switch, its Length and, at
-// the right, the pencil that opens its full-size editor, with its Slew between them.
+// Envelope: the curve on the whole display; in the row under the well, at its left, ADSR over Curve over Rate/Level
+// (their icons, one pill), then the AHDSR's five knobs, or for a drawn envelope One-Shot | Sustain, its sync switch,
+// its Length and, at the right, the pencil that opens its full-size editor, with its Slew between them, or for a
+// Rate/Level envelope 1 | 2 | 3 | 4, which picks the segment, then that segment's rate and level (its Rate Scaling
+// is on the KEYS tab, as keyboard scaling).
 constexpr Rect kOpEnvRect = kOpDisplay;
-inline Rect opEnvModeButton(int curve) { // 0 ADSR, over 1 Curve
-    return {kOpDisplay.x, kOpControlsY - 20.0f + curve * 20.0f, 26.0f, 20.0f};
+inline Rect opEnvModeButton(int mode) { // 0 ADSR, over 1 Curve, over 2 Rate/Level, in the same place for each
+    return {kOpDisplay.x, kOpDisplay.y + kOpDisplay.h + 4.0f + mode * 18.0f, 26.0f, 18.0f};
 }
+inline Rect rateSegmentButton(int segment) { // one pill, right of the modes
+    return {kOpDisplay.x + 36.0f + static_cast<float>(segment) * 22.0f, kOpControlsY - 11.0f, 22.0f, 22.0f};
+}
+inline Point opRateKnob(int knob) { // 0 the segment's rate, 1 its level, right of the segments
+    constexpr float left = kOpDisplay.x + 36.0f + 4.0f * 22.0f + 4.0f, step = (kOpDisplay.x + kOpDisplay.w - left) / 2.0f;
+    return {left + step * (static_cast<float>(knob) + 0.5f), kOpControlsY};
+}
+// A Rate/Level envelope's plot in the display, as the AHDSR's (see rateShapeOf()).
+constexpr Rect kOpRatePlot{kOpDisplay.x + 10.0f, kOpDisplay.y + 14.0f, kOpDisplay.w - 20.0f, kOpDisplay.h - 24.0f};
 inline Point opEnvKnob(int knob) { // the AHDSR's: Attack, Hold, Decay, Sustain, Release, right of ADSR | Curve
     constexpr float left = kOpDisplay.x + 32.0f, step = (kOpDisplay.x + kOpDisplay.w - left) / 5.0f;
     return {left + step * (static_cast<float>(knob) + 0.5f), kOpControlsY};
@@ -1513,8 +1558,9 @@ inline Rect toolbarButton(int i) {
     return {kFxPanel.right() - (kToolbarButtons - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
 }
 // The overflow menu, under its button, its right edge on the button's: Init, Load, Save and Save As (by
-// View::PresetAction), then, after a line, the user manual (kMoreManual) and Settings (kMoreSettings).
-constexpr int kMoreManual = 4, kMoreSettings = 5, kMoreItems = 6;
+// View::PresetAction) and Import sysex (kMoreImport), then, after a line, the user manual (kMoreManual) and
+// Settings (kMoreSettings).
+constexpr int kMoreImport = 4, kMoreManual = 5, kMoreSettings = 6, kMoreItems = 7;
 constexpr float kMoreRowH = 26.0f, kMoreLineH = 9.0f;
 inline Rect moreMenu() {
     const Rect button = toolbarButton(kToolbarMore);

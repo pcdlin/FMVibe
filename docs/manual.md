@@ -150,7 +150,8 @@ From left to right:
 - **Undo** and **Redo** (curved arrows). Hovering one shows what it would undo or redo.
 - **Init** and **Save** (a disk).
 - The **...** button, which opens a menu with **Init preset**, **Load preset...**, **Save preset**,
-  **Save preset as...**, **User manual** (opens this manual in your web browser) and **Settings**. See [Presets](#14-presets) and [Settings](#15-settings).
+  **Save preset as...**, **Import sysex...** (see [Importing DX7 voices](#importing-dx7-voices)), **User manual**
+  (opens this manual in your web browser) and **Settings**. See [Presets](#14-presets) and [Settings](#15-settings).
 
 ### Tempo
 
@@ -178,7 +179,8 @@ pattern plays as it was made. In a DAW, loading a preset never changes the host'
 - **Volume**: the output level after the effects, −60 to +12 dB (−12 dB by default).
 - **FM Amount**: scales every route in the routing at once, a quick way to make a patch duller or brighter.
 - **Pitch**: transposes the whole instrument by up to ±48 semitones. A useful envelope target for drums.
-- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It can't be modulated.
+- **Bend**: the pitch bend range in semitones for MIDI pitch bend and the Bend wheel. It can't be modulated. Fixed
+  operators that the Pitch Bend bends by the same range, as in an imported DX7 voice, follow it when you change it.
 - **Pan**: the stereo position of the whole instrument.
 - **Poly | Mono**, **Legato**, **Glide** and **Always**: the play modes. See [Play modes](#play-modes).
 - **Voices**: the polyphony limit, 1–512 (16 by default), with the number of voices playing beside it.
@@ -241,8 +243,8 @@ The small **keyboard icon** on the summary line switches the operator to a **fix
 note. **Freq** (1 Hz–2 kHz) and **Mult** (×0.001, ×0.01, ×0.1, ×1 or ×10) then replace the Ratio readout.
 
 When you switch it on, Freq and Mult are set to the frequency the operator was playing for an A4. A fixed operator
-ignores the note, pitch bend, glide, the global Pitch, and its own Ratio, Pitch and Detune (which are dimmed). Freq can
-be modulated.
+ignores the note, pitch bend, glide, the global Pitch and its own Ratio. Its own **Pitch** and **Detune** still move
+it, so you can give it its own pitch envelope or vibrato. Freq can be modulated too.
 
 ### Pitch, Detune, Phase and Pan
 
@@ -277,8 +279,8 @@ The display zooms to fit the whole envelope. While notes play, a dashed line and
 
 #### Drawn envelopes
 
-The two buttons at the left of the row under the display switch between the **ADSR** envelope (the upper button)
-and a **drawn envelope** (the lower one).
+The three buttons at the left of the row under the display switch between the **ADSR** envelope (the top button),
+a **drawn envelope** (the middle one) and a **Rate/Level** envelope (the bottom one, see below).
 
 - Double-click to add or delete a point, drag points, and drag the small dots between them to bend a segment.
 - **Length** sets how long the whole curve takes. With the metronome switch on, it is a note value at the tempo.
@@ -289,6 +291,17 @@ and a **drawn envelope** (the lower one).
 - When you let go of the key, the envelope goes on from where it is to the end of the curve, so the curve's last
   part is the release.
 - The pencil opens a large editor for the curve. Click the check mark, or a view tab, to close it.
+
+#### Rate/Level envelopes
+
+A Rate/Level envelope emulates the DX7's multi-stage envelopes.
+
+- Four levels and four rates, each from 0 to 99. A higher rate moves faster.
+- From each note it goes to Level 1 at Rate 1, then to Level 2 at Rate 2, then to Level 3 at Rate 3, and stays at
+  Level 3 while the key is down.
+- When you let go of the key, it goes to Level 4 at Rate 4.
+- Drag a point up or down to set its level, and left or right to set its rate.
+- **1**, **2**, **3** and **4** pick the segment that the **Rate** and **Level** knobs beside them set.
 
 ### Unison tab
 
@@ -345,6 +358,16 @@ LFO for the classic sync sweep. Any operator can sync, carriers and modulators a
 combined.
 
 The summary line names the warp and says "note sync" while either is active.
+
+### Keys tab
+
+The **KEYS** tab sets keyboard level scaling: how the operator's level changes across the keyboard. On a modulator,
+that changes how bright the sound is, so you can keep high notes from getting harsh.
+
+- **Break** is the note where scaling starts. Notes count after the global **Pitch**, as for Rate Scaling.
+- **L Depth** and **R Depth** set the level change per octave below and above Break, from −24 to +24 dB.
+- **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
+- **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.
 
 ### I/O tab
 
@@ -463,6 +486,11 @@ is always Phase. Route amounts give finer control at low settings, and **FM Amou
 
 Feedback (a node into itself) and loops between nodes are allowed everywhere: operators, filters and shapers alike.
 Loops can get loud but never grow without limit, and they fade out after a note is released.
+
+An operator's feedback has two modes. Hover its label in the graph and click the mode part at the label's left:
+
+- **Smooth** (the default) is FMVibe's own feedback.
+- **Classic** works like the DX7's: high feedback breaks up into noise. Imported DX7 voices use it.
 
 ### The matrix
 
@@ -690,9 +718,11 @@ An LFO produces a repeating shape.
   Modulating a synced rate steps it through the note values.
 - **Phase**: where each note starts the LFO in its cycle (25 % starts a sine at its peak).
 - **Unipolar**: swings 0 to 1 instead of −1 to 1.
-- **Clock mode**, picked from the list under the shape list, one of four:
+- **Clock mode**, picked from the list under the shape list, one of five:
   - **Retrigger** (default): restarts from Phase with every note.
   - **Free**: runs continuously, all voices sharing one clock.
+  - **Global**: one LFO for all voices, like the DX7's. Every new note restarts it from Phase, for notes
+    already held too.
   - **Anchor**: locked to the host's song position, so it is at the same point of its cycle at the same place in
     the song. While the transport is stopped, it runs freely.
   - **One-Shot**: runs one cycle from each note, then holds its end value.
@@ -741,6 +771,7 @@ A Curve source has a fifth clock mode, **Sustain**, after One-Shot. It works lik
 The **loop** is a part of the curve. A new Curve source loops the whole curve. In the other clock modes:
 
 - **Retrigger** plays from Phase into the loop, then repeats the loop.
+- **Global** plays like Retrigger, but every new note restarts it for all voices.
 - **Free** and **Anchor** repeat only the loop.
 - **One-Shot** ignores the loop and plays the whole curve once.
 
@@ -766,7 +797,7 @@ A Random source is a random LFO: it takes a new value every cycle.
 - **Chaos**: how far each new value may move from the last; at 0 % it wanders, at 100 % (default) it jumps
   anywhere, like sample and hold.
 - **Smooth**: glides to each new value over that share of the cycle instead of jumping (0 % steps).
-- **Retrigger** or **Free** clock modes only.
+- **Retrigger**, **Free** or **Global** clock modes only.
 - **Unipolar**: swings 0 to 1 instead of −1 to 1 (off by default).
 
 At **0 Hz** (unsynced, Rate at its bottom) a Random source stands still: each note takes a random value as it starts
@@ -1510,6 +1541,25 @@ are shared by all FMVibe instances.
 
 A preset file contains the whole patch, including the plugin window's layout, macro names and sequencer patterns. It
 does not contain the instance settings (oversampling and MPE).
+
+### Importing DX7 voices
+
+FMVibe can play voices made for the Yamaha DX7.
+
+1. Choose **Import sysex...** in the **...** menu and pick a DX7 sysex file (`.syx`): a bank of 32 voices or
+   a single voice.
+2. FMVibe saves each voice as a preset in the **Syx** folder of your preset folder, in a folder named after the
+   file. The presets are numbered and named after their voices, such as "07 E.PIANO 1".
+3. The first voice loads. Use the preset bar's arrows to step through the others, or find them in the browser.
+
+If the folder for the file already exists, FMVibe asks before overwriting the files in it.
+
+An imported voice uses the DX7's algorithm, with operators A to F as its operators 1 to 6. Each operator plays its
+DX7 envelope as a Rate/Level envelope. The DX7's LFO, pitch envelope and velocity sensitivity become modulation
+sources.
+
+DX7 voices don't hold what the mod wheel, aftertouch, breath and foot controller do. Assign the Mod Wheel yourself if
+a voice needs it.
 
 ### Factory presets
 

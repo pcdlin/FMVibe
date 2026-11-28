@@ -371,7 +371,8 @@ ModsPanel::MenuNode ModsPanel::cascadeCategories() const {
             {Str::CascadeEnvelope,
              {OpParam::Attack, OpParam::Hold, OpParam::Decay, OpParam::Sustain, OpParam::Release, OpParam::AttackCurve,
               OpParam::DecayCurve, OpParam::ReleaseCurve}},
-            {Str::CascadeNoise, {OpParam::NoiseSlope}}};
+            {Str::CascadeNoise, {OpParam::NoiseSlope}},
+            {Str::CascadeKeys, {OpParam::KeyBreak, OpParam::KeyLeftDepth, OpParam::KeyRightDepth}}};
         for (const auto &[title, fields] : sections) {
             node.children.push_back(heading(title));
             node.children.back().newColumn = title == Str::CascadeEnvelope;

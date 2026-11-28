@@ -159,6 +159,13 @@ STR(RoutePhase, "Phase")
 STR(RouteLinearFm, "Linear FM")
 STR(RouteExpFm, "Exp FM")
 STR(RouteRing, "Ring")
+STR(EnvModeAdsr, "ADSR") // what an operator's envelope is
+STR(EnvModeCurve, "Curve")
+STR(EnvModeRates, "Rate/Level")
+STR(FeedbackSmooth, "Smooth") // how an operator's feedback hears it: as it always did
+STR(FeedbackDx7, "Classic") // at the DX7's rate, as the classic FM synths' feedback runs
+STR(KeyCurveLinear, "Linear") // a keyboard scaling side's curve
+STR(KeyCurveExp, "Exp")
 
 // The effects, in the list that adds them and on the host's pages.
 STR(FxEmpty, "Empty")
@@ -228,6 +235,12 @@ STR(ParamFmAmount, "FM Amount")
 STR(ParamBendRange, "Bend Range")
 STR(ParamPitch, "Pitch")
 STR(ParamPan, "Pan")
+STR(ParamGlobal, "Global") // an LFO's clock: one for every voice, restarted by each note
+STR(ParamKeyBreak, "Key Break") // keyboard scaling's breakpoint
+STR(ParamKeyLeftDepth, "Key L Depth")
+STR(ParamKeyRightDepth, "Key R Depth")
+STR(ParamKeyLeftCurve, "Key L Curve")
+STR(ParamKeyRightCurve, "Key R Curve")
 STR(ParamVoices, "Voices")
 STR(ParamMono, "Mono")
 STR(ParamLegato, "Legato")
@@ -302,6 +315,16 @@ STR(ParamPhase, "Phase")
 STR(ParamSlew, "Slew")
 STR(ParamCc, "CC")
 STR(ParamInput, "Input")
+STR(ParamEnvRate1, "Rate 1") // an operator's Rate/Level envelope's, as a DX7's
+STR(ParamEnvRate2, "Rate 2")
+STR(ParamEnvRate3, "Rate 3")
+STR(ParamEnvRate4, "Rate 4")
+STR(ParamEnvLevel1, "Level 1")
+STR(ParamEnvLevel2, "Level 2")
+STR(ParamEnvLevel3, "Level 3")
+STR(ParamEnvLevel4, "Level 4")
+STR(ParamEnvRateScale, "Rate Scaling")
+STR(ParamFeedbackMode, "{1} Feedback Mode") // an operator's feedback's, hidden
 STR(ParamRouteMode, "{1} Mode") // a route into an operator ("B → A"), how it acts on it
 STR(ParamOpFeedback, "{1} Feedback") // a node (an operator, a filter, a shaper) into itself, in the matrix
 
@@ -585,6 +608,8 @@ STR(SourceNameBend, "Pitch Bend")
 STR(SourceNameOp, "Op {1}") // an operator's output as a modulation source
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
+STR(PresetDx7Voice, "Voice {1} from {2}") // an imported voice's description: its place in the file, the file
+STR(PresetsDx7Folder, "Syx") // the folder of the preset folder imported DX7 files go into
 
 STR(ThemeMidnight, "Midnight")
 STR(ThemeLight, "Light")
@@ -652,6 +677,7 @@ STR(TabEnvelope, "Envelope")
 STR(TabScope, "Scope")
 STR(TabIo, "I/O") // the routes into and out of the operator, each with its mode
 STR(TabWarp, "Warp") // its scope, warp and hard sync
+STR(TabKeys, "Keys") // keyboard level scaling: its level across the keys
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -702,6 +728,9 @@ STR(LabelVolume, "Volume")
 STR(LabelFmAmount, "FM Amount")
 STR(LabelPitch, "Pitch")
 STR(LabelPan, "Pan")
+STR(LabelBreak, "Break") // keyboard scaling's breakpoint
+STR(LabelLeftDepth, "L Depth")
+STR(LabelRightDepth, "R Depth")
 STR(LabelGlide, "Glide")
 STR(LabelBend, "Bend")
 STR(LabelVoices, "Voices")
@@ -784,6 +813,15 @@ STR(LabelSmooth, "Smooth")
 STR(LabelChaos, "Chaos")
 STR(LabelPhase, "Phase")
 STR(LabelSlew, "Slew")
+STR(LabelRate1, "Rate 1") // a Rate/Level envelope's knobs
+STR(LabelRate2, "Rate 2")
+STR(LabelRate3, "Rate 3")
+STR(LabelRate4, "Rate 4")
+STR(LabelLevel1, "Level 1")
+STR(LabelLevel2, "Level 2")
+STR(LabelLevel3, "Level 3")
+STR(LabelLevel4, "Level 4")
+STR(LabelRateScale, "Rate Scaling") // its Rate Scaling
 STR(LabelCc, "CC")
 STR(LabelBass, "Bass")
 STR(LabelTreble, "Treble")
@@ -796,12 +834,14 @@ STR(SwitchPoly, "Poly")
 STR(SwitchMono, "Mono")
 STR(SwitchLegato, "Legato")
 STR(SwitchAlways, "Always") // the glide's
+STR(SwitchExp, "Exp") // a keyboard scaling side's curve: lit exponential, dark linear
 STR(CaptionNoteSync, "NOTE SYNC") // on the WARP display, while the operator is synced to the note
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
 STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
 STR(SwitchRetrigger, "Retrigger") // a Curve's clock modes, named beside their icons in its full-size editor
 STR(SwitchFree, "Free")
+STR(SwitchGlobal, "Global") // an LFO's clock: one for all voices, every note restarting it
 STR(SwitchAnchor, "Anchor")
 STR(SwitchOneShot, "One-Shot")
 STR(SwitchSustain, "Sustain")
@@ -995,6 +1035,8 @@ STR(ConfirmInit, "Initializes the current patch.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
+STR(ConfirmImportExists, "The folder already exists.") // Import sysex into the folder an earlier import made, titled ConfirmOverwriteTitle with the folder
+STR(ConfirmImportOverwrite, "Importing will overwrite all files in it.")
 STR(ConfirmFxClearTitle, "Really remove all FX?")
 STR(ConfirmFxClear, "All effects are removed.")
 STR(ConfirmSeqClearTitle, "Clear pattern {1}?")
@@ -1046,6 +1088,9 @@ STR(CaptionUtility, "{1}  ·  {2}") // the utility's gain and pan
 STR(CaptionUtilityMonoBass, "mono < {1}") // on the utility's Mono Bass line: below it, the sound is mono
 STR(CaptionShiftOf, "{1}  ·  of {2}")
 STR(CaptionHold, "hold {1}")
+STR(CaptionRatePoint, "R{1} {2}  ·  L{1} {3}  ·  {4}") // a Rate/Level breakpoint's rate, level and its segment's time
+STR(CaptionKeyBreak, "break {1}") // keyboard scaling's handles, over its display
+STR(CaptionKeyDepth, "{1} per octave") // a keyboard scaling side's depth
 STR(CaptionResonance, "{1}  ·  res {2}")
 STR(CaptionEnvCurve, "{1} curve  ·  {2}") // an envelope segment's knob label, then its curve
 STR(CaptionFeedback, "fb {1}") // an operator's feedback on its wire label
@@ -1055,6 +1100,7 @@ STR(NoisePinkCaption, "pink")
 STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
 STR(TipFixedOff, "Fixed pitch at Freq × Mult") // the keyboard switch, tracking the keys
+STR(TipKeyExp, "Exp: past an octave from the break, twice as far every octave") // a keyboard scaling side's switch
 STR(TipHardSync, "Note sync: restart the wave with each cycle of the note") // an operator's NOTE switch
 STR(TipWarpOff, "Off") // an operator's warps, its WARP tab's buttons
 STR(TipWarpBend, "Bend")
@@ -1143,6 +1189,7 @@ STR(TipSeqPattern, "Pattern {1}")
 STR(TipSeqTile, "Pattern {1}: click to edit, drag onto another pattern to copy it there")
 STR(TipRemoveSplit, "Remove split")
 STR(TipRemoveJoin, "Remove join")
+STR(TipFeedbackMode, "{1} feedback. Click to change") // the mode part of a feedback's pill
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
 STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
 STR(TipRoutePhase, "Phase: adds to where the wave is read")
@@ -1184,6 +1231,7 @@ STR(MenuInitPreset, "Init preset") // the overflow menu's entries, each beside i
 STR(MenuLoadPreset, "Load preset...")
 STR(MenuSavePreset, "Save preset")
 STR(MenuSavePresetAs, "Save preset as...")
+STR(MenuImportDx7, "Import sysex...") // DX7 voices from a sysex file, each saved as a preset
 STR(MenuUserManual, "User manual") // opens the user manual in the web browser
 STR(MenuSettings, "Settings")
 STR(TipManual, "Open the user manual") // the book in the settings dialog's title row, which opens it online
@@ -1235,6 +1283,7 @@ STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
 STR(TipEnvAdsr, "Attack, hold, decay, sustain and release") // an operator's ENVELOPE tab's ADSR | Curve
 STR(TipEnvCurve, "Custom curve")
+STR(TipEnvRates, "Rate/Level: four rates and levels")
 STR(TipEnvOneShot, "One-Shot: Play the envelope once")
 STR(TipEnvSync, "Sync length to tempo")
 STR(TipSlope, "Filter slope")
@@ -1256,6 +1305,7 @@ STR(TipPrevAlgorithm, "Previous algorithm")
 STR(TipNextAlgorithm, "Next algorithm")
 STR(TipRetrigger, "Restart with each note") // an LFO's clock modes
 STR(TipFree, "Free")
+STR(TipGlobal, "Global: one shared LFO, each new note restarting it")
 STR(TipOneShot, "One shot")
 STR(TipAnchor, "Anchor to song position") // an LFO's switch: its phase follows the host's transport
 STR(TipSustain, "Loop while the key is down, then play on") // a Curve's fifth clock mode
@@ -1400,9 +1450,12 @@ STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
 STR(DialogSavePreset, "Save preset")
 STR(DialogLoadPreset, "Load preset")
 STR(DialogPresetFiles, "FMVibe preset (*.fmv)")
+STR(DialogImportDx7, "Import sysex") // the overflow menu's Import DX7 sysex's file dialog
+STR(DialogDx7Files, "sysex (*.syx)")
 STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
+STR(DialogNotDx7, "No voices in this file, or they could not be saved into the preset folder.")
 
 // --- The editor on Linux, where the dialogs are the desktop's (zenity, else kdialog)
 
@@ -1466,6 +1519,7 @@ STR(CascadeLevel, "LEVEL")
 STR(CascadePhase, "PHASE")
 STR(CascadeEnvelope, "ENVELOPE")
 STR(CascadeUnison, "UNISON")
+STR(CascadeKeys, "KEYS") // keyboard scaling
 STR(CascadeNoise, "NOISE")
 STR(CascadeFields, "SETTINGS") // a source's own knobs, before the depths of its modulations
 STR(CascadeDepths, "DEPTHS")

@@ -1,10 +1,19 @@
 #pragma once
 
 #include "drawnenvelope.h"
+#include "rateenvelope.h"
 #include "params.h"
 
 #include <algorithm>
 #include <cmath>
+
+#ifndef FMVIBE_NOINLINE
+#ifdef _MSC_VER
+#define FMVIBE_NOINLINE __declspec(noinline)
+#else
+#define FMVIBE_NOINLINE __attribute__((noinline))
+#endif
+#endif
 
 namespace fmvibe {
 
@@ -59,9 +68,10 @@ inline EnvRates envRates(double attack, double hold, double decay, double sustai
 // arrived, the level keeps following the sustain param, so sustain changes
 // while a note is held don't click. A restart rises from the current level at
 // the attack's own pace, as if the attack had already come that far.
-// An operator's may follow a drawn envelope instead (see DrawnEnvelope, OpParam::EnvMode): follow() hands it one for
-// a block, whose levels next() then gives, so the voices' loop calls next() as it always does; it stands idle once
-// that one is done. start() and release() are the AHDSR's: the drawn one is started and released by its owner.
+// An operator's may follow a drawn envelope or a Rate/Level one instead (see DrawnEnvelope, RateEnvelope,
+// OpParam::EnvMode): follow() hands it one for a block, whose levels next() then gives, so the voices' loop calls
+// next() as it always does; it stands idle once that one is done. start() and release() are the AHDSR's: the one it
+// follows is started and released by its owner.
 class Envelope {
 public:
     void start() {
@@ -69,7 +79,7 @@ public:
         t_ = -1.0; // placed on the curve at the first sample, once the slope is known
     }
     void release() {
-        if (stage_ == Stage::Idle || stage_ == Stage::Drawn)
+        if (stage_ == Stage::Idle || stage_ == Stage::Drawn || stage_ == Stage::Rates)
             return;
         stage_ = Stage::Release;
         enterSegment();
@@ -87,6 +97,18 @@ public:
         drawnRising_ = drawn.rising();
     }
     bool following() const { return stage_ == Stage::Drawn; }
+    // The same for a Rate/Level envelope.
+    void follow(RateEnvelope &rates) {
+        if (rates.idle()) {
+            if (stage_ == Stage::Rates)
+                stop();
+            return;
+        }
+        rates_ = &rates;
+        stage_ = Stage::Rates;
+        drawnRising_ = rates.rising();
+    }
+    bool followingRates() const { return stage_ == Stage::Rates; }
     // Back to its AHDSR from where the drawn envelope left it: rising again while the key is down, else releasing.
     void unfollow(bool held) {
         start();
@@ -104,7 +126,8 @@ public:
     // Still on its way up (attack or hold): it will be louder than it is now.
     // Still on its way up: its attack or hold, or a drawn envelope short of its shape's top as the block started.
     bool rising() const {
-        return stage_ == Stage::Attack || stage_ == Stage::Hold || (stage_ == Stage::Drawn && drawnRising_);
+        return stage_ == Stage::Attack || stage_ == Stage::Hold ||
+               ((stage_ == Stage::Drawn || stage_ == Stage::Rates) && drawnRising_);
     }
     double level() const { return level_; }
     // Where it is, for the editor: its stage (0 attack, 1 hold, 2 decay, 3 sustain, 4 release) plus how far
@@ -123,6 +146,7 @@ public:
             return 4.0 + std::clamp(t_, 0.0, 1.0);
         case Stage::Idle:
         case Stage::Drawn:
+        case Stage::Rates:
             break;
         }
         return -1.0;
@@ -162,6 +186,7 @@ public:
             case Stage::Attack:
             case Stage::Hold:
             case Stage::Drawn:
+            case Stage::Rates:
                 out[s++] = nextStage(r);
                 break;
             }
@@ -169,7 +194,7 @@ public:
     }
 
 private:
-    enum class Stage { Idle, Attack, Hold, Decay, Sustain, Release, Drawn };
+    enum class Stage { Idle, Attack, Hold, Decay, Sustain, Release, Drawn, Rates };
 
     double nextStage(const EnvRates &r) {
         switch (stage_) {
@@ -196,13 +221,26 @@ private:
         case Stage::Release:
             return releaseStep(r);
         case Stage::Drawn:
-            level_ = drawn_->next();
-            if (drawn_->idle())
-                stop();
-            return level_;
+        case Stage::Rates:
+            return followed();
         case Stage::Sustain: // see next()
         case Stage::Idle:
             break;
+        }
+        return level_;
+    }
+
+    // The level of what it follows (a drawn or a Rate/Level envelope), out of the way of the AHDSR's stages, which
+    // every other patch runs and the voices' loop inlines.
+    FMVIBE_NOINLINE double followed() {
+        if (stage_ == Stage::Drawn) {
+            level_ = drawn_->next();
+            if (drawn_->idle())
+                stop();
+        } else {
+            level_ = rates_->next();
+            if (rates_->idle())
+                stop();
         }
         return level_;
     }
@@ -253,7 +291,12 @@ private:
     double k_ = 0.0;
     bool resync_ = true;
     bool drawnRising_ = false;       // whether what it follows was rising as the block started (see follow())
-    DrawnEnvelope *drawn_ = nullptr; // what it follows, while it does
+    // What it follows, while it does: by its stage, a drawn envelope or a Rate/Level one, sharing one place so that an
+    // operator's Envelope, which the voices' loop reads for every patch, is no larger than it was with drawn ones alone.
+    union {
+        DrawnEnvelope *drawn_ = nullptr;
+        RateEnvelope *rates_;
+    };
 };
 
 } // namespace fmvibe

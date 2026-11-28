@@ -414,7 +414,8 @@ std::vector<std::pair<int, Rect>> RoutingPanel::routeLabels() const {
             if (from == to || !routing_.wired(param) || param == moving)
                 continue;
             const int mode = routeModeParam(from, to);
-            const bool glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
+            const bool glyph = mode >= 0 && (isFeedbackModeParam(mode) ? feedbackMode(value(mode)) != FeedbackMode::Smooth
+                                                                : routeMode(value(mode)) != RouteMode::Phase);
             wires.push_back(
                 {param,
                  wireBetween(from, routing_.nodeCenter(from), to, routing_.nodeCenter(to), routing_.wireBend(param)),
@@ -487,7 +488,8 @@ RoutingPanel::LabelPill RoutingPanel::labelPill(int param, int mode, Rect idle) 
     pill.open = (hover && mine(*hover)) || (mode >= 0 && host_.openList() == mode) || (held && mine(*held));
     // A mode other than Phase shows inside it at rest, at its left: the label widens by kLabelGlyphW, still centered on
     // its wire, and its depth's text sits that much right of the middle, half of kLabelGlyphW.
-    const bool glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
+    const bool glyph = mode >= 0 && (isFeedbackModeParam(mode) ? feedbackMode(value(mode)) != FeedbackMode::Smooth
+                                                                : routeMode(value(mode)) != RouteMode::Phase);
     const float shift = glyph ? 0.5f * kLabelGlyphW : 0.0f;
     if (!pill.open) {
         pill.glyph = glyph;
@@ -746,7 +748,8 @@ void RoutingPanel::widgets(std::vector<Widget> &list) const {
             const int param = routeParam(from, to);
             if (!routing_.wired(param) || param == moving)
                 continue;
-            labelWidgets(Kind::WireLabel, param, routeModeParam(from, to), labelOf(param), from, to);
+            labelWidgets(Kind::WireLabel, param, from == to && from < kOps ? feedbackModeIndex(from) : routeModeParam(from, to),
+                         labelOf(param), from, to);
         }
     }
     for (int node : on)
@@ -847,7 +850,7 @@ void RoutingPanel::popups(std::vector<Widget> &list) const {
                 idle = rect;
         const Rect part = labelPill(routeParam(from, to), open, idle).mode;
         const Rect button{part.x, part.y, 112.0f, part.h};
-        const int items = static_cast<int>(RouteMode::Count);
+        const int items = listCount(open); // a feedback's two modes, a route's four
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, host_.height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
         for (int item = 0; item < items; ++item)
@@ -1331,9 +1334,12 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
         // Its ranges and handles are over and under it, and its text stays in the middle, its digits centered.
         constexpr float lift = -1.0f;
         Rect textRect{w.rect.x, w.rect.y + lift, w.rect.w, w.rect.h};
-        if (w.modeGlyph) { // its mode, other than Phase, at its left
-            const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
-            routeModeIcon(c, {w.rect.x + (graph ? 15.0f : 13.0f), w.rect.center().y}, mode, kPanel, graph ? 1.0f : 0.85f);
+        if (w.modeGlyph) { // its mode, other than Phase (a feedback's, other than Smooth), at its left
+            const Point m{w.rect.x + (graph ? 15.0f : 13.0f), w.rect.center().y};
+            if (w.a == w.b)
+                feedbackModeIcon(c, m, feedbackMode(value(feedbackModeIndex(w.a))), kPanel, graph ? 1.0f : 0.85f);
+            else
+                routeModeIcon(c, m, routeMode(value(routeModeParam(w.a, w.b))), kPanel, graph ? 1.0f : 0.85f);
             textRect = {w.rect.x + glyphW, w.rect.y + lift, w.rect.w - glyphW, w.rect.h}; // where it sits when open
         }
         c.text(textRect, text, graph ? kTextBody : kTextLabel, kPanel, Align::Center, true);
@@ -1353,7 +1359,10 @@ bool RoutingPanel::paintWidget(Canvas &c, const Widget &w, bool hovered) {
             c.popClip();
         }
         const Point m{w.rect.x + 13.0f, w.rect.center().y};
-        routeModeIcon(c, m, routeMode(value(w.param)), kPanel, 1.0f);
+        if (isFeedbackModeParam(w.param))
+            feedbackModeIcon(c, m, feedbackMode(value(w.param)), kPanel, 1.0f);
+        else
+            routeModeIcon(c, m, routeMode(value(w.param)), kPanel, 1.0f);
         const Point v{w.rect.right() - 8.5f, w.rect.center().y};
         const float dir = open ? -1.0f : 1.0f;
         const Point chevron[] = {{v.x - 3.0f, v.y - 1.4f * dir}, {v.x, v.y + 1.8f * dir}, {v.x + 3.0f, v.y - 1.4f * dir}};
@@ -1491,8 +1500,11 @@ std::string RoutingPanel::tooltip(const Widget &w) const {
     case Kind::Port:
         return tr(Str::TipPort);
     case Kind::LabelMode:
-        return host_.openList() == w.param ? std::string()
-                                           : trf(Str::TipRouteMode, {routeModeName(routeMode(value(w.param)))});
+        if (host_.openList() == w.param)
+            return {};
+        if (isFeedbackModeParam(w.param))
+            return trf(Str::TipFeedbackMode, {feedbackModeName(feedbackMode(value(w.param)))});
+        return trf(Str::TipRouteMode, {routeModeName(routeMode(value(w.param)))});
     case Kind::LabelRemove:
         return tr(Str::TipRemoveRoute);
     case Kind::Wire:
@@ -1790,9 +1802,11 @@ bool RoutingPanel::wheelOn(const Widget &w, Point, float steps, Modifiers) {
     if (w.kind != Kind::LabelMode)
         return false;
     const int whole = host_.wheelNotches(w.param, steps);
-    const int to =
-        std::clamp(static_cast<int>(routeMode(value(w.param))) + whole, 0, static_cast<int>(RouteMode::Count) - 1);
-    if (whole != 0 && to != static_cast<int>(routeMode(value(w.param)))) {
+    const bool feedback = isFeedbackModeParam(w.param);
+    const int now = feedback ? static_cast<int>(feedbackMode(value(w.param))) : static_cast<int>(routeMode(value(w.param)));
+    const int to = std::clamp(now + whole, 0,
+                              (feedback ? static_cast<int>(FeedbackMode::Count) : static_cast<int>(RouteMode::Count)) - 1);
+    if (whole != 0 && to != now) {
         const UndoScope notches(controller(), true);
         edit(w.param, to);
     }
@@ -1804,14 +1818,23 @@ bool RoutingPanel::blocksPan(const Widget &w) const {
 }
 
 namespace {
-// A route into an operator lists its modes in a menu, the one in force checked.
+// The param holding a route's mode: a route into another operator's (RouteMode), an operator's feedback's
+// (FeedbackMode); -1 for none.
+int modeParamOf(int route) {
+    for (int op = 0; op < kOps; ++op)
+        if (route == routeParam(op, op))
+            return feedbackModeIndex(op);
+    return routeModeOfRoute(route);
+}
+
+// A route into an operator lists its modes in a menu, the one in force checked: a feedback its own.
 void addRouteModes(std::vector<MenuItem> &items, int route, double mode) {
-    if (routeModeOfRoute(route) < 0)
+    const int param = modeParamOf(route);
+    if (param < 0)
         return;
-    const auto now = routeMode(mode);
-    for (int m = 0; m < static_cast<int>(RouteMode::Count); ++m)
-        items.push_back({RoutingPanel::kRouteModeCommand + m, routeModeName(static_cast<RouteMode>(m)),
-                         static_cast<int>(now) == m});
+    const int now = static_cast<int>(std::lround(mode));
+    for (int m = 0; m < listCount(param); ++m)
+        items.push_back({RoutingPanel::kRouteModeCommand + m, listItemName(param, m), now == m});
     items.push_back({0, ""});
 }
 
@@ -1824,7 +1847,7 @@ bool RoutingPanel::contextMenu(const std::optional<Widget> &hit, Point, std::vec
     if (!hit)
         return false;
     auto modeOf = [&](int route) {
-        const int mode = routeModeOfRoute(route);
+        const int mode = modeParamOf(route);
         return mode >= 0 ? value(mode) : 0.0;
     };
     switch (hit->kind) {
@@ -1859,9 +1882,9 @@ void RoutingPanel::paramMenu(const Widget &w, std::vector<MenuItem> &items) {
     menuRoute_ = w.param;
     if (!routing_.wired(w.param))
         return;
-    if (w.kind != Kind::OutLabel && routeModeOfRoute(w.param) >= 0) {
+    if (w.kind != Kind::OutLabel && modeParamOf(w.param) >= 0) {
         items.push_back({0, ""});
-        addRouteModes(items, w.param, value(routeModeOfRoute(w.param)));
+        addRouteModes(items, w.param, value(modeParamOf(w.param)));
         items.pop_back(); // Disconnect follows the modes without a line between
     }
     items.push_back({kMenuDisconnect, tr(Str::MenuDisconnect)});
@@ -1873,8 +1896,9 @@ bool RoutingPanel::menuCommand(int command) {
     } else if (command == kMenuSwitchOff && menuNode_ >= 0) {
         edit(enabledParam(menuNode_), 0.0); // switch a node off
     } else if (command >= kRouteModeCommand && command < kRouteModeCommand + static_cast<int>(RouteMode::Count) &&
-               menuRoute_ >= 0 && routeModeOfRoute(menuRoute_) >= 0) {
-        edit(routeModeOfRoute(menuRoute_), command - kRouteModeCommand);
+               menuRoute_ >= 0 && modeParamOf(menuRoute_) >= 0 &&
+               command - kRouteModeCommand < listCount(modeParamOf(menuRoute_))) {
+        edit(modeParamOf(menuRoute_), command - kRouteModeCommand);
     } else if (command == kMenuResetBend && menuRoute_ >= 0) {
         const UndoScope step(controller());
         routing_.setWireBend(menuRoute_, RoutingModel::defaultWireBend(menuRoute_)); // a line to OUT straight

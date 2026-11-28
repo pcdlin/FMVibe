@@ -88,9 +88,14 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    And a sequencer note may bend (see SeqNoteBendParam): an earlier state has no bends and loads as it was saved,
 //    and the version's rise has an earlier build refuse a state whose bends it would leave out.
 //    And the sequencer's Play is Key to begin with rather than Host: an earlier state without one loads Host.
+// 18: A fixed operator's Pitch and Detune move it, and modulation on them (a pitch envelope or vibrato of its own); they
+//    did nothing on it. An earlier state's fixed operators load with them at 0, and what modulated them modulating
+//    nothing, playing as they played (see fixedIgnoredPitch()).
+//    And an operator's feedback has a mode (FeedbackMode), its route into itself's mode param, which held nothing: an
+//    earlier state's loads Smooth, as it played, whatever the param held.
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
-constexpr uint32_t kStateVersion = 17;
+constexpr uint32_t kStateVersion = 18;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -654,6 +659,27 @@ void transposeFromRoot(ParamValues &values) {
     values[transposeIndex] = static_cast<double>(std::clamp(transpose, -most, most));
 }
 
+// Before version 18, a fixed operator's Pitch and Detune did nothing: they load at 0, and the slots aimed at them
+// modulating nothing, so the operator plays as it did.
+void fixedIgnoredPitch(ParamValues &values) {
+    const ParamTable &table = paramTable();
+    for (int op = 0; op < kOps; ++op) {
+        if (values[paramIndex(op, OpParam::Fixed)] < 0.5)
+            continue;
+        for (OpParam field : {OpParam::Transpose, OpParam::Detune}) {
+            const int index = paramIndex(op, field);
+            values[index] = table[index].def;
+            const double target = slotTargetValue(index);
+            for (int source = 0; source < kAllSources; ++source)
+                for (int slot = 0; slot < kSlots; ++slot)
+                    if (values[slotTargetIndex(source, slot)] == target) {
+                        values[slotTargetIndex(source, slot)] = 0.0;
+                        values[slotAmountIndex(source, slot)] = 0.0;
+                    }
+        }
+    }
+}
+
 } // namespace
 
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
@@ -796,6 +822,13 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         holdSeqCurveEnds(loaded);
     if (header[1] < 17)
         transposeFromRoot(loaded);
+    if (header[1] < 18) {
+        fixedIgnoredPitch(loaded);
+        // An operator's feedback's mode param, its route into itself's, held nothing then (a host could still set it):
+        // it loads Smooth, as the feedback played.
+        for (int op = 0; op < kOps; ++op)
+            loaded[feedbackModeIndex(op)] = static_cast<double>(FeedbackMode::Smooth);
+    }
     if (header[1] < 9) { // the chain's effects in its order, as the graph's line
         if (!outWired) {
             std::vector<int> chain;

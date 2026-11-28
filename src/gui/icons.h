@@ -96,6 +96,8 @@ void folderIcon(Canvas &c, Point center, Color color);
 void saveIcon(Canvas &c, Point center, Color color, bool plus);
 void cogIcon(Canvas &c, Point center, Color color);
 void moreIcon(Canvas &c, Point center, Color color);
+// About 14 x 14: an arrow down into an open tray (the overflow menu's Import sysex).
+void importIcon(Canvas &c, Point center, Color color);
 // A die showing five, about 12 x 12: the partial editor's random button.
 void diceIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);
@@ -121,7 +123,8 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);
 void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale = 1.0f);
 // An operator's envelope's two kinds, about 16 x 10 around `m`: an AHDSR's shape (attack, hold, decay, sustain and
 // release), or a curve through its points (a drawn one).
-void envModeIcon(Canvas &c, Point m, bool curve, Color color, float scale = 1.0f);
+// An operator's envelope mode (0 ADSR, 1 Curve, 2 Rate/Level: its four levels as bars on a baseline, tall to short).
+void envModeIcon(Canvas &c, Point m, int mode, Color color, float scale = 1.0f);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale = 1.0f);
@@ -135,6 +138,8 @@ void noteIcon(Canvas &c, Point m, Color color);
 // How a route acts on the operator it goes into, about 10 x 10 around `m` (times `scale`): Phase a phi (a ring with a stroke through
 // it), Linear FM a straight rising line, Exp FM a curve rising ever faster, Ring a ring with a cross in it.
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale = 1.0f);
+// A feedback's mode (see FeedbackMode), about `m`: Smooth a smooth wave, DX7 one in steps, as the DX7's samples hold it.
+void feedbackModeIcon(Canvas &c, Point m, FeedbackMode mode, Color color, float scale = 1.0f);
 // An operator's warp: a cycle of a sine across `r` as the warp reads it at three quarters of its amount (Steps at
 // its full amount; Off: the sine).
 void warpIcon(Canvas &c, Rect r, OpWarp warp, Color color);
