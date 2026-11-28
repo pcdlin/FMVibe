@@ -20,6 +20,15 @@ struct ParamEq {
     static constexpr double kUnset = std::numeric_limits<double>::quiet_NaN();
     std::array<double, kPeqBands> on{kUnset, kUnset, kUnset};
     double amount = 1.0; // ramping to its Amount (see run())
+    // Each band's coefficients as its params last put them, and those params (its type, frequency, gain and Q, and the
+    // rate): worked out again only as they change, some ten exp, pow, cos and sqrt calls a band and a chunk otherwise.
+    std::array<std::array<double, 5>, kPeqBands> madeFrom = [] {
+        std::array<std::array<double, 5>, kPeqBands> none;
+        for (auto &band : none)
+            band.fill(kUnset);
+        return none;
+    }();
+    std::array<BiquadCoefs, kPeqBands> made{};
 
     void start(const Context &ctx);
     void run(const Context &ctx, float *const *io, uint32_t n);

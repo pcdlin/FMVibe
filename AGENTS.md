@@ -1253,7 +1253,10 @@ More checks:
   copies, nothing playing, the chain decaying and releasing, and the 1-copy chain again with 8 host events a block
   (values that change nothing, which only splits the block, then automation and modulation that move their params),
   each in ms of CPU per second of audio, the median of
-  the rounds, with its change against the first build. It warns when the machine was busy. `fmvibe-bench` talks to
+  the rounds, with its change against the first build. With `-Fx` it also times the effects (`fmvibe-bench fx`): a
+  note on the default patch through each effect alone on the graph's line, then through a 24 dB voice filter with an
+  LFO on its cutoff, and the three-band dynamics at OTT's settings, each the effect's share (less the note alone);
+  under 16 notes an effect's share drowns in how the voices' cost wanders. `fmvibe-bench` talks to
   the plugin through CLAP alone, with the param ids host projects store, so it runs on earlier commits' builds too.
   Not a test: timing wants a quiet machine.
 

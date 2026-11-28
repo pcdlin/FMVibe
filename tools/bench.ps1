@@ -13,6 +13,7 @@ build\bench, keeps each build there, and runs fmvibe-bench (tools/bench.cpp) on 
   modulating params) in ms of CPU per second of audio, the builds taking turns round after round on
   one logical processor, so a machine that gets busier for a while weighs on all of them alike. Each figure is the
   median of the rounds, each round the best of -Passes seconds.
+- with -Fx, the effects too: a note on the default patch through each effect alone, taking turns likewise.
 
 Timing wants a quiet machine: the load is printed, and a busy one warned about. Compare a change against the commit
 before it, with one copy and with eight, before telling what it costs: MSVC's code for the voices' loop moves with
@@ -31,7 +32,8 @@ param(
     [int] $Passes = 5,
     [int] $Cpu = 2, # a logical processor on a performance core
     [switch] $SkipRender,
-    [switch] $SkipTime
+    [switch] $SkipTime,
+    [switch] $Fx # and each effect alone on the line under a note on the default patch (fmvibe-bench fx)
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -206,5 +208,40 @@ if (-not $SkipTime) {
             }
             "{0,-14} {1} {2} {3} {4}" -f $b.Label, (& $cell 0), (& $cell 1), (& $cell 2), (& $cell 3)
         }
+    }
+}
+
+if ($Fx) {
+    Write-Host "== fx: each effect alone under a note, $Rounds rounds, each the best of $Passes s, on logical processor $Cpu" -ForegroundColor Cyan
+    $fxRuns = @{}
+    foreach ($b in $builds) { $fxRuns[$b.Label] = @() }
+    $effects = @()
+    foreach ($round in 1..$Rounds) {
+        foreach ($b in $builds) {
+            $line = & $bench fx $b.Path $Passes $Cpu
+            if ($LASTEXITCODE -or -not $line) { throw "fmvibe-bench fx failed on $($b.Path)" }
+            $figures = [ordered]@{}
+            foreach ($m in [regex]::Matches($line, '([a-z]+) ([0-9.]+)')) { $figures[$m.Groups[1].Value] = [double]$m.Groups[2].Value }
+            if (-not $effects.Count) { $effects = @($figures.Keys) }
+            $fxRuns[$b.Label] += , $figures
+        }
+    }
+    function FxMedian($values) { $sorted = @($values | Sort-Object); $sorted[[int][Math]::Floor(($sorted.Count - 1) / 2)] }
+    'ms of CPU per second of audio, median of the rounds; the effect alone is its figure less none''s; change of that against the first build'
+    $header = '{0,-12}' -f 'effect'
+    foreach ($b in $builds) { $header += ' {0,22}' -f $b.Label }
+    $header
+    $none = @{}
+    foreach ($b in $builds) { $none[$b.Label] = FxMedian ($fxRuns[$b.Label] | ForEach-Object { $_['none'] }) }
+    foreach ($e in $effects) {
+        $row = '{0,-12}' -f $e
+        $first = $null
+        foreach ($b in $builds) {
+            $median = FxMedian ($fxRuns[$b.Label] | ForEach-Object { $_[$e] })
+            $alone = if ($e -eq 'none') { $median } else { $median - $none[$b.Label] }
+            if ($null -eq $first) { $first = $alone; $row += ' {0,14:N2} {1,7}' -f $alone, '' }
+            else { $row += ' {0,14:N2} {1,7}' -f $alone, $(if ($first -ne 0) { '{0:+0.0;-0.0}%' -f (100.0 * ($alone / $first - 1.0)) } else { '' }) }
+        }
+        $row
     }
 }
