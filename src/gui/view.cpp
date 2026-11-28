@@ -2463,8 +2463,23 @@ std::optional<View::Widget> View::hitTest(Point p) const {
     if (!settingsOpen_ && confirm_ < 0 && panel)
         panel->widgets(dialog);
     const std::vector<Widget> &list = overlay ? dialog : scopedWidgets();
+    // The open lists are painted over everything else (see paint()), so they take the mouse first: what they cover takes
+    // nothing, though it is listed after them (the routing graph's labels, moved past every other widget).
+    std::optional<Widget> hit = hitIn(list, p, true);
+    return hit ? hit : hitIn(list, p, false);
+}
+
+bool View::isOpenList(const Widget &w) {
+    return w.kind == Kind::FxMenu || w.kind == Kind::FxAdd || w.kind == Kind::FxAddNode || w.kind == Kind::SourceMenu ||
+           w.kind == Kind::SourceMenuItem || w.kind == Kind::MoreMenu || w.kind == Kind::MoreMenuItem ||
+           w.kind == Kind::ListMenu || w.kind == Kind::ListItem || w.kind == Kind::PeqTypeMenu ||
+           w.kind == Kind::PeqTypeItem || w.kind == Kind::WaveMenu || w.kind == Kind::WaveMenuItem || w.popup;
+}
+
+// The last of the list's widgets under p, among the open lists or among the rest.
+std::optional<View::Widget> View::hitIn(const std::vector<Widget> &list, Point p, bool lists) const {
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
-        if ((it->clip.w > 0.0f && !it->clip.contains(p)) || it->disabled)
+        if (isOpenList(*it) != lists || (it->clip.w > 0.0f && !it->clip.contains(p)) || it->disabled)
             continue;
         // A panel's own whose shape isn't its rect (a wire along its path, an operator's circle, a node's edge).
         std::optional<bool> own;
@@ -2590,14 +2605,7 @@ void View::paint(Canvas &c, Rect area) {
     // The open lists (of effects, curves, EQ shapes, waves) go over everything else, the dimmed cards included.
     auto paintWidgets = [&](bool lists) {
         for (const Widget &w : list) {
-            const bool open = w.kind == Kind::FxMenu || w.kind == Kind::FxAdd || w.kind == Kind::FxAddNode ||
-                              w.kind == Kind::SourceMenu ||
-                              w.kind == Kind::SourceMenuItem || w.kind == Kind::MoreMenu ||
-                              w.kind == Kind::MoreMenuItem || w.kind == Kind::ListMenu ||
-                              w.kind == Kind::ListItem || w.kind == Kind::PeqTypeMenu ||
-                              w.kind == Kind::PeqTypeItem || w.kind == Kind::WaveMenu ||
-                              w.kind == Kind::WaveMenuItem || w.popup;
-            if (open != lists || !touches(w.rect.inset(-kWidgetReach)))
+            if (isOpenList(w) != lists || !touches(w.rect.inset(-kWidgetReach)))
                 continue;
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);

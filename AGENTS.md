@@ -930,7 +930,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the title bar's overflow menu (... after Init and Save): its button lit while it is open, its rows lit under the
-    mouse (read off the rendered pixels), closing at a click around it, Escape and its button again, a separator before
+    mouse (read off the rendered pixels), closing at a click around it, Escape and its button again, a route's label
+    under it (the labels listed after every other widget) taking neither the mouse, the wheel nor a drag, a separator before
     its User manual and Settings standing out from its face (read off the rendered pixels), its User manual opening the
     manual, its Init asking first as Init's button does, its Import sysex asking first while the patch has changed
     (as Load does) and else opening its dialog at once, and its Save greyed out beside Save As while the preset is unchanged (read off the

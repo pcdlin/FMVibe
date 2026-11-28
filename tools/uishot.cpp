@@ -1355,6 +1355,31 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kRoutingTab);
     check(outTyped && std::abs(model.value(aOutParam) - 0.25) < 1e-9,
           "Ctrl+Click types a route's amount, on its label or its matrix cell");
+    {
+        // The overflow menu open over a route's label (A's on its line to OUT, A moved up under the menu, the labels
+        // listed after every widget so that they sit over the nodes): between two of the menu's rows, over the label,
+        // the label takes neither the mouse, the wheel nor a drag, the menu's face does (a press there leaving it open).
+        const float aX = model.layout().nodeX[0], aY = model.layout().nodeY[0];
+        const Rect g = detail::kGraph;
+        model.layout().nodeX[0] = (1060.0f - g.x) / g.w;
+        model.layout().nodeY[0] = (170.0f - g.y) / g.h;
+        const Point at{outLabelOf(model.layout(), 0).x, 0.5f * (detail::moreMenuItem(detail::kMoreLoadMapping).bottom() +
+                                                                detail::moreMenuItem(detail::kMoreManual).y)};
+        view.mouseMove(at, {});
+        const bool labelTakes = view.cursor() == CursorKind::Vertical;
+        click(view, kMoreButton);
+        view.mouseMove(at, {});
+        const bool menuCursor = view.moreMenuShown() && view.cursor() == CursorKind::Arrow;
+        view.wheel(at, 1.0f, {});
+        drag(view, at, {at.x, at.y - 40.0f});
+        const bool stillOpen = view.moreMenuShown();
+        click(view, kModTitle); // around the menu
+        check(detail::moreMenu().contains(at) && labelTakes && menuCursor && stillOpen && !view.moreMenuShown() &&
+                  std::abs(model.value(aOutParam) - 0.25) < 1e-9,
+              "a route's label under the open overflow menu takes neither the mouse, the wheel nor a drag");
+        model.layout().nodeX[0] = aX;
+        model.layout().nodeY[0] = aY;
+    }
 
     // A Random source, a random LFO, shows Smooth and Chaos beside a preview of what they do.
     check(rateFromNorm(1.0) == 100.0 && sweepRateHz(0.0) == 0.0, "LFOs run from 0 Hz up to 100 Hz");

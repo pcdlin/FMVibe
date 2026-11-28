@@ -475,6 +475,8 @@ private:
     // operator's for its page's ENVELOPE tab, which the inspector lists, a mod envelope's on its card.
     void envelopeWidgets(std::vector<Widget> &list, int env) const override;
     std::optional<Widget> hitTest(Point p) const;
+    std::optional<Widget> hitIn(const std::vector<Widget> &list, Point p, bool lists) const;
+    static bool isOpenList(const Widget &w); // an open list's, painted and hit over everything else
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
     // An operator's Ratio, a knob drawn as a 7-segment readout (see kRatioBox).
