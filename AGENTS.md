@@ -24,10 +24,14 @@ changing a feature. How to use it, for the plugin's users, is in the user manual
   does goes into both `src/gui/editor.cpp` and `src/gui/editor_x11.cpp`. Neither build compiles the other's files, so
   say in the commit which platform a change wasn't built on: `build.ps1 -Validate` on Windows and `./build.sh` on
   Linux are the checks (see [Linux development build](#linux-development-build)). Where a feature behaves otherwise
-  on Linux, the "On Linux" section of [docs/features.md](docs/features.md) and the manual say so.
+  on Linux, the "On Linux" section of [docs/features.md](docs/features.md) and the manual say so. Build and test on
+  Windows; build in WSL or on Linux only when asked to.
+- Push to `main` only when asked to, and check which remote branch a push goes to before pushing. Work for an open
+  pull request goes on that pull request's branch.
 - When a feature changes, update [docs/features.md](docs/features.md), and the user manual,
   [docs/manual.md](docs/manual.md), where it says how to use what changed: the manual is for the plugin's users, so
-  it says what a control does and how to work it, not how the engine does it, in short, plain sentences. Keep
+  it says what a control does and how to work it, not how the engine does it, in short, plain sentences. It is
+  professional and to the point: no colloquial wording, nothing self-evident and no internals users don't need. Keep
   `README.md` to its short description and the build and install instructions.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
 - The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
@@ -42,7 +46,8 @@ changing a feature. How to use it, for the plugin's users, is in the user manual
 - Text the plugin shows (labels, tooltips, menus, messages, parameter names, remote control pages) is worded in
   `src/uistrings.inc` and looked up by name: `tr(Str::Name)`, or `trf()` for a wording with `{1}`, `{2}` in it. New
   text gets a line there. Tests that match on text (menu entries, page names) look it up the same way, so a
-  rewording keeps them green.
+  rewording keeps them green. Its wording is concise and professional, as the manual's is. Show new or changed
+  wording for approval before committing it.
 
 ## Build
 
