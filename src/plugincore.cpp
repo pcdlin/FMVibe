@@ -727,7 +727,7 @@ bool PluginCore::loadPreset(const std::wstring &chosen) {
     return loaded;
 }
 
-// The folder a sysex file's presets go into: the Imported folder's, named as the file, what a folder's name can't
+// The folder a sysex file's presets go into: the Syx folder's, named as the file, what a folder's name can't
 // hold replaced.
 std::string PluginCore::dx7Folder(const std::wstring &path) {
     std::string bank = utf8(pathOf(path).stem());

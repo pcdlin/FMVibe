@@ -100,7 +100,7 @@ public:
     }
     void choosePreset(gui::PresetDialog dialog) override;
     // Imports a DX7 sysex file (see gui/dx7.h): each of its voices saved as a preset into the preset folder's
-    // Imported folder, in a folder named as the file (over the presets an earlier import of it saved), and the first loaded,
+    // Syx folder, in a folder named as the file (over the presets an earlier import of it saved), and the first loaded,
     // so the preset bar's arrows step through the rest. False where it holds no voices or none could be saved.
     bool importDx7(const std::wstring &path) override;
     std::string existingDx7Folder(const std::wstring &path) const override;

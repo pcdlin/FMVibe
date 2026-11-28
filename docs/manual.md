@@ -1548,7 +1548,7 @@ FMVibe can play voices made for the Yamaha DX7.
 
 1. Choose **Import sysex...** in the **...** menu and pick a DX7 sysex file (`.syx`): a bank of 32 voices or
    a single voice.
-2. FMVibe saves each voice as a preset in the **Imported** folder of your preset folder, in a folder named after the
+2. FMVibe saves each voice as a preset in the **Syx** folder of your preset folder, in a folder named after the
    file. The presets are numbered and named after their voices, such as "07 E.PIANO 1".
 3. The first voice loads. Use the preset bar's arrows to step through the others, or find them in the browser.
 

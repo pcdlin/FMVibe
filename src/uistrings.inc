@@ -609,7 +609,7 @@ STR(SourceNameOp, "Op {1}") // an operator's output as a modulation source
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 STR(PresetDx7Voice, "Voice {1} from {2}") // an imported voice's description: its place in the file, the file
-STR(PresetsDx7Folder, "Imported") // the folder of the preset folder imported DX7 files go into
+STR(PresetsDx7Folder, "Syx") // the folder of the preset folder imported DX7 files go into
 
 STR(ThemeMidnight, "Midnight")
 STR(ThemeLight, "Light")

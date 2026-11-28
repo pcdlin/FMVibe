@@ -2713,7 +2713,7 @@ what it started goes on.
     first while the patch has changed, as Load does, then opens the standard file dialog on DX7 sysex files (`.syx`),
     in the preset folder, titled Import sysex. It reads every 32-voice bank dump and single-voice dump in the
     file picked (or a bank's 4096 bytes without their header; checksums aren't required, as many
-    banks in circulation have wrong ones), saves each voice as a sparse preset into the preset folder's **Imported**
+    banks in circulation have wrong ones), saves each voice as a sparse preset into the preset folder's **Syx**
     folder, in a folder named as the file (where that folder exists already, from an earlier import, a native dialog
     asks first that the import will overwrite all files in it; `PresetStore::existingDx7Folder()`), named by its place in the
     file and its name ("07 E.PIANO 1"), its description "Voice 07 from <file>", and loads the first, so the preset
