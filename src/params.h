@@ -2471,15 +2471,19 @@ constexpr double kMaxKeyDepthDb = 24.0;
 constexpr double kKeyScaleCeilingDb = 24.0;
 constexpr double kKeyScaleFloorDb = -96.0;
 constexpr double kDefaultKeyBreak = 60.0; // C4
+// How many times its depth a side moves the level at `key`, before the floor and ceiling hold it.
+inline double keyScaleFactor(double key, double breakpoint, double curve) {
+    const double octaves = std::min(std::abs(key - breakpoint) / 12.0, 16.0);
+    const bool exp = roundFast(curve) == static_cast<long>(KeyCurve::Exp);
+    return exp && octaves > 1.0 ? std::exp2(octaves - 1.0) : octaves;
+}
 inline double keyScaleDb(double key, double breakpoint, double leftDepth, double rightDepth, double leftCurve,
                          double rightCurve) {
     const bool left = key < breakpoint;
     const double depth = left ? leftDepth : rightDepth;
     if (depth == 0.0 || !std::isfinite(key) || !std::isfinite(breakpoint))
         return 0.0;
-    const double octaves = std::min(std::abs(key - breakpoint) / 12.0, 16.0);
-    const bool exp = roundFast(left ? leftCurve : rightCurve) == static_cast<long>(KeyCurve::Exp);
-    const double db = depth * (exp && octaves > 1.0 ? std::exp2(octaves - 1.0) : octaves);
+    const double db = depth * keyScaleFactor(key, breakpoint, left ? leftCurve : rightCurve);
     return std::clamp(db, kKeyScaleFloorDb, kKeyScaleCeilingDb);
 }
 // The gain that is: exactly 1 when nothing scales it, so a patch without keyboard scaling plays as it did.

@@ -823,10 +823,29 @@ Point InspectorPanel::keyPoint(int op, int handle) const {
     if (handle == 0)
         return {keyScaleX(breakpoint), keyScaleY(0.0)};
     const Rect plot = keyScalePlot();
-    const float x = keyScaleX(breakpoint + (handle == 1 ? -12.0 : 12.0));
-    // Held inside the display, a little in from its ends, so a breakpoint near one keeps its handle in reach.
-    return {std::clamp(x, plot.x + 4.0f, plot.right() - 4.0f),
-            keyScaleY(value(paramIndex(op, handle == 1 ? OpParam::KeyLeftDepth : OpParam::KeyRightDepth)))};
+    const double key = keyDepthHandleKey(handle, breakpoint);
+    auto get = [&](OpParam f) { return value(paramIndex(op, f)); };
+    const double db = keyScaleDb(key, breakpoint, get(OpParam::KeyLeftDepth), get(OpParam::KeyRightDepth),
+                                 get(OpParam::KeyLeftCurve), get(OpParam::KeyRightCurve));
+    // On the curve (held to the display's edge where the curve runs past it), and held inside the display a little in
+    // from its ends, so a breakpoint near one keeps its handle in reach.
+    return {std::clamp(keyScaleX(key), plot.x + 4.0f, plot.right() - 4.0f), keyScaleY(db)};
+}
+
+// A depth's handle rides the curve, which moves `factor` times the depth where the handle is: within the display the
+// handle follows the mouse, the depth moving 1/factor dB a dB. Where the curve runs past the display's top or bottom
+// the handle stays on that edge, and the depth moves a dB a dB, as it would an octave out, until the curve comes back
+// in. So the drag goes from where the depth was, without a jump, and back to it when the mouse comes back.
+double InspectorPanel::keyDepthDragged(int op, int handle, double start, double moved) const {
+    const double breakpoint = value(paramIndex(op, OpParam::KeyBreak));
+    const double curve = value(paramIndex(op, handle == 1 ? OpParam::KeyLeftCurve : OpParam::KeyRightCurve));
+    const double factor = std::max(keyScaleFactor(keyDepthHandleKey(handle, breakpoint), breakpoint, curve), 1.0);
+    const double bottom = kKeyScaleBottomDb, top = kKeyScaleTopDb, lo = bottom / factor, hi = top / factor;
+    const double at = start < lo ? bottom + (start - lo) : start > hi ? top + (start - hi) : start * factor;
+    const double to = at + moved;
+    const double depth = to < bottom ? lo + (to - bottom) : to > top ? hi + (to - top) : to / factor;
+    const int index = paramIndex(op, handle == 1 ? OpParam::KeyLeftDepth : OpParam::KeyRightDepth);
+    return std::clamp(depth, table_[index].min, table_[index].max);
 }
 
 // The operator's level across the keys, in dB from kKeyScaleTopDb down to kKeyScaleBottomDb: a line at 0 dB, faint
@@ -1493,7 +1512,7 @@ bool InspectorPanel::press(const Widget &w, Point p, Modifiers) {
         host_.startDrag(*this, w, p, false);
         break;
     case Kind::KeyPoint:
-        drag_ = {DragKind::KeyPoint, w, 0.0f};
+        drag_ = {DragKind::KeyPoint, w, 0.0f, 0.0f, value(w.param)};
         controller().beginEdit(w.param);
         host_.startDrag(*this, w, p, false);
         break;
@@ -1531,10 +1550,12 @@ void InspectorPanel::drag(const DragState &d) {
         set(f.resonance, resonance);
         break;
     }
-    case DragKind::KeyPoint: { // the breakpoint across, onto whole notes; a depth up and down, an octave out
+    case DragKind::KeyPoint: { // the breakpoint across, onto whole notes; a depth up and down, along the curve
         const int index = drag_.widget.param;
-        const double v = std::clamp(drag_.widget.b == 0 ? std::round(keyScaleKey(p.x)) : keyScaleDbAt(p.y),
-                                    table_[index].min, table_[index].max);
+        const double v = drag_.widget.b == 0
+                             ? std::clamp(std::round(keyScaleKey(p.x)), table_[index].min, table_[index].max)
+                             : keyDepthDragged(drag_.widget.a, drag_.widget.b, drag_.startDepth,
+                                               keyScaleDbAt(p.y) - keyScaleDbAt(d.start.y));
         if (v != value(index))
             controller().setValue(index, v);
         break;

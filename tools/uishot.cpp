@@ -15759,17 +15759,37 @@ void run(const std::filesystem::path &dir, float scale) {
             drag(view, {detail::keyScaleX(60.0), detail::keyScaleY(0.0)},
                  {detail::keyScaleX(72.3), detail::keyScaleY(0.0) + 6.0f});
             const bool moved = model.value(brk) == 72.0 && model.openEdits == 0;
-            // Its right depth's handle, an octave above it, down to -6 dB; the left one's up to +6.
-            drag(view, {detail::keyScaleX(84.0), detail::keyScaleY(0.0)},
-                 {detail::keyScaleX(84.0), detail::keyScaleY(-6.0)});
-            drag(view, {detail::keyScaleX(60.0), detail::keyScaleY(0.0)},
-                 {detail::keyScaleX(60.0), detail::keyScaleY(6.0)});
-            const bool depths = std::abs(model.value(right) + 6.0) < 0.5 && std::abs(model.value(left) - 6.0) < 0.5 &&
-                                model.openEdits == 0;
-            std::printf("      keyboard scaling dragged: break %.2f, left %.2f dB, right %.2f dB\n", model.value(brk),
-                        model.value(left), model.value(right));
+            // The depths' handles sit on the curve near the display's ends, where it moves several times the depth: the
+            // right one dragged down to where the curve is at -6 dB an octave, the left one up to +3 dB an octave.
+            const double rightKey = detail::keyDepthHandleKey(2, 72.0), leftKey = detail::keyDepthHandleKey(1, 72.0);
+            const double rightTimes = keyScaleFactor(rightKey, 72.0, 0.0), leftTimes = keyScaleFactor(leftKey, 72.0, 0.0);
+            drag(view, {detail::keyScaleX(rightKey), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(rightKey), detail::keyScaleY(-6.0 * rightTimes)});
+            drag(view, {detail::keyScaleX(leftKey), detail::keyScaleY(0.0)},
+                 {detail::keyScaleX(leftKey), detail::keyScaleY(3.0 * leftTimes)});
+            const bool depths = std::abs(model.value(right) + 6.0) < 0.25 && std::abs(model.value(left) - 3.0) < 0.25 &&
+                                model.openEdits == 0 && rightTimes > 3.5 && leftTimes > 3.5;
+            std::printf("      keyboard scaling dragged: break %.2f, left %.2f dB, right %.2f dB (handles at %.1f and "
+                        "%.1f, %.2f and %.2f times the depth)\n",
+                        model.value(brk), model.value(left), model.value(right), leftKey, rightKey, leftTimes,
+                        rightTimes);
             check(keysShot && moved && depths,
-                  "the KEYS tab's breakpoint drags across onto whole notes and its depths up and down");
+                  "the KEYS tab's breakpoint drags across onto whole notes and its depths, on the curve near its ends, "
+                  "up and down");
+            // With the curve past the display's bottom there, its handle stays on that edge and a drag up from it moves
+            // the depth a dB a dB, from where it was, until the curve comes back in: -24 dB taken 6 dB up to -18.
+            model.set(right, -24.0);
+            view.poll();
+            drag(view, {detail::keyScaleX(rightKey), detail::keyScaleY(detail::kKeyScaleBottomDb)},
+                 {detail::keyScaleX(rightKey), detail::keyScaleY(detail::kKeyScaleBottomDb + 6.0)});
+            const double pinned = model.value(right);
+            view.undo();
+            const bool pinnedBack = model.value(right) == -24.0;
+            model.set(right, -6.0);
+            view.poll();
+            std::printf("      a depth past the display dragged 6 dB up: -24 to %.2f dB\n", pinned);
+            check(std::abs(pinned + 18.0) < 0.25 && pinnedBack && model.openEdits == 0,
+                  "a depth's handle on the display's edge drags from where the depth was");
             const Point upper{detail::keyScaleX(114.0), detail::keyScaleY(-21.0) - 4.0f};
             view.mouseMove({600.0f, 328.0f}, {});
             renderer.save(view, dir / "3g-keys-dragged.png");

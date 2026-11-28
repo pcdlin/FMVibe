@@ -215,6 +215,14 @@ inline double keyScaleDbAt(float y) {
     const Rect r = keyScalePlot();
     return kKeyScaleTopDb - static_cast<double>((y - r.y) / r.h) * (kKeyScaleTopDb - kKeyScaleBottomDb);
 }
+// The key a depth's handle sits on (side 1 the left depth's, 2 the right's): near the display's end on its side, where
+// the curve has moved several times its depth, so a pixel moves the depth in fine steps; at least an octave out from
+// the breakpoint, for a side too short for that.
+inline double keyDepthHandleKey(int side, double breakpoint) {
+    const Rect r = keyScalePlot();
+    return side == 1 ? std::min(keyScaleKey(r.x + 10.0f), breakpoint - 12.0)
+                     : std::max(keyScaleKey(r.right() - 10.0f), breakpoint + 12.0);
+}
 // A side's curve switch (0 the left side's, 1 the right's): EXP, lit while it is exponential.
 inline Rect keyCurveButton(int side) {
     return {side == 0 ? kKeyScaleRect.x + 6.0f : kKeyScaleRect.right() - 6.0f - 34.0f, kKeyScaleRect.y + 5.0f, 34.0f,

@@ -373,6 +373,9 @@ that changes how bright the sound is, so you can keep high notes from getting ha
 - **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
 - **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.
 
+The display shows the level across the keys. Drag the handle on the dashed line sideways to move Break. Drag the
+handle near each end of the curve up or down to set that side's depth.
+
 ### I/O tab
 
 **I/O** lists the operator's routes in two parts. **Inputs** has one row for every node routed into the operator:

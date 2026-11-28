@@ -2180,9 +2180,12 @@ what it started goes on.
       the well each (a noise operator's four, a quarter each): the operator's level across the keys (MIDI 0 to 127,
       +24 dB at the display's top to -48 at its bottom), a line at 0 dB, faint lines at each C (C4 marked), the
       breakpoint's dashed line and the curve with the area under it filled; handles on it, the breakpoint's on its 0 dB
-      line, dragged across onto whole notes, and each side's depth an octave out, dragged up and down, each drag one
-      gesture and a double-click putting it back (C4, or no depth), its value over the display's middle while the mouse
-      is on it or holds it; an **Exp** switch in each top corner, a side's curve; while notes play, the newest voice's
+      line, dragged across onto whole notes, and each side's depth on the curve 10 px in from the display's end (at
+      least an octave from the breakpoint), dragged up and down: the handle follows the mouse, the depth moving
+      1/n dB a dB where the curve is n times the depth there, and where the curve runs past the display's top or
+      bottom the handle stays on that edge and the depth moves a dB a dB, from where it was, until the curve comes
+      back in. Each drag is one gesture, a double-click puts a handle back (C4, or no depth), and its value shows over
+      the display's middle while the mouse is on it or holds it; an **Exp** switch in each top corner, a side's curve; while notes play, the newest voice's
       key as a dot on the curve; and **Break**, **L Depth**, **R Depth** and **Rate Scaling** (the Rate/Level
       envelope's, keyboard scaling on a DX7, faint while the envelope is another) as knobs under the well. The MODS
       view's target menu lists the three under KEYS;

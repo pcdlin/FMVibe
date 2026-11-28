@@ -81,6 +81,7 @@ private:
         Widget widget;
         float startValue = 0.0f;
         float startLevel = 0.0f; // a Rate/Level breakpoint's level, startValue its rate
+        double startDepth = 0.0; // a keyboard scaling depth's
     };
 
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
@@ -140,9 +141,11 @@ private:
     void paintScope(Canvas &c, Rect r, int op);
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintIo(Canvas &c, int node);
-    // The KEYS tab: where a handle sits (0 the breakpoint, 1 and 2 the left and right depth, an octave out), the
-    // operator's level across the keys, and a handle's readout over the display while it is under the mouse or held.
+    // The KEYS tab: where a handle sits (0 the breakpoint, 1 and 2 the left and right depth, on the curve near its
+    // ends), the depth a depth's handle dragged to `moved` dB on the display from `start` sets, the operator's level
+    // across the keys, and a handle's readout over the display while it is under the mouse or held.
     Point keyPoint(int op, int handle) const;
+    double keyDepthDragged(int op, int handle, double start, double moved) const;
     void paintKeyScale(Canvas &c, int op);
     void paintRateEnvelope(Canvas &c, int op);
     void paintRateReadout(Canvas &c, const Widget &w);

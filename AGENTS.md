@@ -830,8 +830,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     shown one's name switching it on; its last connection disconnected hiding it, undoably, and a route the host sets
     again leaving it hidden; a filter and a shaper switched off that are still wired showing dim likewise, their
     menus offering Switch On and Hide, Hide docking them;
-  - the KEYS tab: its breakpoint dragged across onto whole notes and its depths up and down, each drag closing its
-    gesture, a curve switch making its side exponential (read off the rendered pixels), the edits undone one at a time,
+  - the KEYS tab: its breakpoint dragged across onto whole notes and its depths up and down by their handles on the
+    curve near its ends, each drag closing its gesture, a depth's handle held on the display's edge dragging from where
+    the depth was, a curve switch making its side exponential (read off the rendered pixels), the edits undone one at a time,
     a double-click putting the breakpoint back on C4, the newest voice's key as a dot on the curve and a hidden KEYS tab
     ringed while one of its knobs is modulated (read off the rendered pixels);
   - the UNISON tab starting on Alternate, its buttons picking the copies' curve (Supersaw) and pan (Ramp) and its
