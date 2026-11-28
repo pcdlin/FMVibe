@@ -752,7 +752,8 @@ private:
     bool legato_ = true;
     bool glideAlways_ = false;
     std::vector<HeldNote> held_; // keys down, oldest first; reserved in prepare()
-    double lastKey_ = -1.0;      // where the next glide starts when no voice is sounding (a key, as tuned)
+    // Where the next glide starts when no voice is sounding (a key, as tuned, which may be below 0); NaN for none yet.
+    double lastKey_ = std::numeric_limits<double>::quiet_NaN();
     // The tuning the notes play in (see setTuning()), and how far it puts a note's key off 12-TET, and whether it
     // leaves the key unmapped, asked with the channel the tuning takes for it.
     Tuning *tuning_ = nullptr;

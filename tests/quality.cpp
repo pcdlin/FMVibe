@@ -6828,6 +6828,46 @@ void dx7Checks() {
         std::printf("      rate 20: 40 dB down in %.2f s, %.2f wanted\n", seconds, want);
         check(std::abs(seconds / want - 1.0) < 0.05, "a DX7 envelope plays a decay longer than 10 s at its rate");
     }
+    // Let go at an L4 that isn't heard, held at it already (L3 0, L4 0, R4 0, the slowest wait), it is done at once
+    // rather than waiting there silent for R4's 40 s.
+    {
+        RateEnvelope::Settings s;
+        s.rates = {99.0, 99.0, 99.0, 0.0};
+        s.levels = {99.0, 99.0, 0.0, 0.0};
+        RateEnvelope env;
+        env.start();
+        env.prepare(s, kSampleRate, 0.0);
+        for (int i = 0; i < static_cast<int>(kSampleRate) && !env.holding(); ++i)
+            env.next();
+        const bool held = env.holding();
+        env.release();
+        env.prepare(s, kSampleRate, env.level());
+        int samples = 0;
+        while (!env.idle() && samples < static_cast<int>(60.0 * kSampleRate)) {
+            env.next();
+            ++samples;
+        }
+        std::printf("      let go at a silent L4: done after %d samples\n", samples);
+        check(held && samples < 256, "a Rate/Level envelope let go at a silent L4 it holds already is done at once");
+    }
+    // Played to L3, then (another envelope taking over, rearm()) picked up again: from where the operator is then, not
+    // from where it left off.
+    {
+        RateEnvelope::Settings s;
+        s.levels = {99.0, 99.0, 99.0, 0.0};
+        RateEnvelope env;
+        env.start();
+        env.prepare(s, kSampleRate, 0.0);
+        for (int i = 0; i < static_cast<int>(0.1 * kSampleRate); ++i)
+            env.next();
+        const double reached = env.level();
+        env.rearm();
+        env.prepare(s, kSampleRate, 0.25);
+        const double first = env.next();
+        std::printf("      rearmed at L3 (%.3f): picked up again at %.3f, the operator at 0.250\n", reached, first);
+        check(reached > 0.9 && std::abs(first - 0.25) < 0.05,
+              "a Rate/Level envelope switched back to starts from where the operator is");
+    }
     // Rate Scaling 7 an octave up, A4 to A5: its speed from 33 to 36 of the 64, the decay at rate 30 5/8 as long.
     {
         const dx7::Voice v = rateVoice([&](dx7::Voice &voice) {
@@ -7834,6 +7874,29 @@ void tuningChecks() {
         const double settled = semitones(hzBetween(on, 0.6 * second, second));
         std::printf("      retuned a semitone up mid-glide: settling on key %.3f\n", settled);
         check(std::abs(settled - 74.25) < 0.01, "a glide carries on to the note as it is retuned meanwhile");
+    }
+    // A glide from a key the tuning puts below MIDI pitch 0 (key 10, 20 semitones down) still glides: 50 ms into a
+    // 0.3 s glide to an A4 the note is far under it.
+    for (bool fromVoice : {true, false}) {
+        TestTuning tuning;
+        tuning.by[10] = -20.0;
+        Engine e(2);
+        e.synth().setTuning(&tuning, true);
+        e.synth().setPlayMode(true, true, !fromVoice); // legato from the voice, or Always from the last key
+        e.p[paramIndex(GlobalParam::Glide)] = normFromTime(0.3);
+        e.noteOn(10);
+        e.render(12000);
+        if (!fromVoice) { // let go, and rung out: the next glide starts from the last key
+            e.noteOff(10);
+            e.render(static_cast<size_t>(2.0 * second));
+        }
+        e.noteOn(69);
+        const std::vector<float> x = e.render(static_cast<size_t>(second));
+        const double early = semitones(hzBetween(x, 0.03 * second, 0.08 * second)),
+                     end = semitones(hzBetween(x, 0.6 * second, second));
+        std::printf("      gliding from a key tuned below pitch 0 (%s): key %.3f at 50 ms, %.3f at the end\n",
+                    fromVoice ? "legato" : "from the last key", early, end);
+        check(early < 66.0 && std::abs(end - 69.0) < 0.01, "a glide starts from a key tuned below MIDI pitch 0");
     }
     // An unmapped key plays nothing and its end is reported at once; in mono it doesn't take the voice over. The
     // channel the tuning is asked with is the note's, but none with MPE on.

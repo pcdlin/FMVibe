@@ -36,7 +36,7 @@ constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
                   kMacros * (1 + gui::kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 +
                   2 + kFxSplits + 1 + 5 + 1 + 3 + kMaxInfoAuthor + kMaxInfoCategory + kMaxInfoDescription + 1 +
-                  (kMaxSources - kFirstSources) * 2 + 1 + 2 * (1 + gui::kMaxTuningName) <=
+                  (kMaxSources - kFirstSources) * 2 + 1 + 2 * (1 + gui::kMaxTuningName) + 1 <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a

@@ -47,8 +47,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     steps a tick (1.45 ms, the DX7's 64 samples at 44.1 kHz) with the gain ramped across each tick, so no segment has
     a longest time: rate 0 takes minutes. Rate Scaling speeds every rate up for higher keys, by the key played
     (with the global Pitch), as the DX7's does. Done (let go and at L4), it fades out over 5 ms if L4 is heard, so
-    the voice ends. `RateEnvelope` in `src/rateenvelope.h`, which `Envelope` follows in a stage of its own, as a
-    drawn envelope; switched to another mode under a note, that one goes on from the level it is at. A new patch has
+    the voice ends; let go at an L4 that isn't heard, already there, it is done at once rather than waiting R4's time
+    silent. `RateEnvelope` in `src/rateenvelope.h`, which `Envelope` follows in a stage of its own, as a drawn
+    envelope; switched to another mode under a note, that one goes on from the level it is at, and switched back, it
+    starts again from where the operator is then (`RateEnvelope::rearm()`). A new patch has
     the DX7's INIT VOICE's: R 99 99 99 99, L 99 99 99 0. The DX7 importer plays every operator's envelope this way.
   - **Drawn envelopes** (EnvMode, ADSR to begin with): an operator's envelope can be a drawn curve instead of its
     AHDSR, a shape of up to 64 points (`opEnvShapeIndex()`, ids 81000 + 200·op) whose level goes from 0 at its

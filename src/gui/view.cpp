@@ -5832,6 +5832,7 @@ void View::paintTooltip(Canvas &c) {
             text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
             break;
         case PresetAction::ImportDx7: // only in the overflow menu, which shows its name
+        case PresetAction::ImportOverwrite: // the confirm dialog's alone
             break;
         }
     else if (hover_->kind == Kind::MoreButton)

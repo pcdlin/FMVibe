@@ -650,7 +650,11 @@ std::vector<Preset> presetsOf(const uint8_t *bytes, size_t size, const std::stri
         UiLayout layout;
         toPatch(voices[i], *values, layout);
         const std::string number = (i + 1 < 10 ? "0" : "") + std::to_string(i + 1);
-        std::string source = bank.substr(0, kMaxPresetDescription / 2);
+        // The bank's name (a file's, in UTF-8) cut between whole characters.
+        size_t cut = std::min(bank.size(), static_cast<size_t>(kMaxPresetDescription / 2));
+        while (cut > 0 && cut < bank.size() && (static_cast<unsigned char>(bank[cut]) & 0xC0) == 0x80)
+            --cut;
+        const std::string source = bank.substr(0, cut);
         layout.presetInfo.description = trf(Str::PresetDx7Voice, {number, source});
         // Its name in a file's: what a file's name can't hold replaced, and its number first, so two voices of a name
         // stay apart and the bank's order holds.

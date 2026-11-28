@@ -97,6 +97,17 @@ public:
         units_ = 0.0;
         gain_ = gainTo_ = step_ = 0.0;
     }
+    // Stopped where it is, and started again as a note would be (let go, if its key is up): an operator that played it
+    // and goes on with another envelope picks it up again from where that one is, not from where it left it.
+    void rearm() {
+        if (stage_ == Stage::Idle)
+            return;
+        const bool wasHeld = held_;
+        stop();
+        start();
+        if (!wasHeld)
+            release();
+    }
 
     bool idle() const { return stage_ == Stage::Idle && !startAsked_; }
     bool held() const { return held_; }
@@ -210,6 +221,11 @@ private:
         }
         const int i = segment_;
         target_ = levelUnits(settings_.levels[i]);
+        // Let go at an L4 that isn't heard, there already: done, rather than waiting there silent for R4's time.
+        if (i == 3 && std::abs(target_ - units_) < 0.5 && gainOf(target_) < 1e-4) {
+            enter(4);
+            return;
+        }
         rising_ = target_ > units_;
         waits_ = 0.0;
         if (std::abs(target_ - units_) < 0.5 || (i == 0 && settings_.levels[0] < 0.5))

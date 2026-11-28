@@ -438,7 +438,7 @@ void Synth::reset() {
     held_.clear();
     releaseKeys({-1, -1, -1, -1});
     seq_.reset();
-    lastKey_ = -1.0;
+    lastKey_ = std::numeric_limits<double>::quiet_NaN();
     freeLfos_ = {};
     cc_ = {};
     channelPressure_ = 0.0;
@@ -534,7 +534,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     // Glide starts wherever the newest voice is right now, bent as the sequencer bends its note, or at the last note.
     Voice *newest = newestVoice();
     const double from = newest ? newest->glide + newest->seqTune : lastKey_;
-    const bool glide = from >= 0.0 && (glideAlways_ || overlapping);
+    const bool glide = std::isfinite(from) && (glideAlways_ || overlapping); // a tuned pitch may be below 0
     const double retune = retuneOf(note);
     lastKey_ = note.key + retune;
 
@@ -3078,7 +3078,7 @@ FMVIBE_NOINLINE void Synth::followRates(Voice &v, int op, const double *p, const
     RateEnvelope &rates = v.rateEnvs[op];
     if (opEnvMode(p[paramIndex(op, OpParam::EnvMode)]) != OpEnvMode::Rates) {
         const bool held = rates.held();
-        rates.stop();
+        rates.rearm(); // switched back, it starts again from where the operator is then
         if (env.followingRates())
             env.unfollow(held);
         return;
@@ -3116,6 +3116,8 @@ FMVIBE_NOINLINE void Synth::followDrawn(Voice &v, int op, const double *p, const
                   p[paramIndex(op, OpParam::EnvSustain)] >= 0.5, env.level(), rate_,
                   slew > 0.0 ? timeFromNorm(slew) * rate_ : 0.0);
     env.follow(drawn);
+    // Switched from its Rate/Level envelope: that one starts again from where the operator is, should it come back.
+    v.rateEnvs[op].rearm();
 }
 
 void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params) {
