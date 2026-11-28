@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(FMVibe VERSION 0.17 LANGUAGES CXX)
+project(FMVibe VERSION 0.18 LANGUAGES CXX)
 
 # A pre-release's label (beta.1, rc.1), which goes after the version with a dash; empty for a release. release.ps1
 # sets it with -Prerelease and clears it for the release that follows.
