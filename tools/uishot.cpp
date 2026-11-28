@@ -109,6 +109,10 @@ public:
     PresetStore &presetStore() override { return *this; }
     void resetPreset() override { ++resets; }
     bool loadPreset(const std::wstring &) override { return false; }
+    // Import sysex: every file's folder exists already, from an earlier import.
+    bool importDx7(const std::wstring &) override { return ++sysexImports > 0; }
+    std::string existingDx7Folder(const std::wstring &) const override { return "Syx/rom1a"; }
+    int sysexImports = 0; // files imported (imports counts the dialogs asked for)
     // As the plugin does: a preset saved is the patch's preset, unchanged. Unless writing is to fail.
     bool savePreset(const std::wstring &path) override {
         ++writes;
@@ -1881,6 +1885,14 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.presetIndex() == -1 && renderer.save(view, dir / "22-preset-confirm.png"),
           "the next-preset arrow asks first while the patch has changed");
     click(view, {confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f});
+    // A sysex file into the folder an earlier import made: asked first in the confirm dialog, Overwrite imports it.
+    {
+        const bool asked = view.askImportOverwrite(L"rom1a.syx") && view.confirmShown() && model.sysexImports == 0;
+        check(asked && renderer.save(view, dir / "22-import-overwrite.png"),
+              "importing into an existing folder asks first");
+        click(view, {confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f});
+        check(!view.confirmShown() && model.sysexImports == 1, "Overwrite imports the file");
+    }
     click(view, nextPreset);
     const bool stepped = model.presetIndex() == 1;
     click(view, previousPreset);
@@ -17224,7 +17236,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // Import sysex asks first too while the patch has changed (its file still to be picked, so the shorter
     // dialog), and on an unchanged patch opens its dialog at once, Load's left alone.
     clickMenu(view, kMenuImport);
-    const bool importAsks = view.confirmShown() && model.imports == 0;
+    const bool importAsks = view.confirmShown() && model.sysexImports == 0;
     click(view, {shorter.right() - 64.0f, shorter.bottom() - 38.0f});
     const bool importAsked = model.imports == 1 && !view.confirmShown();
     const bool importChanged = model.patchEdited();

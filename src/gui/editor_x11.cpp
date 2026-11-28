@@ -956,15 +956,8 @@ void Editor::startPresetDialog(PresetDialog what) {
         if (save) {
             if (!store.savePreset(widePath(path)))
                 dialogs_->message("FMVibe", tr(Str::DialogWriteFailed), true, false);
-        } else if (const std::string existing = sysex ? store.existingDx7Folder(widePath(path)) : std::string();
-                   !existing.empty()) { // asked first, then imported
-            dialogs_->message("FMVibe", trf(Str::DialogDx7Overwrite, {existing}), true, true, [this, path](bool yes) {
-                if (!yes || !dialogs_)
-                    return;
-                if (!controller_.presetStore().importDx7(widePath(path)))
-                    dialogs_->message("FMVibe", tr(Str::DialogNotDx7), true, false);
-                invalidate();
-            });
+        } else if (sysex && view_.askImportOverwrite(widePath(path))) {
+            // into a folder an earlier import made: the editor's confirm dialog asks first, and imports it
         } else if (sysex ? !store.importDx7(widePath(path)) : !store.loadPreset(widePath(path))) {
             dialogs_->message("FMVibe", tr(sysex ? Str::DialogNotDx7 : Str::DialogNotPreset), true, false);
         }

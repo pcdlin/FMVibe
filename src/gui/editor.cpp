@@ -1083,12 +1083,10 @@ void Editor::browsePreset(PresetDialog what) {
     }
     if (picked->empty())
         return;
-    // Into a folder an earlier import made: asked first, since it overwrites what the folder holds.
-    if (const std::string existing = sysex ? store.existingDx7Folder(*picked) : std::string(); !existing.empty()) {
-        const int answer = MessageBoxW(hwnd_, widen(trf(Str::DialogDx7Overwrite, {existing})).c_str(), L"FMVibe",
-                                       MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2);
-        if (!guard.alive() || answer != IDOK)
-            return;
+    // Into a folder an earlier import made: the editor's confirm dialog asks first, and imports it.
+    if (sysex && view_.askImportOverwrite(*picked)) {
+        invalidate();
+        return;
     }
     if (save) {
         if (!store.savePreset(*picked))

@@ -174,14 +174,19 @@ public:
     // that partial paints don't pile them up.
     size_t cardsNoted() const { return cardRects_.size(); }
 
+    // The sysex file picked in Import sysex's dialog: where its presets' folder exists already, asks in the confirm
+    // dialog before importing it over the folder's files, and says true; else false, for the editor to import it.
+    bool askImportOverwrite(const std::wstring &path);
+
 private:
     using Kind = WidgetKind;
 
     // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
     // changed; Save As picks a file in the dialog, and is off for Init until it changes.
-    // ImportDx7 (the overflow menu's Import sysex, whose first voice replaces the patch as Load's file does)
+    // ImportDx7 (the overflow menu's Import sysex, whose first voice replaces the patch as Load's file does), and
+    // ImportOverwrite (the sysex file picked, into the folder an earlier import of it made: see askImportOverwrite()),
     // numbered past the panels' questions, which the confirm dialog tells apart from these (see confirm_).
-    enum class PresetAction { Init, Load, Save, SaveAs, ImportDx7 = 11 };
+    enum class PresetAction { Init, Load, Save, SaveAs, ImportDx7 = 11, ImportOverwrite = 12 };
     // Init, Load, Save, Save As or Import DX7 pressed, on the title bar or in the overflow menu: does nothing while it is greyed
     // out, and asks first where it would throw changes away or overwrite a preset's file.
     void pressPreset(PresetAction action);
@@ -881,8 +886,10 @@ private:
     // The PresetAction the confirm dialog asks about, a panel's kind, or -1. The panels' kinds are numbered apart from
     // the View's: the preset browser's 1, 8 and 9 (PresetBrowser::kConfirmLoad and on), the FX view's 4 to 6
     // (FxPanel::kConfirmFxClear and on), the SEQ view's 7 and 10 (SeqPanel::kConfirmClear and kConfirmOverwrite), and
-    // the View's Import DX7 11.
+    // the View's Import DX7 11 and Import overwrite 12.
     int confirm_ = -1;
+    std::wstring importPath_;  // the sysex file ImportOverwrite asks about
+    std::string importFolder_; // and the folder it overwrites (such as "Syx/rom1a")
     bool seqTabPressedShown_ = false; // the SEQ view showed as a view tab was last pressed (see doubleClick())
     Panel *confirmFrom_ = nullptr; // the panel that asked (see askConfirm()), or none for the View's own questions
     static_assert(FxPanel::kConfirmFxClear > static_cast<int>(PresetAction::SaveAs) &&

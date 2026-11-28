@@ -1035,6 +1035,8 @@ STR(ConfirmInit, "Initializes the current patch.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
+STR(ConfirmImportExists, "The folder already exists.") // Import sysex into the folder an earlier import made, titled ConfirmOverwriteTitle with the folder
+STR(ConfirmImportOverwrite, "Importing will overwrite all files in it.")
 STR(ConfirmFxClearTitle, "Really remove all FX?")
 STR(ConfirmFxClear, "All effects are removed.")
 STR(ConfirmSeqClearTitle, "Clear pattern {1}?")
@@ -1455,7 +1457,6 @@ STR(DialogDx7Files, "sysex (*.syx)")
 STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
-STR(DialogDx7Overwrite, "The folder \"{1}\" already exists. Importing will overwrite all files in it. Continue?") // asked before Import sysex saves into a folder an earlier import made
 STR(DialogNotDx7, "No voices in this file, or they could not be saved into the preset folder.")
 
 // --- The editor on Linux, where the dialogs are the desktop's (zenity, else kdialog)

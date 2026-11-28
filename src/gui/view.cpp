@@ -5142,8 +5142,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool lit = ok && (!words || words->lit); // none lit where no way is more likely than the others
         const Color ink = face(lit, kAccent);
         const Str ahead = confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
-                          : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
-                                                                             : Str::ButtonLoad;
+                          : confirm_ == static_cast<int>(PresetAction::Save) ||
+                                  confirm_ == static_cast<int>(PresetAction::ImportOverwrite)
+                              ? Str::ButtonOverwrite
+                              : Str::ButtonLoad;
         const std::string label = !ok          ? std::string(tr(Str::ButtonCancel))
                                   : words        ? words->ok // a panel's question's
                                                  : std::string(tr(ahead));
