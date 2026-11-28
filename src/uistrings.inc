@@ -609,7 +609,7 @@ STR(SourceNameOp, "Op {1}") // an operator's output as a modulation source
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 STR(PresetDx7Voice, "Voice {1} from {2}") // an imported voice's description: its place in the file, the file
-STR(PresetsDx7Folder, "Syx") // the folder of the preset folder imported DX7 files go into
+STR(PresetsDx7Folder, "Imported") // the folder of the preset folder imported DX7 files go into
 
 STR(ThemeMidnight, "Midnight")
 STR(ThemeLight, "Light")
@@ -1455,6 +1455,7 @@ STR(DialogDx7Files, "sysex (*.syx)")
 STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
+STR(DialogDx7Overwrite, "The folder \"{1}\" already exists. Importing will overwrite all files in it. Continue?") // asked before Import sysex saves into a folder an earlier import made
 STR(DialogNotDx7, "No voices in this file, or they could not be saved into the preset folder.")
 
 // --- The editor on Linux, where the dialogs are the desktop's (zenity, else kdialog)

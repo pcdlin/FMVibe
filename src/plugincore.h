@@ -99,10 +99,11 @@ public:
         return presetHasFile() && !presetFile().starts_with(PresetLibrary::kFactoryPrefix);
     }
     void choosePreset(gui::PresetDialog dialog) override;
-    // Imports a DX7 sysex file (see gui/dx7.h): each of its voices saved as a preset into the preset folder's Syx
-    // folder, in a folder named as the file (over the presets an earlier import of it saved), and the first loaded,
+    // Imports a DX7 sysex file (see gui/dx7.h): each of its voices saved as a preset into the preset folder's
+    // Imported folder, in a folder named as the file (over the presets an earlier import of it saved), and the first loaded,
     // so the preset bar's arrows step through the rest. False where it holds no voices or none could be saved.
     bool importDx7(const std::wstring &path) override;
+    std::string existingDx7Folder(const std::wstring &path) const override;
     void rescanPresets() override { // the favorites and categories other instances changed show along with their files
         presets_.rescan();
         readUserSettings();
@@ -314,6 +315,8 @@ protected:
     void startAtHostTempo();
 
 private:
+    // The preset folder's folder a sysex file's presets go into (see importDx7()).
+    static std::string dx7Folder(const std::wstring &path);
     void applyPlayMode();
     // Flush the audio thread's denormals to zero while a block is processed, and put its floating point back.
     void beginDenormals();

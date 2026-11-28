@@ -727,17 +727,9 @@ bool PluginCore::loadPreset(const std::wstring &chosen) {
     return loaded;
 }
 
-bool PluginCore::importDx7(const std::wstring &path) {
-    namespace fs = std::filesystem;
-    FILE *file = openPath(path, "rb");
-    if (!file)
-        return false;
-    std::vector<unsigned char> bytes;
-    unsigned char chunk[4096];
-    for (size_t got; (got = std::fread(chunk, 1, sizeof(chunk), file)) > 0 && bytes.size() < (16u << 20);)
-        bytes.insert(bytes.end(), chunk, chunk + got);
-    std::fclose(file);
-    // The folder its presets go into, named as the file, what a folder's name can't hold replaced.
+// The folder a sysex file's presets go into: the Imported folder's, named as the file, what a folder's name can't
+// hold replaced.
+std::string PluginCore::dx7Folder(const std::wstring &path) {
     std::string bank = utf8(pathOf(path).stem());
     for (char &c : bank)
         if (static_cast<unsigned char>(c) < 0x20 || std::strchr("\\/:*?\"<>|", c))
@@ -748,8 +740,29 @@ bool PluginCore::importDx7(const std::wstring &path) {
         bank.erase(bank.begin());
     if (!PresetLibrary::validName(bank))
         bank = "Import";
+    return std::string(tr(Str::PresetsDx7Folder)) + "/" + bank;
+}
+
+std::string PluginCore::existingDx7Folder(const std::wstring &path) const {
+    const std::string folder = dx7Folder(path);
+    const std::wstring file = PresetLibrary::presetFile(folder, "x"); // the folder's, as a file's would be in it
+    std::error_code error;
+    return !file.empty() && std::filesystem::is_directory(pathOf(file).parent_path(), error) ? folder : std::string();
+}
+
+bool PluginCore::importDx7(const std::wstring &path) {
+    namespace fs = std::filesystem;
+    FILE *file = openPath(path, "rb");
+    if (!file)
+        return false;
+    std::vector<unsigned char> bytes;
+    unsigned char chunk[4096];
+    for (size_t got; (got = std::fread(chunk, 1, sizeof(chunk), file)) > 0 && bytes.size() < (16u << 20);)
+        bytes.insert(bytes.end(), chunk, chunk + got);
+    std::fclose(file);
+    const std::string folder = dx7Folder(path);
+    const std::string bank = folder.substr(folder.rfind('/') + 1);
     const std::vector<gui::dx7::Preset> presets = gui::dx7::presetsOf(bytes.data(), bytes.size(), bank);
-    const std::string folder = std::string(tr(Str::PresetsDx7Folder)) + "/" + bank;
     std::wstring first;
     for (const gui::dx7::Preset &preset : presets) {
         const std::wstring target = PresetLibrary::presetFile(folder, preset.name);

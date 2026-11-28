@@ -322,6 +322,9 @@ public:
     virtual void choosePreset(PresetDialog dialog) = 0;
     // Imports a DX7 sysex file: its voices saved as presets and the first loaded. False where none could be.
     virtual bool importDx7(const std::wstring &) { return false; }
+    // The folder importDx7() would save a sysex file's presets into (such as "Imported/rom1a"), where it exists
+    // already, so the import overwrites what it holds; else empty.
+    virtual std::string existingDx7Folder(const std::wstring &) const { return {}; }
     // Whether presets are files that can be written (not in the browser demo, whose dialog only says so).
     virtual bool writesPresetFiles() const { return true; }
     // Whether Save can write over the patch's preset file: there is one (not Init), and it isn't a factory preset's,
