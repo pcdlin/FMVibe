@@ -8,6 +8,7 @@
 #include "lists.h"
 #include "routing.h"
 #include "theme.h"
+#include "tuningedits.h"
 #include "../effects.h"
 #include "../filter.h"
 #include "../uistrings.h"
@@ -51,6 +52,10 @@ const char *fxTitle(FxType type) {
 } // namespace detail
 
 namespace {
+// A file of the patch's own tuning as the overflow menu names it: its name, or Unnamed scale.
+std::string loadedName(const std::string &name) {
+    return name.empty() ? std::string(tr(Str::SettingsMtsUnnamed)) : name;
+}
 constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
 constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx, Str::ViewMods, Str::ViewSeq};
 static_assert(std::size(kViewNames) == std::size(kViewTabs));
@@ -1116,6 +1121,16 @@ bool View::poll() {
     controller_.setScope(inspector_.scopeShown(), controller_.layout().scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
+    // Where the tuning comes from, and its scale's name (MTS-ESP's only while it is on, which the controller sees to):
+    // the title bar's mark, or with the settings open, them too, and the overflow menu's tuning entries while it is
+    // open.
+    if (TuningStatus tuning = controller_.tuningStatus(); tuning != tuning_) {
+        tuning_ = std::move(tuning);
+        everywhere = everywhere || settingsOpen_;
+        in({0.0f, 0.0f, kWidth, kTitleBarH});
+        if (moreMenuOpen_)
+            in(moreMenu(true, true)); // as tall as it gets: the lines naming the files may come or go
+    }
     // Where the bend stands, and what the sequencer's curve adds to the mod wheel: the wheels.
     if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet || t.seqWheel != telemetry_.seqWheel)
         in(keyboardPanel(keyboardTop(), controller_.layout().keysCollapsed));
@@ -1936,6 +1951,8 @@ std::vector<View::Widget> View::widgets() const {
     }
     for (int redo = 0; redo < 2; ++redo)
         add(Kind::UndoButton, undoButton(redo), -1, redo);
+    if (tuning_.source == TuningSource::Master || tuning_.source == TuningSource::Patch)
+        add(Kind::TuningMark, kTuningMark);
     // A host that lets the editor set its tempo has the synth play its own always: no H there.
     if (!controller_.hasTempo())
         add(Kind::TempoSync, kTempoSync);
@@ -1951,12 +1968,16 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::PresetButton, toolbarButton(kToolbarSave), -1, static_cast<int>(PresetAction::Save));
     add(Kind::MoreButton, toolbarButton(kToolbarMore));
     // The overflow menu under it: Init, Load, Save, Save As (Save and Save As greyed out, and passed by, while they
-    // have nothing to save) and Import sysex, then the user manual and Settings.
+    // have nothing to save) and Import sysex, the patch's own tuning (each load's reset, over its row's right end, only
+    // while there is something to take out), then the user manual and Settings.
     if (moreMenuOpen_) {
+        const bool scale = patchHasScale(controller_), mapping = patchHasMapping(controller_);
         add(Kind::MoreMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
-        add(Kind::MoreMenu, moreMenu(), -1, 1);
+        add(Kind::MoreMenu, moreMenu(scale, mapping), -1, 1);
         for (int item = 0; item < kMoreItems; ++item) {
-            add(Kind::MoreMenuItem, moreMenuItem(item), -1, item);
+            if ((item == kMoreResetTuning && !scale) || (item == kMoreResetMapping && !mapping))
+                continue;
+            add(Kind::MoreMenuItem, moreMenuItem(item, scale, mapping), -1, item);
             list.back().disabled = item < kMoreImport && !presetActionOn(static_cast<PresetAction>(item));
         }
     }
@@ -4938,27 +4959,48 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         moreIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered || moreMenuOpen_));
         break;
     case Kind::MoreMenu:
-        if (w.a == 1) { // the menu's panel, a separator across it before the user manual and Settings: in the faint
-                        // text's color, as the border's barely parts from a popup's face in the dark themes
+        if (w.a == 1) { // the menu's panel, separators across it before the tuning's entries and before the user manual
+                        // and Settings: in the faint text's color, as the border's barely parts from a popup's face in
+                        // the dark themes
             paintMenuPanel(c, w.rect);
-            const float y = moreMenuItem(kMoreManual).y - kMoreLineH * 0.5f - 1.0f;
-            c.line({w.rect.x + 10.0f, y + 0.5f}, {w.rect.right() - 10.0f, y + 0.5f}, kFaint.alpha(0.7f), 1.0f);
+            const bool scale = patchHasScale(controller_), mapping = patchHasMapping(controller_);
+            for (const int after : {kMoreLoadTuning, kMoreManual}) {
+                const float y = moreMenuItem(after, scale, mapping).y - kMoreLineH * 0.5f - 1.0f;
+                c.line({w.rect.x + 10.0f, y + 0.5f}, {w.rect.right() - 10.0f, y + 0.5f}, kFaint.alpha(0.7f), 1.0f);
+            }
+            // Under each load, the file the patch has loaded, faint.
+            if (scale)
+                c.text(moreMenuName(false, scale, mapping), loadedName(controller_.layout().tuningName), kTextLabel,
+                       kFaint, Align::Left);
+            if (mapping)
+                c.text(moreMenuName(true, scale, mapping), loadedName(controller_.layout().mappingName), kTextLabel,
+                       kFaint, Align::Left);
         }
         break;
     case Kind::MoreMenuItem: { // the icon its button has (had, for Load, Save As and Settings; the user manual's the
-                               // settings dialog's book), then its name
+                               // settings dialog's book), then its name; the tuning's loads' resets an action of their
+                               // own at the row's right end (the file loaded named under it, with the menu's panel)
+        if (isMoreReset(w.a)) {
+            resetIcon(c, w.rect.center(), paintActionFace(c, w.rect, hovered));
+            break;
+        }
         paintMenuRow(c, w.rect, hovered, false);
         const Color ink = hovered ? kText : kDim;
         const Point icon{w.rect.x + 17.0f, w.rect.center().y};
-        static constexpr Str kNames[] = {Str::MenuInitPreset,   Str::MenuLoadPreset, Str::MenuSavePreset,
-                                         Str::MenuSavePresetAs, Str::MenuImportDx7,  Str::MenuUserManual,
+        static constexpr Str kNames[] = {Str::MenuInitPreset,   Str::MenuLoadPreset,  Str::MenuSavePreset,
+                                         Str::MenuSavePresetAs, Str::MenuImportDx7,   Str::MenuLoadTuning,
+                                         Str::MenuResetTuning,  Str::MenuLoadMapping, Str::MenuResetMapping,
+                                         Str::MenuUserManual,
                                          Str::MenuSettings};
         static_assert(std::size(kNames) == kMoreItems);
+        const std::string name = tr(kNames[w.a]);
         switch (w.a) {
         case static_cast<int>(PresetAction::Init):
             resetIcon(c, icon, ink);
             break;
         case static_cast<int>(PresetAction::Load):
+        case kMoreLoadTuning:
+        case kMoreLoadMapping:
             folderIcon(c, icon, ink);
             break;
         case static_cast<int>(PresetAction::Save):
@@ -4975,7 +5017,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             cogIcon(c, icon, ink);
             break;
         }
-        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(kNames[w.a]), kTextBody, ink, Align::Left);
+        const bool resettable = w.a == kMoreLoadTuning || w.a == kMoreLoadMapping; // room for the reset's button
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - (resettable ? 46.0f + w.rect.h : 46.0f), w.rect.h}, name,
+               kTextBody, ink, Align::Left);
         break;
     }
     case Kind::Octave: { // in a flat theme in a well, without an outline, as its switches
@@ -4997,17 +5041,23 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsOption:
     case Kind::SettingsMpe:
     case Kind::SettingsMpeRange:
+    case Kind::SettingsMts:
+    case Kind::SettingsMtsRetune:
     case Kind::SettingsHandles:
     case Kind::SettingsCards: {
-        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks
-        // (CARDS' buttons, disabled in a theme that outlines its cards, are dimmed by paintSettings()).
+        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, and RETUNE's while MTS-ESP is,
+        // though they still take clicks (CARDS' buttons, disabled in a theme that outlines its cards, are dimmed by
+        // paintSettings()).
         const bool on = w.kind == Kind::SettingsOption    ? controller_.oversampling() == w.b
                         : w.kind == Kind::SettingsCards   ? controller_.editorSettings().tintedCards == (w.b != 0)
                         : w.kind == Kind::SettingsMpe     ? controller_.mpe() == (w.b != 0)
+                        : w.kind == Kind::SettingsMts     ? controller_.mtsOn() == (w.b != 0)
+                        : w.kind == Kind::SettingsMtsRetune ? controller_.mtsContinuous() == (w.b != 0)
                         : w.kind == Kind::SettingsHandles ? std::clamp(controller_.editorSettings().handleSize, 0,
                                                                        kModHandleSizeCount - 1) == w.b
                                                           : controller_.mpeBendRange() == w.b;
-        const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
+        const bool faint = (w.kind == Kind::SettingsMpeRange && !controller_.mpe()) ||
+                           (w.kind == Kind::SettingsMtsRetune && !controller_.mtsOn());
         const Color accent = faint ? kDim : kAccent;
         paintButtonFace(c, w, on, hovered, accent, 0.22f, kRadiusControl); // in its row's pill, or on its own
         char factor[16];
@@ -5016,7 +5066,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                                Str::SettingsHandlesLarge};
         static_assert(std::size(kHandleSizes) == kModHandleSizeCount);
         const std::string label = w.kind == Kind::SettingsOption    ? std::string(factor)
-                                  : w.kind == Kind::SettingsMpe     ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
+                                  : w.kind == Kind::SettingsMpe || w.kind == Kind::SettingsMts
+                                      ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
+                                  : w.kind == Kind::SettingsMtsRetune
+                                      ? std::string(tr(w.b ? Str::SettingsMtsContinuous : Str::SettingsMtsNoteOn))
                                   : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
                                   : w.kind == Kind::SettingsCards
                                       ? std::string(tr(w.b ? Str::SettingsCardsTinted : Str::SettingsCardsPlain))
@@ -5075,6 +5128,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::SearchField: // the panels' own: the browser's and the MODS view's drawn by them
         break;
+    case Kind::TuningMark: { // a tuning fork on a tint of its color: the accent for a master, the text's for the patch's
+                             // own tuning; a mark, not a button, so unlit by the mouse
+        const Color color = tuning_.source == TuningSource::Master ? kAccent : kText;
+        c.fillRect(w.rect, color.alpha(0.14f), kRadiusControl);
+        c.strokeRect(w.rect.inset(0.5f), color.alpha(0.5f), 1.0f, kRadiusControl);
+        tuningForkIcon(c, w.rect.center(), color);
+        break;
+    }
     case Kind::TempoSync: { // a switch, lit while the synth follows the host's tempo
         const bool on = controller_.tempoSync();
         paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
@@ -5673,6 +5734,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::PresetButton &&
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::TempoBox && hover_->kind != Kind::TempoHost && hover_->kind != Kind::TempoSync &&
+         hover_->kind != Kind::TuningMark &&
          hover_->kind != Kind::MoreButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::SettingsManual &&
          hover_->kind != Kind::SettingsHue && hover_->kind != Kind::SettingsGlow &&
@@ -5686,6 +5748,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::DynBand &&
          hover_->kind != Kind::ListStep &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
+         !(hover_->kind == Kind::MoreMenuItem && isMoreReset(hover_->a)) &&
          !(hover_->kind == Kind::ListButton &&
            (isSlopeList(hover_->param) || isMidiInput(hover_->param) || isModelList(*hover_)))))
         return;
@@ -5743,6 +5806,10 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipTempoHost);
     else if (hover_->kind == Kind::TempoSync)
         text = tr(Str::TipTempoSync);
+    else if (hover_->kind == Kind::TuningMark) {
+        const std::string scale = tuning_.scale.empty() ? std::string(tr(Str::SettingsMtsUnnamed)) : tuning_.scale;
+        text = trf(tuning_.source == TuningSource::Master ? Str::TipTuningMaster : Str::TipTuningPatch, {scale});
+    }
     else if (hover_->kind == Kind::PresetButton)
         switch (static_cast<PresetAction>(hover_->a)) {
         case PresetAction::Init:
@@ -5766,6 +5833,8 @@ void View::paintTooltip(Canvas &c) {
         }
     else if (hover_->kind == Kind::MoreButton)
         text = tr(Str::TipMore);
+    else if (hover_->kind == Kind::MoreMenuItem) // a reset's button in the overflow menu
+        text = tr(hover_->a == kMoreResetTuning ? Str::MenuResetTuning : Str::MenuResetMapping);
     else if (hover_->kind == Kind::SettingsManual)
         text = tr(Str::TipManual);
     else if (hover_->kind == Kind::SettingsHue)
@@ -6907,6 +6976,10 @@ void View::mouseDown(Point p, Modifiers mods) {
             controller_.openManual();
         else if (w.a == kMoreSettings)
             settingsOpen_ = true;
+        else if (w.a == kMoreLoadTuning || w.a == kMoreLoadMapping)
+            controller_.chooseTuning(w.a == kMoreLoadMapping);
+        else if (w.a == kMoreResetTuning || w.a == kMoreResetMapping)
+            resetTuning(controller_, w.a == kMoreResetMapping);
         else
             pressPreset(static_cast<PresetAction>(w.a));
         break;
@@ -6954,6 +7027,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::SettingsMpeRange:
         controller_.setMpeBendRange(w.b);
+        break;
+    case Kind::SettingsMts:
+        controller_.setMtsOn(w.b != 0);
+        break;
+    case Kind::SettingsMtsRetune:
+        controller_.setMtsContinuous(w.b != 0);
         break;
     case Kind::SettingsTheme: {
         EditorSettings settings = controller_.editorSettings();
@@ -8406,6 +8485,7 @@ CursorKind View::cursor() const {
     case Kind::SaveBackdrop:
     case Kind::NameMenu:
     case Kind::TempoHost: // the host's tempo, which takes no edits
+    case Kind::TuningMark: // a mark, its tooltip alone
     // An open list's own panel and what is around it, where a click picks nothing (though around it, it closes it),
     // and a pill's list's rows, which only take a source's handle dropped on them.
     case Kind::SourceMenu:

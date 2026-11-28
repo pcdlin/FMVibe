@@ -403,6 +403,22 @@ int outOfMemoryProcess(const char *path) {
     return activated ? 0 : 15;
 }
 
+// The settings chunk's field `field` (see writeSettings() in src/state.cpp) in a state's bytes set to `value`: whether
+// it was there.
+bool setSetting(std::vector<uint8_t> &bytes, size_t field, float value) {
+    const uint8_t magic[] = {'S', 'E', 'T', 'G'}; // kSettingsMagic, little-endian
+    const auto at = std::search(bytes.begin(), bytes.end(), std::begin(magic), std::end(magic));
+    if (at == bytes.end() || static_cast<size_t>(bytes.end() - at) < 8)
+        return false;
+    const size_t first = static_cast<size_t>(at - bytes.begin()) + 8;
+    uint32_t fields = 0;
+    std::memcpy(&fields, bytes.data() + first - 4, 4);
+    if (field >= fields || first + 4 * (field + 1) > bytes.size())
+        return false;
+    std::memcpy(bytes.data() + first + 4 * field, &value, 4);
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -627,6 +643,14 @@ int main(int argc, char **argv) {
               maps[2].noteExpressionTypeID == vst3::kPressureTypeId,
           "X movement tunes a note, Y brightens it, pressure presses it");
 
+    // MTS-ESP, off to begin with, switched on through the state's settings chunk, for the MTS SysEx below.
+    {
+        MemoryStream saved;
+        const bool switchedOn = plugin.component->getState(&saved) == kResultOk && setSetting(saved.data, 5, 1.0f) &&
+                                (saved.pos = 0, plugin.component->setState(&saved) == kResultOk);
+        check(switchedOn, "a state's settings chunk switches MTS-ESP on");
+    }
+
     // --- Playing.
     ProcessSetup setup{kRealtime, kSample32, kBlock, kRate};
     check(plugin.processor->setupProcessing(setup) == kResultOk && plugin.component->setActive(true) == kResultOk &&
@@ -642,6 +666,27 @@ int main(int argc, char **argv) {
     std::vector<float> held = plugin.render(0.5);
     const double a4 = frequency(std::vector<float>(held.begin() + 4800, held.end()));
     check(peak(held) > 0.05 && std::abs(a4 - 440.0) < 2.0, "a note sounds, an A4 at 440 Hz");
+
+    // MTS SysEx in a data event (a single note tuning change, in real time to every device) retunes the held A4 a
+    // quarter tone up, as MTS-ESP retunes held notes, and back.
+    {
+        auto tuneA4 = [&](uint8 fraction) {
+            const uint8 message[] = {0xF0, 0x7F, 0x7F, 0x08, 0x02, 0x00, 0x01, 0x45, 0x45, fraction, 0x00, 0xF7};
+            Events events;
+            Changes changes;
+            Event e{};
+            e.type = Event::kDataEvent;
+            e.data.type = DataEvent::kMidiSysEx;
+            e.data.bytes = message;
+            e.data.size = sizeof(message);
+            events.events = {e};
+            plugin.process(events, changes);
+            return frequency(plugin.render(0.3));
+        };
+        const double up = tuneA4(0x40), back = tuneA4(0x00);
+        check(std::abs(up - 440.0 * std::exp2(0.5 / 12.0)) < 3.0 && std::abs(back - 440.0) < 3.0,
+              "MTS SysEx in a data event retunes a held note, and back");
+    }
 
     // The MIDI-mapped pitch bend param bends it two semitones (the default Bend Range).
     {

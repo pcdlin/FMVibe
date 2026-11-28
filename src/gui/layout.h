@@ -1558,19 +1558,45 @@ inline Rect toolbarButton(int i) {
     return {kFxPanel.right() - (kToolbarButtons - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
 }
 // The overflow menu, under its button, its right edge on the button's: Init, Load, Save and Save As (by
-// View::PresetAction) and Import sysex (kMoreImport), then, after a line, the user manual (kMoreManual) and
-// Settings (kMoreSettings).
-constexpr int kMoreImport = 4, kMoreManual = 5, kMoreSettings = 6, kMoreItems = 7;
+// View::PresetAction) and Import sysex (kMoreImport); after a line, the patch's own tuning: a scale or tuning file
+// loaded into it (kMoreLoadTuning), then a keyboard mapping loaded over it (kMoreLoadMapping), each row, while the patch
+// has one (`scale`, `mapping`), with a button at its right end that takes it out (kMoreResetTuning, kMoreResetMapping)
+// and a line under it naming its file; and after another line, the user manual (kMoreManual) and Settings
+// (kMoreSettings).
+constexpr int kMoreImport = 4, kMoreLoadTuning = 5, kMoreResetTuning = 6, kMoreLoadMapping = 7, kMoreResetMapping = 8,
+              kMoreManual = 9, kMoreSettings = 10, kMoreItems = 11;
+constexpr int kMoreRows = 9;
 constexpr float kMoreRowH = 26.0f, kMoreLineH = 9.0f;
-inline Rect moreMenu() {
-    const Rect button = toolbarButton(kToolbarMore);
-    constexpr float kW = 190.0f;
-    return {button.right() - kW, button.bottom() + 4.0f, kW, 8.0f + kMoreItems * kMoreRowH + kMoreLineH};
+constexpr float kMoreNameH = 18.0f; // the line naming a loaded file
+constexpr bool isMoreReset(int item) { return item == kMoreResetTuning || item == kMoreResetMapping; }
+// The row an entry is on: a reset on its load's.
+constexpr int moreMenuRow(int item) {
+    return item <= kMoreResetTuning    ? std::min(item, kMoreLoadTuning)
+           : item <= kMoreResetMapping ? kMoreLoadTuning + 1
+                                       : item - 2;
 }
-inline Rect moreMenuItem(int item) {
-    const Rect menu = moreMenu();
-    return {menu.x + 4.0f, menu.y + 4.0f + item * kMoreRowH + (item >= kMoreManual ? kMoreLineH : 0.0f), menu.w - 8.0f,
-            kMoreRowH - 2.0f};
+inline Rect moreMenu(bool scale = false, bool mapping = false) {
+    const Rect button = toolbarButton(kToolbarMore);
+    constexpr float kW = 240.0f;
+    const float names = ((scale ? 1.0f : 0.0f) + (mapping ? 1.0f : 0.0f)) * kMoreNameH;
+    return {button.right() - kW, button.bottom() + 4.0f, kW,
+            8.0f + kMoreRows * kMoreRowH + 2.0f * kMoreLineH + names};
+}
+// An entry's row, or a reset's button: square, at its row's right end.
+inline Rect moreMenuItem(int item, bool scale = false, bool mapping = false) {
+    const Rect menu = moreMenu(scale, mapping);
+    const float lines = (item >= kMoreLoadTuning ? kMoreLineH : 0.0f) + (item >= kMoreManual ? kMoreLineH : 0.0f);
+    const float names = (item >= kMoreLoadMapping && scale ? kMoreNameH : 0.0f) +
+                        (item >= kMoreManual && mapping ? kMoreNameH : 0.0f);
+    const Rect row{menu.x + 4.0f, menu.y + 4.0f + moreMenuRow(item) * kMoreRowH + lines + names, menu.w - 8.0f,
+                   kMoreRowH - 2.0f};
+    return isMoreReset(item) ? Rect{row.right() - row.h - 2.0f, row.y + 1.0f, row.h - 2.0f, row.h - 2.0f} : row;
+}
+// The line under a load's row naming the file loaded: the scale's, or (`ofMapping`) the keyboard mapping's, indented
+// past the row's name.
+inline Rect moreMenuName(bool ofMapping, bool scale, bool mapping) {
+    const Rect row = moreMenuItem(ofMapping ? kMoreLoadMapping : kMoreLoadTuning, scale, mapping);
+    return {row.x + 46.0f, row.bottom() - 2.0f, row.w - 56.0f, kMoreNameH - 2.0f};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {
@@ -1591,6 +1617,9 @@ constexpr Rect kTempoBox{kTempoSync.x + kTempoSync.w + 4.0f, kTitleRowY, 76.0f, 
 // shows.
 constexpr Rect kTitleSeqPreview{kTempoBox.x + kTempoBox.w + 4.0f, kTitleRowY, 26.0f, kTopRowH};
 static_assert(kTitleSeqPreview.x + kTitleSeqPreview.w + 4.0f <= kPresetName.x - 30.0f); // clear of the back arrow
+// Left of the H, while an MTS-ESP master or the patch's own tuning tunes the synth: a tuning fork, as large as the H,
+// its tooltip naming the tuning.
+constexpr Rect kTuningMark{kTempoSync.x - 28.0f, kTitleRowY, 24.0f, kTopRowH};
 // The octave shift: two small buttons under the keys' right end, the keys' range between them.
 inline Rect octaveButton(int dir, float top) {
     return {dir < 0 ? 1094.0f : 1162.0f, top + kKeys.y + kKeys.h + 2.0f, 14.0f, 12.0f};
@@ -1668,15 +1697,17 @@ inline double partialBarFromLevel(double level) {
 
 // The settings dialog, centered over the editor: its title, then its tabs, VISUAL and ENGINE, on a line across it
 // (kSettingsBodyY down), and under them what the tab shown holds: VISUAL's THEME heading and themes, then its sliders
-// and buttons (from kSettingsLookY), ENGINE's OVERSAMPLING, then MPE (kSettingsMpeY down), and on both the version
-// and the license at the bottom. One height for both tabs, VISUAL's.
+// and buttons (from kSettingsLookY), ENGINE's OVERSAMPLING, then MPE (kSettingsMpeY down) and TUNING (kSettingsTuningY
+// down), and on both the version and the license at the bottom. One height for both tabs, ENGINE's, the taller.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 431.0f;
-constexpr float kSettingsBodyY = 81.0f;                   // the line under the tabs
-constexpr float kSettingsMpeY = kSettingsBodyY + 134.0f;  // the divider above MPE
-constexpr float kSettingsLookY = kSettingsBodyY + 2.0f;   // VISUAL's rows are placed from here
-constexpr float kSettingsFootY = kSettingsH - 44.0f;      // the line above the version and the license
-constexpr int kSettingsVisualTab = 0;                     // the tabs, left to right; the dialog opens on the first
+constexpr float kSettingsH = 480.0f;
+constexpr float kSettingsBodyY = 81.0f;                    // the line under the tabs
+constexpr float kSettingsMpeY = kSettingsBodyY + 134.0f;   // the divider above MPE
+constexpr float kSettingsTuningY = kSettingsMpeY + 110.0f; // above TUNING
+constexpr float kSettingsLookY = kSettingsBodyY + 2.0f;    // VISUAL's rows are placed from here
+constexpr float kSettingsFootY = kSettingsH - 44.0f;       // the line above the version and the license
+static_assert(kSettingsTuningY + 100.0f + 8.0f <= kSettingsFootY); // TUNING's lines clear of the foot
+constexpr int kSettingsVisualTab = 0;                      // the tabs, left to right; the dialog opens on the first
 constexpr int kSettingsEngineTab = 1;
 constexpr int kSettingsTabCount = 2;
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -1700,6 +1731,16 @@ inline Rect settingsMpeBendLabel(Rect panel) {
 }
 inline Rect settingsMpeRange(Rect panel, int i) {
     return {panel.x + 190.0f + i * 42.0f, panel.y + kSettingsMpeY + 30.0f, 38.0f, 28.0f};
+}
+// TUNING's MTS-ESP Off (0) and On (1), then RETUNE and its Note On (0) and Continuous (1) on the same row.
+inline Rect settingsMts(Rect panel, int on) {
+    return {panel.x + 24.0f + on * 56.0f, panel.y + kSettingsTuningY + 30.0f, 52.0f, 28.0f};
+}
+inline Rect settingsMtsRetuneLabel(Rect panel) {
+    return {panel.x + 146.0f, panel.y + kSettingsTuningY + 30.0f, 56.0f, 28.0f};
+}
+inline Rect settingsMtsRetune(Rect panel, int continuous) {
+    return {panel.x + 202.0f + continuous * 78.0f, panel.y + kSettingsTuningY + 30.0f, 74.0f, 28.0f};
 }
 inline Rect settingsTheme(Rect panel, int i) {
     const float w = (panel.w - 48.0f + 6.0f) / kThemeCount;

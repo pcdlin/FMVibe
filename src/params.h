@@ -450,6 +450,39 @@ constexpr int kSeqCurves = static_cast<int>(SeqCurve::Count);
 constexpr int kSeqFirstCurves = static_cast<int>(SeqCurve::Macro1); // the curves the patterns had at first
 constexpr int kSeqCurveParamCount = static_cast<int>(SeqCurveParam::Count);
 constexpr int kSeqNoteBendParamCount = static_cast<int>(SeqNoteBendParam::Count);
+
+// A tuning of the patch's own, from the files the editor loads (see tuningfile.h): its scale, from a .scl, .ascl or .tun
+// (how many degrees, 0 for none: 12-TET; each degree's cents above the first, the period the last; and where it plays
+// with no keyboard mapping), then its keyboard mapping, from a .kbm (on or not, and the file's fields). Only ever read
+// as set and hidden from hosts, as the drawn shapes are. Stored by id: only append.
+constexpr int kMaxTuningDegrees = 128; // a scale's degrees, its period among them
+constexpr int kMaxMapKeys = 128;       // a keyboard mapping's entries
+enum class TuningParam {
+    Degrees,   // the scale's degrees, its period the last; 0: none, 12-TET
+    Middle,    // with no keyboard mapping: the key degree 0 plays on,
+    RefKey,    // the key that plays at RefHz,
+    RefHz,
+    MapOn,     // a keyboard mapping loaded
+    MapSize,   // its entries; 0: linear, a key playing as many degrees from degree 0 as it is from MapMiddle
+    MapFirst,  // the lowest and highest keys it plays (the rest unmapped)
+    MapLast,
+    MapMiddle, // the key its first entry plays on
+    MapRefKey, // the key that plays at MapRefHz
+    MapRefHz,
+    MapOctave, // how many degrees its entries move by each time round them (0: the scale's)
+    Degree,    // kMaxTuningDegrees: each degree's cents above degree 0, the period at Degrees - 1
+    Map = Degree + kMaxTuningDegrees, // kMaxMapKeys: the degree each entry plays, -1 for none (the key unmapped)
+    Count = Map + kMaxMapKeys,
+};
+constexpr int kTuningParamCount = static_cast<int>(TuningParam::Count);
+// Scala's reference with no keyboard mapping: middle C, at its 12-TET pitch, degree 0 on it.
+constexpr int kTuningMiddle = 60;
+constexpr double kTuningMiddleHz = 261.62556530059862; // 440 * 2^(-9/12)
+// What the fields hold at most: a reference's frequency, a degree's cents (a .tun's last key is some 127 semitones
+// over its first) and the degree a mapping's entry plays.
+constexpr double kMinTuningHz = 0.001, kMaxTuningHz = 1.0e6;
+constexpr double kMaxTuningCents = 1.0e6;
+constexpr double kMaxMapDegree = 1023.0;
 // Steps a beat (a quarter note) at each rate.
 constexpr double kSeqStepsPerBeat[] = {1.0, 4.0 / 3.0, 2.0, 8.0 / 3.0, 3.0, 4.0, 6.0, 8.0};
 static_assert(std::size(kSeqStepsPerBeat) == static_cast<size_t>(SeqRate::Count));
@@ -1081,7 +1114,9 @@ constexpr int kSeqMacroCurveBase = kSeqCurveBase + kSeqPatterns * kSeqFirstCurve
 constexpr int kSeqNoteBendBase = kSeqMacroCurveBase + kSeqPatterns * kMacros * kSeqCurveParamCount;
 // The operators' drawn envelopes' shapes (see OpParam::EnvMode), each laid out as a freeform shape (see ShapeParam).
 constexpr int kOpEnvShapeBase = kSeqNoteBendBase + kSeqPatterns * kSeqNotes * kSeqNoteBendParamCount;
-constexpr int kParamCount = kOpEnvShapeBase + kOps * kShapeParamCount;
+// The patch's own tuning (see TuningParam).
+constexpr int kTuningBase = kOpEnvShapeBase + kOps * kShapeParamCount;
+constexpr int kParamCount = kTuningBase + kTuningParamCount;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -1090,6 +1125,9 @@ constexpr int kVoiceParamCount = kFxBase;
 
 constexpr int paramIndex(GlobalParam p) { return static_cast<int>(p); }
 constexpr int paramIndex(SeqParam p) { return kSeqBase + static_cast<int>(p); }
+constexpr int paramIndex(TuningParam p) { return kTuningBase + static_cast<int>(p); }
+constexpr int tuningDegreeIndex(int degree) { return paramIndex(TuningParam::Degree) + degree; }
+constexpr int tuningMapIndex(int entry) { return paramIndex(TuningParam::Map) + entry; }
 // Swing, Gate, Velocity and Humanize, then the pattern picked: the sequencer's settings that modulation moves, as it
 // moves the effects (the pattern in whole steps). Past kModulatedCount, which the voices and the effects read, they
 // take the host's and the macros' modulation and the newest voice's slots (or the last one's as the effects ring out)
@@ -1809,6 +1847,8 @@ constexpr Section kSections[] = {
     {kSeqNoteBendBase, kSeqPatterns * kSeqNotes, kSeqNoteBendParamCount, 64000, 32},
     // The operators' drawn envelopes' shapes.
     {kOpEnvShapeBase, kOps, kShapeParamCount, 81000, 200},
+    // The patch's own tuning.
+    {kTuningBase, 1, kTuningParamCount, 84000, 300},
     // The operators as sources.
     {kOpSourceBase, kOps, kOpSourceParamCount, 57000, 40},
 };
@@ -2220,6 +2260,11 @@ static_assert(idOfIndex(paramIndex(kFirstSources, SourceParam::Type)) == 58000 &
 static_assert(idOfIndex(opEnvShapeIndex(0)) == 81000 &&
                   idOfIndex(shapeFieldIndex(opEnvShapeIndex(kOps - 1), kMaxShapePoints - 1, PointField::Curve)) == 82192,
               "the operators' drawn envelopes' param ids moved");
+static_assert(idOfIndex(paramIndex(TuningParam::Degrees)) == 84000 &&
+                  idOfIndex(paramIndex(TuningParam::MapOctave)) == 84011 && idOfIndex(tuningDegreeIndex(0)) == 84012 &&
+                  idOfIndex(tuningMapIndex(0)) == 84140 && idOfIndex(tuningMapIndex(kMaxMapKeys - 1)) == 84267 &&
+                  kTuningParamCount == 268,
+              "the tuning's param ids moved");
 static_assert(idOfIndex(routeModeIndex(0, 0)) == 700 && idOfIndex(routeModeIndex(1, 0)) == 710 &&
                   idOfIndex(routeModeIndex(kRouteSources - 1, kOps - 1)) == 795,
               "route mode param ids moved");

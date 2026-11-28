@@ -229,6 +229,7 @@ STR(ModuleFx, "FX")
 STR(ModuleModulation, "Modulation")
 STR(ModuleMatrix, "Matrix")
 STR(ModuleSequencer, "Sequencer")
+STR(ModuleTuning, "Tuning")
 
 STR(ParamVolume, "Volume")
 STR(ParamFmAmount, "FM Amount")
@@ -566,6 +567,21 @@ STR(ParamSeqNoteBend, "Bend") // a note's own pitch bend, in its params' names
 STR(ParamSeqBendCurve, "Bend Curve") // a pattern's pitch bend curve, in its params' names
 STR(ParamSeqWheelCurve, "Mod Wheel Curve")
 STR(ParamSeqMacroCurve, "Macro {1} Curve")
+// The patch's own tuning's params (see TuningParam), which hosts aren't given.
+STR(ParamTuningDegrees, "Tuning Degrees")
+STR(ParamTuningMiddle, "Tuning Middle Key")
+STR(ParamTuningRefKey, "Tuning Reference Key")
+STR(ParamTuningRefHz, "Tuning Reference Frequency")
+STR(ParamTuningDegree, "Tuning Degree {1}")
+STR(ParamMapOn, "Mapping On")
+STR(ParamMapSize, "Mapping Size")
+STR(ParamMapFirst, "Mapping First Key")
+STR(ParamMapLast, "Mapping Last Key")
+STR(ParamMapMiddle, "Mapping Middle Key")
+STR(ParamMapRefKey, "Mapping Reference Key")
+STR(ParamMapRefHz, "Mapping Reference Frequency")
+STR(ParamMapOctave, "Mapping Octave Degree")
+STR(ParamMapEntry, "Mapping Entry {1}")
 
 // --- The host's remote control pages, and the plugin's ports
 
@@ -918,6 +934,17 @@ STR(SettingsMpeBend, "BEND") // the member channels' bend range, beside its butt
 STR(SettingsMpeRange, "{1} st") // a bend range in semitones, on its button
 STR(SettingsMpeWhat, "Requires MPE in the host, unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
+STR(SettingsTuning, "TUNING (MTS-ESP)")
+STR(SettingsMtsRetune, "RETUNE") // beside Note On | Continuous
+STR(SettingsMtsNoteOn, "Note On") // a note keeps the tuning it started in
+STR(SettingsMtsContinuous, "Continuous") // held notes follow the tuning as it changes
+STR(SettingsMtsOff, "Off: ignores MTS-ESP masters and MTS SysEx.")
+STR(SettingsMtsNone, "No MTS-ESP master. MTS SysEx can retune it too.")
+STR(SettingsMtsMaster, "Connected to MTS-ESP:") // before the scale's name
+STR(SettingsMtsSysEx, "Tuned by MTS SysEx:") // before the scale's name
+STR(SettingsMtsUnnamed, "Unnamed scale")
+STR(SettingsMtsUnavailable, "MTS-ESP not supported in the browser demo.")
+STR(SettingsMtsSaved, "Not stored in presets.")
 STR(SettingsTheme, "THEME") // the heading over the settings dialog's theme buttons
 STR(SettingsHue, "HUE") // the theme's main color, beside its slider
 STR(SettingsHueDefault, "Default") // the hue slider left at the theme's own color, after it
@@ -1221,17 +1248,23 @@ STR(TipPresetName, "Browse Presets")
 STR(TipTempo, "Tempo for synced LFOs and effects. Drag, scroll or double-click to type")
 STR(TipTempoHost, "Host tempo, for synced LFOs and effects")
 STR(TipTempoSync, "Sync to host tempo")
+STR(TipTuningMaster, "Tuned by MTS-ESP: {1}") // the title bar's tuning fork, {1} the scale's name
+STR(TipTuningPatch, "Tuning from the patch: {1}")
 STR(TipInit, "Initialize patch")
 STR(TipLoad, "Load preset")
 STR(TipSave, "Save changes to {1}")
 STR(TipSaveUnchanged, "No changes to save")
 STR(TipSaveAs, "Save as a new preset")
-STR(TipMore, "More: load, save, settings") // the overflow menu's button after Init and Save
+STR(TipMore, "More") // the overflow menu's button after Init and Save
 STR(MenuInitPreset, "Init preset") // the overflow menu's entries, each beside its icon
 STR(MenuLoadPreset, "Load preset...")
 STR(MenuSavePreset, "Save preset")
 STR(MenuSavePresetAs, "Save preset as...")
 STR(MenuImportDx7, "Import sysex...") // DX7 voices from a sysex file, each saved as a preset
+STR(MenuLoadTuning, "Load custom tuning...") // a .scl, .ascl or .tun file into the patch
+STR(MenuResetTuning, "Reset tuning") // the button at Load tuning's right end, back to 12-TET: its tooltip
+STR(MenuLoadMapping, "Load keyboard mapping...") // a .kbm over the patch's scale
+STR(MenuResetMapping, "Reset keyboard mapping") // likewise at Load keyboard mapping's right end
 STR(MenuUserManual, "User manual") // opens the user manual in the web browser
 STR(MenuSettings, "Settings")
 STR(TipManual, "Open the user manual") // the book in the settings dialog's title row, which opens it online
@@ -1456,6 +1489,18 @@ STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
 STR(DialogNotDx7, "No voices in this file, or they could not be saved into the preset folder.")
+STR(DialogLoadTuning, "Load tuning")
+STR(DialogLoadMapping, "Load keyboard mapping")
+STR(DialogTuningFiles, "Tuning files (*.scl, *.ascl, *.tun)")
+STR(DialogMappingFiles, "Keyboard mappings (*.kbm)")
+// Why a tuning file didn't load, in a message box.
+STR(TuningUnreadable, "Could not read the file.")
+STR(TuningUnknownFile, "Not a tuning file: supports .scl, .ascl, .tun or .kbm.")
+STR(TuningNotScale, "Not a Scala scale.")
+STR(TuningTooManyNotes, "The scale has more than 128 notes.")
+STR(TuningNotAnaMark, "Not an AnaMark tuning.")
+STR(TuningNotMapping, "Not a Scala keyboard mapping.")
+STR(TuningMapTooLong, "The keyboard mapping has more than 128 keys.")
 
 // --- The editor on Linux, where the dialogs are the desktop's (zenity, else kdialog)
 
@@ -1466,6 +1511,7 @@ STR(LinuxNoDialogTool, "install zenity or kdialog for file dialogs")
 // --- The browser demo, which has no files
 
 STR(DemoNoFiles, "No file access in the demo. Click the preset name for factory presets.")
+STR(DemoNoTuningFiles, "Loading files not supported in the browser demo.")
 STR(DemoPresetFolder, "Built-in factory presets")
 
 // --- The MODS view: every modulation as a row, and the cascading menus of its rows

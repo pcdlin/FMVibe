@@ -43,7 +43,7 @@ FMVibe works in the spirit of classic and modern FM synthesizers. Its main featu
 - **Effects**: up to 32 effects from 17 types, in a chain that can be split into frequency bands.
 - **A step sequencer** with a piano roll, four patterns per preset and automation curves.
 - **Presets** with a browser, categories, favorites and search, and a library of factory presets.
-- MPE support, CLAP per-voice modulation, and a resizable UI with four themes.
+- MPE support, microtuning (MTS-ESP, Scala and AnaMark files), CLAP per-voice modulation, and a resizable UI with four themes.
 
 ## 2. Installation
 
@@ -140,6 +140,8 @@ Tabs use two small marks in their top-right corner, with the same meaning everyw
 
 From left to right:
 
+- **A tuning fork**, while an MTS-ESP master or the patch's own tuning plays. Hover it to see the scale's name. See
+  [Microtuning (MTS-ESP)](#microtuning-mts-esp).
 - **Tempo**, with its **H** button: see [Tempo](#tempo).
 - **Play** (a triangle), right of the tempo, only while the sequencer is on: plays the sequencer's pattern from the
   start of its loop, from any view. It is the SEQ card's Play button: while the pattern plays it shows a lit square,
@@ -150,8 +152,9 @@ From left to right:
 - **Undo** and **Redo** (curved arrows). Hovering one shows what it would undo or redo.
 - **Init** and **Save** (a disk).
 - The **...** button, which opens a menu with **Init preset**, **Load preset...**, **Save preset**,
-  **Save preset as...**, **Import sysex...** (see [Importing DX7 voices](#importing-dx7-voices)), **User manual**
-  (opens this manual in your web browser) and **Settings**. See [Presets](#14-presets) and [Settings](#15-settings).
+  **Save preset as...**, **Import sysex...** (see [Importing DX7 voices](#importing-dx7-voices)), **Load custom
+  tuning...** and **Load keyboard mapping...** (see [Tuning files](#tuning-files)), **User manual** (opens this manual
+  in your web browser) and **Settings**. See [Presets](#14-presets) and [Settings](#15-settings).
 
 ### Tempo
 
@@ -1477,6 +1480,32 @@ Slide to route these to the sound. With MPE off, every channel's messages affect
 
 MPE is saved with your project but not with presets, so browsing presets leaves it as it is.
 
+### Microtuning (MTS-ESP)
+
+FMVibe plays in the tuning an **MTS-ESP** master plugin sets, such as ODDSound's free MTS-ESP Mini:
+
+1. Put the master plugin on any track of your project.
+2. In FMVibe's settings, switch **Tuning (MTS-ESP)** on.
+3. Load a scale in the master.
+
+With MTS-ESP on, FMVibe also follows **MTS SysEx** messages sent to its MIDI input. Operators set to a fixed pitch
+ignore the tuning, and keys the tuning leaves unmapped play nothing.
+
+**Retune** in the settings: on **Continuous** (the default), held notes follow a tuning change. On **Note On**, each
+note keeps the tuning it started with.
+
+### Tuning files
+
+A patch can have its own tuning, which presets and projects keep. In the title bar's **...** menu:
+
+- **Load custom tuning...** loads a Scala (`.scl`, `.ascl`) or AnaMark (`.tun`) scale. Without a keyboard mapping, a
+  Scala scale starts on middle C.
+- **Load keyboard mapping...** loads a Scala keyboard mapping (`.kbm`): which key plays which note, and the reference
+  pitch.
+
+The reset button at the end of each entry removes the file. A connected MTS-ESP master wins over the patch's tuning:
+to hear the patch's tuning, switch **Tuning (MTS-ESP)** off.
+
 ## 14. Presets
 
 ### The library
@@ -1540,7 +1569,7 @@ are shared by all FMVibe instances.
 - **Init** (also **Init preset** in the **...** menu) resets the patch to its defaults.
 
 A preset file contains the whole patch, including the plugin window's layout, macro names and sequencer patterns. It
-does not contain the instance settings (oversampling and MPE).
+does not contain the instance settings (oversampling, MPE and the MTS-ESP settings).
 
 ### Importing DX7 voices
 
@@ -1647,6 +1676,8 @@ your web browser. The dialog has two tabs: **Visual** and **Engine**.
 - **Oversampling**: 1x, 2x (default), 4x or 8x for the voices. Higher values reduce aliasing in bright FM and driven
   filters at the cost of CPU. Changing it restarts the plugin briefly.
 - **MPE**: Off or On, and the **Bend** range for MPE member channels (12, 24, 48 or 96 semitones).
+- **Tuning (MTS-ESP)**: Off (default) or On, and **Retune**: Note On or Continuous (default). See
+  [Microtuning (MTS-ESP)](#microtuning-mts-esp).
 
 Double-click a slider to reset it. Enter or Escape closes the dialog.
 
@@ -1736,7 +1767,7 @@ In hosts that show CLAP remote control pages (such as Bitwig Studio), FMVibe off
 
 ### VST3 specifics
 
-- MIDI controllers, pressure, pitch bend, MIDI sources and MPE work as in the CLAP version.
+- MIDI controllers, pressure, pitch bend, MIDI sources, MPE and MTS SysEx work as in the CLAP version.
 - Note expressions: Volume, Pan, Tuning, Brightness (a note's slide) and Pressure.
 - Parameters are grouped (Operators, Op A, Filters and so on).
 - VST3 has no per-voice host modulation and no remote control pages; automate parameters instead.
@@ -1754,8 +1785,8 @@ stops held notes.
 
 | Saved in | Contents |
 | --- | --- |
-| Presets and projects | The whole patch: parameters, routing and its layout, modulation, effects, sequencer patterns, macro names, preset info. |
-| Projects only | Oversampling, MPE settings, the preset the patch came from and whether it changed. |
+| Presets and projects | The whole patch: parameters, routing and its layout, modulation, effects, sequencer patterns, macro names, preset info, the tuning loaded from files. |
+| Projects only | Oversampling, MPE and MTS-ESP settings, the preset the patch came from and whether it changed. |
 | Personal settings file | Theme, hue, glow, lines, grid, handle size, window size, whether the keyboard strip is collapsed, favorites, recent presets, your categories, where the browser opens. |
 
 On Windows the preset folder is `Documents\FMVibe\presets` and the settings file `%APPDATA%\FMVibe\settings.txt`. On

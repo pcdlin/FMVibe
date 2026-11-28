@@ -35,7 +35,8 @@ constexpr uint32_t kMaxLayoutFloats = 4096;
 constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
                   kMacros * (1 + gui::kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 +
-                  2 + kFxSplits + 1 + 5 + 1 + 3 + kMaxInfoAuthor + kMaxInfoCategory + kMaxInfoDescription + 1 <=
+                  2 + kFxSplits + 1 + 5 + 1 + 3 + kMaxInfoAuthor + kMaxInfoCategory + kMaxInfoDescription + 1 +
+                  (kMaxSources - kFirstSources) * 2 + 1 + 2 * (1 + gui::kMaxTuningName) <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a
@@ -93,6 +94,9 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    nothing, playing as they played (see fixedIgnoredPitch()).
 //    And an operator's feedback has a mode (FeedbackMode), its route into itself's mode param, which held nothing: an
 //    earlier state's loads Smooth, as it played, whatever the param held.
+//    And a patch may have a tuning of its own, from a Scala, Ableton or AnaMark file and a keyboard mapping (see
+//    TuningParam), and the layout the names of the files. An earlier state has none and loads as it was saved; the
+//    version's rise has an earlier build refuse a state whose tuning it would play in 12-TET.
 // One version a release at most: what changes between two tagged releases goes into a single step, so the version
 // rises once from one release to the next (see AGENTS.md, Plugin facts).
 constexpr uint32_t kStateVersion = 18;
@@ -405,6 +409,9 @@ void layoutFields(Io &io, Layout &ui) {
     io.bits(ui.sourcesFolded, kFirstSources);
     // Whether the SEQ view's roll bends notes (its Bend tool).
     io.number(ui.seqBend, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    // The names of the files the patch's own tuning came from: its scale's and its keyboard mapping's.
+    io.text(ui.tuningName, gui::kMaxTuningName);
+    io.text(ui.mappingName, gui::kMaxTuningName);
 }
 
 } // namespace
@@ -920,7 +927,8 @@ bool writeSettings(const clap_ostream_t *stream, const Settings &settings) {
     // Settings chunk fields, in order; later versions only append.
     const float stored[] = {static_cast<float>(settings.oversampling), settings.mpe ? 1.0f : 0.0f,
                             static_cast<float>(settings.mpeBendRange), settings.tempoSync ? 1.0f : 0.0f,
-                            static_cast<float>(gui::clampTempo(settings.ownTempo))};
+                            static_cast<float>(gui::clampTempo(settings.ownTempo)), settings.mts ? 1.0f : 0.0f,
+                            settings.mtsContinuous ? 1.0f : 0.0f};
     const uint32_t settingsChunk[] = {kSettingsMagic, static_cast<uint32_t>(std::size(stored))};
     return writeAll(stream, settingsChunk, sizeof(settingsChunk)) && writeAll(stream, stored, sizeof(stored));
 }
@@ -939,6 +947,8 @@ Settings readSettings(const clap_istream_t *stream) {
     static_assert(Settings{}.ownTempo == gui::kDefaultTempo);
     settings.tempoSync = field(3, 1.0f) >= 0.5f; // a project from before it follows the host, as it did
     settings.ownTempo = gui::clampTempo(field(4, static_cast<float>(gui::kDefaultTempo)));
+    settings.mts = field(5, 0.0f) >= 0.5f;
+    settings.mtsContinuous = field(6, 1.0f) >= 0.5f;
     return settings;
 }
 
