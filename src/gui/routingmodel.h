@@ -27,6 +27,8 @@ public:
     bool nodeShown(int node) const;
     bool nodeDim(int node) const { return nodeShown(node) && !nodeOn(node); }
     void hideNode(int node);
+    // Clears the hidden mark of every node that is on (see routingmodel.cpp).
+    void unhideOnNodes();
     // A node's center in the editor, from where the layout puts it in the graph.
     Point nodeCenter(int node) const;
     // Where a node dragged to `want` goes: there, unless it would cover another node shown (see routingmodel.cpp).

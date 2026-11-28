@@ -12129,6 +12129,28 @@ void testDimNode(const std::filesystem::path &dir, Renderer &renderer) {
     check(filterDims && shaperDims && filterHidden && f2Ghost,
           "a filter and a shaper switched off that are still wired show dim, their menus offering Switch On and Hide, "
           "Hide docking them, and one off with no routes stays a ghost");
+    // E, off and wired into A, shows dim, and F, off and wired only into E, with it. Hide docks E, and F with it, as
+    // disconnecting E's route would; a host switching E on clears its mark, so switched off again it shows dim.
+    const int e = 4, f = 5;
+    model.set(paramIndex(e, OpParam::Enabled), 0.0);
+    model.set(paramIndex(f, OpParam::Enabled), 0.0);
+    model.set(matrixIndex(e, 0), 0.5);
+    model.set(matrixIndex(f, e), 0.4);
+    view.poll();
+    const std::string eName = detail::nodeTitle(e), fName = detail::nodeTitle(f);
+    const bool eDim = menuHas(nodeCenter(layout, e), trf(Str::MenuHideNode, {eName})) >= 0;
+    const bool fDim = menuHas(nodeCenter(layout, f), trf(Str::MenuSwitchOn, {fName})) >= 0;
+    view.menuCommand(menuHas(nodeCenter(layout, e), trf(Str::MenuHideNode, {eName})));
+    const bool cascade = (layout.hiddenNodes >> e & 1u) && (layout.hiddenNodes >> f & 1u);
+    model.set(paramIndex(e, OpParam::Enabled), 1.0); // a host's automation switches E on
+    view.poll();
+    const bool cleared = !(layout.hiddenNodes >> e & 1u);
+    model.set(paramIndex(e, OpParam::Enabled), 0.0); // and off again: E shows dim, as a node never hidden does
+    view.poll();
+    const bool eDimAgain = menuHas(nodeCenter(layout, e), trf(Str::MenuHideNode, {eName})) >= 0;
+    check(eDim && fDim && cascade && cleared && eDimAgain,
+          "Hide docks a dim operator and the one shown only through it, and a host switching a hidden operator on "
+          "clears its mark, so switched off again it shows dim");
 }
 
 // With an LFO in every place, a MODS row's source menu lists them in two columns of 16 beside LFOs (the level 22 px a

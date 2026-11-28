@@ -1113,7 +1113,10 @@ bool View::poll() {
         }
     }
     if (changed)
+    {
         routing_.keepRoutes(); // whatever turned a route on, the editor or the host
+        routing_.unhideOnNodes(); // and whatever switched a node on
+    }
     if (bendMoved)
         in(keyboardPanel(keyboardTop(), controller_.layout().keysCollapsed));
     closeGoneLists(); // the host may have changed what a list belongs to

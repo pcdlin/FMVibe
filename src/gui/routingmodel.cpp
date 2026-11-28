@@ -212,8 +212,18 @@ void RoutingModel::hideNode(int node) {
     if (!nodeDim(node))
         return;
     const UndoScope step(controller_);
+    const std::vector<int> shown = shownNodes();
     controller_.layout().hiddenNodes |= 1u << node;
+    hideUnwired(shown); // a node that shows only through this one docks with it, as disconnecting its route does
     controller_.layoutChanged();
+}
+
+// A node that is on has its hidden mark gone, however it was switched on: an edit clears it (PatchEdits::edit()), a
+// host's automation does not, so the editor looks at every poll that sees a change.
+void RoutingModel::unhideOnNodes() {
+    for (int node = 0; node < kNodes; ++node)
+        if (nodeOn(node))
+            controller_.layout().hiddenNodes &= ~(1u << node);
 }
 
 // Filters and shapers can feed each other round in a loop, so each is looked at once.
