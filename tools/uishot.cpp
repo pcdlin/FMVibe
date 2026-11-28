@@ -12614,6 +12614,50 @@ void testLabelClearOfNode(const std::filesystem::path &dir, Renderer &renderer) 
     check(shot && model.value(route) == 0.5, "a wire's label slides along its wire, clear of a node at its middle");
 }
 
+// A label beside its wire, where nowhere along it is clear: A on OUT's row, close to it, B sitting across the middle of
+// A's short line to OUT. Its label goes just above or below the line, off B (whose menu a right-click on it then
+// opens, where the label, drawn over the nodes, would open its own), and not over OUT. Where a label is is read off
+// the right-click menu: a label's offers Edit value.
+void testLabelBesideWire(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(detail::outParam(0), 1.0);
+    const Point aAt{detail::kOutCore.x - 190.0f, detail::kOutCore.y};
+    const Point bAt{detail::kOutCore.x - 101.0f, detail::kOutCore.y};
+    layout.nodeX[0] = (aAt.x - detail::kGraph.x) / detail::kGraph.w;
+    layout.nodeY[0] = (aAt.y - detail::kGraph.y) / detail::kGraph.h;
+    layout.nodeX[1] = (bAt.x - detail::kGraph.x) / detail::kGraph.w;
+    layout.nodeY[1] = (bAt.y - detail::kGraph.y) / detail::kGraph.h;
+    view.poll();
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool shot = renderer.save(view, dir / "1m-label-beside-wire.png");
+    auto labelAt = [&](Point p) {
+        for (const MenuItem &item : view.contextMenu(p))
+            if (item.label == tr(Str::MenuEditValue))
+                return true;
+        return false;
+    };
+    // Where the label is, around B and along the line's ends: off the line's row, B and OUT.
+    bool seen = false, onLine = false, overOut = false;
+    float nearest = 1e9f;
+    for (float dx = -80.0f; dx <= 70.0f; dx += 4.0f)
+        for (float dy = -72.0f; dy <= 72.0f; dy += 4.0f) {
+            const Point p{bAt.x + dx, bAt.y + dy};
+            if (!labelAt(p))
+                continue;
+            seen = true;
+            onLine = onLine || dy == 0.0f;
+            nearest = std::min(nearest, std::abs(dy));
+            overOut = overOut || std::hypot(p.x - detail::kOutCore.x, p.y - detail::kOutCore.y) < detail::kOutCoreRadius;
+        }
+    const bool offB = !labelAt(bAt) && !labelAt({bAt.x, bAt.y - 10.0f}) && !labelAt({bAt.x, bAt.y + 10.0f});
+    std::printf("      the label's nearest row to the line: %.0f px off it\n", nearest);
+    check(shot && seen && !onLine && offB && !overOut,
+          "a label goes beside its wire where a node sits across all of it, clear of the node and of OUT");
+}
+
 // Labels clear of each other: A -> B across the panel and C -> D down it, both straight, crossing at their middles.
 // A -> B's label, placed first, stays at the crossing; C -> D's slides along its wire, off it. Where a label is is
 // read off the right-click menu (a label's has Edit value, a wire's not), and whose by its Reset to default.
@@ -18099,6 +18143,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testNodeSwitchOnPlace(dir, renderer);
     testNodePower(dir, renderer);
     testLabelClearOfNode(dir, renderer);
+    testLabelBesideWire(dir, renderer);
     testLabelsClearOfEachOther(dir, renderer);
     testLoopLabelClear(dir, renderer);
     testFeedbackMode(dir, renderer);

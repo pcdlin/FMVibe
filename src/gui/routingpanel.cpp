@@ -386,17 +386,62 @@ Point RoutingPanel::labelAlong(Point start, Point control, Point end, Point midd
     };
     const Rect inside{kRouting.x + 0.5f * width + 4.0f, kRouting.y + 12.0f, kRouting.w - width - 8.0f,
                       kRouting.h - 24.0f}; // where its center keeps the chip in the panel, as wireInside() has it
+    auto at = [&](float t) {
+        const float s = 1.0f - t;
+        return Point{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
+                     s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
+    };
+    // Beside the wire at `t`, on its left (`side` 1) or right: the chip's edge kBesideGap off the wire, or a row of
+    // labels further out for each `ring`, whichever way the wire runs there.
+    constexpr float kBesideGap = 3.0f;
+    auto beside = [&](float t, float side, int ring) {
+        const float s = 1.0f - t;
+        const Point d = normalize({2.0f * s * (control.x - start.x) + 2.0f * t * (end.x - control.x),
+                                   2.0f * s * (control.y - start.y) + 2.0f * t * (end.y - control.y)});
+        const Point n{d.y * side, -d.x * side};
+        const float out = 0.5f * (width * std::abs(n.x) + kWireLabelH * std::abs(n.y)) + kBesideGap +
+                          static_cast<float>(ring) * (kWireLabelH + kBesideGap);
+        const Point p = at(t);
+        return Point{p.x + n.x * out, p.y + n.y * out};
+    };
+    // The spots beside the wire, from about a tenth of the way along to nine tenths, nearest its middle first (on its
+    // left where two are as near), off OUT's disc.
+    struct Spot {
+        Point at;
+        float distance;
+    };
+    std::vector<Spot> spots; // worked out only once nowhere along the wire will do
+    auto besideSpots = [&] {
+        constexpr int kBesideSteps = 11, kRings = 4;
+        for (int ring = 0; ring < kRings; ++ring)
+            for (int k = -kBesideSteps; k <= kBesideSteps; ++k)
+                for (const float side : {1.0f, -1.0f}) {
+                    const Point p = beside(0.5f + kStep * static_cast<float>(k), side, ring);
+                    spots.push_back({p, std::hypot(p.x - middle.x, p.y - middle.y)});
+                }
+        std::stable_sort(spots.begin(), spots.end(),
+                         [](const Spot &a, const Spot &b) { return a.distance < b.distance; });
+    };
+    auto offOut = [&](Point p) {
+        const Rect r = chip(p, width);
+        const float dx = std::max({r.x - kOutCore.x, 0.0f, kOutCore.x - r.right()});
+        const float dy = std::max({r.y - kOutCore.y, 0.0f, kOutCore.y - r.bottom()});
+        return std::hypot(dx, dy) > kOutCoreRadius + kClear;
+    };
     for (const bool ofLabels : {true, false}) {
         if (clear(middle, ofLabels))
             return middle;
         for (int k = 1; k <= kSteps; ++k)
-            for (const float side : {-1.0f, 1.0f}) {
-                const float t = 0.5f + side * kStep * static_cast<float>(k), s = 1.0f - t;
-                const Point p{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
-                              s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
-                if (inside.contains(p) && clear(p, ofLabels))
+            for (const float side : {-1.0f, 1.0f})
+                if (const Point p = at(0.5f + side * kStep * static_cast<float>(k));
+                    inside.contains(p) && clear(p, ofLabels))
                     return p;
-            }
+        // Nowhere along it (a node across a short wire): beside it, as near its middle as it can.
+        if (spots.empty())
+            besideSpots();
+        for (const Spot &spot : spots)
+            if (inside.contains(spot.at) && offOut(spot.at) && clear(spot.at, ofLabels))
+                return spot.at;
     }
     return middle;
 }

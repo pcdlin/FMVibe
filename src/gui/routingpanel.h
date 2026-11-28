@@ -139,8 +139,9 @@ private:
     double outLevel(int node) const;
     // Where a label `width` wide goes on a wire, a quadratic curve from `start` by `control` to `end` whose middle is
     // `middle`: there, unless that puts it over a node or one of the labels `taken`; then slid along the wire, either
-    // way, as little as clears every node shown and those labels, staying inside the panel. Where nowhere does, as
-    // little as clears the nodes alone; where nowhere does that, at the middle.
+    // way, as little as clears every node shown and those labels, staying inside the panel; where nowhere along it
+    // does (a node across a short wire), just beside it, either side, as near its middle as clears them. Where nowhere
+    // does, the same, as little as clears the nodes alone; where nowhere does that, at the middle.
     Point labelAlong(Point start, Point control, Point end, Point middle, float width,
                      const std::vector<Rect> &taken = {}) const;
     // Where the graph's labels rest, by route (and OUT line): the feedback loops' first, then each wire's and each OUT

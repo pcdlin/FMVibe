@@ -1476,8 +1476,11 @@ what it started goes on.
       its label and arrowhead going along. A label that would sit over a node (one placed where the wire's middle
       runs) or over another label slides along its wire, either way, as little as clears every node and the labels
       placed before it (the feedback loops' first, then the wires' in the graph's order, then the lines' to OUT), and
-      goes back to the middle once that is clear; a line's label to OUT does the same. Where no place along its wire
-      clears the other labels too, it clears the nodes alone. A feedback loop's label sits on the loop's right, or,
+      goes back to the middle once that is clear; a line's label to OUT does the same. Where no place along its middle
+      half is clear (a node sitting across a short wire), it goes just beside the wire, on either side, from about a
+      tenth of the way along to nine tenths, a row further out where that has no room (up to three), at the place
+      nearest the wire's middle that clears them, and off OUT's disc. Where no place along or beside its wire clears
+      the other labels too, it clears the nodes alone. A feedback loop's label sits on the loop's right, or,
       where that would meet another node, another loop's label or where a wire's label rests, on its left, above it
       or at an upper corner, inside the panel. A wire that would spill out of the routing panel bows only as far as
       keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
