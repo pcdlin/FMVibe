@@ -490,7 +490,7 @@ constexpr std::array<bool, FilterIn::Count> kFilterInputSmooth{true, true, true,
                                                                true, true, true, false};
 inline FilterType filterTypeOf(double value) {
     return static_cast<FilterType>(
-        std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(FilterType::Count) - 1));
+        std::clamp(static_cast<int>(roundFast(value)), 0, static_cast<int>(FilterType::Count) - 1));
 }
 // The inputs from the params (the cutoff 0-1, as stored; the pitch in semitones, 69 an A4). Without key tracking the
 // pitch goes in as 0 (2 to the power of 0 is exactly 1), and the Formant type's vowel and the Morph type's place and

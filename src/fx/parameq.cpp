@@ -1,6 +1,7 @@
 #include "parameq.h"
 
 #include <complex>
+#include <cstring>
 
 namespace fmvibe {
 
@@ -154,9 +155,13 @@ void ParamEq::run(const Context &ctx, float *const *io, uint32_t n) {
             heardShare = target;
             continue;
         }
-        ramp.begin(biquadCoefs(peqCoefs(type, p[peqFreqIndex(slot, band)], gain, p[peqQIndex(slot, band)],
-                                        ctx.sampleRate)),
-                   n, ctx.rampShortest);
+        const std::array<double, 5> by{static_cast<double>(type), p[peqFreqIndex(slot, band)], gain,
+                                       p[peqQIndex(slot, band)], ctx.sampleRate};
+        if (std::memcmp(by.data(), madeFrom[band].data(), sizeof by) != 0) {
+            madeFrom[band] = by;
+            made[band] = biquadCoefs(peqCoefs(type, by[1], gain, by[3], ctx.sampleRate));
+        }
+        ramp.begin(made[band], n, ctx.rampShortest);
         if (heardShare == target && !ramp.moving) {
             const BiquadCoefs &c = ramp.now;
             for (int ch = 0; ch < 2; ++ch) {

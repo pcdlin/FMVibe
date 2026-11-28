@@ -419,7 +419,10 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
         }
         diffuserWrite = diffuserWrite + 1 == diffuserSize ? 0 : diffuserWrite + 1;
 
-        std::array<double, kReverbLines> out; // each set below
+        // The lines' reads in two passes: the arithmetic first, each line's apart from the others' (which the compiler
+        // can run side by side, sixteen divisions among it), then the reads.
+        std::array<double, kReverbLines> coefs;
+        std::array<int, kReverbLines> wholes;
         for (int i = 0; i < kReverbLines; ++i) {
             const double c = wanderCos[i], sn = wanderSin[i];
             wanderCos[i] = c * tables.wanderTurn[i][0] - sn * tables.wanderTurn[i][1];
@@ -432,8 +435,13 @@ double Reverb::run(const Context &ctx, const ReverbTables &tables, float *const 
             const double behind = lengths[i] * size + wander * (1.0 + wanderSin[i]);
             const int whole = static_cast<int>(behind - 0.5);
             const double fraction = behind - whole;
-            const double coef = (1.0 - fraction) / (1.0 + fraction);
-            int newer = lineWrite - whole;
+            coefs[i] = (1.0 - fraction) / (1.0 + fraction);
+            wholes[i] = whole;
+        }
+        std::array<double, kReverbLines> out; // each set below
+        for (int i = 0; i < kReverbLines; ++i) {
+            const double coef = coefs[i];
+            int newer = lineWrite - wholes[i];
             newer += newer < 0 ? lineSize : 0;
             const int before = newer == 0 ? lineSize - 1 : newer - 1;
             out[i] = coef * (lines[i][newer] - lineRead[i]) + lines[i][before];

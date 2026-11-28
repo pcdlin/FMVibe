@@ -15,6 +15,21 @@
 
 namespace fmvibe {
 
+// std::lround, giving the same for every input, without the C runtime, which the plugins' MSVC build calls out of
+// line: the voices round their stepped params (a source's type, an operator's wave, warp and copies) every block, and
+// the 32 source places alone took that call 32 times a voice and a block. Halves away from 0; past the reach of a
+// 32-bit long (and NaN), std::lround's own answer.
+// (std::floor is a call there too, but one the voices' wavetable reads are quicker with: a floor made by hand from a
+// cast and a compare, branching or not, made them a tenth to a fifth slower, as each operator's read waits on the one
+// before it within a sample.)
+inline long roundFast(double x) {
+    if (!(std::abs(x) < 2147483647.0))
+        return std::lround(x);
+    const long t = static_cast<long>(x); // toward 0
+    const double rest = x - static_cast<double>(t); // exact
+    return rest >= 0.5 ? t + 1 : rest <= -0.5 ? t - 1 : t;
+}
+
 constexpr int kOps = 6;     // operators A..F
 constexpr int kMacros = 8;  // macro knobs, under the keyboard
 constexpr int kMaxSources = 32; // places for LFOs and mod envelopes; see SourceType
@@ -152,7 +167,7 @@ enum class OpParam {
 // (RateEnvelope). Stored in projects by number: only append (0 and 1 were its Toggle's off and on).
 enum class OpEnvMode { Adsr, Curve, Rates, Count };
 inline OpEnvMode opEnvMode(double value) {
-    return static_cast<OpEnvMode>(std::clamp(std::lround(value), 0L, static_cast<long>(OpEnvMode::Count) - 1L));
+    return static_cast<OpEnvMode>(std::clamp(roundFast(value), 0L, static_cast<long>(OpEnvMode::Count) - 1L));
 }
 // How keyboard scaling goes on past the first octave from the breakpoint: Linear adds the depth again every octave (a
 // straight line in dB); Exp doubles all it has moved every octave, as the classic FM synths' exponential curves do
@@ -523,7 +538,7 @@ enum class FilterType {
 // projects by number: only append.
 enum class MorphMode { Band, Notch, Count };
 inline MorphMode morphMode(double value) {
-    return static_cast<MorphMode>(std::clamp(std::lround(value), 0L, static_cast<long>(MorphMode::Count) - 1L));
+    return static_cast<MorphMode>(std::clamp(roundFast(value), 0L, static_cast<long>(MorphMode::Count) - 1L));
 }
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
 // the source to where the operator reads its wave (phase modulation, what FM synths call FM); Linear FM adds it to the
@@ -537,11 +552,11 @@ enum class RouteMode { Phase, LinearFm, ExpFm, Ring, Count };
 // rate, high feedback breaking up as it does there. Stored in projects by number: only append.
 enum class FeedbackMode { Smooth, Dx7, Count };
 inline FeedbackMode feedbackMode(double value) {
-    return static_cast<FeedbackMode>(std::clamp(std::lround(value), 0L, static_cast<long>(FeedbackMode::Count) - 1L));
+    return static_cast<FeedbackMode>(std::clamp(roundFast(value), 0L, static_cast<long>(FeedbackMode::Count) - 1L));
 }
 constexpr double kDx7Rate = 49096.0; // the DX7's sample rate, Hz
 inline RouteMode routeMode(double value) {
-    return static_cast<RouteMode>(std::clamp(std::lround(value), 0L, static_cast<long>(RouteMode::Count) - 1L));
+    return static_cast<RouteMode>(std::clamp(roundFast(value), 0L, static_cast<long>(RouteMode::Count) - 1L));
 }
 // A filter's slope (FilterParam::Slope, and the filter effect's): 6, 12, 18 or 24 dB per octave, stored by number,
 // 12 to begin with. Each type comes in the slopes kFilterTypeSlopes gives it, a bit each: low- and high-passes and the
@@ -555,7 +570,7 @@ constexpr unsigned kFilterTypeSlopes[] = {kAllSlopes, kAllSlopes, kEvenSlopes, k
                                           kSlope24,   kSlope12,   kSlope12,    0,           kEvenSlopes,
                                           kAllSlopes, kEvenSlopes};
 static_assert(std::size(kFilterTypeSlopes) == static_cast<size_t>(FilterType::Count), "a slope set for each type");
-inline int filterSlope(double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, kFilterSlopes - 1L)); }
+inline int filterSlope(double value) { return static_cast<int>(std::clamp(roundFast(value), 0L, kFilterSlopes - 1L)); }
 constexpr int slopeDb(int slope) { return 6 * (slope + 1); }
 constexpr unsigned filterTypeSlopes(FilterType type) {
     return type < FilterType::Count ? kFilterTypeSlopes[static_cast<int>(type)] : 0;
@@ -632,15 +647,15 @@ constexpr int kAmpOversamplings = 4; // 1x, 2x, 4x, 8x: the factor is 1 << the v
 constexpr int kDefaultAmpOversampling = 2;
 template <class E>
 inline E storedEnum(double value) { // a stored list's member, the first for a value out of its range
-    const long t = std::lround(value);
+    const long t = roundFast(value);
     return static_cast<E>(t < 0 || t >= static_cast<long>(E::Count) ? 0 : t);
 }
 inline int ampOversampling(double value) { // the factor
-    return 1 << static_cast<int>(std::clamp(std::lround(value), 0L, kAmpOversamplings - 1L));
+    return 1 << static_cast<int>(std::clamp(roundFast(value), 0L, kAmpOversamplings - 1L));
 }
 // The shaper effect's oversampling: stored as an amp's is, but from 2x (its value 1, to begin with) up to 8x.
 inline int shaperOversampling(double value) {
-    return 1 << static_cast<int>(std::clamp(std::lround(value), 1L, kAmpOversamplings - 1L));
+    return 1 << static_cast<int>(std::clamp(roundFast(value), 1L, kAmpOversamplings - 1L));
 }
 // The mic's distance from the speaker: 0..1 on a log curve from 1 cm to 1 m.
 constexpr double kMinAmpDistanceCm = 1.0, kMaxAmpDistanceCm = 100.0;
@@ -656,7 +671,7 @@ constexpr bool isCut(PeqType type) { return type == PeqType::LowCut || type == P
 // Whether a band's Gain does anything: a cut's and a notch's don't.
 constexpr bool peqHasGain(PeqType type) { return !isCut(type) && type != PeqType::Notch; }
 inline PeqType peqType(double value) {
-    const long t = std::lround(value);
+    const long t = roundFast(value);
     return static_cast<PeqType>(t < 0 ? 0 : (t >= static_cast<long>(PeqType::Count) ? 0 : t));
 }
 enum class FxParam {
@@ -1240,7 +1255,7 @@ constexpr double fxPortValue(int port) { return port < 0 ? 0.0 : port + 1.0; }
 inline int fxPortOf(double value) {
     if (!(value >= 0.5 && value < kFxPorts + 0.5)) // NaN too
         return -1;
-    return static_cast<int>(std::lround(value)) - 1;
+    return static_cast<int>(roundFast(value)) - 1;
 }
 // The split a param belongs to, -1 for other params.
 constexpr int splitOf(int index) {
@@ -1329,7 +1344,7 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     }
 }
 inline SourceType sourceType(double value) {
-    const long t = std::lround(value);
+    const long t = roundFast(value);
     return static_cast<SourceType>(t < 0 ? 0 : (t >= static_cast<long>(SourceType::Count) ? 0 : t));
 }
 // The shape the source in place `source` runs as an LFO: its Shape, Random for a Random source, or Custom (its
@@ -1341,7 +1356,7 @@ LfoShape lfoShape(const Get &get, int source) {
         return LfoShape::Random;
     if (type == SourceType::Curve)
         return LfoShape::Custom;
-    const long shape = std::lround(get(paramIndex(source, SourceParam::Shape)));
+    const long shape = roundFast(get(paramIndex(source, SourceParam::Shape)));
     return static_cast<LfoShape>(std::clamp(shape, 0l, static_cast<long>(LfoShape::Count) - 1));
 }
 // Whether the Curve in place `source` is in Sustain, reading its params through `get`: from each note it plays from
@@ -1537,7 +1552,7 @@ constexpr FxType fxTypeOfField(FxParam f) {
     return field >= 0 && field < kFxParamCount ? kFxFieldTypes[static_cast<size_t>(field)] : FxType::None;
 }
 inline FxType fxType(double value) {
-    const long t = std::lround(value);
+    const long t = roundFast(value);
     return static_cast<FxType>(t < 0 ? 0 : (t >= static_cast<long>(FxType::Count) ? 0 : t));
 }
 // Fields of band `band` of the parametric EQ: the first two bands' sit together, the third's came later.
@@ -1617,7 +1632,7 @@ constexpr int partialLevelIndex(int op, int partial) {
 constexpr int partialPhaseIndex(int op, int partial) { return partialLevelIndex(op, partial) + 1; }
 constexpr int partialCountIndex(int op) { return kPartialCountBase + op; }
 // How many partials a Custom wave plays, from its count param.
-inline int partialCount(double value) { return static_cast<int>(std::clamp(std::lround(value), 1L, long{kPartials})); }
+inline int partialCount(double value) { return static_cast<int>(std::clamp(roundFast(value), 1L, long{kPartials})); }
 constexpr int bypassSourceOf(int index) {
     return index >= kSlotBypassBase && index < kPartialBase ? (index - kSlotBypassBase) / kSlots
            : index >= kStripBypassBase && index < kSlotCurveBase ? kMaxSources + (index - kStripBypassBase) / kSlots
@@ -1705,7 +1720,7 @@ constexpr bool isFeedbackModeParam(int index) {
 }
 // The source an Aux param's value names, or -1 for none.
 inline int slotAuxSource(double value) {
-    const long source = std::lround(value) - 1;
+    const long source = roundFast(value) - 1;
     return source >= 0 && source < kAllSources ? static_cast<int>(source) : -1;
 }
 inline double slotAuxValue(int source) { return source < 0 ? 0.0 : source + 1.0; }
@@ -2463,7 +2478,7 @@ inline double keyScaleDb(double key, double breakpoint, double leftDepth, double
     if (depth == 0.0 || !std::isfinite(key) || !std::isfinite(breakpoint))
         return 0.0;
     const double octaves = std::min(std::abs(key - breakpoint) / 12.0, 16.0);
-    const bool exp = std::lround(left ? leftCurve : rightCurve) == static_cast<long>(KeyCurve::Exp);
+    const bool exp = roundFast(left ? leftCurve : rightCurve) == static_cast<long>(KeyCurve::Exp);
     const double db = depth * (exp && octaves > 1.0 ? std::exp2(octaves - 1.0) : octaves);
     return std::clamp(db, kKeyScaleFloorDb, kKeyScaleCeilingDb);
 }
@@ -2505,7 +2520,7 @@ inline double normFromFixedFreq(double hz) {
            std::log(kMaxFixedFreq / kMinFixedFreq);
 }
 inline double fixedMult(double value) {
-    return kFixedMults[std::clamp(static_cast<int>(std::lround(value)), 0, kFixedMultCount - 1)];
+    return kFixedMults[std::clamp(static_cast<int>(roundFast(value)), 0, kFixedMultCount - 1)];
 }
 inline double fixedHz(double freqNorm, double mult) { return fixedFreqFromNorm(freqNorm) * fixedMult(mult); }
 // The operator whose Fixed switch the param is, or -1.
@@ -2528,7 +2543,7 @@ inline bool isKeyCurveParam(int index) {
 }
 // The old Coarse was stepped 0..32, 0 standing for a ratio of 0.5; states before Ratio load through it.
 inline double coarseRatio(double coarse) {
-    const long c = std::lround(coarse);
+    const long c = roundFast(coarse);
     return c <= 0 ? 0.5 : static_cast<double>(c);
 }
 
@@ -2547,7 +2562,7 @@ inline double normFromRatio(double ratio) {
     return std::clamp(std::log(std::max(ratio, 1e-9) / kMinRatio) / std::log(kMaxRatio / kMinRatio), 0.0, 1.0);
 }
 // The ratio as the editor shows and sets it: in hundredths, 50 to 6400.
-inline long ratioHundredths(double norm) { return std::clamp(std::lround(ratioFromNorm(norm) * 100.0), 50L, 6400L); }
+inline long ratioHundredths(double norm) { return std::clamp(roundFast(ratioFromNorm(norm) * 100.0), 50L, 6400L); }
 
 // Note values for tempo sync, from 4/1 dotted (0) down to a 1/64 triplet (kDivisions - 1), slowest first. Stored in
 // projects by number. The sources' synced rates also reach two slower ones, 8/1 (eight bars, kSlowestDivision) and
@@ -2566,7 +2581,7 @@ inline double divisionBeats(int division) {
     return 32.0 / static_cast<double>(1 << (from8 / 3)) * kFactors[from8 % 3];
 }
 inline double divisionSeconds(double division, double tempo) {
-    return divisionBeats(static_cast<int>(std::lround(division))) * 60.0 / tempo;
+    return divisionBeats(static_cast<int>(roundFast(division))) * 60.0 / tempo;
 }
 // How fast the phaser, flanger or chorus (`type`) in `slot` sweeps (Hz): at its Rate, or, a phaser or flanger
 // synced, a cycle per note value at `tempo` BPM. `get(index)` returns a param value.
@@ -2627,7 +2642,7 @@ FxOrder fxOrder(const Get &get) {
     int n = 0;
     for (int position = 0; position < kFxSlots; ++position) {
         const double value = get(fxPositionIndex(position));
-        const long slot = std::isfinite(value) ? std::lround(value) : -1;
+        const long slot = std::isfinite(value) ? roundFast(value) : -1;
         if (slot >= 0 && slot < kFxSlots && !taken[slot]) {
             taken[slot] = true;
             order[n++] = static_cast<int>(slot);
@@ -2750,7 +2765,7 @@ template <class PointAt> double seqCurveAt(int count, const PointAt &point, doub
 // The points a pattern's curve has, as stored (0 to kSeqCurvePoints). `get(index)` returns a param value.
 template <class Get> int seqCurvePointCount(const Get &get, int pattern, SeqCurve curve) {
     const double n = get(seqCurveCountIndex(pattern, curve));
-    return std::isfinite(n) ? std::clamp(static_cast<int>(std::lround(n)), 0, kSeqCurvePoints) : 0;
+    return std::isfinite(n) ? std::clamp(static_cast<int>(roundFast(n)), 0, kSeqCurvePoints) : 0;
 }
 // Where a note's bend of `count` points, `point(i)` its i-th, stands `step` steps into the note, in semitones: between
 // two points the segment bent by the first's curve, before the first point at its value and after the last at its.
@@ -2775,10 +2790,10 @@ template <class PointAt> double seqNoteBendAt(int count, const PointAt &point, d
 // The points a note's bend has, as stored (0 to kSeqNoteBendPoints). `get(index)` returns a param value.
 template <class Get> int seqNoteBendPointCount(const Get &get, int pattern, int note) {
     const double n = get(seqNoteBendCountIndex(pattern, note));
-    return std::isfinite(n) ? std::clamp(static_cast<int>(std::lround(n)), 0, kSeqNoteBendPoints) : 0;
+    return std::isfinite(n) ? std::clamp(static_cast<int>(roundFast(n)), 0, kSeqNoteBendPoints) : 0;
 }
 inline int shapePointCount(double value, int most = kMaxShapePoints) { // the note curve's: kMaxNotePoints
-    const long n = std::lround(value);
+    const long n = roundFast(value);
     return static_cast<int>(n < 2 ? 2 : (n > most ? most : n));
 }
 // The shape's value (-1..1) at `phase` (0..1). `get(index)` returns a param
@@ -3158,7 +3173,7 @@ inline double slotTargetValue(int index) { return index < 0 ? 0.0 : idOfIndex(in
 inline int slotTarget(double value) {
     if (value < 0.5) // rounds to 0, none: most slots, which the voices look over every block
         return -1;
-    const long id = std::lround(value) - 1;
+    const long id = roundFast(value) - 1;
     const int index = id < 0 ? -1 : indexOfId(static_cast<clap_id>(id));
     return isModTarget(index) ? index : -1;
 }

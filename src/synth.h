@@ -465,6 +465,20 @@ private:
         bool shown = false;
     };
 
+    // An operator's pitch apart from the note's: its ratio and its Pitch and Detune as a factor, or, fixed, its
+    // frequency with them (see renderBlock()). From its Fixed, Ratio, Freq, Mult, Pitch and Detune.
+    struct OpTune {
+        bool fixed = false;
+        double ratio = 1.0, transpose = 1.0;
+        double hz = 0.0;
+    };
+    static OpTune opTuneOf(const std::array<double, 6> &in);
+    // An equal-power pan's cosine and sine, from where it stands.
+    struct PanTurn {
+        double cos = 1.0, sin = 0.0;
+    };
+    static PanTurn panTurnOf(double pan);
+
     // What renderBlock() ramps sample by sample toward each block's values.
     struct Levels {
         std::array<double, kOps> out{};
@@ -613,6 +627,11 @@ private:
         // Keyboard level scaling (see keyScaleDb()): each operator's gain as it ramps sample by sample to the block's,
         // and its step; likewise kept apart, and multiplied in only for the operators it scales (renderBlock()).
         std::array<double, kOps> keyNow{}, keyTo{}, keyStep{};
+        // Each operator's tune and Pan, and the voice's pan, worked out again only as their params change: their pow,
+        // exp2, cos and sin cost every operator every block otherwise. Kept here too, past what the loop reads.
+        std::array<Memo<OpTune, 6>, kOps> opTune{};
+        std::array<Memo<PanTurn, 1>, kOps> opPan{};
+        Memo<PanTurn, 1> pan{};
     };
 
     struct HeldNote {

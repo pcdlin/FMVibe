@@ -2,6 +2,7 @@
 // tools/bench.ps1, which builds commits and compares them with it).
 //
 //   fmvibe-bench time <FMVibe.clap> [passes] [cpu]
+//   fmvibe-bench fx <FMVibe.clap> [passes] [cpu]
 //   fmvibe-bench render <FMVibe.clap> <presets folder>
 //
 // time: from a new instance at 48 kHz in blocks of 256, the CPU each load takes, in ms per second of audio, the best of
@@ -13,6 +14,11 @@
 // 1-copy load, host automation and modulation: as it is (still); with 8 param events a block that change nothing
 // (split, what rendering a block in pieces costs); with 8 that move their params (automated, PARAM_VALUE); and with 8
 // that move the host's modulation of them for every voice (modulated, PARAM_MOD).
+//
+// fx: a note held on the default patch (little to cost but the effect), as it is (none), then through each effect in
+// turn, alone on the graph's line at its own settings (the parametric EQ's three bands on, at +6, -6 and +4 dB), on a new instance each;
+// then the note through a 24 dB voice filter with an LFO on its cutoff, and the three-band dynamics at OTT's settings;
+// a line of `name ms` pairs.
 //
 // render: each factory preset in the folder (*.fmv) loaded into a new instance, and a chord of 8 notes over six
 // octaves played into it for 3 s, let go half way: as saved, and again with every operator at 8 spread unison copies.
@@ -320,6 +326,72 @@ int timeLoads(const Module &module, int passes) {
     return 0;
 }
 
+int timeEffects(const Module &module, int passes) {
+    struct Effect {
+        const char *name;
+        FxType type;
+        int setup = 0; // 1: no effect, the note through a voice filter whose cutoff an LFO sweeps; 2: OTT's settings
+    };
+    const Effect effects[] = {{"none", FxType::None},          {"shaper", FxType::Shaper},
+                              {"delay", FxType::Delay},        {"eq", FxType::Eq},
+                              {"parameq", FxType::ParamEq},    {"filter", FxType::Filter},
+                              {"compressor", FxType::Compressor}, {"reverb", FxType::Reverb},
+                              {"phaser", FxType::Phaser},      {"flanger", FxType::Flanger},
+                              {"shifter", FxType::FreqShifter}, {"disperser", FxType::Disperser},
+                              {"widener", FxType::Widener},    {"multidyn", FxType::MultiDyn},
+                              {"amp", FxType::Amp},            {"utility", FxType::Utility},
+                              {"chorus", FxType::Chorus},      {"lofi", FxType::LoFi},
+                              {"vfilter", FxType::None, 1},  {"ott", FxType::MultiDyn, 2}};
+    const std::vector<clap_event_note_t> notes{note(CLAP_EVENT_NOTE_ON, 60, 100)};
+    std::string line;
+    for (const Effect &effect : effects) {
+        Instance instance(module);
+        if (!instance)
+            return 3;
+        std::vector<clap_event_param_value_t> params;
+        if (effect.type != FxType::None) { // the input into slot 0, and slot 0 out
+            params.push_back(param(paramIndex(0, FxParam::Type), static_cast<double>(effect.type)));
+            params.push_back(param(fxInputIndex(0, 0, FxInputField::From), fxPortValue(kFxPortIn)));
+            params.push_back(param(fxInputIndex(kFxOutNode, 0, FxInputField::From), fxPortValue(fxSlotPort(0))));
+            if (effect.type == FxType::ParamEq) {
+                const double gains[] = {6.0, -6.0, 4.0};
+                for (int band = 0; band < 3; ++band) {
+                    params.push_back(param(peqOnIndex(0, band), 1.0));
+                    params.push_back(param(peqGainIndex(0, band), gains[band]));
+                }
+            }
+            if (effect.setup == 2)
+                for (const auto &[index, value] : mdOttSettings(0))
+                    params.push_back(param(index, value));
+        }
+        if (effect.setup == 1) { // operator A into filter 1 alone, 24 dB, and LFO 1 on its cutoff
+            params.push_back(param(paramIndex(0, OpParam::Out), 0.0));
+            params.push_back(param(sendIndex(0, 0), 1.0));
+            params.push_back(param(paramIndex(0, FilterParam::Enabled), 1.0));
+            params.push_back(param(paramIndex(0, FilterParam::Out), 1.0));
+            params.push_back(param(paramIndex(0, FilterParam::Slope), 3.0));
+            params.push_back(param(paramIndex(0, FilterParam::Cutoff), 0.5));
+            params.push_back(param(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo)));
+            params.push_back(param(slotTargetIndex(0, 0), idOfIndex(paramIndex(0, FilterParam::Cutoff)) + 1.0));
+            params.push_back(param(slotAmountIndex(0, 0), 0.3));
+        }
+        std::vector<const clap_event_header_t *> events;
+        for (const auto &p : params)
+            events.push_back(&p.header);
+        for (const auto &n : notes)
+            events.push_back(&n.header);
+        instance.block(events);
+        for (int b = 0; b < 47; ++b)
+            instance.block();
+        instance.best(1); // as timeLoads() warms the core up
+        char figure[64];
+        std::snprintf(figure, sizeof figure, "%s%s %.2f", line.empty() ? "" : " ", effect.name, instance.best(passes));
+        line += figure;
+    }
+    std::printf("%s\n", line.c_str());
+    return 0;
+}
+
 // A preset file's bytes, read as the host's state.
 struct Bytes {
     std::vector<unsigned char> data;
@@ -411,10 +483,12 @@ int renderPresets(const Module &module, const char *folder) {
 
 int main(int argc, char **argv) {
     SetEnvironmentVariableW(L"FMVIBE_FIXED_SEED", L"1"); // every build's notes draw the same randomness
-    const bool timing = argc >= 3 && std::strcmp(argv[1], "time") == 0;
+    const bool effects = argc >= 3 && std::strcmp(argv[1], "fx") == 0;
+    const bool timing = effects || (argc >= 3 && std::strcmp(argv[1], "time") == 0);
     const bool rendering = argc >= 4 && std::strcmp(argv[1], "render") == 0;
     if (!timing && !rendering) {
         std::fprintf(stderr, "usage: fmvibe-bench time <FMVibe.clap> [passes] [cpu]\n"
+                             "       fmvibe-bench fx <FMVibe.clap> [passes] [cpu]\n"
                              "       fmvibe-bench render <FMVibe.clap> <presets folder>\n");
         return 2;
     }
@@ -428,5 +502,6 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "fmvibe-bench: can't load %s\n", argv[2]);
         return 3;
     }
-    return timing ? timeLoads(module, argc >= 4 ? std::max(1, std::atoi(argv[3])) : 5) : renderPresets(module, argv[3]);
+    const int passes = argc >= 4 ? std::max(1, std::atoi(argv[3])) : 5;
+    return effects ? timeEffects(module, passes) : timing ? timeLoads(module, passes) : renderPresets(module, argv[3]);
 }
