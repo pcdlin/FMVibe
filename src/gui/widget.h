@@ -67,7 +67,8 @@ enum class WidgetKind {
     WaveMenuItem, // a = op, b = wave: an entry of the list
     Node,         // a = node (operators, then filters)
     NodeGhost,    // a = node that is off: a dashed button in the graph's top left that switches it on
-    NodeDelete,   // a = node: the x in a circle at a node's upper right, while the mouse is over it: switches it off
+    NodePower,    // a = node: the power symbol in a circle at a node's upper right, while the mouse is over it:
+                  // switches it off, or on (a node shown dim)
     Port,         // a = node: its edge, a band along its outline; drag from it to connect
     WireLabel,    // param = route amount, a = from node, b = to node
     OutLabel,     // param = output level, a = node

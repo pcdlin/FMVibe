@@ -7969,8 +7969,8 @@ constexpr int kAuxClearCommand = kBypassCommand + kAllSources * kSlots;
 // A source's polarity, in the menus of its card, its handle, and a macro's knob and name.
 constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
-// The routing panel's: Disconnect 3, Switch Off 4, Reset Bend 14 and a route's modes from 16 on (see
-// RoutingPanel::kMenuDisconnect and on).
+// The routing panel's: Disconnect 3, Switch Off 4, Reset Bend 14, a route's modes from 16 on, and Switch On 24 and
+// Hide 25 (see RoutingPanel::kMenuDisconnect and on).
 constexpr int kResetBendCommand = RoutingPanel::kMenuResetBend;
 static_assert(RoutingPanel::kMenuDisconnect == 3 && RoutingPanel::kMenuSwitchOff == 4 && kResetBendCommand == 14);
 // The FX view's: 6 to 8, 15, an amp's oversampling from 30 on and moving an effect to another band from 40 on (see
@@ -7982,6 +7982,9 @@ static_assert(FxPanel::kMenuDuplicate == 6 && FxPanel::kMenuRemove == 7 && FxPan
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = RoutingPanel::kRouteModeCommand;
 static_assert(kRouteModeCommand == kResetBendCommand + 2);
+static_assert(RoutingPanel::kMenuSwitchOn >= kRouteModeCommand + static_cast<int>(RouteMode::Count) &&
+              RoutingPanel::kMenuHide == RoutingPanel::kMenuSwitchOn + 1 &&
+              RoutingPanel::kMenuHide < kAmpOversamplingCommand);
 // The Save dialog's folder tree's, 44 to 47 (see PresetBrowser::kNewFolderCommand).
 // Typing a modulation's aux depth, from its depth handle's or its aux chip's menu.
 constexpr int kEditAuxDepthCommand = 48;

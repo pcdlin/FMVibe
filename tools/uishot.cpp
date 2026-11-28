@@ -1043,10 +1043,18 @@ Point shaperCurveAt(double x, double y) { // its curve 8 px inside the display, 
 }
 const Point kShaperEdit = detail::kShaperEditButton.center();
 
-// A switched-off node's ghost, docked under OUT in the graph's bottom right, the ghosts in the nodes' order (mirrors
-// the widgets in view.cpp).
+// A switched-off node's ghost, docked under OUT in the graph's bottom right, the ghosts in the nodes' order: those not
+// shown dim in their places (mirrors the widgets in routingpanel.cpp).
 Point ghostOf(const FakeController &model, int node) {
-    auto off = [&](int n) { return model.value(detail::enabledParam(n)) < 0.5; };
+    const UiLayout &layout = model.ui;
+    const std::array<bool, kNodes> shown = detail::graphNodes(
+        [&](int n) { return model.value(detail::enabledParam(n)) >= 0.5; },
+        [&](int param) {
+            return model.value(param) > 0.0 ||
+                   std::find(layout.keptRoutes.begin(), layout.keptRoutes.end(), param) != layout.keptRoutes.end();
+        },
+        layout.hiddenNodes);
+    auto off = [&](int n) { return !shown[n]; };
     auto width = [](int n) { return n >= kOps ? 34.0f : 24.0f; };
     float x = detail::kRouting.right() - 16.0f + 6.0f;
     for (int n = 0; n < kNodes; ++n)
@@ -11996,6 +12004,133 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     }
 }
 
+// An operator switched off that is still wired shows dim in its place, with its wires, rather than docked as a ghost
+// under OUT: fainter than on, though still drawn (read off the rendered pixels), its menu offering Switch On and Hide.
+// Hide docks it as a ghost, as an undo step; switched on by its ghost and off again, it shows dim again. One off with
+// no routes stays a ghost, and two off wired only to each other both show dim.
+void testDimNode(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.5); // B into A, which goes out
+    model.ui.selectedNode = 0;
+    view.poll();
+    const UiLayout &layout = model.layout();
+    const Point b = nodeCenter(layout, 1);
+    auto menuHas = [&](Point at, const std::string &label) {
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == label)
+                return item.command;
+        return -1;
+    };
+    // B's outline over its top, by its brightest channel, the mouse away.
+    auto outline = [&](const char *name) {
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / name);
+        const uint32_t p = renderer.pixel({b.x, b.y - detail::kNodeRadius});
+        return std::max({p >> 16 & 255, p >> 8 & 255, p & 255});
+    };
+    const unsigned on = outline("1q-dim-node-on.png");
+    const std::string bName = detail::nodeTitle(1);
+    view.menuCommand(menuHas(b, trf(Str::MenuSwitchOff, {bName})));
+    const bool off = model.value(paramIndex(1, OpParam::Enabled)) < 0.5;
+    const unsigned dim = outline("1q-dim-node.png");
+    const bool offered =
+        menuHas(b, trf(Str::MenuSwitchOn, {bName})) >= 0 && menuHas(b, trf(Str::MenuHideNode, {bName})) >= 0;
+    view.menuCommand(menuHas(b, trf(Str::MenuHideNode, {bName})));
+    const unsigned hidden = outline("1q-dim-node-hidden.png");
+    const bool docked = (layout.hiddenNodes >> 1 & 1u) && menuHas(b, trf(Str::MenuSwitchOn, {bName})) < 0;
+    std::printf("      B's outline: %u on, %u dim, %u hidden\n", on, dim, hidden);
+    check(off && on > dim + 30 && dim > hidden + 20 && offered,
+          "an operator switched off that is still wired shows dim in its place, its menu offering Switch On and Hide "
+          "(read off the rendered pixels)");
+    view.undo();
+    const bool undone = layout.hiddenNodes == 0 && menuHas(b, trf(Str::MenuHideNode, {bName})) >= 0;
+    view.redo();
+    check(docked && undone && layout.hiddenNodes == 1u << 1,
+          "Hide docks a dim operator as a ghost under OUT, undoably");
+    click(view, ghostOf(model, 1)); // its ghost switches it on, where it was
+    const bool back = model.value(paramIndex(1, OpParam::Enabled)) >= 0.5 && layout.hiddenNodes == 0;
+    view.menuCommand(menuHas(b, trf(Str::MenuSwitchOff, {bName})));
+    const bool dimAgain = menuHas(b, trf(Str::MenuHideNode, {bName})) >= 0;
+    view.menuCommand(menuHas(b, trf(Str::MenuSwitchOn, {bName})));
+    const bool onAgain = model.value(paramIndex(1, OpParam::Enabled)) >= 0.5;
+    check(back && dimAgain && onAgain,
+          "a hidden operator's ghost switches it on, and switched off again it shows dim, its menu switching it on");
+    // C, off with no routes, stays a ghost; C and D off, wired only to each other, both show dim.
+    const Point c = nodeCenter(layout, 2), d = nodeCenter(layout, 3);
+    const bool ghost = menuHas(c, trf(Str::MenuSwitchOn, {detail::nodeTitle(2)})) < 0;
+    model.set(matrixIndex(2, 3), 0.4);
+    view.poll();
+    const bool pair = menuHas(c, trf(Str::MenuSwitchOn, {detail::nodeTitle(2)})) >= 0 &&
+                      menuHas(d, trf(Str::MenuSwitchOn, {detail::nodeTitle(3)})) >= 0;
+    renderer.save(view, dir / "1q-dim-pair.png");
+    check(ghost && pair, "an operator off with no routes stays a ghost, and two off wired to each other both show dim");
+    // A dim operator's tab, and its name in the matrix, show it and leave it off; a click on the name of the one shown
+    // switches it on, as its tab does.
+    auto offNode = [&](int node) { return model.value(paramIndex(node, OpParam::Enabled)) < 0.5; };
+    click(view, nodeTab(2));
+    const bool tabShows = layout.selectedNode == 2 && offNode(2);
+    click(view, kMatrixTab);
+    const Rect dRow = detail::gridCell(3, 0);
+    const Point dName{dRow.x - 18.0f, dRow.center().y};
+    click(view, dName);
+    const bool nameShows = layout.view == RoutingView::Matrix && layout.selectedNode == 3 && offNode(3);
+    click(view, dName);
+    const bool nameSwitches = !offNode(3);
+    click(view, kRoutingTab);
+    check(tabShows && nameShows && nameSwitches,
+          "a dim operator's tab and its name in the matrix show it, left off, and a click on the shown one's name "
+          "switches it on");
+    // C, still dim into D (now on): its wire disconnected from its menu, a third of the way along clear of its label,
+    // hides C, undoably, and the route set again by a host leaves it hidden.
+    const detail::Wire cd = detail::wireBetween(2, c, 3, d, kDefaultWireBend);
+    const Point onWire{0.49f * cd.start.x + 0.42f * cd.control.x + 0.09f * cd.end.x,
+                       0.49f * cd.start.y + 0.42f * cd.control.y + 0.09f * cd.end.y}; // t = 0.3
+    const std::string cName = detail::nodeTitle(2);
+    const bool dimC = menuHas(c, trf(Str::MenuHideNode, {cName})) >= 0;
+    view.menuCommand(menuHas(onWire, tr(Str::MenuDisconnect)));
+    const bool hiddenC = model.value(matrixIndex(2, 3)) == 0.0 && (layout.hiddenNodes >> 2 & 1u) &&
+                         menuHas(c, trf(Str::MenuSwitchOn, {cName})) < 0;
+    view.undo();
+    const bool undoneC = !(layout.hiddenNodes >> 2 & 1u) && menuHas(c, trf(Str::MenuHideNode, {cName})) >= 0;
+    view.redo();
+    model.set(matrixIndex(2, 3), 0.4);
+    view.poll();
+    const bool staysHidden = menuHas(c, trf(Str::MenuSwitchOn, {cName})) < 0;
+    check(dimC && hiddenC && undoneC && staysHidden,
+          "a dim operator's last connection disconnected hides it, undoably, and a route set again by the host leaves "
+          "it hidden");
+    // A filter and a shaper alike: A sent into F1, which goes out, and into S1; each switched off from its menu shows
+    // dim, its menu offering Switch On and Hide, and Hide docks it; one off with no routes (F2) stays a ghost.
+    model.set(paramIndex(0, FilterParam::Enabled), 1.0);
+    model.set(paramIndex(0, ShaperParam::Enabled), 1.0);
+    model.set(sendIndex(0, 0), 1.0);
+    model.set(detail::outParam(kOps), 1.0);
+    model.set(shaperSendIndex(0, 0), 0.5);
+    view.poll();
+    const int s1 = kOps + kFilters;
+    auto boxDims = [&](int node, int enabled) {
+        const Point at = nodeCenter(layout, node);
+        const std::string name = detail::nodeTitle(node);
+        view.menuCommand(menuHas(at, trf(Str::MenuSwitchOff, {name})));
+        const bool dims = model.value(enabled) == 0.0 && menuHas(at, trf(Str::MenuSwitchOn, {name})) >= 0 &&
+                          menuHas(at, trf(Str::MenuHideNode, {name})) >= 0;
+        return dims;
+    };
+    const bool filterDims = boxDims(kOps, paramIndex(0, FilterParam::Enabled));
+    const bool shaperDims = boxDims(s1, paramIndex(0, ShaperParam::Enabled));
+    renderer.save(view, dir / "1q-dim-boxes.png");
+    view.menuCommand(menuHas(nodeCenter(layout, kOps), trf(Str::MenuHideNode, {detail::nodeTitle(kOps)})));
+    const bool filterHidden = (layout.hiddenNodes >> kOps & 1u) &&
+                              menuHas(nodeCenter(layout, kOps), trf(Str::MenuSwitchOn, {detail::nodeTitle(kOps)})) < 0;
+    const bool f2Ghost =
+        menuHas(nodeCenter(layout, kOps + 1), trf(Str::MenuSwitchOn, {detail::nodeTitle(kOps + 1)})) < 0;
+    check(filterDims && shaperDims && filterHidden && f2Ghost,
+          "a filter and a shaper switched off that are still wired show dim, their menus offering Switch On and Hide, "
+          "Hide docking them, and one off with no routes stays a ghost");
+}
+
 // With an LFO in every place, a MODS row's source menu lists them in two columns of 16 beside LFOs (the level 22 px a
 // row from y 198, under the first row's source at y 182), inside the editor: the last place's LFO, at the second
 // column's foot, takes the row's modulation.
@@ -12386,9 +12521,10 @@ void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
           "a MODS row's depth bar marks where a macro takes its target, with no note playing");
 }
 
-// The mouse over a node of the routing graph shows an x in a circle at its upper right (read off the rendered pixels:
-// none there before), whose click switches it off, undoably; a filter's box has one at its corner.
-void testNodeDelete(const std::filesystem::path &dir, Renderer &renderer) {
+// The mouse over a node of the routing graph shows a power symbol in a circle at its upper right (read off the rendered
+// pixels: none there before), whose click switches it off, undoably; a filter's box has one at its corner. On an
+// operator shown dim, being off but wired, it shows too, without its color, and switches it on.
+void testNodePower(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     UiLayout &layout = model.ui;
@@ -12396,29 +12532,50 @@ void testNodeDelete(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, FilterParam::Enabled), 1.0);
     view.poll();
     const Point away{600.0f, 468.0f};
-    auto removes = [&](int node, int enabled, Point x, const char *plainShot, const char *xShot) {
+    // The power switch's circle, and its symbol's foot, by how far its channels are apart: in the node's color while
+    // it is on, the text's grey under the mouse while it is off.
+    auto at = [&](Point p) { return renderer.pixel(p); };
+    auto colored = [&](Point p) {
+        const uint32_t v = renderer.pixel(p);
+        return std::max({v >> 16 & 255, v >> 8 & 255, v & 255}) - std::min({v >> 16 & 255, v >> 8 & 255, v & 255});
+    };
+    auto switches = [&](int node, int enabled, Point x, const char *plainShot, const char *powerShot, double to,
+                        unsigned *symbol = nullptr) {
         view.mouseMove(away, {});
         renderer.save(view, dir / plainShot);
-        const uint32_t plain = renderer.pixel({x.x + 7.5f, x.y});
+        const uint32_t plain = at({x.x + 7.5f, x.y});
         view.mouseMove(nodeCenter(layout, node), {});
         view.mouseMove(x, {});
-        const bool shot = renderer.save(view, dir / xShot);
-        const bool drawn = renderer.pixel({x.x + 7.5f, x.y}) != plain;
+        const bool shot = renderer.save(view, dir / powerShot);
+        const bool drawn = at({x.x + 7.5f, x.y}) != plain;
+        if (symbol)
+            *symbol = colored({x.x, x.y + 3.2f});
         click(view, x);
-        const bool off = model.value(enabled) == 0.0;
+        const bool switched = model.value(enabled) == to;
         view.undo();
         view.mouseMove(away, {});
         view.poll();
-        return shot && drawn && off && model.value(enabled) == 1.0;
+        return shot && drawn && switched && model.value(enabled) == 1.0 - to;
     };
     const Point b = nodeCenter(layout, 1);
-    check(removes(1, paramIndex(1, OpParam::Enabled), {b.x + 0.72f * 24.0f, b.y - 0.72f * 24.0f}, "1k-node-plain.png",
-                  "1k-node-x.png"),
-          "an operator under the mouse shows an x at its upper right, which switches it off, undoably");
+    const Point bPower{b.x + 0.72f * 24.0f, b.y - 0.72f * 24.0f};
+    const int bOn = paramIndex(1, OpParam::Enabled);
+    unsigned lit = 0, unlit = 0;
+    check(switches(1, bOn, bPower, "1k-node-plain.png", "1k-node-power.png", 0.0, &lit),
+          "an operator under the mouse shows a power switch at its upper right, which switches it off, undoably");
     const Point f = nodeCenter(layout, kOps);
-    check(removes(kOps, paramIndex(0, FilterParam::Enabled), {f.x + 33.0f - 2.0f, f.y - 17.0f + 2.0f},
-                  "1l-filter-plain.png", "1l-filter-x.png"),
-          "a filter under the mouse shows an x at its box's corner, which switches it off, undoably");
+    check(switches(kOps, paramIndex(0, FilterParam::Enabled), {f.x + 33.0f - 2.0f, f.y - 17.0f + 2.0f},
+                   "1l-filter-plain.png", "1l-filter-power.png", 0.0),
+          "a filter under the mouse shows a power switch at its box's corner, which switches it off, undoably");
+    // B into A, B off: dim, its power switch switching it on.
+    model.set(matrixIndex(1, 0), 0.5);
+    model.set(bOn, 0.0);
+    view.poll();
+    const bool dimOn = switches(1, bOn, bPower, "1k-dim-node-plain.png", "1k-dim-node-power.png", 1.0, &unlit);
+    std::printf("      the power symbol's foot, its channels apart: %u on, %u on a dim operator\n", lit, unlit);
+    check(dimOn && lit > unlit + 20,
+          "a dim operator under the mouse shows its power switch, unlit, which switches it on, undoably (read off the "
+          "rendered pixels)");
 }
 
 // A wire's label slides along its wire, off a node sitting at the wire's middle: A modulates B across the panel, C
@@ -16418,11 +16575,18 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kRoutingTab);
     check(layout.view == RoutingView::Graph, "the Routing tab switches back to the graph");
 
-    // Right-click an operator to switch it off; it leaves the graph and its tab dims.
-    const auto nodeMenu = view.contextMenu(nodeCenter(layout, 5));
-    if (!nodeMenu.empty())
-        view.menuCommand(nodeMenu.front().command);
+    // Right-click an operator to switch it off; still wired into E, it shows dim, its tab dims, and its menu's Hide
+    // docks it under OUT.
+    auto menuEntry = [&](int node, const std::string &label) {
+        for (const MenuItem &item : view.contextMenu(nodeCenter(layout, node)))
+            if (item.label == label)
+                return item.command;
+        return -1;
+    };
+    view.menuCommand(menuEntry(5, trf(Str::MenuSwitchOff, {detail::nodeTitle(5)})));
     check(model.value(paramIndex(5, OpParam::Enabled)) == 0.0, "an operator's menu switches it off");
+    renderer.save(view, dir / "7-switched-off-dim.png");
+    view.menuCommand(menuEntry(5, trf(Str::MenuHideNode, {detail::nodeTitle(5)})));
     // F and the shapers, which are off, wait docked under OUT as dashed ghosts (F hovered here).
     const Point ghostF = ghostOf(model, 5);
     view.mouseMove(ghostF, {});
@@ -16431,12 +16595,15 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kOpFTab);
     check(model.value(paramIndex(5, OpParam::Enabled)) == 1.0 && layout.selectedNode == 5,
           "clicking a switched-off operator's tab switches it on and selects it");
+    check(layout.hiddenNodes == 0, "an operator switched on is no longer hidden from the graph");
     model.set(paramIndex(5, OpParam::Enabled), 0.0);
+    model.ui.hiddenNodes |= 1u << 5; // hidden again, as its menu hides it
     model.ui.selectedNode = selectedBefore;
     click(view, ghostF);
     check(model.value(paramIndex(5, OpParam::Enabled)) == 1.0 && layout.selectedNode == 5,
           "an operator's ghost in the graph switches it on and selects it");
     model.set(paramIndex(5, OpParam::Enabled), 0.0);
+    model.ui.hiddenNodes |= 1u << 5; // docked again, out of the way
     model.ui.selectedNode = selectedBefore;
 
     // Shaper 1: switch it on with its tab, send A into it by dragging A's port, then run it onto B, into F1 and onto
@@ -17917,6 +18084,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testPillOnTop(dir, renderer);
     testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
+    testDimNode(dir, renderer);
     testRadarGlow(dir, renderer);
     testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
@@ -17929,7 +18097,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModsMoveDepth(dir, renderer);
     testModsLive(dir, renderer);
     testNodeSwitchOnPlace(dir, renderer);
-    testNodeDelete(dir, renderer);
+    testNodePower(dir, renderer);
     testLabelClearOfNode(dir, renderer);
     testLabelsClearOfEachOther(dir, renderer);
     testLoopLabelClear(dir, renderer);

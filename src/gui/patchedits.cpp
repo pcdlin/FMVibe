@@ -37,8 +37,10 @@ void PatchEdits::edit(int index, double v) {
             if (enabledParam(node) == index)
                 switchedOn = node;
     controller_.setValue(index, std::clamp(v, def.min, def.max));
-    if (switchedOn >= 0)
+    if (switchedOn >= 0) {
         RoutingModel(controller_, messages_).placeSwitchedOn(switchedOn);
+        controller_.layout().hiddenNodes &= ~(1u << switchedOn); // switched off again, it shows dim
+    }
     // A route switched on is kept in the same undo step, which takes it out again with its value; kept only by the
     // next poll, after the step, undo would leave its wire at 0 %.
     if (value(index) > 0.0 && isRouteParam(index))

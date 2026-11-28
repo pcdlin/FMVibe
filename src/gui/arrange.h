@@ -15,7 +15,7 @@
 
 namespace fmvibe::gui::detail {
 
-// The routes of a patch's graph between nodes that are on (kNodes standing for OUT), its loops among them.
+// The routes of a patch's graph between the nodes it shows (kNodes standing for OUT), its loops among them.
 struct ArrangeGraph {
     struct Route {
         int from, to, param;
@@ -31,8 +31,9 @@ inline ArrangeGraph arrangeGraph(const ParamValues &values, const UiLayout &layo
         return values[param] > 0.0 ||
                std::find(layout.keptRoutes.begin(), layout.keptRoutes.end(), param) != layout.keptRoutes.end();
     };
+    const std::array<bool, kNodes> shown = graphNodes(on, wired, layout.hiddenNodes); // the dim operators too
     for (int node = 0; node < kNodes; ++node)
-        if (on(node))
+        if (shown[node])
             graph.nodes.push_back(node);
     for (int from : graph.nodes) {
         for (int to : graph.nodes)

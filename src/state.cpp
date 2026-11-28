@@ -412,6 +412,8 @@ void layoutFields(Io &io, Layout &ui) {
     // The names of the files the patch's own tuning came from: its scale's and its keyboard mapping's.
     io.text(ui.tuningName, gui::kMaxTuningName);
     io.text(ui.mappingName, gui::kMaxTuningName);
+    // The nodes hidden from the routing graph while off, a bit each (exact as a float).
+    io.number(ui.hiddenNodes, 0.0f, static_cast<float>((1u << gui::kNodes) - 1u), rounded<uint32_t>);
 }
 
 } // namespace

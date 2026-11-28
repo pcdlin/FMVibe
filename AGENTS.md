@@ -373,7 +373,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     preset as it is named now;
   - a patch using the places past the 16th (the last's LFO, its shape and slot curve, an aux between the 17th place
     and a macro) loading back as saved, its auxes stored by the numbers sources are stored by, and the layout keeping
-    the later places' order and folds and an empty modulation's source;
+    the later places' order and folds, an empty modulation's source and the nodes hidden from the routing graph;
   - a preset's author, category and description reading back as written (UTF-8 too, from a sparse patch and a full
     one, and as the library's scan reads them past the params), as none from a layout before them, and nothing from a
     stream that isn't a state;
@@ -681,8 +681,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a macro's from its knob (read off the rendered pixels);
   - a node switched on where another one shown sits coming back clear of it, undoably, and one whose place is free
     staying there;
-  - a routing node under the mouse showing an x in a circle at its upper right (a filter's at its box's corner, read
-    off the rendered pixels), whose click switches it off, undoably;
+  - a routing node under the mouse showing a power symbol in a circle at its upper right (a filter's at its box's
+    corner, read off the rendered pixels), whose click switches it off, undoably, and a dim operator's, unlit (read off
+    the rendered pixels), switching it on;
   - a wire's label sliding along its wire off a node sitting at its middle (the wheel there turning nothing), and
     two wires crossing at their middles, the second's label sliding along its wire off the first's, and a feedback
     loop's label going to the loop's left off a wire's label on its right;
@@ -821,6 +822,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     whole), and Pitch and Detune not dimmed, turning and ringed for a dragged handle (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
+  - an operator switched off that is still wired showing dim in its place, fainter than on but drawn (read off the
+    rendered pixels), its menu offering Switch On and Hide, Hide docking it as a ghost undoably, switched on by its
+    ghost and off again showing dim again; one off with no routes staying a ghost, and two off wired only to each
+    other both showing dim; a dim operator's tab and its name in the matrix showing it, left off, and a click on the
+    shown one's name switching it on; its last connection disconnected hiding it, undoably, and a route the host sets
+    again leaving it hidden; a filter and a shaper switched off that are still wired showing dim likewise, their
+    menus offering Switch On and Hide, Hide docking them;
   - the KEYS tab: its breakpoint dragged across onto whole notes and its depths up and down, each drag closing its
     gesture, a curve switch making its side exponential (read off the rendered pixels), the edits undone one at a time,
     a double-click putting the breakpoint back on C4, the newest voice's key as a dot on the curve and a hidden KEYS tab
@@ -1801,7 +1809,8 @@ itself.
   name and its one-line description, each as its length and its bytes in UTF-8), which the library's scan reads past
   the params (`readPresetInfo()`) and an older plugin, reading a longer layout than it knows, skips, then the
   source places past the first 16 (their order and folds), whether the SEQ view's roll bends notes (its Bend tool),
-  and the names of the files the patch's own tuning came from (its scale's and its keyboard mapping's), undone with it.
+  and the names of the files the patch's own tuning came from (its scale's and its keyboard mapping's), undone with it,
+  then the nodes hidden from the routing graph while off (a bit each, which a dim node's Hide sets).
   The host's state goes on with
   the settings chunk (the oversampling, MPE, MPE's bend range, whether the synth follows the host's tempo and its
   own tempo, whether MTS-ESP is on and retunes held notes, `Settings` in `src/state.h`) and a preset chunk (whether the patch changed since its preset, then the preset file's path

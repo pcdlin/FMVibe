@@ -204,6 +204,10 @@ struct UiLayout {
     // the patch, undone with the tuning. UTF-8, at most kMaxTuningName bytes (whole characters).
     std::string tuningName;
     std::string mappingName;
+    // The nodes hidden from the routing graph while they are off, a bit each (see graphNodes()): a node switched off
+    // that is still wired shows dim in its place, until its menu's Hide docks it as a ghost under OUT. Switching it
+    // on again clears its bit. Part of the patch, like the node places.
+    uint32_t hiddenNodes = 0;
 };
 constexpr size_t kMaxTuningName = 64;
 

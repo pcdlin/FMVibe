@@ -1778,9 +1778,7 @@ void FxPanel::paintFxGraph(Canvas &c) {
         const Color mark = on ? fxTypeColor(fx_.slotType(place.node)) : hotPower ? kText : kDim;
         c.fillCircle(o, 7.5f, nodeDiscFill(hotPower));
         c.strokeCircle(o, 7.5f, hotPower ? kText : kDim, 1.2f);
-        constexpr float kRadius = 3.2f, kGap = 0.75f; // the power symbol, small enough for the circle
-        c.arc(o, kRadius, kGap, 2.0f * std::numbers::pi_v<float> - kGap, mark, 1.3f);
-        c.line({o.x, o.y - kRadius - 1.0f}, {o.x, o.y - 0.3f}, mark, 1.3f);
+        nodePowerIcon(c, o, mark);
     }
 
     // The +s where a node can go next: a + in a circle, as on a wire's middle, in the color of the wire it is on (grey

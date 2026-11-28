@@ -19,6 +19,14 @@ public:
 
     bool nodeOn(int node) const;
     std::vector<int> enabledNodes() const;
+    // The nodes the graph shows in their places (see graphNodes() in routing.h): those on, and a node off that is still
+    // wired, which shows dim (nodeDim()) until it is hidden. hideNode() docks such a node as a ghost under
+    // OUT, as an undo step, as disconnecting or moving its last route does; switching it on again (PatchEdits::edit())
+    // shows it as before.
+    std::vector<int> shownNodes() const;
+    bool nodeShown(int node) const;
+    bool nodeDim(int node) const { return nodeShown(node) && !nodeOn(node); }
+    void hideNode(int node);
     // A node's center in the editor, from where the layout puts it in the graph.
     Point nodeCenter(int node) const;
     // Where a node dragged to `want` goes: there, unless it would cover another node shown (see routingmodel.cpp).
@@ -72,6 +80,9 @@ private:
     // The route `param` moved onto `next`, which isn't wired yet: its depth, mode and modulation go along, undoably, and
     // the filter or shaper `goesOut` (if there is one) goes out.
     void moveRoute(int param, int next, int goesOut = -1);
+    // Hides (UiLayout::hiddenNodes) the nodes shown dim `before` an edit that no longer show: their last
+    // connection went.
+    void hideUnwired(const std::vector<int> &before);
 
     ModulationModel modulation() const { return ModulationModel(controller_, messages_); }
 };
