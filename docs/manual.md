@@ -365,7 +365,7 @@ The **KEYS** tab sets keyboard level scaling: how the operator's level changes a
 that changes how bright the sound is, so you can keep high notes from getting harsh.
 
 - **Break** is the note where scaling starts. Notes count after the global **Pitch**, as for Rate Scaling.
-- **L Depth** and **R Depth** set how far the level moves one octave below and above Break, from −24 to +24 dB.
+- **L Depth** and **R Depth** set the level change per octave below and above Break, from −24 to +24 dB.
 - **Exp** makes a side's change double every octave past the first. Off, it is the same every octave.
 - **Rate Scaling** (0 to 7) makes a Rate/Level envelope faster on higher keys.
 

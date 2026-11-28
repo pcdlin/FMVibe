@@ -1090,9 +1090,7 @@ STR(CaptionShiftOf, "{1}  ·  of {2}")
 STR(CaptionHold, "hold {1}")
 STR(CaptionRatePoint, "R{1} {2}  ·  L{1} {3}  ·  {4}") // a Rate/Level breakpoint's rate, level and its segment's time
 STR(CaptionKeyBreak, "break {1}") // keyboard scaling's handles, over its display
-STR(CaptionKeyDepth, "{1} an octave {2}") // a depth, then below or above
-STR(CaptionKeyBelow, "below")
-STR(CaptionKeyAbove, "above")
+STR(CaptionKeyDepth, "{1} per octave") // a keyboard scaling side's depth
 STR(CaptionResonance, "{1}  ·  res {2}")
 STR(CaptionEnvCurve, "{1} curve  ·  {2}") // an envelope segment's knob label, then its curve
 STR(CaptionFeedback, "fb {1}") // an operator's feedback on its wire label

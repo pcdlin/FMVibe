@@ -869,9 +869,7 @@ void InspectorPanel::paintKeyScale(Canvas &c, int op) {
 void InspectorPanel::paintKeyReadout(Canvas &c, const Widget &w) {
     char a[32];
     formatParam(w.param, value(w.param), a, sizeof(a));
-    const std::string text = w.b == 0 ? trf(Str::CaptionKeyBreak, {a})
-                                      : trf(Str::CaptionKeyDepth, {a, tr(w.b == 1 ? Str::CaptionKeyBelow
-                                                                                   : Str::CaptionKeyAbove)});
+    const std::string text = trf(w.b == 0 ? Str::CaptionKeyBreak : Str::CaptionKeyDepth, {a});
     // Over the display's top middle, between the curve switches, on a backdrop of its color.
     const Rect r = kKeyScaleRect;
     const float width = c.textWidth(text, kTextLabel);
