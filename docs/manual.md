@@ -152,7 +152,9 @@ From left to right:
 - **Undo** and **Redo** (curved arrows). Hovering one shows what it would undo or redo.
 - **Init** and **Save** (a disk).
 - The **...** button, which opens a menu with **Init preset**, **Load preset...**, **Save preset**,
-  **Save preset as...**, **User manual** (opens this manual in your web browser) and **Settings**. See [Presets](#14-presets) and [Settings](#15-settings).
+  **Save preset as...**, **Load custom tuning...** and **Load keyboard mapping...** (see [Tuning files](#tuning-files)),
+  **User manual** (opens this manual in your web browser) and **Settings**. See [Presets](#14-presets) and
+  [Settings](#15-settings).
 
 ### Tempo
 
